@@ -1,5 +1,5 @@
 ---
-source_sha256: c8f47ec98151950153c9d5b9e8b80b0d29dad7442a19f22ed054f2f057350ac5
+source_sha256: 6a1655f18b429bd1cfd676a69d23b8a7edf43720044e4bc6ff0b24537c141f17
 ---
 # 认证
 
@@ -27,7 +27,7 @@ cybertrain db migrate
 | `app/views/...` | 各个页面（每段文本都经过 `t()`）以及 `sessions/_nav` 局部模板 |
 | `test/fixtures/users.yml`、`test/support/session_test_helper.rb`、`test/models/`、`test/controllers/`、`test/integration/` | 夹具用户、`sign_in_as`，以及每个部分的测试（[测试](#testing)） |
 
-以及各进行一次的修改：在 `ApplicationController` 中加入 `include Authentication`、路由、作业页面那一行（[管理员用户](#admin-users-and-the-jobs-page)）、布局中的 nav 局部模板、`bin/<app>.rb` 中的用户命令、`config/app.rb` 中的 `base_url` 设置（[邮件中的链接](#links-in-mails)），以及在 `bin/<app>.rb` 和 `bin/db.rb` 中加入代码用到的子系统的行，除非 `require "cybertrain"` 已经加载了全部：`cybertrain/jobs`、`cybertrain/mailer`、`cybertrain/mailer/later` 和 `cybertrain/rate_limit`（[子系统](how-it-works.md#subsystems)）。它还会在 `test/test_helper.rb` 中 include `SessionTestHelper`，在已有的脚手架测试和附件测试开头登录 `users(:one)`（[测试](#testing)），并取消 `cybertrain new` 在 `config/deploy.yml` 中留下的 worker 角色的注释，因为邮件由作业线程发送。用相同的选项再次运行不会改变任何东西：已经做过的修改会被找到并跳过，已经与它要写的内容相同的文件保持不变。它会写得不同的文件（你编辑过的，或者旧版生成器或其他选项写的）在没有 `--force` 时绝不会被覆盖，而是打印出它的差异（[从 0.4 升级](#upgrading-from-04)、[之后再开启确认](#turning-on-confirmation-later)）。
+以及各进行一次的修改：在 `ApplicationController` 中加入 `include Authentication`、路由、作业页面那一行（[管理员用户](#admin-users-and-the-jobs-page)）、布局中的 nav 局部模板、`bin/<app>.rb` 中的用户命令、`config/app.rb` 中的 `base_url` 设置（[邮件中的链接](#links-in-mails)），以及在 `bin/<app>.rb` 和 `bin/db.rb` 中加入代码用到的子系统的行，除非 `require "cybertrain"` 已经加载了全部：`cybertrain/jobs`、`cybertrain/mailer`、`cybertrain/mailer/later` 和 `cybertrain/rate_limit`（[子系统](how-it-works.md#subsystems)）。它还会在 `test/test_helper.rb` 中 include `SessionTestHelper`，在已有的脚手架测试和附件测试开头登录 `users(:one)`（[测试](#testing)），并取消 `cybertrain new` 在 `config/deploy.yml` 中留下的 worker 角色的注释，因为邮件由作业线程发送。用相同的选项再次运行不会改变任何东西：已经做过的修改会被找到并跳过，已经与它要写的内容相同的文件保持不变。它会写得不同的文件（你编辑过的，或者旧版生成器或其他选项写的）在没有 `--force` 时绝不会被覆盖，而是打印出它的差异（[再次运行生成器](#running-the-generator-again)、[之后再开启确认](#turning-on-confirmation-later)）。
 
 生成的页面上的文本在框架的英语和日语词典中，使用各自的惰性查找键（`sessions.new.title`、`passwords.create.sent`）；应用可以在 `config/locales/` 中覆盖它们或添加一种语言（[国际化](i18n.md#the-bundled-dictionaries)）。
 
@@ -206,9 +206,9 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 
 本仓库的 `script/auth-e2e signup invite confirmable upgrade04` 用生成器构建应用，并端到端地驱动它们。
 
-## 从 0.4 升级
+## 再次运行生成器
 
-在 0.4 生成的应用中再次运行生成器。它写出缺少的文件、一个补充现有迁移所缺列的迁移，以及各项修改；对于它本应整体写出、但已存在且内容不同的文件，它不做改动，而是打印差异：
+在较早版本生成的应用中再次运行生成器。它写出缺少的文件、一个补充现有迁移所缺列的迁移，以及各项修改；对于它本应整体写出、但已存在且内容不同的文件，它不做改动，而是打印差异。在 0.4 生成的应用中：
 
 ```text 输出 — cybertrain generate authentication（节选）
 exist db/migrate/20260925120000_create_users.rb
@@ -232,14 +232,11 @@ manual  app/controllers/application_controller.rb: apply this diff by hand, or r
 +  include Authentication
 ```
 
-[test/fixtures/auth_04_app.upgrade.diff](../../test/fixtures/auth_04_app.upgrade.diff) 是针对 0.4 生成的开放注册应用的完整输出。
-
 <!-- list: points -->
 - 保存输出，在应用目录中用 `patch -p1` 应用（patch 会跳过不属于差异的行），或者在你修改过文件的地方手工应用每个差异。在应用这些差异之前，应用可能无法构建：新文件会调用差异所添加的内容。
-- `--force` 则用新文件覆盖旧文件，适用于你从未编辑过的文件；`ApplicationController` 中 0.4 的代码块只有在与 0.4 所写完全相同时才会被替换。
+- `--force` 则用新文件覆盖旧文件，适用于你从未编辑过的文件。
 - 新迁移只添加缺少的列；运行 `cybertrain db migrate`。使用 `--confirmable` 时，它还把已有用户视为（自创建起）已确认，否则他们都无法登录。
-- 使用 `--confirmable` 时，sessions 和 registrations 控制器的差异带有一行 `IMPORTANT:`：在应用它们之前，未确认的账户不会被告知为何无法登录，注册也不会收到链接邮件。在 0.4 的应用中关注点是新文件，连同确认检查一起写出，所以即使这些差异从未应用，它仍然不会为未确认的账户开始会话（并记录 `WARN [<request id>] no session started: user <id> has not confirmed its address`）。
-- 升级时每个会话都会结束一次（cookie 现在是加密的），[升级 0.4 的应用](requests.md#upgrading-an-application-from-04) 的其余部分也同样适用。
+- 某个版本的生成器有什么变化，以及该版本对应用还有什么要求，按版本列在[升级](upgrading.md#notes-by-version)中。
 
 ### 之后再开启确认
 

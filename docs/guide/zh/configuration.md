@@ -1,5 +1,5 @@
 ---
-source_sha256: 455d9c71c3b91be4d97f8f383cdde3e0bcb7c6663fd0b7289cda0bc28af08439
+source_sha256: 6a31d45e598b54446d9c4a8fac5c9e197285b1b4dd872a7905d91d3f24b3219d
 ---
 # 配置
 
@@ -34,9 +34,9 @@ end
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`；以逗号分隔的 IPv4/IPv6 地址或 CIDR（`172.16.0.0/12,10.0.0.0/8`），来自这些地址的连接的 `request.client_ip` 取自 `X-Forwarded-For` 中的最后一个地址，用于通过网络访问的代理，例如运行在自己容器中的 kamal-proxy；无效的条目会让服务器在启动时停止 |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`：`params.page_number` 给出、`Relation#page` 接受的最大页码（参见[分页](models.md#pagination)）；不是最多 18 位的数字或小于 1 的值按默认值处理 |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`；以逗号分隔的名称会替换这个列表。名称中包含其中任一项的参数（按 ASCII 不区分大小写：`password` 也匹配 `user[password]`），其值在请求日志和开发时的错误页面上会写成 `[FILTERED]`；在 `config/app.rb` 中设为 `[]` 可关闭此功能 |
-| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`：写出的最低级别，`debug`、`info`、`warn`、`error`、`fatal` 或 `none`（不区分大小写；`none` 关闭请求日志，但仍写错误行）；其他值会让启动停止（见[日志](background-and-operations.md#logs)）。除非 `config/app.rb` 设置了它，`cybertrain test` 使用 `:none` |
+| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`：写出的最低级别，`debug`、`info`、`warn`、`error`、`fatal` 或 `none`（不区分大小写；`none` 关闭请求日志，但仍写错误行）；其他值会让启动停止（见[日志](logs-and-errors.md#logs)）。除非 `config/app.rb` 设置了它，`cybertrain test` 使用 `:none` |
 | `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text`；`json` 为日志收集器每行写一个 JSON 对象；其他值会让启动停止。除非 `config/app.rb` 设置了它，`cybertrain test` 不论变量是什么都保持文本行 |
-| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`：什么都不发送。设为 Sentry 或 GlitchTip 的 DSN，就把每个错误报告发到那里（见[错误报告](background-and-operations.md#error-reporting)）；它需要 `bin/<app>.rb` 中有 `require "cybertrain/error_reporter/sentry"`（或 `require "cybertrain"`），否则拒绝启动。无法解析的 DSN 会让启动停止，指出出错的部分，但从不显示密钥。除非 `config/app.rb` 赋了值，`cybertrain test` 会把它清空 |
+| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`：什么都不发送。设为 Sentry 或 GlitchTip 的 DSN，就把每个错误报告发到那里（见[错误报告](logs-and-errors.md#error-reporting)）；它需要 `bin/<app>.rb` 中有 `require "cybertrain/error_reporter/sentry"`（或 `require "cybertrain"`），否则拒绝启动。无法解析的 DSN 会让启动停止，指出出错的部分，但从不显示密钥。除非 `config/app.rb` 赋了值，`cybertrain test` 会把它清空 |
 | `CYBERTRAIN_ERROR_SAMPLE_RATE` | `error_sample_rate` | `1.0`：发送到 Sentry 的错误报告的比例，0.0 到 1.0，写成数字加可选的 `.数字`；订阅者收到每一个报告；其他值会让启动停止 |
 | `CYBERTRAIN_RELEASE` | `release` | `""`：随每个错误报告发送的版本或提交 |
 | `CYBERTRAIN_WORKER` | `worker` | `true`；`0` 或 `false` 会让 `server` 进程不运行定时任务、作业和 WebSocket 数据订阅（参见[进程角色](background-and-operations.md#process-roles)）；`./<app> worker` 和 `feeds` 会忽略它 |
@@ -80,7 +80,7 @@ end
 | `public_root` | `"public"` | 静态文件的目录，也是查找错误页面 `public/<status>.html` 的位置 |
 | `layout` | `"layouts/application"` | 每个页面渲染时所用的布局；文件不存在时忽略 |
 | `secret_key_path` | `"tmp/secret_key"` | 开发和测试环境保存所生成密钥的位置 |
-| `log_tags` | `[:request_id]` | 每行日志带的请求标签：`:remote_ip` 加上客户端地址，`[]` 不显示任何标签，其他值会让启动停止（[请求 ID](background-and-operations.md#request-ids)） |
+| `log_tags` | `[:request_id]` | 每行日志带的请求标签：`:remote_ip` 加上客户端地址，`[]` 不显示任何标签，其他值会让启动停止（[请求 ID](logs-and-errors.md#request-ids)） |
 | `session_cookie_name` | `"_cybertrain_session"` | 会话 cookie 的名称 |
 | `session_max_age` | `1209600`（两周） | 会话 cookie 的 `Max-Age`，单位为秒；会话每次变化时重新计时 |
 | `session_absolute_max_age` | `1209600`（两周） | 无论使用多么频繁，一个会话最长存活的秒数：更旧的 cookie 会被加载为空会话。`0` 关闭此限制 |
@@ -179,9 +179,6 @@ end
 
 `c.time_zone` 接受 IANA 名称（不读取 Rails 自己的名称，比如 “Tokyo”），系统中没有的时区会让启动停止。值仍然是 UTC 瞬间：列、`Time.current` 和日历方法返回 UTC 的 `Time`，`time.hour` 是 UTC 的小时。时区决定日历（`beginning_of_day` 等以及 `Date.current`；[时间与时区](models.md#times-and-the-time-zone)）和显示：`l(time)` 和 `time_tag(time)` 在该时区显示 Time，包括 `%z` 和 `%Z`，`time_tag` 的 `datetime` 是带时区偏移的 ISO 8601（`2026-11-12T05:00:00+09:00`）。`l(time, zone: "America/New_York")` 和 `time_tag(time, zone: "...")` 在另一个时区显示一个值。偏移为 0 的 Time，也就是框架给出的所有 Time，在该时区显示；自己带着另一个偏移的 Time（`time.getlocal("+05:30")`）保持它的偏移，除非给出 `zone:`；Date 原样显示。没有 `tz:` 的 cron 任务也跟随这个时区，除非设置了 `scheduler_tz`。注册的命令（`Main.command`）、`./<app> jobs` 和 `./<app> console` 也会在运行前设置时区，并像启动时一样拒绝未知的时区：输出 `error: time_zone "Mars/Base" is not a known time zone`，在打开数据库之前以退出状态 1 结束。在 `cybertrain test` 中，每个测试都从配置的时区开始。（`l` 的格式见[日期和时间](i18n.md#dates-and-times)。）
 
-## 从 0.4 升级
+## 升级
 
-本页中有两个默认值在 0.4 之后发生了变化：
-
-- 渲染嵌套以前没有限制，现在由 `max_render_depth` 限制，默认为 12。局部模板树更深的应用（分层评论、分类菜单）在调高这个设置之前会得到模板错误。
-- `job_poll_interval` 以前是 5 秒，现在是 1 秒：作业在自己的线程上运行，空闲的线程每秒查找一次工作。
+某个版本改变的设置和默认值，按版本列在[升级](upgrading.md#notes-by-version)中。

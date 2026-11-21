@@ -520,7 +520,7 @@ EOF
 
 `CYBERTRAIN_RELEASE` names the version each report comes from; the deploy
 script could write the commit there instead. The variables, and what is
-reported: [Error reporting](guide/background-and-operations.md#error-reporting).
+reported: [Error reporting](guide/logs-and-errors.md#error-reporting).
 
 The `.env.example` that `cybertrain new` writes lists the other variables an
 app reads, each commented out. One of them is required as soon as a model
@@ -945,7 +945,10 @@ sudo systemctl start notes
 
 ### Upgrading the framework
 
-In this order:
+This section is the order of an upgrade on this tutorial's server. The whole
+procedure, the same for every release (regenerating, running the generators
+again, the tests), and what each release asks of an app are in
+[the upgrading guide](guide/upgrading.md). In this order:
 
 1. Locally, change the `ref` in `spin.toml` to the new tag (`"vX.Y.Z"`).
 2. Locally, bring the CLI to the same version with `gem install cybertrain`.

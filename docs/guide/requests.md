@@ -453,7 +453,7 @@ end
 
 `c.log_tags` chooses what each line shows, and the job's lines and error
 reports carry the id of the request that enqueued it
-([Request ids](background-and-operations.md#request-ids)).
+([Request ids](logs-and-errors.md#request-ids)).
 
 ## Content Security Policy, `force_ssl` and hosts
 
@@ -580,71 +580,7 @@ than gzip/identity is `Cybertrain::BodyUndecodable`, one that would inflate
 past the limit `Cybertrain::BodyTooLarge`, both `QueryInvalid`s answered 400.
 `request.body` stays the bytes as sent.
 
-## Upgrading an application from 0.4
+## Upgrading
 
-What changes for an application written for 0.4:
-
-- Models and the database have a list of their own, which includes running
-  `db normalize` once ([Upgrading from 0.4](models.md#upgrading-from-04));
-  so do the tests ([Upgrading from 0.4](testing.md#upgrading-from-04)) and
-  the jobs
-  ([Upgrading from 0.4](background-and-operations.md#upgrading-from-04)).
-- Every session ends once: the encrypted cookie does not read the old
-  signed one, so users sign in again. Code that calls `Session.load` or
-  `Session.dump` passes the derived key, `Crypto.derive_key(secret,
-  SessionStore::SESSION_KEY_LABEL)`; the raw secret raises
-  `Encryptor::Error`.
-- Every application links OpenSSL ([Installing](install.md#requirements));
-  a Dockerfile `cybertrain new` wrote earlier needs `libssl-dev` in its
-  build stage and `libssl3t64` in its runtime stage.
-- A dynamic segment no longer captures a `.` in a route that takes a
-  format: an id with dots needs `format: false` on its route.
-- A hand-written `url_resolver` lambda takes three arguments, `->(name,
-  args, options)`; one that passes `Gen::Routes.url_resolver` needs only
-  `spin run gen`.
-- `params.permit` returns `Hash{String => Object}`: call `Cast.str` or
-  `.to_s` on a value before using it as a String.
-- `rate_limit` counts in the cache: `store: :memory` keeps the old
-  per-process counter, two limits in one controller need their own
-  `name:`, a `by:` method answering nil or `""` raises, and a `with:`
-  method that renders nothing is followed by the 429.
-- The number helpers raise for a value that is not a number (nil renders
-  `""` in a template, as before), and for a precision outside 0 to 100.
-- `include A, B` in a controller or model includes B first, as Ruby does; an
-  `include` of a module that is not a concern is left to Ruby.
-- Every ETag changes once (it now holds the request's format and a build
-  digest), a response negotiated by `Accept` sends `Vary: Accept`, and the
-  html fallback covers any `Accept` that lists `text/html` or `*/*`. A
-  request that may fall back to html (`application/json, text/html`) has
-  an ETag of its own, apart from the one of a request for that format
-  alone; `text/html;q=0` in `Accept` gets no html fallback (406 where the
-  action has only html), also beside `*/*`; and `If-None-Match: *` gets a
-  304 from a response validated by `last_modified:` alone.
-- `permit` and `expect` raise `ArgumentError` for a filter that is not an
-  Array; a `layout` that names a missing layout raises `MissingTemplate`
-  (the default `application` layout stays optional); a jar cookie over 4096
-  bytes raises `Session::CookieOverflow`.
-- `public/style.css` keeps working; moving it to `app/assets/stylesheets/`
-  is optional ([Assets](assets.md#moving-publicstylecss)).
-- Validation messages come from the bundled dictionary
-  ([Internationalization](i18n.md#models-and-validation-messages)), with
-  the same English text except three: a message on `:base` is no longer
-  prefixed "Base", an attribute ending in `_id` is named without "id"
-  ("Article can't be blank", not "Article id can't be blank"), and a
-  length limit of 1 reads "1 character". Tests that compare these
-  messages change.
-- `time_tag` without `format:`, or with a format name, formats through
-  `I18n.l` (the same English text as before in an English page).
-- gen writes `gen/locales.rb` (empty without `config/locales/`) and loads
-  `app/mailers/**/*.rb`; `cybertrain new` writes `config/locales/en.yml`,
-  which an older application can add.
-- `allow_unauthenticated_access` is a framework method now; the one 0.4's
-  generator wrote into `ApplicationController` keeps working and takes
-  precedence. Running `cybertrain generate authentication` again adds
-  password reset, lockout, remember me, the account page and admin users,
-  and prints diffs for the files 0.4 wrote
-  ([Upgrading from 0.4](authentication.md#upgrading-from-04)).
-- Every response the application answers carries `X-Request-Id` (not the
-  server's own 400 and 413 for a request it cannot read), and a proxy's `X-Request-Id` is
-  used only when the proxy is trusted; every log line changes shape
-  ([Upgrading logs and error reports from 0.4](background-and-operations.md#upgrading-logs-and-error-reports-from-04)).
+What a release changes in routing, controllers and the rest of the web
+layer is listed by version in [Upgrading](upgrading.md#notes-by-version).

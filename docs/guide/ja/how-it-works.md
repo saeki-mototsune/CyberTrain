@@ -1,5 +1,5 @@
 ---
-source_sha256: 74448999a7b68905ec4d5f0ca403b2a03b3822afc562e5f4fa451c95adac7514
+source_sha256: ee5feed8e38a254936fb5d5a6a5a381548db986c1c69972e1f20dc7cb422e42e
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、オプションのサブシステム、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -43,7 +43,7 @@ Spinel は、プログラムが require したすべてのファイルのすべ�
 | `require "cybertrain/mailer/later"` | `Mailer.deliver_later`。メーラーとジョブも読み込む |
 | `require "cybertrain/cache"` | `Cache` |
 | `require "cybertrain/rate_limit"` | コントローラーの `rate_limit`。キャッシュも読み込む |
-| `require "cybertrain/error_reporter/sentry"` | Sentry の送信側：`CYBERTRAIN_SENTRY_DSN` で各エラー報告を Sentry か GlitchTip に送る（[エラー報告](background-and-operations.md#error-reporting)）。`HttpClient` と TLS を読み込む。`bin/<app>.rb` だけに書く |
+| `require "cybertrain/error_reporter/sentry"` | Sentry の送信側：`CYBERTRAIN_SENTRY_DSN` で各エラー報告を Sentry か GlitchTip に送る（[エラー報告](logs-and-errors.md#error-reporting)）。`HttpClient` と TLS を読み込む。`bin/<app>.rb` だけに書く |
 | `require "cybertrain"` | 上のすべての行（Sentry の送信側を通じて `HttpClient` と TLS も）。`cybertrain/websocket` と `cybertrain/sse` は別の行のまま |
 
 どの行も `require "cybertrain/core"` の後に書きます（`cybertrain/jobs` と `cybertrain/feeds` は自分でコアを読み込みますが、ほかの行は読み込みません）。行の順序は関係ありません：フレームワークはサブシステムを自分の決まった順序で起動・停止します。スキャフォールドしたアプリでは、コアだけなら 2,767 ではなく 2,205 メソッドをコンパイルし、解析は 52 秒ではなく 38 秒です。フルビルドは 108 秒ではなく 83 秒、コントローラーの編集 1 回は約 65 秒ではなく約 47 秒です（[docs/performance-next.md](../performance-next.md)）。

@@ -1,5 +1,5 @@
 ---
-source_sha256: 455d9c71c3b91be4d97f8f383cdde3e0bcb7c6663fd0b7289cda0bc28af08439
+source_sha256: 6a31d45e598b54446d9c4a8fac5c9e197285b1b4dd872a7905d91d3f24b3219d
 ---
 # 設定
 
@@ -34,9 +34,9 @@ end
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`。カンマ区切りの IPv4/IPv6 アドレスまたは CIDR（`172.16.0.0/12,10.0.0.0/8`）で、そこからの接続では `request.client_ip` を `X-Forwarded-For` の最後のアドレスから取る。コンテナー内の kamal-proxy のように、ネットワーク越しに到達するプロキシ向け。不正なエントリーがあるとサーバーは起動時に停止する |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`：`params.page_number` が返し、`Relation#page` が受け付ける最大のページ（[ページネーション](models.md#pagination)を参照）。最大 18 桁の数値でない値や、1 未満の値はデフォルトになる |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`。カンマ区切りの名前でリストを置き換える。名前にこれらのいずれかを含むパラメーター（ASCII の大文字小文字を区別しない：`password` は `user[password]` にも一致する）は、リクエストログと開発環境のエラーページで値が `[FILTERED]` と書かれる。`config/app.rb` で `[]` にすると無効になる |
-| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`：書き出す最も低いレベル。`debug`、`info`、`warn`、`error`、`fatal`、`none`（大文字小文字は問わない。`none` はリクエストログを止め、エラーの行は書く）。それ以外では起動が止まる（[ログ](background-and-operations.md#logs)を参照）。`cybertrain test` は、`config/app.rb` が設定しない限り `:none` を使う |
+| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`：書き出す最も低いレベル。`debug`、`info`、`warn`、`error`、`fatal`、`none`（大文字小文字は問わない。`none` はリクエストログを止め、エラーの行は書く）。それ以外では起動が止まる（[ログ](logs-and-errors.md#logs)を参照）。`cybertrain test` は、`config/app.rb` が設定しない限り `:none` を使う |
 | `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text`。`json` はログ収集ツール向けに 1 行 1 つの JSON オブジェクトを書く。それ以外では起動が止まる。`cybertrain test` は、変数にかかわらず、`config/app.rb` が設定しない限りテキストの行のまま |
-| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`：何も送らない。Sentry か GlitchTip の DSN にすると、各エラー報告をそこに送る（[エラー報告](background-and-operations.md#error-reporting)を参照）。`bin/<app>.rb` に `require "cybertrain/error_reporter/sentry"`（または `require "cybertrain"`）が必要で、ないと起動を拒む。読めないものでは起動が止まり、どの部分かを示すがキーは示さない。`cybertrain test` は、`config/app.rb` が代入しない限り空にする |
+| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`：何も送らない。Sentry か GlitchTip の DSN にすると、各エラー報告をそこに送る（[エラー報告](logs-and-errors.md#error-reporting)を参照）。`bin/<app>.rb` に `require "cybertrain/error_reporter/sentry"`（または `require "cybertrain"`）が必要で、ないと起動を拒む。読めないものでは起動が止まり、どの部分かを示すがキーは示さない。`cybertrain test` は、`config/app.rb` が代入しない限り空にする |
 | `CYBERTRAIN_ERROR_SAMPLE_RATE` | `error_sample_rate` | `1.0`：Sentry に送るエラー報告の割合。0.0〜1.0 を、数字に任意の `.数字` が続く形で書く。サブスクライバーはすべての報告を受け取る。それ以外では起動が止まる |
 | `CYBERTRAIN_RELEASE` | `release` | `""`：各エラー報告と一緒に送るバージョンかコミット |
 | `CYBERTRAIN_WORKER` | `worker` | `true`。`0` または `false` にすると、`server` プロセスは定期タスク、ジョブ、WebSocket のフィードを実行しない（[プロセスの役割](background-and-operations.md#process-roles)を参照）。`./<app> worker` と `feeds` はこれを無視する |
@@ -80,7 +80,7 @@ end
 | `public_root` | `"public"` | 静的ファイルのディレクトリ。エラーページ `public/<status>.html` もここから探す |
 | `layout` | `"layouts/application"` | すべてのページがレンダリングされるレイアウト。ファイルがなければ無視される |
 | `secret_key_path` | `"tmp/secret_key"` | 開発環境とテスト環境が、生成した秘密の値を保存する場所 |
-| `log_tags` | `[:request_id]` | 各ログ行に付くリクエストのタグ：`:remote_ip` でクライアントのアドレスを足し、`[]` で何も付けず、それ以外では起動が止まる（[リクエスト ID](background-and-operations.md#request-ids)） |
+| `log_tags` | `[:request_id]` | 各ログ行に付くリクエストのタグ：`:remote_ip` でクライアントのアドレスを足し、`[]` で何も付けず、それ以外では起動が止まる（[リクエスト ID](logs-and-errors.md#request-ids)） |
 | `session_cookie_name` | `"_cybertrain_session"` | セッションの cookie の名前 |
 | `session_max_age` | `1209600`（2 週間） | セッションの cookie の `Max-Age`（秒）。セッションが変わるたびに数え直す |
 | `session_absolute_max_age` | `1209600`（2 週間） | どれだけ使われていても、セッションが続く最長の秒数：これより古い cookie は空のセッションとして読み込まれる。`0` で制限なし |
@@ -179,9 +179,6 @@ end
 
 `c.time_zone` は IANA の名前を取り（「Tokyo」のような Rails 独自の名前は読みません）、システムにないゾーンでは起動が止まります。値は UTC の瞬間のままです：カラム、`Time.current`、カレンダーのメソッドは UTC の `Time` を返し、`time.hour` は UTC の時です。ゾーンが決めるのはカレンダー（`beginning_of_day` などや `Date.current`。[時刻とタイムゾーン](models.md#times-and-the-time-zone)）と表示です：`l(time)` と `time_tag(time)` は Time をそのゾーンで表示し（`%z` と `%Z` も含む）、`time_tag` の `datetime` はゾーンのオフセット付きの ISO 8601 です（`2026-11-12T05:00:00+09:00`）。`l(time, zone: "America/New_York")` と `time_tag(time, zone: "...")` は 1 つの値を別のゾーンで表示します。オフセット 0 の Time、つまりフレームワークが渡すすべての Time はそのゾーンで表示されます。自分自身の別のオフセットを持つ Time（`time.getlocal("+05:30")`）は、`zone:` を渡さない限りそのオフセットのままです。Date はそのまま表示されます。`tz:` のない cron のタスクも、`scheduler_tz` を設定しない限りこのゾーンに従います。登録されたコマンド（`Main.command`）、`./<app> jobs`、`./<app> console` も実行の前にゾーンを設定し、未知のゾーンは起動と同じく `error: time_zone "Mars/Base" is not a known time zone` を出して、データベースを開く前に終了ステータス 1 で拒否します。`cybertrain test` では、各テストは設定したゾーンで始まります。（`l` の書式は[日付と時刻](i18n.md#dates-and-times)にあります。）
 
-## 0.4 からのアップグレード
+## アップグレード
 
-このページのデフォルトのうち 2 つが 0.4 の後で変わりました：
-
-- レンダリングのネストは無制限でしたが、`max_render_depth`（デフォルトは 12）までになりました。パーシャルのツリーがより深いアプリケーション（スレッド形式のコメント、カテゴリーメニュー）は、この設定を引き上げるまでテンプレートエラーになります。
-- `job_poll_interval` は 5 秒でしたが 1 秒になりました：ジョブは専用のスレッドで実行され、手の空いたスレッドは 1 秒ごとに仕事を探します。
+リリースが変える設定とデフォルトは、[アップグレード](upgrading.md#notes-by-version) にバージョンごとに載っています。

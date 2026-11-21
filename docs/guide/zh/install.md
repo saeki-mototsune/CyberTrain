@@ -1,5 +1,5 @@
 ---
-source_sha256: 4f41772e35e37674b8e1389ae3eb7abbc95e52b3b89635a88fbfa531e3cac42d
+source_sha256: 5b290cc8bfe97d7f7325b9a91ff2161dd1976379ce789c906598463f9da7b6e2
 ---
 # 安装
 
@@ -143,4 +143,4 @@ or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then 
 
 两种做法任选其一。`cybertrain spin ...` 不做这项检查，因此 `cybertrain spin lock` 总能运行。对于索引中的版本，消息给出的是 `cybertrain = "A.B.C"` 和单独的 `cybertrain spin lock`；只有在 `spin.toml` 仍然允许时，spin 才构建锁定的版本，因此 `spin.toml` 指定的版本一旦与锁不同，就会用它来比较；如果某个范围（`"~> X.Y"`）不再允许锁定的版本，则在运行 `cybertrain spin lock` 之前命令会拒绝执行。依赖框架本地检出代码（`path = ...`）的应用不做检查。没有 `spin.lock` 的应用，则与其 `spin.toml` 指定的版本（`"X.Y.Z"` 或 `ref = "vX.Y.Z"`）比较；分支、提交或范围不指定任何版本，因此不做检查。
 
-为 0.4 编写的应用需要做一些修改（每个会话都会结束一次、要链接 OpenSSL、含点号的路由段需要 `format: false` 等）：参见[升级为 0.4 编写的应用](requests.md#upgrading-an-application-from-04)。
+重新锁定只是升级的一个步骤。完整的流程，以及每个版本对应用的改变，见[升级](upgrading.md)。

@@ -1,5 +1,5 @@
 ---
-source_sha256: 74448999a7b68905ec4d5f0ca403b2a03b3822afc562e5f4fa451c95adac7514
+source_sha256: ee5feed8e38a254936fb5d5a6a5a381548db986c1c69972e1f20dc7cb422e42e
 description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, sous-systèmes optionnels, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
@@ -45,7 +45,7 @@ Spinel compile chaque méthode de chaque fichier qu’un programme requiert, app
 | `require "cybertrain/mailer/later"` | `Mailer.deliver_later`&nbsp;; charge le mailer et les jobs |
 | `require "cybertrain/cache"` | `Cache` |
 | `require "cybertrain/rate_limit"` | `rate_limit` dans les contrôleurs&nbsp;; charge le cache |
-| `require "cybertrain/error_reporter/sentry"` | l’envoyeur Sentry&nbsp;: `CYBERTRAIN_SENTRY_DSN` envoie chaque rapport d’erreur à Sentry ou GlitchTip ([Signalement des erreurs](background-and-operations.md#error-reporting))&nbsp;; charge `HttpClient` et TLS. Dans `bin/<app>.rb` seulement |
+| `require "cybertrain/error_reporter/sentry"` | l’envoyeur Sentry&nbsp;: `CYBERTRAIN_SENTRY_DSN` envoie chaque rapport d’erreur à Sentry ou GlitchTip ([Signalement des erreurs](logs-and-errors.md#error-reporting))&nbsp;; charge `HttpClient` et TLS. Dans `bin/<app>.rb` seulement |
 | `require "cybertrain"` | toutes les lignes ci-dessus (donc aussi `HttpClient` et TLS, par l’envoyeur Sentry)&nbsp;; `cybertrain/websocket` et `cybertrain/sse` restent des lignes à part |
 
 Chaque ligne se place après `require "cybertrain/core"` (`cybertrain/jobs` et `cybertrain/feeds` chargent le cœur eux-mêmes, les autres non), et leur ordre n’a pas d’importance&nbsp;: le framework démarre et arrête les sous-systèmes dans un ordre fixe qui lui est propre. Sur une application générée par scaffold, le cœur seul compile 2&nbsp;205 méthodes au lieu de 2&nbsp;767 et s’analyse en 38&nbsp;s au lieu de 52&nbsp;s&nbsp;; un build complet prend 83&nbsp;s au lieu de 108&nbsp;s, et une modification de contrôleur environ 47&nbsp;s au lieu de 65&nbsp;s ([docs/performance-next.md](../performance-next.md)).

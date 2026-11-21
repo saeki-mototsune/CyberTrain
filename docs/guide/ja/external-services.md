@@ -1,11 +1,11 @@
 ---
-source_sha256: 8e06dc7c2398339f1839a3e3c9a1a0acc12c23cba8d474c15a18dae68daa2483
+source_sha256: 6e4f1fb3feea6c05454ba214e8d64b5662955142a0167ff12c120a2e654c9ca7
 ---
 # 外向きの HTTP、WebSocket フィード、メール
 
 ## 外向きの HTTP
 
-別のサーバー（Webhook、Slack の Incoming Webhook、サードパーティの API）を呼び出すアプリケーションは `Cybertrain::HttpClient` を使います。`require "cybertrain"` は、[Sentry の送信側](background-and-operations.md#error-reporting)を通じて、これと TLS の層を読み込みます。`cybertrain/core` のアプリケーションは、使う場所で require し、https の URL があれば TLS の層も require してください：
+別のサーバー（Webhook、Slack の Incoming Webhook、サードパーティの API）を呼び出すアプリケーションは `Cybertrain::HttpClient` を使います。`require "cybertrain"` は、[Sentry の送信側](logs-and-errors.md#error-reporting)を通じて、これと TLS の層を読み込みます。`cybertrain/core` のアプリケーションは、使う場所で require し、https の URL があれば TLS の層も require してください：
 
 ```ruby
 require "json"
@@ -138,7 +138,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
   | 無音 | WARN | `WebSocket "trades" silent for 45s; reconnecting` |
   | ブロックが例外を出した | ERROR | `WebSocket "trades" on_message failed: KeyError: ...`（または `on_open`） |
 
-  パスとクエリがログやエラーメッセージに出ることは決してありません：トークンを含んでいることが多いからです。最初の行以外はフィードのスレッドで出るので、`[feed:trades]` のタグが付きます。例外を投げたブロック、スレッドの終わり、`feeds` プロセスのあきらめは[報告](background-and-operations.md#error-reporting)もされます。
+  パスとクエリがログやエラーメッセージに出ることは決してありません：トークンを含んでいることが多いからです。最初の行以外はフィードのスレッドで出るので、`[feed:trades]` のタグが付きます。例外を投げたブロック、スレッドの終わり、`feeds` プロセスのあきらめは[報告](logs-and-errors.md#error-reporting)もされます。
 - **エラー。** すべて `Cybertrain::WebSocket::Error` で、メッセージにはホストとポートだけが含まれます。ハンドシェイクが済んだ後は、失われた接続やサーバーによるクローズは `ClosedError`（`close_code`、`close_reason`。リセットやクローズフレームなしの終了は 1006）です。タイムアウトした書き込みや TLS で失敗した書き込みは、引き続き `TimeoutError` や `TLSError` です。接続中は `RefusedError`、`TimeoutError`、`TLSError`、`BlockedAddressError`（公開されていないアドレスで、[外向きの HTTP](#outbound-http) とまったく同じくデフォルトで拒否され、同じ `allow_private:` と `http_allow_private` の設定を持ちます）、または `HandshakeError`（101 でない、`Sec-WebSocket-Accept` が誤っている、またはサーバーが拡張やサブプロトコルで応答した）です。`ProtocolError`（サーバーがフレーミングを壊した。クライアントは 1002 を送ります）と `TooLargeError` はいつでも起こりえます。
 - **ヘルス。** `Cybertrain::WebSocket.feed_status("trades")` は `Status` を返します：`connected?`、`last_message_at`（エポック秒。最初のメッセージの前は 0）、`reconnects`、`restarts`（監視スレッドによるもの）、`thread_alive?`。これらは 1 つのスナップショットとしてではなく順に読まれ、`connected?` は接続ができた時点、`on_open` の実行前に true になります。監視スレッドは各フィードの状態を `feed_status_interval` 秒（10）ごとにデータベースにも書き、それをこのプロセスやほかのプロセスの `GET /up` と `./<app> feeds status` が読みます：[フィードのヘルス](realtime.md#feed-health)。
 - **`on_message` は短く保つ。** スレッドは `wait_readable` か `sleep` で待つので、止まったフィードが待っている間 OS のワーカーを占有することはありません。占有するものは 2 つあります：各接続の試行はブロッキングする `getaddrinfo` でホスト名を解決します（[外向きの

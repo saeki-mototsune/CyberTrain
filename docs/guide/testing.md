@@ -897,43 +897,10 @@ snapshot whose test touches SQLite comes from the compiled binary:
 `script/regen-snapshot test/<name>.rb` in the framework's checkout, or
 `rm -f build/test/<name>; cybertrain spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`.
 
-## Upgrading from 0.4
+## Upgrading
 
-- Add `test/test_helper.rb` as above, and move what a support file did at
-  load time (`AppTest.boot`, `BlogTest.boot`, migrating a database) out of
-  it: the test program boots on a fresh database before the first test,
-  and a second boot only costs time.
-- Change the CI step from `spin test` to `cybertrain test`.
-- Two files that define the same top-level helper or constant (a
-  `new_client` in each, as the 0.4 generators wrote them) are refused
-  together: move the helper to `test/support/` or rename one.
-- Every table is emptied before each test, so a later test can no longer
-  rely on rows an earlier one made: move such data to fixtures or `setup`.
-- The clock seams are gone: `Cybertrain::Cache.clock=`,
-  `Cache.system_clock`, `RateLimit.current_time=`, `SessionStore#fixed_now=`,
-  `Application.status_now=` and `Background.supervisor_clock=`. Use
-  `travel_to`, `travel` or `freeze_time`, whose block puts the time back
-  without an `ensure` of your own.
-- Mail in tests is kept in `Cybertrain::Mailer.deliveries`; a test that
-  reads mail at a `Test::SmtpReceiver` sets
-  `Cybertrain.config.mail_delivery_method = :smtp` first.
-- A helper test 0.4's `generate helper` wrote defines a top-level
-  `render_inline(source)`, which clashes with the framework's: rename it
-  `render_helper_template` in that file, calls included.
-- `1.month.ago` is `Time.current.months_ago(1)`.
-- `assert_equal` fails with Minitest's two-line text; a passing snapshot
-  does not change.
-- `cybertrain generate authentication`, run again, writes the class-form
-  tests and names each old file they replace (`test/authentication.rb`,
-  `test/support/app_test.rb`, ...); `--force` deletes them.
-- A test that looked for a whole log line, its level in brackets first,
-  looks for the level and the message apart (`" ERROR "` and
-  `"password reset mail not sent: "`): a line now starts with the time and
-  may carry the request's id
-  ([Logs](background-and-operations.md#logs)).
-- An exported `CYBERTRAIN_LOG_FORMAT` or `CYBERTRAIN_SENTRY_DSN` no longer
-  reaches the tests; set them in `config/app.rb`, or assign the DSN in the
-  test, to test with them.
+What a release changes for an application's tests is listed by version in
+[Upgrading](upgrading.md#notes-by-version).
 
 ## Continuous integration
 

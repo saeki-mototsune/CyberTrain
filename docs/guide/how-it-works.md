@@ -79,7 +79,7 @@ lists railties:
 | `require "cybertrain/mailer/later"` | `Mailer.deliver_later`; loads the mailer and jobs |
 | `require "cybertrain/cache"` | `Cache` |
 | `require "cybertrain/rate_limit"` | `rate_limit` in controllers; loads the cache |
-| `require "cybertrain/error_reporter/sentry"` | the Sentry sender: `CYBERTRAIN_SENTRY_DSN` sends each error report to Sentry or GlitchTip ([Error reporting](background-and-operations.md#error-reporting)); loads `HttpClient` and TLS. In `bin/<app>.rb` only |
+| `require "cybertrain/error_reporter/sentry"` | the Sentry sender: `CYBERTRAIN_SENTRY_DSN` sends each error report to Sentry or GlitchTip ([Error reporting](logs-and-errors.md#error-reporting)); loads `HttpClient` and TLS. In `bin/<app>.rb` only |
 | `require "cybertrain"` | every line above (so `HttpClient` and TLS too, through the Sentry sender); `cybertrain/websocket` and `cybertrain/sse` stay lines of their own |
 
 Each line goes after `require "cybertrain/core"` (`cybertrain/jobs` and

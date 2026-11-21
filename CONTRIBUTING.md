@@ -572,6 +572,14 @@ before the gem is pushed:
    step with nothing pushed. With it, the Gate and CI run on the pull
    request, and the run waits until both have started and fails if they
    have not. Renew the secret when the token expires.
+
+   Before merging a minor release's bump, check that the release's upgrade
+   notes are written: a section under "Notes by version" in
+   [docs/guide/upgrading.md](docs/guide/upgrading.md), in the four
+   translations too, with an entry for every compatibility change since the
+   previous release ([docs/compatibility.md](docs/compatibility.md#changing-a-contract)).
+   The section names its releases as `X.Y` ("From 0.4 to 0.5"), which
+   `script/check-version-mentions` allows. A patch release has no notes.
 2. Merge to `main`, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. `gem build cybertrain.gemspec && gem push cybertrain-X.Y.Z.gem`.
 4. The tag runs [.github/workflows/release.yml](.github/workflows/release.yml);

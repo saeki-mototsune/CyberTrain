@@ -1,5 +1,5 @@
 ---
-source_sha256: c8f47ec98151950153c9d5b9e8b80b0d29dad7442a19f22ed054f2f057350ac5
+source_sha256: 6a1655f18b429bd1cfd676a69d23b8a7edf43720044e4bc6ff0b24537c141f17
 ---
 # Authentification
 
@@ -27,7 +27,7 @@ Il écrit, dans l’application&nbsp;:
 | `app/views/...` | les écrans, chaque texte passant par `t()`, et le partial `sessions/_nav` |
 | `test/fixtures/users.yml`, `test/support/session_test_helper.rb`, `test/models/`, `test/controllers/`, `test/integration/` | les utilisateurs de fixture, `sign_in_as`, et des tests pour chaque partie ([Tests](#testing)) |
 
-et des modifications, une fois chacune&nbsp;: `include Authentication` dans `ApplicationController`, les routes, la ligne de la page des jobs ([Administrateurs](#admin-users-and-the-jobs-page)), le partial de navigation dans le layout, la commande utilisateur dans `bin/<app>.rb`, le réglage `base_url` dans `config/app.rb` ([Liens dans les courriels](#links-in-mails)), et dans `bin/<app>.rb` et `bin/db.rb` les lignes des sous-systèmes que le code utilise, sauf si `require "cybertrain"` les charge déjà toutes&nbsp;: `cybertrain/jobs`, `cybertrain/mailer`, `cybertrain/mailer/later` et `cybertrain/rate_limit` ([Sous-systèmes](how-it-works.md#subsystems)). Il inclut aussi `SessionTestHelper` dans `test/test_helper.rb`, connecte `users(:one)` en tête des tests de scaffold et de pièces jointes déjà présents ([Tests](#testing)), et décommente dans `config/deploy.yml` le rôle worker que `cybertrain new` a laissé en commentaire, puisque c’est un thread de jobs qui envoie les courriels. Le relancer avec les mêmes options ne change rien&nbsp;: une modification déjà faite est retrouvée et sautée, et un fichier déjà tel qu’il l’écrirait est laissé. Un fichier qu’il écrirait autrement (que vous avez modifié, ou qu’un générateur plus ancien ou d’autres options ont écrit) n’est jamais écrasé sans `--force`&nbsp;: son diff est affiché à la place ([Mettre à jour depuis 0.4](#upgrading-from-04), [Activer la confirmation plus tard](#turning-on-confirmation-later)).
+et des modifications, une fois chacune&nbsp;: `include Authentication` dans `ApplicationController`, les routes, la ligne de la page des jobs ([Administrateurs](#admin-users-and-the-jobs-page)), le partial de navigation dans le layout, la commande utilisateur dans `bin/<app>.rb`, le réglage `base_url` dans `config/app.rb` ([Liens dans les courriels](#links-in-mails)), et dans `bin/<app>.rb` et `bin/db.rb` les lignes des sous-systèmes que le code utilise, sauf si `require "cybertrain"` les charge déjà toutes&nbsp;: `cybertrain/jobs`, `cybertrain/mailer`, `cybertrain/mailer/later` et `cybertrain/rate_limit` ([Sous-systèmes](how-it-works.md#subsystems)). Il inclut aussi `SessionTestHelper` dans `test/test_helper.rb`, connecte `users(:one)` en tête des tests de scaffold et de pièces jointes déjà présents ([Tests](#testing)), et décommente dans `config/deploy.yml` le rôle worker que `cybertrain new` a laissé en commentaire, puisque c’est un thread de jobs qui envoie les courriels. Le relancer avec les mêmes options ne change rien&nbsp;: une modification déjà faite est retrouvée et sautée, et un fichier déjà tel qu’il l’écrirait est laissé. Un fichier qu’il écrirait autrement (que vous avez modifié, ou qu’un générateur plus ancien ou d’autres options ont écrit) n’est jamais écrasé sans `--force`&nbsp;: son diff est affiché à la place ([Relancer le générateur](#running-the-generator-again), [Activer la confirmation plus tard](#turning-on-confirmation-later)).
 
 Les textes des écrans générés sont dans les dictionnaires anglais et japonais du framework, sous leurs clés de recherche paresseuse (`sessions.new.title`, `passwords.create.sent`)&nbsp;; une application les surcharge, ou ajoute une langue, dans `config/locales/` ([Internationalisation](i18n.md#the-bundled-dictionaries)).
 
@@ -220,9 +220,9 @@ supprime.
 
 `script/auth-e2e signup invite confirmable upgrade04` dans ce dépôt construit des applications avec le générateur et les pilote de bout en bout.
 
-## Mettre à jour depuis 0.4
+## Relancer le générateur
 
-Relancez le générateur dans une application que 0.4 a générée. Il écrit les fichiers manquants, une migration avec les colonnes qui manquent aux migrations existantes, et les modifications&nbsp;; pour chaque fichier qu’il écrirait en entier et qui existe avec un autre contenu, il ne change rien et affiche un diff&nbsp;:
+Relancez le générateur dans une application qu’une version antérieure a générée. Il écrit les fichiers manquants, une migration avec les colonnes qui manquent aux migrations existantes, et les modifications&nbsp;; pour chaque fichier qu’il écrirait en entier et qui existe avec un autre contenu, il ne change rien et affiche un diff. Dans une application que 0.4 a générée&nbsp;:
 
 ```text sortie — cybertrain generate authentication (extrait)
 exist db/migrate/20260925120000_create_users.rb
@@ -246,14 +246,11 @@ manual  app/controllers/application_controller.rb: apply this diff by hand, or r
 +  include Authentication
 ```
 
-[test/fixtures/auth_04_app.upgrade.diff](../../test/fixtures/auth_04_app.upgrade.diff) est la sortie complète pour une application avec inscription que 0.4 a générée.
-
 <!-- list: points -->
 - Enregistrez la sortie et appliquez-la avec `patch -p1` depuis le répertoire de l’application (patch saute les lignes qui ne font pas partie d’un diff), ou appliquez chaque diff à la main là où vous avez modifié le fichier. L’application peut ne pas se construire tant qu’ils ne sont pas appliqués&nbsp;: les nouveaux fichiers appellent ce qu’ajoutent les diffs.
-- `--force` écrit à la place les nouveaux fichiers par-dessus les anciens, pour les fichiers que vous n’avez jamais modifiés&nbsp;; le bloc de 0.4 dans `ApplicationController` n’est remplacé que s’il est exactement tel que 0.4 l’a écrit.
+- `--force` écrit à la place les nouveaux fichiers par-dessus les anciens, pour les fichiers que vous n’avez jamais modifiés.
 - La nouvelle migration n’ajoute que les colonnes manquantes&nbsp;; lancez `cybertrain db migrate`. Avec `--confirmable`, elle compte aussi les utilisateurs déjà là comme confirmés (depuis leur création), sans quoi aucun ne pourrait se connecter.
-- Avec `--confirmable`, les diffs des contrôleurs sessions et registrations portent une ligne `IMPORTANT:`&nbsp;: tant qu’ils ne sont pas appliqués, un compte non confirmé n’apprend pas pourquoi il ne peut pas se connecter, et une inscription ne reçoit aucun lien. Dans une application 0.4, le concern est un nouveau fichier, écrit avec son contrôle de confirmation, si bien qu’il ne démarre toujours aucune session pour un compte non confirmé (et journalise `WARN [<request id>] no session started: user <id> has not confirmed its address`) même si ces diffs ne sont jamais appliqués.
-- Chaque session prend fin une fois à la mise à jour (le cookie est désormais chiffré), et le reste de [Mettre à jour une application depuis 0.4](requests.md#upgrading-an-application-from-04) s’applique aussi.
+- Ce que change le générateur d’une version, et ce que cette version demande d’autre à l’application, figure par version dans [Mise à jour](upgrading.md#notes-by-version).
 
 ### Activer la confirmation plus tard
 

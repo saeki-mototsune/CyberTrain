@@ -1,5 +1,5 @@
 ---
-source_sha256: 8ba2e62d2c362f35699ce82fb776cd00bb7db9b0a602c62f2116c8bfffb91dee
+source_sha256: c6c7baa4356307f11f2c308e07938a3e30b8ffd69e4f48104a50c4eb5d8d6662
 ---
 # 测试应用
 
@@ -518,20 +518,9 @@ Cybertrain::Test.run!
 
 顶层的 `setup do` 和 `teardown do` 在其文件的每个测试前后运行。`cybertrain spin test` 把每个 `test/*.rb` 编译成单独的程序，并把输出与 `test/<name>.rb.expected` 比较；在那里既不清空表也没有夹具（它们需要 gen 的表清单），由 `Cybertrain::Test.run!` 运行该文件的测试。在 `cybertrain test` 中，文件的测试在清空和加载夹具之后与其他测试一起运行，`run!` 什么也不做。在 `spin test` 下没有东西会为这个文件启动应用，所以这样的文件要像 0.4 的支持文件（`AppTest.boot`、`BlogTest.boot`）那样自己启动，并且不使用夹具。`Cybertrain::Test::Client` 带着 cookie 存储驱动应用，包括 CSRF（`client.get`、`client.post(path, fields, headers)`、`client.follow_redirect!`、`client.response`，以及两个参数的 `assert_response res, :ok` 和 `assert_redirected_to res, path`）。涉及 SQLite 的测试的快照来自编译后的二进制文件：在框架的检出中用 `script/regen-snapshot test/<name>.rb`，或者 `rm -f build/test/<name>; cybertrain spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`。
 
-## 从 0.4 升级
+## 升级
 
-- 按上面的样子添加 `test/test_helper.rb`，并把支持文件在加载时做的事（`AppTest.boot`、`BlogTest.boot`、迁移数据库）移出来：测试程序会在第一个测试之前在新数据库上启动，第二次启动只会浪费时间。
-- 把 CI 步骤从 `spin test` 改为 `cybertrain test`。
-- 定义了同一个顶层辅助方法或常量的两个文件（像 0.4 的生成器写的那样，各有一个 `new_client`）会一起被拒绝：把辅助方法移到 `test/support/`，或给其中一个改名。
-- 每个测试之前所有表都会被清空，所以后面的测试不能再依赖前面的测试创建的行：把这样的数据移到夹具或 `setup` 中。
-- 时钟的注入点已移除：`Cybertrain::Cache.clock=`、`Cache.system_clock`、`RateLimit.current_time=`、`SessionStore#fixed_now=`、`Application.status_now=` 和 `Background.supervisor_clock=`。请使用 `travel_to`、`travel` 或 `freeze_time`，它们的块形式不需要你自己写 `ensure` 就会恢复时间。
-- 测试中的邮件保存在 `Cybertrain::Mailer.deliveries` 中；在 `Test::SmtpReceiver` 上读取邮件的测试要先设置 `Cybertrain.config.mail_delivery_method = :smtp`。
-- 0.4 的 `generate helper` 写出的辅助方法测试定义了顶层的 `render_inline(source)`，它与框架的冲突：在那个文件中把它（包括调用处）改名为 `render_helper_template`。
-- `1.month.ago` 写作 `Time.current.months_ago(1)`。
-- `assert_equal` 以 Minitest 的两行文本失败；通过的测试快照不变。
-- 再次运行 `cybertrain generate authentication` 会写出类形式的测试，并指出它们替代的每个旧文件（`test/authentication.rb`、`test/support/app_test.rb` 等）；`--force` 会删除它们。
-- 以前查找整行日志（以方括号中的级别开头）的测试，改为分别查找级别和消息（`" ERROR "` 和 `"password reset mail not sent: "`）：现在一行以时间开头，可能带有请求的 ID（[日志](background-and-operations.md#logs)）。
-- 导出的 `CYBERTRAIN_LOG_FORMAT` 或 `CYBERTRAIN_SENTRY_DSN` 不再影响测试；要用它们测试，请在 `config/app.rb` 中设置，或在测试中给 DSN 赋值。
+某个版本在应用测试方面的变化，按版本列在[升级](upgrading.md#notes-by-version)中。
 
 ## 持续集成
 

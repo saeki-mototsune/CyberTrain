@@ -31,9 +31,9 @@ end
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`; comma-separated IPv4/IPv6 addresses or CIDRs (`172.16.0.0/12,10.0.0.0/8`) whose connections have `request.client_ip` taken from the last `X-Forwarded-For` address, for a proxy reached over a network, such as kamal-proxy in its container; a bad entry stops the server at boot |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](models.md#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; comma-separated names replace the list. A parameter whose name contains one of them (ASCII case-insensitively: `password` also matches `user[password]`) has its value written as `[FILTERED]` in the request log and on the development error page; `[]` in `config/app.rb` turns this off |
-| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`: the least important level written, `debug`, `info`, `warn`, `error`, `fatal` or `none` (in any case; `none` turns the request log off and still writes error lines); anything else stops the boot (see [Logs](background-and-operations.md#logs)). `cybertrain test` uses `:none` unless `config/app.rb` sets it |
+| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`: the least important level written, `debug`, `info`, `warn`, `error`, `fatal` or `none` (in any case; `none` turns the request log off and still writes error lines); anything else stops the boot (see [Logs](logs-and-errors.md#logs)). `cybertrain test` uses `:none` unless `config/app.rb` sets it |
 | `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text`; `json` writes one JSON object per line, for a log collector; anything else stops the boot. `cybertrain test` keeps text lines unless `config/app.rb` sets it, whatever the variable says |
-| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`: nothing is sent. A Sentry or GlitchTip DSN sends each error report there (see [Error reporting](background-and-operations.md#error-reporting)); it needs `require "cybertrain/error_reporter/sentry"` (or `require "cybertrain"`) in `bin/<app>.rb`, or the boot is refused. One that does not parse stops the boot, naming the part and never the key. `cybertrain test` empties it unless `config/app.rb` assigns it |
+| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`: nothing is sent. A Sentry or GlitchTip DSN sends each error report there (see [Error reporting](logs-and-errors.md#error-reporting)); it needs `require "cybertrain/error_reporter/sentry"` (or `require "cybertrain"`) in `bin/<app>.rb`, or the boot is refused. One that does not parse stops the boot, naming the part and never the key. `cybertrain test` empties it unless `config/app.rb` assigns it |
 | `CYBERTRAIN_ERROR_SAMPLE_RATE` | `error_sample_rate` | `1.0`: the share of error reports sent to Sentry, from 0.0 to 1.0, written as digits with an optional `.digits`; subscribers see every report; anything else stops the boot |
 | `CYBERTRAIN_RELEASE` | `release` | `""`: the version or commit sent with each error report |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` or `false` keeps a `server` process from running scheduled tasks, jobs and WebSocket feeds (see [Process roles](background-and-operations.md#process-roles)); `./<app> worker` and `feeds` ignore it |
@@ -83,7 +83,7 @@ Other attributes have no variable; `config/app.rb` sets them:
 | `public_root` | `"public"` | The static files' directory, and where the `public/<status>.html` error pages are found |
 | `layout` | `"layouts/application"` | The layout every page renders in; ignored when the file does not exist |
 | `secret_key_path` | `"tmp/secret_key"` | Where development and test keep their generated secret |
-| `log_tags` | `[:request_id]` | The request's tags on each log line: `:remote_ip` adds the client's address, `[]` shows none, anything else stops the boot ([Request ids](background-and-operations.md#request-ids)) |
+| `log_tags` | `[:request_id]` | The request's tags on each log line: `:remote_ip` adds the client's address, `[]` shows none, anything else stops the boot ([Request ids](logs-and-errors.md#request-ids)) |
 | `session_cookie_name` | `"_cybertrain_session"` | The session cookie's name |
 | `session_max_age` | `1209600` (2 weeks) | The session cookie's `Max-Age` in seconds; it restarts whenever the session changes |
 | `session_absolute_max_age` | `1209600` (2 weeks) | The longest a session lives in seconds, however often it is used: an older cookie loads as an empty session. `0` turns the limit off |
@@ -340,12 +340,7 @@ status 1, before the database is opened. In `cybertrain test` every test
 starts in the configured zone. ([Dates and times](i18n.md#dates-and-times) has `l`'s
 formats.)
 
-## Upgrading from 0.4
+## Upgrading
 
-Two defaults on this page changed after 0.4:
-
-- Render nesting was unlimited and is now capped by `max_render_depth`, 12 by
-  default. An application with a deeper tree of partials (threaded comments, a
-  category menu) gets a template error until it raises the setting.
-- `job_poll_interval` was 5 seconds and is now 1: jobs run on their own
-  threads, and an idle one looks for work every second.
+The settings and defaults a release changes are listed by version in
+[Upgrading](upgrading.md#notes-by-version).

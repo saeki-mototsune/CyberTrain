@@ -5,7 +5,7 @@
 An application that calls another server (a webhook, a Slack incoming
 webhook, a third-party API) uses `Cybertrain::HttpClient`. `require
 "cybertrain"` loads it and the TLS layer, through the
-[Sentry sender](background-and-operations.md#error-reporting); an
+[Sentry sender](logs-and-errors.md#error-reporting); an
 application on `cybertrain/core` requires it where it is used, and the TLS
 layer too when any URL is https:
 
@@ -316,7 +316,7 @@ stored block (spikes/NOTES.md rule 2).
   often carry a token. Every line but the first is logged on the feed's
   thread and carries the tag `[feed:trades]`; a block that raises, the
   thread's end and the `feeds` process giving up are also
-  [reported](background-and-operations.md#error-reporting).
+  [reported](logs-and-errors.md#error-reporting).
 - **Errors.** All are `Cybertrain::WebSocket::Error`s, with host and port
   only in the message. Once the handshake is done, a lost connection or a
   close by the server is a `ClosedError` (`close_code`, `close_reason`; a

@@ -44,7 +44,7 @@ Running it again with the same options changes nothing: an edit already
 made is found and skipped, and a file already as it would write it is
 left. A file it would write differently (one you edited, or one an older
 generator or other options wrote) is never overwritten without `--force`:
-its diff is printed instead ([Upgrading from 0.4](#upgrading-from-04),
+its diff is printed instead ([Running the generator again](#running-the-generator-again),
 [Turning on confirmation later](#turning-on-confirmation-later)).
 
 The texts of the generated screens are in the framework's English and
@@ -401,12 +401,13 @@ them.
 `script/auth-e2e signup invite confirmable upgrade04` in this repository
 builds applications with the generator and drives them from end to end.
 
-## Upgrading from 0.4
+## Running the generator again
 
-Run the generator again in an application 0.4 generated. It writes the
-files that are missing, a migration with the columns the existing ones
-lack, and the edits; for each file it would write whole that exists with
-other content, it changes nothing and prints a diff:
+Run the generator again in an application an earlier release generated. It
+writes the files that are missing, a migration with the columns the existing
+ones lack, and the edits; for each file it would write whole that exists
+with other content, it changes nothing and prints a diff. In an application
+0.4 generated:
 
 ```text output — cybertrain generate authentication (excerpt)
 exist db/migrate/20260925120000_create_users.rb
@@ -430,30 +431,19 @@ manual  app/controllers/application_controller.rb: apply this diff by hand, or r
 +  include Authentication
 ```
 
-[test/fixtures/auth_04_app.upgrade.diff](../../test/fixtures/auth_04_app.upgrade.diff)
-is the whole output for a sign-up application 0.4 generated.
-
 <!-- list: points -->
 - Save the output and apply it with `patch -p1` from the application's
   directory (patch skips the lines that are not part of a diff), or apply
   each diff by hand where you changed the file. The application may not
   build until they are applied: the new files call what the diffs add.
 - `--force` writes the new files over the old ones instead, for files you
-  never edited; 0.4's block in `ApplicationController` is replaced only
-  when it is exactly as 0.4 wrote it.
+  never edited.
 - The new migration adds only the columns that are missing; run `cybertrain
   db migrate`. With `--confirmable` it also counts the users already there
   as confirmed (since they were created), or none of them could sign in.
-- With `--confirmable`, the diffs of the sessions and registrations
-  controllers carry an `IMPORTANT:` line: until they are applied, an
-  unconfirmed account is not told why it cannot sign in, and a sign-up is
-  mailed no link. In a 0.4 application the concern is a new file, written
-  with its confirmation check, so it still starts no session for an
-  unconfirmed account (and logs `WARN [<request id>] no session started: user <id> has
-  not confirmed its address`) even if those diffs are never applied.
-- Every session ends once at the upgrade (the cookie is encrypted now), and
-  the rest of [Upgrading an application from 0.4](requests.md#upgrading-an-application-from-04)
-  applies too.
+- What a release's generator changes, and what else that release asks of
+  the application, is listed by version in
+  [Upgrading](upgrading.md#notes-by-version).
 
 ### Turning on confirmation later
 

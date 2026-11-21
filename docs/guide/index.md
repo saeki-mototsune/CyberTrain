@@ -11,12 +11,14 @@ Everything CyberTrain's documentation covers beyond the API reference: the tutor
 - [**How it works**](how-it-works.md) — Build-time code generation, the optional subsystems an app requires, interpreted views, the server, SQLite through FFI, the development loop, and a table of the differences from Rails
 - [**Models and the database**](models.md) — Migrations, column types, queries, associations, validations, encrypted columns, transactions, taking over a Rails database
 - [**Requests**](requests.md) — Routing, formats and `respond_to`, concerns, strong parameters, HTTP caching, cookies and the encrypted session, rate limiting, the Content Security Policy, `force_ssl` and host checks, headers, query strings and request bodies
-- [**Authentication**](authentication.md) — `generate authentication`: sign-in, sign-up or invite-only, password reset, confirmation, lockout, remember me, the account page, admin users, upgrading from 0.4
+- [**Authentication**](authentication.md) — `generate authentication`: sign-in, sign-up or invite-only, password reset, confirmation, lockout, remember me, the account page, admin users
 - [**Assets**](assets.md) — Digested stylesheets, images and JavaScript, CSS `url()`, the helpers, the import map, serving and retention
 - [**Internationalization**](i18n.md) — Dictionaries in `config/locales`, `t` and `l`, lazy lookup, plural forms, choosing the locale per request, translated validation messages, the bundled English and Japanese
 - [**Configuration**](configuration.md) — `config/app.rb`, environment variables, time zones
-- [**Background work and operations**](background-and-operations.md) — Job classes, retries, `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check, logs and request ids, error reporting to Sentry
+- [**Background work and operations**](background-and-operations.md) — Job classes, retries, `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check
+- [**Logs and error reporting**](logs-and-errors.md) — The log line, levels and JSON lines, request ids and tags, `Cybertrain.error`, subscribers and filters, sending to Sentry or GlitchTip
 - [**Realtime**](realtime.md) — Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names, feed health
 - [**Outbound HTTP, WebSocket feeds and e-mail**](external-services.md) — `HttpClient` with streaming, gzip and Server-Sent Events, `WebSocket.subscribe` with timers and restarts, `Mailer` with HTML mail and `deliver_later`
 - [**Testing**](testing.md) — Writing tests for an app, outbound calls, jobs, logs and error reports, CI
+- [**Upgrading**](upgrading.md) — Moving an application to a newer release: the procedure, step by step with its commands, and the notes of each release
 - [**The template language**](template-language.md) — Helpers, components, the form builder and what a template may call in `app/views/**/*.html.erb`

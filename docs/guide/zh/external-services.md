@@ -1,11 +1,11 @@
 ---
-source_sha256: 8e06dc7c2398339f1839a3e3c9a1a0acc12c23cba8d474c15a18dae68daa2483
+source_sha256: 6e4f1fb3feea6c05454ba214e8d64b5662955142a0167ff12c120a2e654c9ca7
 ---
 # 出站 HTTP、WebSocket 订阅与电子邮件
 
 ## 出站 HTTP
 
-调用其他服务器（webhook、Slack 传入 webhook、第三方 API）的应用使用 `Cybertrain::HttpClient`。`require "cybertrain"` 通过 [Sentry 发送器](background-and-operations.md#error-reporting)加载它和 TLS 层；基于 `cybertrain/core` 的应用请在使用它的地方 require 它，如果有任何 URL 是 https，还要 require TLS 层：
+调用其他服务器（webhook、Slack 传入 webhook、第三方 API）的应用使用 `Cybertrain::HttpClient`。`require "cybertrain"` 通过 [Sentry 发送器](logs-and-errors.md#error-reporting)加载它和 TLS 层；基于 `cybertrain/core` 的应用请在使用它的地方 require 它，如果有任何 URL 是 https，还要 require TLS 层：
 
 ```ruby
 require "json"
@@ -138,7 +138,7 @@ require `cybertrain/websocket` 会把这些订阅注册到 `Cybertrain::Backgrou
   | 静默 | WARN | `WebSocket "trades" silent for 45s; reconnecting` |
   | 块抛出了异常 | ERROR | `WebSocket "trades" on_message failed: KeyError: ...`（或 `on_open`） |
 
-  路径和查询字符串从不会被记录，也不会放进错误消息：它们往往带有令牌。除第一行外，每一行都在数据流的线程上记录，带有标签 `[feed:trades]`；抛出异常的块、线程的结束以及 `feeds` 进程的放弃也会被[报告](background-and-operations.md#error-reporting)。
+  路径和查询字符串从不会被记录，也不会放进错误消息：它们往往带有令牌。除第一行外，每一行都在数据流的线程上记录，带有标签 `[feed:trades]`；抛出异常的块、线程的结束以及 `feeds` 进程的放弃也会被[报告](logs-and-errors.md#error-reporting)。
 - **错误。** 所有错误都是 `Cybertrain::WebSocket::Error`，消息中只有主机和端口。握手完成后，连接丢失或被服务器关闭是 `ClosedError`（`close_code`、`close_reason`；被重置或没有关闭帧就结束的情况为 1006）；超时或在 TLS 中失败的写入仍然是 `TimeoutError` 或 `TLSError`。在连接期间，错误为 `RefusedError`、`TimeoutError`、`TLSError`、`BlockedAddressError`（非公网地址，默认被拒绝，与[出站 HTTP](#outbound-http) 中完全相同，使用同样的 `allow_private:` 和 `http_allow_private` 设置）或 `HandshakeError`（不是 101、`Sec-WebSocket-Accept` 不正确，或者服务器以扩展或子协议作答）。`ProtocolError`（服务器破坏了帧格式；客户端会发送 1002）和 `TooLargeError` 随时可能出现。
 - **健康状况。** `Cybertrain::WebSocket.feed_status("trades")` 返回一个 `Status`：`connected?`、`last_message_at`（纪元秒数，收到第一条消息之前为 0）、`reconnects`、`restarts`（由监督线程重启的次数）和 `thread_alive?`，它们是依次读取的，而不是作为一个快照；`connected?` 在连接建立时就变为 true，早于 `on_open` 运行。监督线程还会每隔 `feed_status_interval` 秒（10）把每个数据流的状态写入数据库，本进程或任何其他进程中的 `GET /up` 和 `./<app> feeds status` 会读取它：[数据订阅的健康状况](realtime.md#feed-health)。
 - **让 `on_message` 保持简短。** 线程用 `wait_readable` 或 `sleep` 等待，所以停滞的数据流在等待期间不会占用操作系统工作线程。有两件事会占用：每次连接尝试都用阻塞的 `getaddrinfo` 解析主机名（参见[出站

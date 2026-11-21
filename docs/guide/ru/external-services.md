@@ -1,5 +1,5 @@
 ---
-source_sha256: 8e06dc7c2398339f1839a3e3c9a1a0acc12c23cba8d474c15a18dae68daa2483
+source_sha256: 6e4f1fb3feea6c05454ba214e8d64b5662955142a0167ff12c120a2e654c9ca7
 ---
 # Исходящий HTTP, потоки WebSocket и электронная почта
 
@@ -8,7 +8,7 @@ source_sha256: 8e06dc7c2398339f1839a3e3c9a1a0acc12c23cba8d474c15a18dae68daa2483
 Приложение, которое обращается к другому серверу (вебхук, входящий вебхук
 Slack, сторонний API), использует `Cybertrain::HttpClient`. `require
 "cybertrain"` загружает его и слой TLS через
-[отправитель Sentry](background-and-operations.md#error-reporting); приложение
+[отправитель Sentry](logs-and-errors.md#error-reporting); приложение
 на `cybertrain/core` подключает его там, где он используется, а также слой
 TLS, если какой-либо URL — https:
 
@@ -331,7 +331,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
   ошибках: в них часто содержится токен. Все строки, кроме первой, пишутся
   в потоке фида и несут тег `[feed:trades]`; блок, который бросил
   исключение, завершение потока и отказ процесса `feeds` также попадают в
-  [отчёты об ошибках](background-and-operations.md#error-reporting).
+  [отчёты об ошибках](logs-and-errors.md#error-reporting).
 - **Ошибки.** Все они — `Cybertrain::WebSocket::Error`, и в сообщении только
   хост и порт. После рукопожатия потерянное соединение или закрытие сервером —
   это `ClosedError` (`close_code`, `close_reason`; сброс или конец без

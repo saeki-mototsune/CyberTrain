@@ -330,6 +330,5 @@ checked. An app with no `spin.lock` is checked against the release its
 `spin.toml` names (`"X.Y.Z"` or `ref = "vX.Y.Z"`); a branch, a commit or a
 range names none, so it is not checked.
 
-An application written for 0.4 has a few changes to make (every session
-ends once, OpenSSL is linked, a dotted route segment needs `format: false`,
-and more): see [Upgrading an application from 0.4](requests.md#upgrading-an-application-from-04).
+Relocking is one step of an upgrade. [Upgrading](upgrading.md) has the
+whole procedure, and what each release changes for an application.
