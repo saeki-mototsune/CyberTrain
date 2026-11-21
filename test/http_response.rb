@@ -204,10 +204,13 @@ test "drop_header removes a header whatever its case and leaves the rest in orde
   res.set_header("X-A", "1")
   res.set_header("location", "/x")
   res.set_header("X-B", "2")
-  assert_nil res.drop_header("Location")
+  # Each call a statement, then its result asserted (NOTES rule 126).
+  dropped = res.drop_header("Location")
+  assert_nil dropped
   assert_nil res.header("Location")
   assert_equal 2, res.headers.size
-  assert_nil res.drop_header("Location")
+  dropped = res.drop_header("Location")
+  assert_nil dropped
   assert_equal "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nX-A: 1\r\nX-B: 2\r\n#{SEC}Content-Length: 0\r\n\r\n", res.to_http
 end
 
@@ -223,7 +226,8 @@ test "a headers Hash taken before drop_header, set_header or client_error! is st
   assert taken.equal?(res.headers)
   assert_equal 1, taken.size
   res.set_header("location", "/z")
-  assert_nil res.client_error!(400, "bad")
+  answered = res.client_error!(400, "bad")
+  assert_nil answered
   assert taken.equal?(res.headers)
   taken["X-Late"] = "1"
   assert_nil taken["Location"]
@@ -238,7 +242,8 @@ test "client_error! drops Location and Content-Disposition in any case, keeps th
   res.set_header("CONTENT-DISPOSITION", "attachment; filename=a.csv")
   res.set_header("Access-Control-Allow-Origin", "*")
   res.add_cookie("sid=abc; Path=/")
-  assert_nil res.client_error!(400, "param is missing")
+  answered = res.client_error!(400, "param is missing")
+  assert_nil answered
   assert_nil res.header("Location")
   assert_nil res.header("Content-Disposition")
   assert_equal "*", res.header("Access-Control-Allow-Origin")

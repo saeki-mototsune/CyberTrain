@@ -1,5 +1,5 @@
 require "uri"
-require "cybertrain/params"
+require "cybertrain/http/params"
 
 module Cybertrain
   # The parameter errors below are past one of Query's limits

@@ -1,6 +1,7 @@
 require "digest"
 require "cybertrain/test"
 require "cybertrain/http/multipart"
+require "cybertrain/params"
 
 # Cybertrain::Multipart against browser-shaped and hostile bodies. File data
 # is binary, so it is compared by bytesize and SHA-256 (and getbyte), never

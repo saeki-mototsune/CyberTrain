@@ -62,7 +62,7 @@ module Cybertrain
                                                             max_body_bytes: config.max_body_bytes,
                                                             reuse_port: reuse_port?,
                                                             stream_write_timeout: config.stream_ping_interval,
-                                                            listen_fd: listen_fd)
+                                                            listen_fd: listen_fd, logger: Cybertrain.logger)
           @server = built
         end
         built
@@ -156,7 +156,23 @@ module Cybertrain
         end
         nil
       rescue PortInUse => e
-        Roles.fail_boot(e.message)
+        Roles.fail_boot(ServerRunner.port_message(e))
+      end
+
+      # The HTTP layer's PortInUse message plus the setting that fixes it
+      # (the text `cybertrain server` has always printed), chosen by
+      # {PortInUse#reason}; a reason with no setting to name (permission
+      # denied, an inherited descriptor that is not listening) is the
+      # message alone.
+      # @param e [PortInUse]
+      # @return [String]
+      # @api private
+      def self.port_message(e)
+        reason = e.reason
+        return "#{e.message} (stop the other server or set PORT)" if reason == PortInUse::IN_USE
+        return "#{e.message} (check CYBERTRAIN_HOST)" if reason == PortInUse::REUSE_PORT_HOST
+        return "#{e.message} (set CYBERTRAIN_HOST to one of them)" if reason == PortInUse::REUSE_PORT_NAME
+        e.message
       end
 
       private

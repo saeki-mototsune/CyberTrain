@@ -418,7 +418,7 @@ module Cybertrain
 
         sink = MemorySink.new(events, timeout)
         # Under the request's log Scope, as the Server writes it.
-        BodyWriter.write_scoped(writer, sink, response.body_scope)
+        BodyWriter.write_scoped(writer, sink, response.body_log_context)
         response.body = sink.memory_text
         response
       end

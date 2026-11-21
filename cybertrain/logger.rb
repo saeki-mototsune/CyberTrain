@@ -27,6 +27,14 @@
 # Nothing else happens inside the lock: no logging, no building of a line,
 # no call back into the logger, because a blocked stdout holds every
 # logging thread while one thread is inside it.
+#
+# The HTTP layer logs through an HttpLog and keeps a request's log context
+# as an opaque HttpLogContext (cybertrain/http/log.rb): Logger is an
+# HttpLog, Logger::Scope an HttpLogContext, and this file installs
+# {Logger::ScopeSwitch} as HttpLogSwitch.installed_switch, so the Server's swaps
+# land in the thread's Scope slot.
+require "cybertrain/http/log"
+
 module Cybertrain
   # A leveled logger writing one line per message to standard output (or
   # to the io it was given): `debug`, `info`, `warn`, `error`, `fatal`.
@@ -37,7 +45,7 @@ module Cybertrain
   # (`time`, `level`, `tags`, `message`, and `request_id` on a request's
   # lines). {Cybertrain.logger} is the one the framework logs through.
   # @api public
-  class Logger
+  class Logger < HttpLog
     LEVELS = { debug: 0, info: 1, warn: 2, error: 3, fatal: 4 }
     LEVEL_NAMES = { debug: "DEBUG", info: "INFO", warn: "WARN", error: "ERROR", fatal: "FATAL" }
     # The one lock every Logger writes under: one write of a prebuilt line
@@ -53,7 +61,7 @@ module Cybertrain
     # Scope sits in the thread's `Thread.current[:cybertrain_log_scope]` slot
     # ({swap_scope}, {current_scope}); {tagged} adds tags to a copy.
     # @api public
-    class Scope
+    class Scope < HttpLogContext
       # @return [String]
       attr_reader :scope_request_id, :scope_request_method, :scope_request_path, :scope_where
       # The line's tags in order. Never mutate what this answers (on
@@ -200,6 +208,38 @@ module Cybertrain
       value
     ensure
       Thread.current[SCOPE_KEY] = saved.equal?(NO_SCOPE) ? nil : saved
+    end
+
+    # The HTTP layer's view of the thread's Scope (HttpLogSwitch): what
+    # the Server swaps a request's log context through around a handler's
+    # exception line and a streamed body's writer. The contexts it is
+    # handed are the Scopes the RequestId middleware and Response captured,
+    # passed on to {Logger.swap_scope} as they are (no type test,
+    # spikes/NOTES.md rule 47); the layer's HttpLogContext::NONE and
+    # {NO_SCOPE} are mapped to each other by hand, both ways.
+    # @api private
+    class ScopeSwitch < HttpLogSwitch
+      # @return [HttpLogContext] this thread's Scope, NONE for {NO_SCOPE}
+      def current_context
+        scope = Logger.current_scope
+        if scope.equal?(Logger::NO_SCOPE)
+          HttpLogContext::NONE
+        else
+          scope
+        end
+      end
+
+      # @param ctx [HttpLogContext] a Scope, or NONE for {NO_SCOPE}
+      # @return [HttpLogContext] the Scope it replaces, NONE for {NO_SCOPE}
+      def swap_context(ctx)
+        scope = ctx.equal?(HttpLogContext::NONE) ? Logger::NO_SCOPE : ctx
+        previous = Logger.swap_scope(scope)
+        if previous.equal?(Logger::NO_SCOPE)
+          HttpLogContext::NONE
+        else
+          previous
+        end
+      end
     end
 
     # Module-level ivars, never @@ (spikes/NOTES.md rules 18 and 64).
@@ -627,6 +667,9 @@ module Cybertrain
   # module-level @instance variable does not have this problem. See
   # spikes/NOTES.md rule 18.
   @logger = Logger.new
+
+  # Installed at load, before any thread starts (the Params.max_page shape).
+  HttpLogSwitch.installed_switch = Logger::ScopeSwitch.new
 
   # The process's logger, the one the framework logs through:
   # `Cybertrain.logger.info("imported #{n} rows")` anywhere in the

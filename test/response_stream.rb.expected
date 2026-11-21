@@ -6,6 +6,7 @@ ok   Sink#wait_closed answers true once the client closes
 ok   an error reset after a BodyWriter was set is an ordinary response
 ok   a body or a redirect set after a BodyWriter replaces the stream
 ok   a body, a redirect or an error reset that drops the writer drops its Scope too
+ok   a streamed body's writer thread, through BodyWriter.write_scoped, runs under the request's Scope
 ok   a client that never reads ends the stream when a write times out
 ok   the connection count returns to zero
-10 tests, 32 assertions, 0 failures
+11 tests, 34 assertions, 0 failures

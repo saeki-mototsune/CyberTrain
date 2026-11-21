@@ -4,8 +4,8 @@ This document is the one record of what Spinel does that CyberTrain has had
 to know about, and of where each behaviour stands: what happens, the
 program that shows it, what it did on each build tried, what is asked of
 Spinel, and whether it is closed. Each behaviour is an item whose
-identifier never changes: a digit (1 to 7), a letter (A to AY so far; the
-next is AZ) or, for a behaviour first written as a rule of spikes/NOTES.md
+identifier never changes: a digit (1 to 7), a letter (A to AZ so far; the
+next is BA) or, for a behaviour first written as a rule of spikes/NOTES.md
 and never lettered, "rule N". "Item register" lists them all.
 
 [spikes/](../spikes/README.md) is the other half and does not say where a
@@ -241,7 +241,7 @@ the cell names another build.
 | C | bug |  | closed | 2026.10.26.7019 (#10258, #10259) and, for the refusal under it, 2026.11.04.7026 (#10525, #10524): test/template_engine.rb is back in its earlier form |
 | D | constraint | 25 | settled: by design; still raises RangeError on the pin (status 25) |  |
 | E | cost |  | not re-checked on the pin (last: no change against 2026.10.27.7020 on 2026.11.04.7026, 2026-11-05) |  |
-| F | bug |  | closed | 2026.10.26.7019 (#10260); never had a workaround |
+| F | bug | 126 | closed | 2026.10.26.7019 (#10260); never had a workaround on the pin. Rule 126 is for upstream 2026.10.25, which predates #10260 and which CI's http-upstream job builds the HTTP layer's tests with |
 | G | bug |  | closed | 2026.10.26.7019 (#10262); never had a workaround |
 | H | bug | 77 | closed | 2026.10.27.7020 (#10415); test/db_with_value.rb covers the plain form. The body of rule 77 was cut on 2026-11-21, and what only it held is in H |
 | I | bug |  | closed | 2026.11.04.7026 (#10735, #10786); never had a workaround |
@@ -280,7 +280,7 @@ the cell names another build.
 | AP | bug | 117 | passes on the pin, workaround kept (status 117) |  |
 | AQ | bug | 116 | open (status 116) |  |
 | AR | bug | 122 | open (status 122) |  |
-| AS | bug | 123 | open, not reduced (status 123) |  |
+| AS | bug | 123 | open, not reduced (status 123); upstream 2026.10.25 the same, seen there with cybertrain/http/query and cybertrain/config required together. Not worked around: cybertrain/context.rb, not cybertrain/params.rb, registers ParameterMissing with ClientError, so the programs that load Config without the rest do not load Query |  |
 | AT | bug | 112 | open (status 112) |  |
 | AU | bug | 52 | open (status 52) |  |
 | AV | bug | 17 | open (status 17): a class used above its definition runs compiled where CRuby raises NameError (rechecks/differing/class_before_definition.rb). A constant assigned with `=` and read before its assignment raises NameError as under CRuby (rechecks/constant_order.rb matches on the pin). Nothing in the framework is written around it: the rule's advice is to keep an order CRuby accepts |  |
@@ -467,7 +467,7 @@ CRuby's result; "Item register" has the state of every row.
 | AP (rule 117) | `pop(timeout:)` on a Queue that was put in an Array is compiled as `Array#pop`: fails (2026-11-14) | No Queue is kept in an Array; a test passes each Queue as a local or a parameter (test/logger_scope.rb) | Open; not reported |
 | AQ (rule 116) | Threads on several workers writing one StringIO with no lock corrupt the heap: fails (2026-11-14) | Every Logger writes under `Logger::LOCK` (logger.rb; test/logger_threads.rb) | Open; not reported |
 | AR (rule 122) | A regex literal holding a require-shaped text is read as a require; without `--strict-require` it is dropped with a warning: fails (2026-11-15) | A program that scans source for requires builds the keyword from pieces (test/gen_jobs.rb's `core_closure`) | Open; not reported |
-| AS (rule 123) | `ENV[name]` with a key held in a variable answers the key in a program that requires two framework files: fails (2026-11-15) | Nothing; the four reads with such a key (config.rb, dev/supervision.rb) stay, `Config.env_or` answered the value in the programs tried that require `cybertrain/core`, and no new one is added | Open; not reduced, not reported |
+| AS (rule 123) | `ENV[name]` with a key held in a variable answers the key in a program that requires two framework files: fails (2026-11-15) | Nothing; the four reads with such a key (config.rb, dev/supervision.rb) stay, `Config.env_or` answered the value in the programs tried that require `cybertrain/core`, and no new one is added. Since 2026-11-21, cybertrain/context.rb, not cybertrain/params.rb, registers ParameterMissing with ClientError, so the Config-only programs do not load Query | Open; not reduced, not reported |
 
 #### 1.2 Kept, though a small program of the shape now passes on the pin
 
@@ -1057,6 +1057,7 @@ json_parse_nesting.rb (row AX) were added, which makes eight.
 | 122 | **Still there** (docs/spinel-feedback.md AR), run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6, not on the machine of the rows above: with rechecks/differing/require_in_regex.rb, `--strict-require` stops the build ("cannot load such file", naming the text of the regex), and without the flag the build warns that the require is ignored and the program prints `no match`, where CRuby prints `db`. 2026.11.04.7026 did the same in the same run. |
 | 123 | **Still there** (docs/spinel-feedback.md AS), run on 2026-11-21 on the same Linux machine and tools as row 122: rechecks/differing/env_nonliteral_key.rb, built with `spinel -I .` from the repository root (the framework at 79b38b68), prints `set: CYBERTRAIN_RECHECK_HOST` and `unset: default`, as 2026.11.04.7026 did in the same run; the value, `0.0.0.0`, was expected. Not reduced. |
 | 124 | **Still there** (docs/spinel-feedback.md AY), found and run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6: rechecks/differing/raising_helper_beside_lambda.rb prints `["no a", "no b"]` under CRuby and does not build, exit 1: `raising_helper_beside_lambda.rb:38: error: incompatible types when assigning to type 'sp_RbVal' from type 'const char *'`, line 38 being the `yield` of `g`, then `spinel: C compilation failed`. With `Rel.new("")` as a second line of `C.unknown` it builds and prints CRuby's line, and so does either of its two `out <<` lines alone. In the framework: test/console.rb with the typed values removed from `Console.unknown_model` and `unknown_record` does not build, the same error at test/console.rb:422, the `yield` of `message_raised` (4 times, in `_proc_main_15`); with them it passes. Row 79 has what else was built without the two values that day. |
+| 126 | Not a behaviour of the pin (docs/spinel-feedback.md F, fixed in 2026.10.26.7019 and matz/spinel #10260): the rule is for upstream 2026.10.25 (2814693f), on which, run on 2026-11-21 on Linux x86_64 (gcc 13.3.0), test/http_response.rb failed 2 of its cases in its old shape (`assert_nil res.drop_header(...)`) and passes in the rule's shape; built by this build it passes in both. |
 | AX (no rule) | **Still there** for an innermost empty container, found and run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6: rechecks/differing/json_parse_nesting.rb. CRuby prints "depth 100 parses, depth 101 raises JSON::NestingError: nesting of 101 is too deep" for Arrays around `1`, for Arrays with nothing inside and for Objects around `1`; the same with 10 and 11 under `max_nesting: 10` and with 300 and 301 under `max_nesting: 300`; and "every depth up to 400 parses" under `max_nesting: 0`. Built by 2026.11.15.7033 the program prints those lines but for two: "arrays, the innermost empty: depth 101 parses, depth 102 raises JSON::NestingError: nesting of 101 is too deep", and under `max_nesting: 10` "depth 11 parses, depth 12 raises JSON::NestingError: nesting of 11 is too deep". A second program, not saved, gave the same for an empty Object: 100 Arrays around `{}`, 100 Objects around `{}` and 100 Objects around `[]` raise "nesting of 101 is too deep" under CRuby and parse on 2026.11.15.7033. This is `JSON.parse`; `JSON.generate`'s limit (rules 33 and 61, test/server.rb's `/deep`) is another matter and was not part of this run. |
 | 1, 3 to 16, 18 to 24, 26, 28 to 32, 34 to 47, 50, 51, 53, 55 to 60, 62 to 77, 84, 85, 87, 95, 98, 99, 102, 103, 105, 106, 108, 111, 113 to 115, 118 to 121 | Not re-checked on this pin with a program of their own. Their status on 2026.11.04.7026 is in the next section, "On 2026.11.04.7026"; it is not carried over. The saved probes that hold a shape of some of them were run on 2026-11-21: the last row. |
 | rechecks/run.sh | Run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`, CRuby 3.3.6): all nineteen programs of rechecks/ compiled and printed their `.expected`. That is a **Probe passes** for each section's own small shape, with the limits spikes/rechecks/README.md states, for the shapes of rules 1 to 12, 14, 17 to 21, 26 to 35, 37, 39 to 48, 50 to 55, 60 to 62, 69, 72, 86 and 104 that those programs hold (for 2, 17, 27, 52, 54, 72, 86 and 104 only the half that already matched CRuby on 2026.11.04.7026). 2026.11.04.7026 was not run beside it that day. Run again on 2026-11-21 on the same machine and tools, after rechecks/nil_only_puts_openssl.rb, rechecks/float_range_boxed.rb and rechecks/builtin_superclass_with_module.rb moved up from rechecks/differing/ (rows 78, 86 and 104): all twenty-two programs compiled and printed their `.expected`. With those three the run also holds the shape of rule 78 and the halves of 86 and 104 that failed on 2026.11.04.7026 (a Range of Dates, row 86, is not in a saved program). Run once more on 2026-11-21 on the same machine and tools, after rules 33 and 61 were closed, rechecks/json_nesting_shapes.rb was deleted and the section of 33 and 61 left rechecks/json_error_shapes.rb (rows 33 and 61): all twenty-one programs compiled and printed their `.expected`. |
@@ -4505,15 +4506,44 @@ the shell, to the same effect; again 2026-11-19).
   application. cybertrain/config.rb alone answered the value, and so did
   six standalone programs with the same method (spikes/NOTES.md rule
   123). `ENV["LITERAL"]` was not seen to be affected.
+- Seen again on 2026-11-21 from the HTTP layer's side, in the
+  spinel-http extraction (at d9e62f9), with two other requires and the
+  variable set by the program:
+
+  ```ruby
+  require "cybertrain/http/query"
+  require "cybertrain/config"
+  ENV["AS_VARIABLE"] = "value"
+  puts Cybertrain::Config.env_or("AS_VARIABLE", "default")       # AS_VARIABLE (CRuby: value)
+  puts Cybertrain::Config.env_or("AS_UNSET_VARIABLE", "default") # default, as CRuby
+  ```
+
+  The same on the fork's 2026.11.15.7033 and on upstream 2026.10.25
+  (2814693f), so it is not a fork regression. `require "cybertrain"` in
+  place of the two requires prints `value`, and so does `json`, `uri` or
+  `cybertrain/http/response` in place of Query. So URI's code alone does
+  not switch the C, though Query uses it; what in Query does is not
+  known. The emitted read is
+  `_sp_ret_strbuf = NULL; _v2 = sp_env_str(getenv(sp_env_chk(SP_STR_B(sp_strbuf_read_pub(lv_name)), 0))); ... _sp_ret_strbuf ? (sp_String *)_sp_ret_strbuf : SP_STR_HDL(_v2)`;
+  `sp_strbuf_read_pub` (spinel_rt.h:3222) sets `_sp_ret_strbuf` to the
+  argument's handle while the argument is evaluated. An unset variable is
+  not affected, since the wrapper answers NULL first. The programs that
+  answer the value get the plain `SP_STR_B(sp_env_str(getenv(...)))`.
 - Today: nothing guards against it. The reads with a key that is not a
   literal are `Config.env_or`, `Config.int_from_env` and
   `Config.bool_from_env` (cybertrain/config.rb) and
   `Dev::Supervision.supervision_variable` (cybertrain/dev/supervision.rb);
   only `env_or` was run. A test program that requires part of the
   framework can meet it. New code does not add an `ENV[variable]` read.
+  Since 2026-11-21 the HTTP layer's `ClientError` learns of
+  `Params::ParameterMissing` from cybertrain/params.rb through
+  cybertrain/http/extra_faults.rb, which loads nothing else, not through
+  client_error.rb, so the programs that load Config without the rest
+  (the db CLI, the mailer, the scheduler) do not load Query.
 - Asked of Spinel: clear `_sp_ret_strbuf` after the arguments are read,
   or take a builtin's String result from its return value when the
-  builtin never publishes one.
+  builtin never publishes one (a builtin that returns a fresh `char *`
+  needs no wrapper).
 - Not reported upstream; to be reduced first, with V.
 
 ## Written up on 2026-11-21

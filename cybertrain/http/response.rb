@@ -1,6 +1,6 @@
 require "cybertrain/http/header_name"
 require "cybertrain/http/body_writer"
-require "cybertrain/logger"
+require "cybertrain/http/log"
 
 module Cybertrain
   # The response a request builds up on its way through the stack; the
@@ -96,14 +96,14 @@ module Cybertrain
     # @api public
     attr_reader :body
 
-    # Sets the body. A body replaces a stream: an action that called
-    # Controller#stream and then render or head answers with the body, so
-    # the writer is dropped, as a redirect and an error reset drop it.
+    # Sets the body. A body replaces a stream: a handler that set a writer
+    # and then a body answers with the body, so the writer is dropped, as a
+    # redirect and an error reset drop it.
     # @param text [String]
     # @api public
     def body=(text)
       @body_writer = nil
-      @body_scope = Logger::NO_SCOPE
+      @body_log_context = HttpLogContext::NONE
       @upgrade = false
       @body = text
     end
@@ -129,12 +129,12 @@ module Cybertrain
       @headers.delete("")
       @cookies = []
       @performed = false
-      # Set by Controller#stream (or a middleware such as Stream::Endpoint);
+      # Set by whatever streams the body ({#body_writer=}, {#upgrade!});
       # nil for an ordinary response.
       @body_writer = nil
       @upgrade = false
-      # The log Scope the writer runs under (see #body_scope).
-      @body_scope = Logger::NO_SCOPE
+      # The log context the writer runs under (see #body_log_context).
+      @body_log_context = HttpLogContext::NONE
     end
 
     # The writer of a streaming response (docs/design.md D36), nil for an
@@ -150,19 +150,20 @@ module Cybertrain
     # @api public
     def body_writer=(writer)
       @body_writer = writer
-      @body_scope = Logger.current_scope
+      @body_log_context = HttpLogSwitch.installed_switch.current_context
     end
 
-    # The thread's log Scope when the writer was set ({#body_writer=},
-    # {#upgrade!}): the request's, whose id and tags the lines logged while
-    # the body is written carry (docs/design.md D86: the request lasts until
-    # its body is written). The Server swaps it in around the writer
-    # ({BodyWriter.write_scoped}) and back after it. {Logger::NO_SCOPE}
-    # when there is no writer: a body, a redirect or an error reset that
-    # drops the writer drops its Scope too.
-    # @return [Logger::Scope]
+    # The thread's log context when the writer was set ({#body_writer=},
+    # {#upgrade!}; {HttpLogSwitch.installed_switch}'s current_context): the request's,
+    # whose id and tags the lines logged while the body is written carry
+    # (docs/design.md D86: the request lasts until its body is written). The
+    # Server swaps it in around the writer ({BodyWriter.write_scoped}) and
+    # back after it. {HttpLogContext::NONE} when there is no writer: a
+    # body, a redirect or an error reset that drops the writer drops its
+    # context too.
+    # @return [HttpLogContext]
     # @api private
-    attr_reader :body_scope
+    attr_reader :body_log_context
 
     # @return [Boolean] true when a {BodyWriter} is set
     # @api public
@@ -179,7 +180,7 @@ module Cybertrain
       @status = 101
       @upgrade = true
       @body_writer = writer
-      @body_scope = Logger.current_scope
+      @body_log_context = HttpLogSwitch.installed_switch.current_context
       @performed = true
       nil
     end
@@ -307,7 +308,7 @@ module Cybertrain
     def redirect(location, status = 302)
       set_header("Location", location) # raises on CR/LF: the stream stays
       @body_writer = nil
-      @body_scope = Logger::NO_SCOPE
+      @body_log_context = HttpLogContext::NONE
       @upgrade = false
       @status = status
       @performed = true
@@ -409,10 +410,10 @@ module Cybertrain
     # The tail both reset policies share: status, text/plain content type
     # and the body ("" means the status text). Returns nil.
     def plain_error(status, body)
-      # An error after Controller#stream (or an upgrade) is an ordinary
+      # An error after a stream was started (or an upgrade) is an ordinary
       # response: no writer runs and nothing is sent chunked.
       @body_writer = nil
-      @body_scope = Logger::NO_SCOPE
+      @body_log_context = HttpLogContext::NONE
       @upgrade = false
       @status = status
       self.content_type = "text/plain; charset=utf-8"

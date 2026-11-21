@@ -1,0 +1,4 @@
+ok   a nested child Query built answers permit, nested filters included
+ok   require on a missing key raises ParameterMissing, which is a 400
+ok   a multipart file and text field under one key: upload? sees the file, permit only the text
+3 tests, 5 assertions, 0 failures
