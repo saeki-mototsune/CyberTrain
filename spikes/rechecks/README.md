@@ -34,13 +34,12 @@ none of them.
 | `socket_shapes.rb` | rule 21, AW (the reads of rule 27 that match CRuby) | 21, 27 | each is closed |
 | `socket_bare_readpartial.rb` | rule 20 | 20 | rule 20 is closed |
 | `rescue_shapes.rb` | rule 32, rule 44, rule 45, rule 50, AE | 32, 44, 45, 47, 50 | each is closed |
-| `json_error_shapes.rb` | rule 33, rule 48, rule 61 | 33, 48, 61 | each is closed |
+| `json_error_shapes.rb` | rule 48 (the section of rules 33 and 61 went on 2026-11-21, when both were closed) | 48 | rule 48 is closed |
 | `block_call_shapes.rb` | rule 69 | 69 | rule 69 is closed |
 | `container_shapes.rb` | rule 51, rule 55, Q | 51, 55, 86 | each is closed |
 | `outbound_socket_shapes.rb` | rule 72 (not O, which is `connect_timeout:`) | 72 | rule 72 is closed |
 | `invalid_utf8_shapes.rb` | AD, AU (the calls of rule 52 that match CRuby) | 52 | AD and AU are closed |
 | `builtin_superclass_no_module.rb` | AJ | 104 | AJ is closed |
-| `json_nesting_shapes.rb` | rule 61 | 61 | rule 61 is closed |
 | `define_method_shapes.rb` | rule 1 (a constraint: no run-time code) | 1 | permanent |
 | `builtin_superclass_with_module.rb` | AJ | 104 | AJ is closed |
 | `nil_only_puts_openssl.rb` | K | 78 | K is closed |
@@ -107,7 +106,7 @@ these programs was the ground for removing a workaround.
 | `socket_shapes.rb` | Rules 21 and 27: a socket as a `Thread.new` argument; the encoding of what `readpartial`, `read(n)` and `read_nonblock` return |
 | `socket_bare_readpartial.rb` | Rule 20: a bare `readpartial` at `SPINEL_WORKERS=1` while another thread ticks, decided by a 0.35 s timing window |
 | `rescue_shapes.rb` | Rules 32, 44, 45, 47, 50: `rescue => e` and `ensure` in a yielding method called from nested blocks; `break` and `return` in blocks of yielding methods; `is_a?` after `rescue StandardError` |
-| `json_error_shapes.rb` | Rules 33, 48, 61: JSON's errors against `rescue StandardError`; `JSON::ParserError` as a value and as an argument in a class body |
+| `json_error_shapes.rb` | Rules 33, 48, 61: JSON's errors against `rescue StandardError`; `JSON::ParserError` as a value and as an argument in a class body. The first half, rules 33 and 61, was removed on 2026-11-21 ("Programs removed, 2026-11-21") |
 
 ## Programs added for rules 51 and later
 
@@ -126,7 +125,7 @@ halves have since moved up ("Programs moved up from `differing/`").
 | `outbound_socket_shapes.rb` | Rule 72, on Linux: SocketError for an unresolvable name, `entry[3]` of a `getaddrinfo` entry, `IPSocket.getaddress`, `Addrinfo.tcp`, `SO_ERROR` after a refused connect, the Errno class from a second `connect_nonblock`, `Errno::ECONNREFUSED::Errno`. Class names only, since the messages are worded differently; not `connect_timeout:` |
 | `invalid_utf8_shapes.rb` | Rule 52: `valid_encoding?`, `split` raising ArgumentError and `index` on a UTF-8 literal with a stray byte |
 | `builtin_superclass_no_module.rb` | Rule 104: the `superclass` chain of `ArgumentError` and `RuntimeError` in a program that defines no module |
-| `json_nesting_shapes.rb` | Rule 61: `JSON.generate`'s NestingError against `rescue JSON::ParserError, StandardError`, `rescue StandardError`, `rescue JSON::ParserError`, and on a Thread whose `ensure` runs |
+| `json_nesting_shapes.rb` | Rule 61: `JSON.generate`'s NestingError against `rescue JSON::ParserError, StandardError`, `rescue StandardError`, `rescue JSON::ParserError`, and on a Thread whose `ensure` runs. Deleted on 2026-11-21 ("Programs removed, 2026-11-21") |
 
 ## Program added on 2026-11-20
 
@@ -162,6 +161,20 @@ a control, each of the three did what its header says. As for every
 program here, this is evidence for these small programs on that build,
 `-O 0`, on Linux, with no GC stress; no workaround was removed for it, and
 rules 78, 86 and 104 stand until K, Q and AJ are closed.
+
+## Programs removed, 2026-11-21
+
+Rules 33 and 61 were closed in docs/spinel-feedback.md on 2026-11-21
+("Item register"), and their programs went with them:
+`json_nesting_shapes.rb` and its `.expected` file were deleted, and the
+first section of `json_error_shapes.rb` (JSON's errors against `rescue
+StandardError` and a bare `rescue`) was removed with its three `.expected`
+lines; the section of rule 48 stays. Both are in the repository's history,
+and what each printed in its last run, on Spinel `2026.11.15.7033` and
+`2026.11.04.7026`, is in docs/spinel-feedback.md, "Status by rule", rows
+33 and 61 on 2026.11.15.7033. `run.sh` was run after that on Linux x86_64,
+Spinel `2026.11.15.7033` (`a2f3bfaa`, GCC 13.3.0), `-O 0` and CRuby 3.3.6:
+all twenty-one matched.
 
 ## Programs that still differ: `differing/`
 
@@ -212,7 +225,7 @@ spikes/rechecks/run.sh
 ```
 
 The script prints its output directory first, then runs every probe even
-after one fails, and exits 1 if any did. With the twenty-two programs here it
+after one fails, and exits 1 if any did. With the twenty-one programs here it
 takes about a minute. Each failure names the file that holds its output. Each compile and each run is bounded at 180 seconds
 (`RECHECK_TIMEOUT`; `gtimeout` on macOS, unbounded with a note when
 neither exists). Compiler output other than the usual `src -> bin` line is

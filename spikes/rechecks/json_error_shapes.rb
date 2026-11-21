@@ -1,27 +1,10 @@
-# Reduced shapes only: NOTES 33, 48 and 61. Not the framework's own
-# `rescue_from`, and not the superclass walk of NOTES status 54.
+# Reduced shapes only: NOTES 48. Not the framework's own `rescue_from`,
+# and not the superclass walk of NOTES status 54. The section of NOTES 33
+# and 61 (`rescue StandardError` and a bare `rescue` against JSON's errors)
+# was removed on 2026-11-21, when those two items were closed in
+# docs/spinel-feedback.md; its three output lines went from the `.expected`
+# file with it.
 require "json"
-
-# 33/61: `rescue StandardError` and a bare `rescue` against JSON's errors.
-begin
-  JSON.parse("{")
-rescue StandardError => e
-  puts "caught by StandardError: " + e.class.name
-end
-begin
-  JSON.parse("[1,")
-rescue => e
-  puts "caught by bare rescue: " + e.class.name
-end
-deep = []
-cur = deep
-150.times { n = []; cur << n; cur = n }
-begin
-  JSON.generate(deep)
-  puts "no error"
-rescue StandardError => e
-  puts "generate caught by StandardError: " + e.class.name
-end
 
 # 48: `JSON::ParserError` as a value, in a `rescue`, and passed to a
 # registering class method in a class body.

@@ -334,7 +334,6 @@ follows the rule even where a probe passes.
 | Workaround | Rule | Where | Fails without it in | Items (docs/spinel-feedback.md) |
 | --- | --- | --- | --- | --- |
 | `begin/rescue` and `ensure` live in a plain method that takes the block as a Proc, one level down and no further (`DB.run_transaction`, `Controller#process` / `#run_action`, the job worker's run loop, `Server#run_writer`, `Main.run_command`) | 32, 45, 67, 69, 79 | db.rb, controller.rb, job/worker.rb, job/executor.rb, scheduler.rb, http_client.rb, http/server.rb, main.rb | test/db_transaction.rb, test/db_transaction_api.rb, test/db_rolled_back_transaction.rb, test/jobs.rb, test/cron.rb | rule 32, rule 45, rule 67, rule 69, rule 79 |
-| `rescue JSON::NestingError, JSON::ParserError, StandardError`, in that order, wherever application code may raise | 33, 61 | Nowhere under `cybertrain/` since 2026-11-20: each of those clauses is `rescue StandardError` (status 33). `Cast.parse_json`, which named the two classes in two arms, is `rescue StandardError` too since 2026-11-21 | test/server.rb (`/json`, `/deep`), test/json_rescue_background.rb, test/cast_types.rb (`parse_json`) | rule 33, rule 61 |
 | Every client fault is listed by its full name in `ClientError::CLIENT_FAULTS`, which is compared with `e.class.name` | 46, 53, 54 | http/client_error.rb | `script/check-client-faults`, test/client_error.rb | AE, rule 46 |
 | Byte scanners read their parameter through a fresh `to_s` local; no Ruby method is named after a builtin (`getbyte`, `write`, `close`, `<<`) | 62, 66 | http/*.rb, cast.rb, http_client.rb, mailer.rb, net/*.rb | test/openssl_dispatch.rb, test/http_client_gzip.rb, test/template_integration.rb, test/websocket_integration.rb | rule 62, rule 66 |
 | A String made in an argument is bound to a local before `new`; `SafeString.of` | 58, 65 | html.rb, mailer.rb, cron.rb, job.rb, model/bulk_writes.rb | test/uploaded_file.rb, test/cli_toolchain.rb, test/gen_models.rb | item 1 |
@@ -348,6 +347,16 @@ follows the rule even where a probe passes.
 | `Logger#write_now` writes with `@io.write`; the console flushes after each prompt | 78, 83 | logger.rb, console.rb | test/logger_flush.rb, test/main_console.rb; test/logger_tls.rb was written for 78 and no longer fails without it (status 78) | K, M |
 | Integer-only Ranges: a Time range is `where_between`; `time_tag`'s `format:` (and `I18n.l`) walks the pattern itself instead of calling `strftime` with a built one | 86, 96 | relation.rb, validator.rb, template/helpers.rb, strftime.rb | test/relation_where.rb, test/validators.rb, test/helpers.rb | Q, V |
 | A program that requires a middleware exercises it | 36 | every test that requires `cybertrain/application` | test/application.rb, test/db_integration.rb, test/health.rb | rule 36 |
+
+The table had a row for rules 33 and 61 until 2026-11-21: `rescue
+JSON::NestingError, JSON::ParserError, StandardError`, in that order,
+wherever application code may raise. Both are closed
+(docs/spinel-feedback.md, "Item register"). No rescue under `cybertrain/`
+names a JSON class: each of those clauses is `rescue StandardError` since
+2026-11-20, and `Cast.parse_json`, which named the two classes in two
+arms, since 2026-11-21. The tests that raise a JSON error into the plain
+clause are test/server.rb (`/json`, `/deep`),
+test/json_rescue_background.rb and test/cast_types.rb (`parse_json`).
 
 ### When the pinned Spinel changes
 
@@ -702,7 +711,7 @@ decision, and 77 explicitly retires a workaround.
     (test/json_rescue_background.rb and test/server.rb raise both errors
     into a `rescue StandardError`). Do not write the three-class clause in
     new code on the strength of this rule.
-    Kept until docs/spinel-feedback.md rule 33 is closed.
+    Closed (docs/spinel-feedback.md rule 33): kept for its number.
 34. Rule 10 is stronger than stated: two methods sharing a name on unrelated
     classes whose return types differ (`add_index` returning an Index vs an
     Array) corrupt inference even when no polymorphic receiver exists, with the
@@ -1106,7 +1115,10 @@ decision, and 77 explicitly retires a workaround.
     test/json_rescue_background.rb (job threads and plain Threads) pass
     compiled with `rescue StandardError` alone. A thread that an exception
     does escape, and whether its `ensure` runs, was not run again.
-    Kept until docs/spinel-feedback.md rule 61 is closed.
+    2026-11-21: rechecks/json_nesting_shapes.rb and the section of this
+    rule in rechecks/json_error_shapes.rb went when the rule was closed;
+    their last run is status 61.
+    Closed (docs/spinel-feedback.md rule 61): kept for its number.
 62. A method defined in Ruby source with the name of a builtin method
     (`getbyte`, `puts`, `read`, `gets`, `close`, `write`, `<<`) changes how
     every call of that name on a **boxed** receiver compiles: a switch over

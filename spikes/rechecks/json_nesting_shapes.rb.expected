@@ -1,5 +1,0 @@
-ParserError, StandardError: JSON::NestingError
-StandardError alone: JSON::NestingError
-ParserError alone: JSON::NestingError
-thread: JSON::NestingError
-thread: ensure ran
