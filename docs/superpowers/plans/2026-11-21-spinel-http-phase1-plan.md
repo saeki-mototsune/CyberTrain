@@ -109,9 +109,9 @@ Each program has its run commands and output in its header comment, as `spikes/p
 - Produces: `ClientError.extra_faults -> Array<String>` and `ClientError.extra_faults=(names)`, a class-level slot defaulting to `[]`. `status_for_name` consults `CLIENT_FAULTS + extra_faults`. `CLIENT_FAULTS` loses `"Cybertrain::Params::ParameterMissing"`, and `cybertrain/params.rb` adds it to `extra_faults` at load.
 
 - [ ] **Step 1: Write the failing test** `test/params_split.rb`:
-  - `Query.parse("a[b][c]=1&t[]=x&t[]=y")` → `.nested("a").permit(:b)` keeps `b` (Review Focus 3);
+  - `Query.parse("a[b][c]=1&a[t][]=x&a[t][]=y")` → `.nested("a").permit(b: [:c], t: [])` answers `{"b" => {"c" => "1"}, "t" => ["x", "y"]}` (Review Focus 3: the nested child Query built still permits);
   - `Query.parse("a=1").require(:missing)` raises `Cybertrain::Params::ParameterMissing`, and `ClientError.status_for(e) == 400` (Review Focus 4);
-  - a multipart body with `user[avatar]` (reuse `test/multipart.rb`'s builder) → `.nested("user").permit(:avatar)` keeps the upload.
+  - a multipart body with a file `user[avatar]` and a text field `user[name]=ann` (reuse `test/multipart.rb`'s builder) → `.nested("user").upload?("avatar")` is true, and `.nested("user").permit(:name)` answers `{"name" => "ann"}` (`permit` never returns uploads, as today).
 - [ ] **Step 2: Run it** with `spin test test/params_split.rb`. Expected: PASS already, since this is a refactor; the test pins behaviour before the move. Then run `ruby script/check-http-layer` after removing `cybertrain/params.rb` from `allowed`. Expected: FAIL, naming `cybertrain/params.rb`.
 - [ ] **Step 3: Move the structure methods** into `cybertrain/http/params.rb` and reopen in `cybertrain/params.rb`. Add the `extra_faults` slot. Update `script/check-client-faults` so it requires `cybertrain/params` and checks `CLIENT_FAULTS + extra_faults`.
 - [ ] **Step 4: Run** `ruby script/check-http-layer && ruby script/check-client-faults && spin test test/params_split.rb test/query.rb test/query_extras.rb test/multipart.rb test/multipart_app.rb test/params_limits.rb test/params.rb`. Expected: all pass.
