@@ -75,7 +75,7 @@ instead builds `bin/cybertrain.rb` into `~/.local/bin/cybertrain`), and `cybertr
 cybertrain` gives you the released one instead, which installs the same
 Spinel. On an Ubuntu machine you can also run
 [script/claude-cloud-setup](script/claude-cloud-setup), which does the whole
-setup non-interactively. The [playground](https://saeki-mototsune.github.io/CyberTrain/playground.html)
+setup non-interactively. The [playground](https://www.cybertrain.dev/playground.html)
 is a quick way to try the framework, not a place to develop it.
 
 ## The commit gate

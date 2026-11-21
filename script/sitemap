@@ -1,0 +1,69 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Writes site/sitemap.xml, the list of pages search engines should index,
+# from the HTML under site/ as the Pages workflow is about to deploy it, so it
+# runs after script/api-docs and script/guide-pages. Not committed
+# (.gitignore). robots.txt (committed, in site/) points crawlers at it.
+#
+# A page is listed under its canonical URL (pages without one, the API
+# reference that YARD writes, under BASE + its path, index.html as its
+# directory), with the hreflang alternates the page itself declares. Left out:
+# redirects (a meta refresh, or a canonical URL other than the page's own),
+# pages marked noindex, and YARD's frame and search-list pages plus
+# api/file.README.html (the same page as api/index.html).
+#
+# usage: script/sitemap [--site DIR]   (default: site/)
+
+require "cgi"
+require "time"
+
+BASE = "https://www.cybertrain.dev/"
+SKIP = %w[api/frames.html api/class_list.html api/file_list.html api/method_list.html api/file.README.html].freeze
+
+site = File.expand_path("../site", __dir__)
+if (i = ARGV.index("--site"))
+  site = File.expand_path(ARGV.fetch(i + 1))
+end
+
+def attr(tag, name)
+  tag[/\s#{name}="([^"]*)"/, 1]&.then { |v| CGI.unescapeHTML(v) }
+end
+
+def own_url(rel)
+  BASE + rel.sub(%r{(\A|/)index\.html\z}, '\1')
+end
+
+entries = {}
+Dir.glob("**/*.html", base: site).sort.each do |rel|
+  next if SKIP.include?(rel)
+
+  html = File.read(File.join(site, rel), encoding: "UTF-8")
+  head = html[%r{<head.*?</head>}m] || html[0, 4096]
+  next if head =~ /http-equiv="refresh"/i || head =~ /<meta[^>]*name="robots"[^>]*noindex/i
+
+  links = head.scan(/<link\s[^>]*>/)
+  canonical = links.find { |l| attr(l, "rel") == "canonical" }&.then { |l| attr(l, "href") }
+  url = canonical || own_url(rel)
+  next unless [own_url(rel), BASE + rel].include?(url)
+
+  alternates = links.select { |l| attr(l, "rel") == "alternate" && attr(l, "hreflang") }
+                    .map { |l| [attr(l, "hreflang"), attr(l, "href")] }
+  entries[url] = alternates
+end
+
+abort "script/sitemap: no pages found under #{site}" if entries.empty?
+
+xml = +%(<?xml version="1.0" encoding="UTF-8"?>\n)
+xml << %(<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n)
+entries.each do |url, alternates|
+  xml << "  <url>\n    <loc>#{CGI.escapeHTML(url)}</loc>\n"
+  alternates.each do |lang, href|
+    xml << %(    <xhtml:link rel="alternate" hreflang="#{CGI.escapeHTML(lang)}" href="#{CGI.escapeHTML(href)}"/>\n)
+  end
+  xml << "  </url>\n"
+end
+xml << "</urlset>\n"
+
+File.write(File.join(site, "sitemap.xml"), xml, encoding: "UTF-8")
+puts "script/sitemap: #{entries.size} pages written to #{File.join(site, 'sitemap.xml')}"

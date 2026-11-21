@@ -64,7 +64,7 @@ stopped and restarted.
    no banner: the server answers with a page of its own that names the error and
    refreshes itself until a save loads.
 3. **Carry on with the tutorial** from step 08, "Scaffold comments":
-   https://saeki-mototsune.github.io/CyberTrain/tutorial.html#scaffold-comment
+   https://www.cybertrain.dev/tutorial.html#scaffold-comment
    Stop the server first (Ctrl-C in its terminal), run the step's commands in a new
    terminal, then start it again with `cybertrain server`.
 

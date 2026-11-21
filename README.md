@@ -5,10 +5,10 @@
   </picture>
 </p>
 <p align="center">
-  <a href="https://saeki-mototsune.github.io/CyberTrain/">Homepage</a> ·
-  <a href="https://saeki-mototsune.github.io/CyberTrain/tutorial.html">Tutorial</a> ·
-  <a href="https://saeki-mototsune.github.io/CyberTrain/guide/">Guides</a> ·
-  <a href="https://saeki-mototsune.github.io/CyberTrain/api/">API reference</a>
+  <a href="https://www.cybertrain.dev/">Homepage</a> ·
+  <a href="https://www.cybertrain.dev/tutorial.html">Tutorial</a> ·
+  <a href="https://www.cybertrain.dev/guide/">Guides</a> ·
+  <a href="https://www.cybertrain.dev/api/">API reference</a>
 </p>
 
 
@@ -51,12 +51,12 @@ existing Rails application is a goal, in five phases
 application created can be taken over as it is. Not built: mailer
 classes (a mailer is a module whose methods return a `MailMessage` to
 `deliver_later`), mail attachments, HTTP/2
-([what differs from Rails](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html#differences-from-rails)).
+([what differs from Rails](https://www.cybertrain.dev/guide/how-it-works.html#differences-from-rails)).
 
 ## Quick start
 
 Needs Ruby 3.2+, a C toolchain, `make`, `git`, `curl` and the SQLite, zlib and
-OpenSSL headers ([details](https://saeki-mototsune.github.io/CyberTrain/guide/install.html#requirements); `cybertrain doctor`
+OpenSSL headers ([details](https://www.cybertrain.dev/guide/install.html#requirements); `cybertrain doctor`
 checks them).
 
 ```sh
@@ -78,35 +78,35 @@ subscriptions, and `./blog console` for a prompt over the models. A new
 app's `bin/blog.rb` requires only the core; jobs, Turbo Streams, feeds, the
 mailer, the cache, rate limiting and sending error reports to Sentry are one `require` line each, so an app
 compiles only what it uses
-([subsystems](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html#subsystems)).
+([subsystems](https://www.cybertrain.dev/guide/how-it-works.html#subsystems)).
 
 Or try it with nothing installed:
 [open the playground in GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)
-([what the playground holds](https://saeki-mototsune.github.io/CyberTrain/playground.html)).
+([what the playground holds](https://www.cybertrain.dev/playground.html)).
 
 On one CPU core, with 16 connections, the blog serves 2.2 to 8.8 times the requests per second of
 the same app in Rails 8.1, in about a tenth of the memory
-([numbers](https://saeki-mototsune.github.io/CyberTrain/index.html#performance)).
+([numbers](https://www.cybertrain.dev/index.html#performance)).
 
 ## Documentation
 
 | | |
 | --- | --- |
-| [Tutorial](https://saeki-mototsune.github.io/CyberTrain/tutorial.html) | Build the blog step by step: scaffold, comments, authentication, uploads, deployment |
-| [Installing](https://saeki-mototsune.github.io/CyberTrain/guide/install.html) | Requirements (Ruby with `fiddle` for the CRuby preview), the `cybertrain` command, how Spinel and the framework are installed |
-| [How it works](https://saeki-mototsune.github.io/CyberTrain/guide/how-it-works.html) | Build-time code generation, interpreted views, the server, the development loop (the CRuby preview and the compiled binary that takes over), and a table of the differences from Rails |
-| [Models and the database](https://saeki-mototsune.github.io/CyberTrain/guide/models.html) | Migrations, column types, queries, associations, validations, encrypted columns, transactions, taking over a Rails database |
-| [Requests](https://saeki-mototsune.github.io/CyberTrain/guide/requests.html) | Routing, formats and `respond_to`, concerns, strong parameters, HTTP caching, cookies and the session, rate limiting, CSP, `force_ssl` and hosts, headers, query strings and request bodies |
-| [Authentication](https://saeki-mototsune.github.io/CyberTrain/guide/authentication.html) | `generate authentication`: sign-in, sign-up or invite-only, password reset, confirmation, lockout, remember me, the account page, admin users, upgrading from 0.4 |
-| [Assets](https://saeki-mototsune.github.io/CyberTrain/guide/assets.html) | Digested stylesheets, images and JavaScript, CSS `url()`, the helpers, the import map, serving |
-| [Internationalization](https://saeki-mototsune.github.io/CyberTrain/guide/i18n.html) | Dictionaries in `config/locales`, `t` and `l`, lazy lookup, plural forms, the locale per request, translated validation messages |
-| [Configuration](https://saeki-mototsune.github.io/CyberTrain/guide/configuration.html) | `config/app.rb`, environment variables, time zones |
-| [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Job classes, retries and concurrency keys (delivered at least once, so make jobs idempotent), `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check, logs and request ids, error reporting to Sentry |
-| [Realtime](https://saeki-mototsune.github.io/CyberTrain/guide/realtime.html) | Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names, feed health |
-| [Outbound HTTP, WebSocket feeds and e-mail](https://saeki-mototsune.github.io/CyberTrain/guide/external-services.html) | `HttpClient` (streaming, gzip, redirects, Server-Sent Events), `WebSocket.subscribe` (timers, restarts), `Mailer` (HTML mail, `deliver_later`) |
-| [Testing](https://saeki-mototsune.github.io/CyberTrain/guide/testing.html) | Test classes, fixtures, `cybertrain test`, time travel, components and streams, mail, jobs, outbound calls, logs and error reports, CI |
-| [Deploying](https://saeki-mototsune.github.io/CyberTrain/deploy.html) | To a server with systemd, or with Kamal |
-| [API reference](https://saeki-mototsune.github.io/CyberTrain/api/) | Every class and method an application uses; also [the template language](https://saeki-mototsune.github.io/CyberTrain/guide/template-language.html) |
+| [Tutorial](https://www.cybertrain.dev/tutorial.html) | Build the blog step by step: scaffold, comments, authentication, uploads, deployment |
+| [Installing](https://www.cybertrain.dev/guide/install.html) | Requirements (Ruby with `fiddle` for the CRuby preview), the `cybertrain` command, how Spinel and the framework are installed |
+| [How it works](https://www.cybertrain.dev/guide/how-it-works.html) | Build-time code generation, interpreted views, the server, the development loop (the CRuby preview and the compiled binary that takes over), and a table of the differences from Rails |
+| [Models and the database](https://www.cybertrain.dev/guide/models.html) | Migrations, column types, queries, associations, validations, encrypted columns, transactions, taking over a Rails database |
+| [Requests](https://www.cybertrain.dev/guide/requests.html) | Routing, formats and `respond_to`, concerns, strong parameters, HTTP caching, cookies and the session, rate limiting, CSP, `force_ssl` and hosts, headers, query strings and request bodies |
+| [Authentication](https://www.cybertrain.dev/guide/authentication.html) | `generate authentication`: sign-in, sign-up or invite-only, password reset, confirmation, lockout, remember me, the account page, admin users, upgrading from 0.4 |
+| [Assets](https://www.cybertrain.dev/guide/assets.html) | Digested stylesheets, images and JavaScript, CSS `url()`, the helpers, the import map, serving |
+| [Internationalization](https://www.cybertrain.dev/guide/i18n.html) | Dictionaries in `config/locales`, `t` and `l`, lazy lookup, plural forms, the locale per request, translated validation messages |
+| [Configuration](https://www.cybertrain.dev/guide/configuration.html) | `config/app.rb`, environment variables, time zones |
+| [Background work and operations](https://www.cybertrain.dev/guide/background-and-operations.html) | Job classes, retries and concurrency keys (delivered at least once, so make jobs idempotent), `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check, logs and request ids, error reporting to Sentry |
+| [Realtime](https://www.cybertrain.dev/guide/realtime.html) | Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names, feed health |
+| [Outbound HTTP, WebSocket feeds and e-mail](https://www.cybertrain.dev/guide/external-services.html) | `HttpClient` (streaming, gzip, redirects, Server-Sent Events), `WebSocket.subscribe` (timers, restarts), `Mailer` (HTML mail, `deliver_later`) |
+| [Testing](https://www.cybertrain.dev/guide/testing.html) | Test classes, fixtures, `cybertrain test`, time travel, components and streams, mail, jobs, outbound calls, logs and error reports, CI |
+| [Deploying](https://www.cybertrain.dev/deploy.html) | To a server with systemd, or with Kamal |
+| [API reference](https://www.cybertrain.dev/api/) | Every class and method an application uses; also [the template language](https://www.cybertrain.dev/guide/template-language.html) |
 | [Design record](docs/design.md) · [benchmark](docs/benchmark.md) · [spikes](spikes/NOTES.md) | Why it is built this way, and the Spinel constraints behind it |
 
 The guides' Markdown sources are in [docs/guide/](docs/guide/).
