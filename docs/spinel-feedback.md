@@ -8,7 +8,8 @@ identifier never changes: a digit (1 to 7), a letter (A to AU so far; the
 next is AV) or, for a behaviour first written as a rule of spikes/NOTES.md
 and never lettered, "rule N". "Item register" lists them all.
 
-[spikes/](../spikes/README.md) is the other half and repeats none of this.
+[spikes/](../spikes/README.md) is the other half and does not say where a
+behaviour stands on the pin.
 It holds the programs, and [spikes/NOTES.md](../spikes/NOTES.md), the
 numbered rules that say how CyberTrain's code is written because of an
 item. Each rule and each program names its item here and is kept until

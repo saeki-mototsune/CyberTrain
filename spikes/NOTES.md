@@ -6,8 +6,9 @@ index of which shapes of the framework exist for that reason and which
 test covers each. The programs that show the behaviours are beside it
 ([README.md](README.md) lists them).
 
-It does not say where a behaviour stands. What Spinel does on a given
-build, what was asked upstream and whether an item is closed are in
+It is not the record of where a behaviour stands. A rule may say what was
+seen on the build it names, as part of its reason; what Spinel does on the
+pinned build, what was asked upstream and whether an item is closed are in
 [docs/spinel-feedback.md](../docs/spinel-feedback.md), the one record of
 that. Every rule ends by naming its item there, and a rule, like a
 program, is kept until that item is closed ("Item register" there says
@@ -813,8 +814,9 @@ decision, and 77 explicitly retires a workaround.
     rule stays for new code until a change retires it.
     Kept until docs/spinel-feedback.md rule 45 is closed.
 46. Historically `Class#name` carried no namespace ("ParserError", not
-    "JSON::ParserError"). The current pin returns the qualified name for
-    user-defined classes and for `JSON::ParserError` (status 46); do not
+    "JSON::ParserError"). 2026.11.04.7026 (2026-11-11) returned the
+    qualified name for user-defined classes and for `JSON::ParserError`
+    (status 46); do not
     introduce new bare-name assertions on the basis of this old symptom. Thread stacks are small:
     about 50 nested template renders (14 Ruby frames each under CRuby)
     overflow one, so the Interpreter caps nesting at 12. A Hash literal
@@ -1080,7 +1082,7 @@ decision, and 77 explicitly retires a workaround.
     `rescue JSON::ParserError, StandardError` each catch the NestingError
     that `JSON.generate` raises, also on a thread, whose `ensure` runs
     (rechecks/json_error_shapes.rb, json_nesting_shapes.rb). The workaround
-    is retired in part on this pin, in the data layer (status 33); the
+    is retired in part on that build, in the data layer (status 33); the
     other framework files keep the three-name clause until a change
     removes it with test/server.rb and test/client_error.rb passing
     compiled. Those small programs did not show an application's rescue
@@ -1107,8 +1109,8 @@ decision, and 77 explicitly retires a workaround.
     requires the openssl package had every response fail in
     `Response#to_http` this way (`HeaderName.same?` got its keys boxed),
     which the in-process Test::Client, never calling to_http, did not show.
-    The reduced probe passes on the current pin; retain the workaround
-    pending affected-program tests. Inspecting generated C is supporting
+    The reduced probe passed on 2026.11.04.7026 (2026-11-11); retain the
+    workaround pending affected-program tests. Inspecting generated C is supporting
     evidence, not a substitute for executing the path:
     `spinel prog.rb -c -o /tmp/x.c` and
     `grep 'sp_raise_nomethod(sp_nomethod_msg("getbyte"' /tmp/x.c` (the
@@ -1443,15 +1445,15 @@ decision, and 77 explicitly retires a workaround.
     compiles through the same dispatch with the right argument type, so
     `Logger#write_now` calls `@io.write(line)` on a line that already ends
     in a newline.
-    Current pin (2026.11.04.7026, 2026-11-15 and 2026-11-19): the reduced
-    program still fails in the C compiler
+    On 2026.11.04.7026 (2026-11-15 and 2026-11-19) the reduced program
+    still failed in the C compiler
     (rechecks/differing/nil_only_puts_openssl.rb). The framework's own
-    three lines no longer show it: with `@io.puts(line)` put back into
-    today's `Logger#write_now` they compile and log, and test/logger_tls.rb,
-    written as the regression program, builds and matches its snapshot
-    too. So the logger's present shape is evidence neither way, and that
-    test no longer guards the workaround; `write` stays because the reduced
-    program fails.
+    three lines no longer showed it: with `@io.puts(line)` put back into
+    the `Logger#write_now` of 2026-11-19 they compiled and logged, and
+    test/logger_tls.rb, written as the regression program, built and
+    matched its snapshot too. So the logger's present shape is evidence
+    neither way, and that test no longer guards the workaround; `write`
+    stays until docs/spinel-feedback.md K is closed.
     Kept until docs/spinel-feedback.md K is closed.
 79. A yielding method with a `rescue` clause, given a block whose only
     expression is `raise`, does not compile when its value is appended

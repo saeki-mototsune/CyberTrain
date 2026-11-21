@@ -7,7 +7,9 @@ of it.
 What Spinel does on a given build, what was asked upstream and whether a
 behaviour is closed are in
 [docs/spinel-feedback.md](../docs/spinel-feedback.md), the one record of
-that; nothing here repeats it. A program here is evidence for an item of
+that. A rule or a program's header here may say what was seen on the build
+it names; nothing here says where a behaviour stands on the pin. A program
+here is evidence for an item of
 that document and is kept until the item is closed there ("Item register"
 says what closed means). A program that now prints CRuby's result is still
 kept: passing is not closed.
