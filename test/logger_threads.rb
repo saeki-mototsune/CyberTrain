@@ -2,11 +2,10 @@ require "stringio"
 require "cybertrain/logger"
 require "cybertrain/test"
 
-# Lines from several threads never interleave (spec section 12.1, plan
-# D3): each line is built whole, then written once under Logger::LOCK.
+# Lines from several threads never interleave (docs/design.md
+# D86): each line is built whole, then written once under Logger::LOCK.
 # Meant to be compiled (`spin test test/logger_threads.rb`), where the
-# threads are real; it also runs under CRuby. Byte checks, no regexp
-# (pre-flight ruling G5).
+# threads are real; it also runs under CRuby. Byte checks, no regexp.
 #
 # Compiled, Spinel runs threads on SPINEL_WORKERS worker threads, read
 # when the first thread starts; with the default one worker a StringIO

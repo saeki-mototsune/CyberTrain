@@ -1,0 +1,6 @@
+JSON::ParserError
+true
+rescued via value
+true
+handler for JSON::ParserError
+3

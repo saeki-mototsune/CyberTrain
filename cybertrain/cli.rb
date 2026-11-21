@@ -136,7 +136,7 @@ module Cybertrain
             Run spin with the pinned Spinel, from any directory
             (cybertrain spin test; cybertrain spin run gen -- --check).
         cybertrain secret [--hex]
-            Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (signs
+            Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (encrypts
             the session cookie); with --hex, a new key for
             CYBERTRAIN_ENCRYPTION_KEY (encrypts the columns of `encrypts`).
             Both are 64 hex digits (32 random bytes). Keep the encryption
@@ -250,34 +250,10 @@ module Cybertrain
     # a later one (docs/design.md D11). The
     # constraint is written as given: spin decides what it accepts.
     def self.version_note(version)
-      return "" if version == "" || exact_version?(version)
+      return "" if version == "" || FrameworkVersion.release?(version)
 
       "note: spin selects the lowest release that satisfies \"#{version}\" and spin.lock pins it, " \
         "so a range does not follow new releases; name one release (--version X.Y.Z) to choose it"
-    end
-
-    # "0.4.1": three dot-separated runs of digits and nothing else. A loop
-    # over the characters rather than a Regexp, as the rest of the CLI does
-    # for what Spinel also compiles.
-    def self.exact_version?(value)
-      dots = 0
-      digits = 0
-      i = 0
-      while i < value.length
-        c = value[i]
-        if c == "."
-          return false if digits == 0
-
-          dots += 1
-          digits = 0
-        elsif c >= "0" && c <= "9"
-          digits += 1
-        else
-          return false
-        end
-        i += 1
-      end
-      dots == 2 && digits > 0
     end
 
     # `value` as a TOML basic string: `\` and `"` escaped. Control
@@ -440,36 +416,7 @@ module Cybertrain
         invite_only = argv.include?("--invite-only")
         confirmable = argv.include?("--confirmable")
         result = Authentication.generate_with_result(".", invite_only, confirmable, argv.include?("--force"))
-        result.manual.each { |diff| puts diff }
-        puts ""
-        puts "next:"
-        puts "  cybertrain db migrate"
-        if invite_only
-          app = Build.app_name(".")
-          puts "  cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run #{app} -- user EMAIL)"
-        else
-          puts "  cybertrain server      # then open /sign_up"
-        end
-        puts "  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others"
-        base_url_env = Authentication.base_url_env(Build.app_name("."))
-        mails = confirmable ? "password reset and confirmation mails" : "password reset mails"
-        puts "  # #{mails}: set #{base_url_env} and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)"
-        unless result.manual.empty?
-          # The warnings above a diff (with --confirmable, what the sessions
-          # and registrations controllers leave out until theirs is
-          # applied), once more at the end.
-          result.manual.each do |diff|
-            lines = diff.lines
-            next if lines.size < 2 || !lines[1].start_with?("IMPORTANT: ")
-
-            path = lines[0].delete_prefix("manual  ")
-            path = path[0, path.index(":").to_i].to_s
-            puts "IMPORTANT: #{path}: #{lines[1].strip.delete_prefix("IMPORTANT: ")}"
-          end
-          puts ""
-          puts "next: apply the diffs above, or re-run with --force for files you never edited"
-          puts "  # the app may not build until these diffs are applied: the files written now need them"
-        end
+        report_authentication(result, invite_only, confirmable)
       when "helper"
         args = without_flag(argv[2, argv.size - 2], "--force")
         raise InvalidArgument, "usage: cybertrain generate helper NAME [--force]" unless args.size == 1
@@ -502,6 +449,42 @@ module Cybertrain
         raise InvalidArgument, "only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper`, `generate component` and `generate job` are supported"
       end
       0
+    end
+
+    # What `generate authentication` prints after its files: the diffs it
+    # did not apply, the next steps, and the diffs' warnings once more.
+    def self.report_authentication(result, invite_only, confirmable)
+      result.manual.each { |diff| puts diff }
+      puts ""
+      puts "next:"
+      puts "  cybertrain db migrate"
+      if invite_only
+        app = Build.app_name(".")
+        puts "  cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run #{app} -- user EMAIL)"
+      else
+        puts "  cybertrain server      # then open /sign_up"
+      end
+      puts "  cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others"
+      base_url_env = Authentication.base_url_env(Build.app_name("."))
+      mails = confirmable ? "password reset and confirmation mails" : "password reset mails"
+      puts "  # #{mails}: set #{base_url_env} and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)"
+      unless result.manual.empty?
+        # The warnings above a diff (with --confirmable, what the sessions
+        # and registrations controllers leave out until theirs is
+        # applied), once more at the end.
+        result.manual.each do |diff|
+          lines = diff.lines
+          next if lines.size < 2 || !lines[1].start_with?("IMPORTANT: ")
+
+          path = lines[0].delete_prefix("manual  ")
+          path = path[0, path.index(":").to_i].to_s
+          puts "IMPORTANT: #{path}: #{lines[1].strip.delete_prefix("IMPORTANT: ")}"
+        end
+        puts ""
+        puts "next: apply the diffs above, or re-run with --force for files you never edited"
+        puts "  # the app may not build until these diffs are applied: the files written now need them"
+      end
+      nil
     end
   end
 end

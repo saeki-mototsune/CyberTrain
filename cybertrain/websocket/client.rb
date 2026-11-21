@@ -168,10 +168,7 @@ module Cybertrain
         @reader = reader
         @label = label
         @timeout = timeout
-        @max_message = max_message
         @assembler = Frame::Assembler.new(max_message)
-        # Bytes of the fragmented message being assembled so far.
-        @assembled = 0
         @open = true
         @close_code = 1006
         @close_reason = ""
@@ -372,11 +369,7 @@ module Cybertrain
           elsif op == Frame::OP_CLOSE
             ws_closed_by_peer(payload)
           elsif op != Frame::OP_PONG
-            if @assembler.add(op, header.frame_fin, payload)
-              @assembled = 0
-              return @assembler.take_message
-            end
-            @assembled = op == Frame::OP_CONTINUATION ? @assembled + payload.bytesize : payload.bytesize
+            return @assembler.take_message if @assembler.add(op, header.frame_fin, payload)
           end
           # A control frame or a fragment after the wait: nil, the
           # assembly kept for the next receive.
@@ -403,11 +396,7 @@ module Cybertrain
         header = Frame.parse_header(@reader.peek_bytes(size))
         Frame.check_header(header, @assembler.assembling?, true)
         length = header.frame_length
-        op = header.frame_opcode
-        if op < 8
-          before = op == Frame::OP_CONTINUATION ? @assembled : 0
-          raise Cybertrain::WebSocket::TooLargeError, "message larger than #{@max_message} bytes" if before + length > @max_message
-        end
+        @assembler.check_room(header.frame_opcode, length)
         ws_ended unless @reader.fill_to(size + length)
         whole = @reader.read_exact(size + length)
         payload = whole.byteslice(size, length)

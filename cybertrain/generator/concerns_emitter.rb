@@ -1,10 +1,11 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/concern_scan"
 require "cybertrain/generator/controllers_emitter"
 require "cybertrain/generator/model_scan"
 
 module Cybertrain
   module Gen
-    # Writes gen/concerns.rb (spec 4.1, plan decisions 8 and 12), which
+    # Writes gen/concerns.rb (docs/design.md D60), which
     # gen/app.rb requires last, once every application class is defined:
     #
     # - per concern with `class_methods do ... end`, the module reopened
@@ -18,11 +19,11 @@ module Cybertrain
     #   `include` line among the class's own.
     #
     # A concern brought in again by an ancestor's include is left out (its
-    # callbacks would run twice). A `class_methods` method named like an
-    # instance method of an including class, of one of its ancestors or of
-    # one of its concerns is refused (spikes/NOTES.md rule 93).
+    # callbacks would run twice). A `class_methods` method may share its
+    # name with an instance method: the forwarder is a class method, and
+    # the blanked copy defines no instance method for it.
     #
-    # Models get the same (spec 4.2, plan decision 9): per model that
+    # Models get the same: per model that
     # includes concerns, the forwarders and each concern's `included` body
     # between `model_concern_insert_at(validators_index)` and
     # `model_concern_insert_done` (emit_models).
@@ -44,54 +45,61 @@ module Cybertrain
                "# application's classes.\n"
 
       def self.emit(controller_infos, concern_infos, model_infos = Array.new(0) { ModelInfo.empty("", "", Array.new(0) { "" }) },
-                    model_concern_infos = Array.new(0) { ConcernInfo.new("", "", 0) })
+                    model_concern_infos = ConcernScan.no_concern_infos)
         out = +""
         out << HEADER
-        concern_infos.each do |c|
-          next if c.class_method_names.empty?
-
-          out << "\n"
-          out << ControllersEmitter.wrap_in_modules(c.concern_name, class_methods_source(c))
-        end
-        model_concern_infos.each do |c|
-          next if c.class_method_names.empty?
-
-          out << "\n"
-          out << ControllersEmitter.wrap_in_modules(c.concern_name, class_methods_source(c))
-        end
+        out << class_methods_modules(concern_infos)
+        out << class_methods_modules(model_concern_infos)
         ControllersEmitter.parents_first(controller_infos).each do |info|
           from = Array.new(0) { 0 }
           own = ConcernScan.own_concerns(info, controller_infos, concern_infos, from)
           next if own.empty?
 
-          check_names(info, controller_infos, concern_infos, own)
           body = class_body(info, own, from)
           next if body.empty?
 
-          last = info.class_name.split("::").last.to_s
-          source = +"class #{last}\n"
-          body.each_line { |line| source << (line == "\n" ? line : "  #{line}") }
-          source << "end\n"
           out << "\n"
-          out << ControllersEmitter.wrap_in_modules(info.class_name, source)
+          out << reopened_class(info.class_name, body)
         end
         out << emit_models(model_infos, model_concern_infos)
         out
+      end
+
+      # The module holding each concern's class methods, for the concerns
+      # that have any.
+      def self.class_methods_modules(concerns)
+        out = +""
+        concerns.each do |c|
+          next if c.class_method_names.empty?
+
+          out << "\n"
+          out << SourceText.wrap_in_scopes(c.concern_name, Array.new(0) { "" }, class_methods_source(c))
+        end
+        out
+      end
+
+      # `class X` reopened around body, inside X's modules.
+      def self.reopened_class(class_name, body)
+        last = class_name.split("::").last.to_s
+        source = +"class #{last}\n"
+        body.each_line { |line| source << (line == "\n" ? line : "  #{line}") }
+        source << "end\n"
+        SourceText.wrap_in_scopes(class_name, Array.new(0) { "" }, source)
       end
 
       # The reopening of every model that includes concerns: a forwarder
       # per class method of its concerns, then each concern's `included`
       # body between `model_concern_insert_at(n)` (n: the model's own
       # `validates` calls above the `include`) and
-      # `model_concern_insert_done`. A class_methods name that the model
-      # or one of its concerns defines as an instance method, a scope's or
-      # a model class method's is refused (check_model_class_method).
+      # `model_concern_insert_done`. A class_methods name that is a
+      # scope's or a model class method's is refused
+      # (check_model_class_method).
       def self.emit_models(model_infos, concern_infos)
         out = +""
         model_infos.each do |info|
           next if info.concern_names.empty?
 
-          own = Array.new(0) { ConcernInfo.new("", "", 0) }
+          own = ConcernScan.no_concern_infos
           info.concern_names.each do |name|
             c = ConcernScan.find(concern_infos, name)
             own << c unless c.nil?
@@ -118,32 +126,19 @@ module Cybertrain
           body << spliced
           next if body.empty?
 
-          last = info.class_name.split("::").last.to_s
-          source = +"class #{last}\n"
-          body.each_line { |line| source << (line == "\n" ? line : "  #{line}") }
-          source << "end\n"
           out << "\n"
-          out << ControllersEmitter.wrap_in_modules(info.class_name, source)
+          out << reopened_class(info.class_name, body)
         end
         out
       end
 
       # A model concern's class_methods name m (written at line) must not
-      # be an instance method of the model or of its concerns (rule 93: it
-      # is one too, compiled), a scope's name (gen/models defines
-      # `def self.<scope>` on the model, which the forwarder would
-      # redefine) or a class method every model and Relation already has
-      # (ModelScan::RESERVED_SCOPE_NAMES: `where`, `all`, ...). Each
-      # refusal names both places.
+      # be a scope's name (gen/models defines `def self.<scope>` on the
+      # model, which the forwarder would redefine) or a class method every
+      # model and Relation already has (ModelScan::RESERVED_SCOPE_NAMES:
+      # `where`, `all`, ...). Each refusal names both places.
       def self.check_model_class_method(info, concern, m, line)
         place = "#{ControllerScan.app_path(concern.concern_file)}:#{line}: class_methods def #{m}: "
-        j = position(info.defined_methods, m)
-        if j >= 0
-          where = j < info.defined_places.size ? info.defined_places[j] : ControllerScan.app_path(info.file)
-          msg = "#{place}#{info.class_name}, which includes #{concern.concern_name}, or one of its concerns also defines " \
-                "an instance method #{m} (#{where}); #{ConcernScan::RULE_93}"
-          raise ArgumentError, msg
-        end
         info.scopes.each do |sc|
           next unless sc.name == m
 
@@ -237,7 +232,7 @@ module Cybertrain
         lines.each do |line|
           next if line.strip == ""
 
-          n = ControllerScan.indent_of(line)
+          n = SourceText.indent_of(line)
           min = n if min < 0 || n < min
         end
         out = Array.new(0) { "" }
@@ -252,66 +247,6 @@ module Cybertrain
         end
         out.pop while !out.empty? && out.last == "\n"
         out
-      end
-
-      # The index of name in names, -1 when absent (an Integer either way:
-      # no nullable Integer for Spinel to settle).
-      def self.position(names, name)
-        names.each_with_index { |n, i| return i if n == name }
-        -1
-      end
-
-      # spikes/NOTES.md rule 93: under Spinel a class_methods `def` is also
-      # an instance method of every including class.
-      def self.check_names(info, infos, concerns, own)
-        own.each do |c|
-          c.class_method_names.each_with_index do |name, k|
-            place = "#{ControllerScan.app_path(c.concern_file)}:#{c.class_method_line_numbers[k]}: class_methods def #{name}: "
-            j = position(info.method_names, name)
-            if j >= 0
-              msg = "#{place}#{info.class_name}, which includes #{c.concern_name}, also defines an instance method #{name} " \
-                    "(#{ControllerScan.app_path(info.file)}:#{info.method_lines[j]}); #{ConcernScan::RULE_93}"
-              raise ArgumentError, msg
-            end
-            seen = Array.new(0) { "" }
-            seen << info.class_name
-            parent = ConcernScan.controller_named(infos, info.superclass_name)
-            until parent.nil? || seen.include?(parent.class_name)
-              seen << parent.class_name
-              j = position(parent.method_names, name)
-              if j >= 0
-                msg = "#{place}#{parent.class_name} (an ancestor of #{info.class_name}, which includes #{c.concern_name}) also defines " \
-                      "an instance method #{name} (#{ControllerScan.app_path(parent.file)}:#{parent.method_lines[j]}); #{ConcernScan::RULE_93}"
-                raise ArgumentError, msg
-              end
-              # The concerns the ancestor brings in: under Spinel the
-              # concern's spurious instance method would shadow theirs.
-              ConcernScan.own_concerns(parent, infos, concerns).each do |pc|
-                pc.concern_defs.each do |d|
-                  next unless d.name == name
-
-                  msg = "#{place}#{pc.concern_name} (included by #{parent.class_name}, an ancestor of #{info.class_name}, which includes " \
-                        "#{c.concern_name}) defines an instance method #{name} (#{ControllerScan.app_path(pc.concern_file)}:#{d.line}); " \
-                        "#{ConcernScan::RULE_93}"
-                  raise ArgumentError, msg
-                end
-              end
-              parent = ConcernScan.controller_named(infos, parent.superclass_name)
-            end
-            own.each do |other|
-              next if other.concern_name == c.concern_name
-
-              other.concern_defs.each do |d|
-                next unless d.name == name
-
-                msg = "#{place}#{other.concern_name}, also included by #{info.class_name}, defines an instance method #{name} " \
-                      "(#{ControllerScan.app_path(other.concern_file)}:#{d.line}); #{ConcernScan::RULE_93}"
-                raise ArgumentError, msg
-              end
-            end
-          end
-        end
-        nil
       end
     end
   end

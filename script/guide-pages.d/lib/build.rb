@@ -5,7 +5,7 @@
 #   guide/<name>.html, <lang>/guide/<name>.html  the default (the only other path allowed)
 # and, for the English pages, the old YARD URLs as redirects:
 #   api/file.<name>.html                         -> the guide (not for index)
-#   api/file.walkthrough.html                    -> tutorial.html, once tutorial.md exists
+#   api/file.walkthrough.html                    -> tutorial.html
 # Every problem in every source is collected; when there is any, nothing is
 # written.
 #
@@ -14,7 +14,6 @@
 require "cgi/escape"
 require "erb"
 require "fileutils"
-require "pathname"
 require_relative "source"
 require_relative "outline"
 require_relative "links"
@@ -23,7 +22,7 @@ require_relative "words"
 
 module GuidePages
   module Build
-    BASE = "https://saeki-mototsune.github.io/CyberTrain/"
+    BASE = "https://www.cybertrain.dev/"
     LAYOUT = File.expand_path("../layout.html.erb", __dir__)
     HREFLANG = { "en" => "en", "ja" => "ja", "zh" => "zh-Hans", "ru" => "ru", "fr" => "fr" }.freeze
     OG_LOCALE = { "en" => "en_US", "ja" => "ja_JP", "zh" => "zh_CN", "ru" => "ru_RU", "fr" => "fr_FR" }.freeze
@@ -134,7 +133,7 @@ module GuidePages
 
     def redirects(english)
       english.each_value.with_object({}) do |src, out|
-        next if src.name == "index" || (src.name == "walkthrough" && english.key?("tutorial"))
+        next if src.name == "index"
 
         name = src.name == "tutorial" ? "walkthrough" : src.name
         target = Links.out_path(src)

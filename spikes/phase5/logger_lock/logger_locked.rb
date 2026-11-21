@@ -1,5 +1,5 @@
-# Phase 5b spike, item 9: cybertrain/logger.rb (at 19668bc) with `log`
-# writing each line once under a process-wide lock (plan D3). run.sh copies
+# Phase 5b spike: cybertrain/logger.rb (at 19668bc) with `log`
+# writing each line once under a process-wide lock (docs/design.md D86). run.sh copies
 # this file over cybertrain/logger.rb in a copy of the framework. A record,
 # not the framework's code.
 #

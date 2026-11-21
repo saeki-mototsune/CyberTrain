@@ -100,41 +100,23 @@ cybertrain test -n test_creates_an_article              # or by its method name
 cybertrain test -n /article/                            # the tests whose name contains "article"
 ```
 
-`cybertrain test` runs `SPIN_DEBUG=1 spin run gen` (gen built in spin's
-debug mode, as every command of the CLI builds it), which writes `gen/tests.rb` (the
+`cybertrain test` runs `SPIN_DEBUG=1 spin run gen` (gen built in spin's debug
+mode, as every command of the CLI builds it), which writes `gen/tests.rb` (the
 program) and a rewritten copy of each test class under `gen/test/`, both
 committed with the rest of `gen/`; it then compiles `gen/tests.rb` into
-`build/test/tests` (a release build) when any input is newer than that binary, and runs it.
-Every `test/**/*_test.rb` and every other `test/*.rb` but
-`test/test_helper.rb` is in it; `test/support/` (required by the helper)
-and `test/fixtures/` hold no tests. The program deletes
-`storage/test.sqlite3`, migrates a new one and boots the application on it
-before the first test (no job, scheduler or feed threads: a test runs jobs
-itself). `CYBERTRAIN_TEST_DATABASE` names another file instead. Since the program deletes the file it tests on, it marks every database it
-creates (`PRAGMA application_id`, a value of its own) and deletes or
-empties an existing file only when it carries that mark, when it is this
-application's own `storage/test.sqlite3` (however the path is written), or when it is an empty file. Anything else
-is refused with exit status 2 and nothing deleted: `cybertrain test
-refuses to delete <path>: not a database cybertrain test created; delete
-it yourself or name another file`. A file named `development.sqlite3` or
-`production.sqlite3` (in any letter case), or the same file as
-`storage/development.sqlite3` or `storage/production.sqlite3`, is refused
-as `cybertrain test refuses to delete <path>: it is the development
-database` (or `production`). The name must be a file path: `:memory:` and
-`file:` URIs are refused (`cybertrain test refuses CYBERTRAIN_TEST_DATABASE
-":memory:": name the test database by its file path (not :memory: or a
-file: URI)`). After an upgrade, a file you named in
-`CYBERTRAIN_TEST_DATABASE` before carries no mark and is refused once:
-delete it (with its `-wal` and `-shm`), and `cybertrain test` creates a
-marked one; the default `storage/test.sqlite3` needs nothing. A path that turns into a
-symlink while the database is being created is refused with exit status 2:
-`cybertrain test refuses <path>: it became a symlink while the test database was created (nothing was marked or migrated); remove it and run again`. The per-test clear empties only the main database's tables, never a
-TEMP or attached table of the same name. Known limits: the mark survives a
-`cp` of a test database, so a copy named as the test database (or one a
-test connects to) is emptied; a run killed between creating the file and
-marking it leaves an unmarked file at a path you named, refused the next
-time (delete it); a directory at `storage/test.sqlite3` raises when the
-program deletes it.
+`build/test/tests` (a release build) when any input is newer than that binary,
+and runs it. Every `test/**/*_test.rb` and every other `test/*.rb` but
+`test/test_helper.rb` is in it; `test/support/` (required by the helper) and
+`test/fixtures/` hold no tests. The program deletes `storage/test.sqlite3`,
+migrates a new one and boots the application on it before the first test (no
+job, scheduler or feed threads: a test runs jobs itself).
+[The test database](#the-test-database) has the rules for that file.
+
+The test program requires `cybertrain`, every subsystem, whatever
+`bin/<app>.rb` requires: `perform_enqueued_jobs`, `assert_emails`,
+`assert_broadcasts` and `Test::SentryReceiver` work in an application on
+`cybertrain/core`, and code that names a subsystem without its line passes its
+tests and stops at `spin build` ([Subsystems](how-it-works.md#subsystems)).
 
 The program sets up the test environment as Rails' does, unless
 `config/app.rb` sets the same thing itself: forgery protection off, the
@@ -201,6 +183,45 @@ and no compile, when two test or support files define the same top-level
 method or constant (they would become one in one program: move a shared
 helper to `test/support/`, or into the class), and for the other cases of
 [What gen refuses in a test class](#what-gen-refuses-in-a-test-class).
+
+### The test database
+
+The tests run on `storage/test.sqlite3`, which the program deletes and
+migrates again at every run; `CYBERTRAIN_TEST_DATABASE` names another file
+instead. An exported `CYBERTRAIN_ENV` or `CYBERTRAIN_DATABASE` is not read:
+the program always runs in the test environment, and `CYBERTRAIN_DATABASE`
+does not choose the file. Since the program deletes the file it tests on, it marks every
+database it creates (`PRAGMA application_id`, a value of its own) and deletes
+or empties an existing file only when it carries that mark, when it is this
+application's own `storage/test.sqlite3` (however the path is written), or
+when it is an empty file. Anything else is refused with exit status 2 and
+nothing deleted:
+`cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`.
+
+Three more cases are refused:
+
+- A file named `development.sqlite3` or `production.sqlite3` (in any letter
+  case), or the same file as `storage/development.sqlite3` or
+  `storage/production.sqlite3`, is refused as
+  `cybertrain test refuses to delete <path>: it is the development database`
+  (or `production`).
+- The name must be a file path: `:memory:` and `file:` URIs are refused
+  (`cybertrain test refuses CYBERTRAIN_TEST_DATABASE ":memory:": name the test database by its file path (not :memory: or a file: URI)`).
+- A path that turns into a symlink while the database is being created is
+  refused with exit status 2:
+  `cybertrain test refuses <path>: it became a symlink while the test database was created (nothing was marked or migrated); remove it and run again`.
+
+After an upgrade, a file you named in `CYBERTRAIN_TEST_DATABASE` before
+carries no mark and is refused once: delete it (with its `-wal` and `-shm`),
+and `cybertrain test` creates a marked one; the default `storage/test.sqlite3`
+needs nothing.
+
+The per-test clear empties only the main database's tables, never a TEMP or
+attached table of the same name. Known limits: the mark survives a `cp` of a
+test database, so a copy named as the test database (or one a test connects
+to) is emptied; a run killed between creating the file and marking it leaves
+an unmarked file at a path you named, refused the next time (delete it); a
+directory at `storage/test.sqlite3` raises when the program deletes it.
 
 ## Fixtures
 
@@ -602,8 +623,9 @@ class SignupHookTest < ActiveSupport::TestCase
 end
 ```
 
-`HttpReceiver.new` takes the canned `status:`, `headers:`, `body:` and
-`chunked:` (`respond_with` changes them between requests); the request comes
+`HttpReceiver.new` takes the canned `status:`, `headers:`, `body:`,
+`chunked:` and `gzip:` (the body sent gzip-encoded, with
+`Content-Encoding: gzip`; `respond_with` changes them between requests); the request comes
 back as a `ReceivedRequest` (`http_method`, `http_target`, `http_path`,
 `http_headers` with lowercased names, `http_header(name)`, `http_body` with a
 chunked body decoded). `SmtpReceiver` plays 220, EHLO (with 8BITMIME unless
@@ -664,8 +686,10 @@ end
 
 A response's `X-Request-Id` is the request's id. To read log lines, a test
 gives `Cybertrain.logger` a `StringIO` for the work it watches and puts the
-logger back afterwards, in a method of its own (a `rescue` or `ensure`
-around a `yield` belongs in a plain method under Spinel):
+logger back afterwards in an `ensure`, in a helper method of its own that
+takes no block (the framework keeps `rescue` and `ensure` out of methods that
+yield: spikes/NOTES.md rules 45 and 50, recorded on an earlier Spinel and not
+re-checked on the pinned one):
 
 ```ruby test/integration/logging_test.rb
 require "test_helper"
@@ -873,43 +897,10 @@ snapshot whose test touches SQLite comes from the compiled binary:
 `script/regen-snapshot test/<name>.rb` in the framework's checkout, or
 `rm -f build/test/<name>; cybertrain spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`.
 
-## Upgrading from 0.4
+## Upgrading
 
-- Add `test/test_helper.rb` as above, and move what a support file did at
-  load time (`AppTest.boot`, `BlogTest.boot`, migrating a database) out of
-  it: the test program boots on a fresh database before the first test,
-  and a second boot only costs time.
-- Change the CI step from `spin test` to `cybertrain test`.
-- Two files that define the same top-level helper or constant (a
-  `new_client` in each, as the 0.4 generators wrote them) are refused
-  together: move the helper to `test/support/` or rename one.
-- Every table is emptied before each test, so a later test can no longer
-  rely on rows an earlier one made: move such data to fixtures or `setup`.
-- The clock seams are gone: `Cybertrain::Cache.clock=`,
-  `Cache.system_clock`, `RateLimit.current_time=`, `SessionStore#fixed_now=`,
-  `Application.status_now=` and `Background.supervisor_clock=`. Use
-  `travel_to`, `travel` or `freeze_time`, whose block puts the time back
-  without an `ensure` of your own.
-- Mail in tests is kept in `Cybertrain::Mailer.deliveries`; a test that
-  reads mail at a `Test::SmtpReceiver` sets
-  `Cybertrain.config.mail_delivery_method = :smtp` first.
-- A helper test 0.4's `generate helper` wrote defines a top-level
-  `render_inline(source)`, which clashes with the framework's: rename it
-  `render_helper_template` in that file, calls included.
-- `1.month.ago` is `Time.current.months_ago(1)`.
-- `assert_equal` fails with Minitest's two-line text; a passing snapshot
-  does not change.
-- `cybertrain generate authentication`, run again, writes the class-form
-  tests and names each old file they replace (`test/authentication.rb`,
-  `test/support/app_test.rb`, ...); `--force` deletes them.
-- A test that looked for a whole log line, its level in brackets first,
-  looks for the level and the message apart (`" ERROR "` and
-  `"password reset mail not sent: "`): a line now starts with the time and
-  may carry the request's id
-  ([Logs](background-and-operations.md#logs)).
-- An exported `CYBERTRAIN_LOG_FORMAT` or `CYBERTRAIN_SENTRY_DSN` no longer
-  reaches the tests; set them in `config/app.rb`, or assign the DSN in the
-  test, to test with them.
+What a release changes for an application's tests is listed by version in
+[Upgrading](upgrading.md#notes-by-version).
 
 ## Continuous integration
 

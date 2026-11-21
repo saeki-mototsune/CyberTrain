@@ -3,11 +3,11 @@ require "cybertrain/db"
 require "cybertrain/model"
 
 # Declared associations in the shape the model generator writes into
-# gen/models (ModelsEmitter.association_reader and friends; spec section 7.2),
+# gen/models (ModelsEmitter.association_reader and friends; docs/design.md D47),
 # hand-written here for the cases test/gen_models_compiles.rb's fixture does
 # not have: a has_one, `dependent: :nullify` and `:delete_all`, a nullable
 # belongs_to, and a foreign key without `dependent:` (the database decides),
-# plus includes (spec section 8) over the has_one and the nullable keys.
+# plus includes over the has_one and the nullable keys.
 # The Relations carry only the methods these tests use. SQLite is FFI, so the
 # snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
 

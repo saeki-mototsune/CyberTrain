@@ -121,8 +121,6 @@ jobs:
   # A check only: blog-image.yml pushes nothing. It saves the image that
   # passed the smoke test as the artifact blog-image-tested, which
   # blog-image-push publishes once every check has passed.
-  # (packages: write only because blog-image.yml still declares it; nothing
-  # there uses it any more.)
   blog-image:
     needs: version
     permissions:

@@ -11,4 +11,7 @@ module Stamped
   def stamp_response
     response.set_header("X-Stamped", "1")
   end
+
+  # AdminGate's class_methods has a stamp_limit too.
+  def stamp_limit = 4
 end

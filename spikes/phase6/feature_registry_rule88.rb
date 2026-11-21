@@ -1,8 +1,8 @@
-# The contrast to feature_registry.rb: the shapes the optional-subsystems
-# design avoids because of spikes/NOTES.md rule 88, stored blocks that call
+# The contrast to feature_registry.rb: the shapes the feature registry
+# (cybertrain/feature.rb) avoids because of spikes/NOTES.md rule 88, stored blocks that call
 # the periodic hook on a Feature-typed receiver (captured, or the block's
 # parameter, the block written at top level or in a feature subclass's
-# reopened body), then the design's run_periodic(i, now) and a direct call
+# reopened body), then the registry's run_periodic(i, now) and a direct call
 # in the same program. spikes/NOTES.md rule 111.
 #
 # Run (Spinel 2026.11.04.7026, from spikes/phase6/):
@@ -69,7 +69,7 @@ ParamBlocks.run_each
 Log::LINES.each { |l| puts "block in a subclass body: #{l}" }
 Log::LINES.clear
 
-# Then the design's shape in the same program: the block only calls
+# Then the registry's shape in the same program: the block only calls
 # Registry.run_periodic(i, now).
 Sched::TASKS.clear
 Registry.schedule_periodic

@@ -2,7 +2,7 @@ require "cybertrain/test"
 require "cybertrain/durations"
 require "cybertrain/time_ext"
 
-# `1.month` is not a duration (spec section 3.1): a month has no fixed
+# `1.month` is not a duration (docs/design.md D81): a month has no fixed
 # length in seconds, so Integer has no `month(s)` or `year(s)`. In an
 # application it builds under Spinel and raises NoMethodError when reached,
 # as under CRuby: Spinel refuses an undefined instance method at build only

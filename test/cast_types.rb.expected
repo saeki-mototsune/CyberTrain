@@ -8,6 +8,7 @@ ok   date, date_or_nil, hash_or_nil, json_text, round_scale
 ok   round_scale and round_scale_or_nil answer a Float, even at scale 0
 ok   round_scale and round_scale_or_nil return a non-finite Float unchanged
 ok   json_hash reads a json cell as a Hash, {} for anything it cannot
+ok   parse_json answers nil for a malformed document and for one nested too deeply
 ok   a Date binds as its text and reads back from a DATE column
 ok   Cast.date coexists with the schema DSL's t.date
-12 tests, 60 assertions, 0 failures
+13 tests, 66 assertions, 0 failures

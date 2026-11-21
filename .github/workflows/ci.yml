@@ -491,7 +491,6 @@ jobs:
       # `git status`, not `git diff`: a file the generator writes that was
       # never committed is untracked, and `git diff` does not see it.
       - name: Generated code is fresh (examples/blog)
-        if: hashFiles('examples/blog/spin.toml') != ''
         run: |
           cd examples/blog
           # SPIN_DEBUG=1: the mode the cybertrain CLI builds gen in, so the
@@ -512,7 +511,6 @@ jobs:
       # the test run wrote nothing gen would not write. SPIN_DEBUG=1: the
       # mode `cybertrain test` builds gen in, so gen is not built again.
       - name: Example app tests
-        if: hashFiles('examples/blog/spin.toml') != ''
         run: |
           cd examples/blog
           cybertrain test

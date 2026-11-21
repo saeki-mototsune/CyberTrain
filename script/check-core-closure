@@ -1,6 +1,6 @@
 #!/usr/bin/env ruby
-# The core must not name an optional subsystem (docs/superpowers/specs/
-# 2026-11-13-optional-subsystems-design.md, section 4): Spinel compiles
+# The core must not name an optional subsystem (docs/design.md D85):
+# Spinel compiles
 # every method of every file a program requires, so one `require
 # "cybertrain/scheduler"` or one `Scheduler.running?` in a core file puts
 # jobs back into every application that requires only `cybertrain/core`.
@@ -17,8 +17,7 @@
 #       file calling one compiles only with the subsystem), word boundary,
 #       case-sensitive, outside comments; inside strings too, since a
 #       string is code to this check (a header name such as "Cache-Control"
-#       inside a string literal is the one exception), unless ALLOWED lists
-#       that file and name.
+#       inside a string literal is the one exception).
 # A require of `cybertrain` itself from the core is (a) too: it is every
 # subsystem. Run by script/gate, which runs the self-test first.
 #
@@ -39,7 +38,7 @@ ENTRY = "cybertrain/core.rb"
 
 # The subsystems the core must not reach: file patterns (File.fnmatch,
 # relative to the repository root) and the constants that name them, one
-# row per require line of the spec's section 3 (cybertrain/mailer/later is
+# row per subsystem require line (docs/design.md D85; cybertrain/mailer/later is
 # the mailer's). A file may match two rows (cybertrain/websocket/frame.rb is
 # feeds' and serves the stream endpoint too): what matters is that neither
 # is in the core's closure.
@@ -110,11 +109,6 @@ SUBSYSTEMS = {
 # the core's dictionary with the rest) names no constant. Outside their
 # literals they are checked as any other file.
 TEXT_FILES = %w[cybertrain/locales/bundled.rb].freeze
-
-# References a later task removes, allowed until then: [file, constant or
-# method, why]. Each entry names the task that removes it; an entry that no longer
-# matches anything fails the check, so the list cannot go stale.
-ALLOWED = [].freeze
 
 def source_path(spec, from)
   path = File.join(ROOT, "#{spec}.rb")
@@ -433,7 +427,6 @@ SUBSYSTEMS.each do |name, row|
   end
 end
 
-used_allowances = []
 closure.each do |file|
   next if file == "cybertrain.rb" || SUBSYSTEMS.values.any? { |row| matches?(row[:files], file) } # reported above
 
@@ -453,18 +446,9 @@ closure.each do |file|
       code = code.chars.each_with_index.map { |ch, k| mask[k] ? " " : ch }.join
     end
     names_in(code, mask).each do |sub, used|
-      allowance = ALLOWED.find { |f, c, _why| f == file && c == used }
-      if allowance
-        used_allowances << allowance
-      else
-        failures << "#{file}:#{n}: names #{used} (#{sub}): #{line.strip}"
-      end
+      failures << "#{file}:#{n}: names #{used} (#{sub}): #{line.strip}"
     end
   end
-end
-
-(ALLOWED - used_allowances).each do |f, c, why|
-  failures << "ALLOWED lists #{f} naming #{c} (#{why}), which no longer happens: remove the entry"
 end
 
 if ARGV.include?("--list")
@@ -473,9 +457,7 @@ if ARGV.include?("--list")
 end
 
 if failures.empty?
-  allowed = used_allowances.uniq.size
-  note = allowed.zero? ? "" : ", #{allowed} reference#{allowed == 1 ? "" : "s"} allowed until a later task"
-  puts "check-core-closure: #{closure.size} files from #{ENTRY}; no file, constant or method of #{SUBSYSTEMS.keys.join(", ")}#{note}"
+  puts "check-core-closure: #{closure.size} files from #{ENTRY}; no file, constant or method of #{SUBSYSTEMS.keys.join(", ")}"
 else
   puts "check-core-closure: the core reaches an optional subsystem (#{failures.size}):"
   failures.each { |f| puts "  #{f}" }

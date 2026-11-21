@@ -26,7 +26,7 @@ job threads and their heartbeat) and then runs, through the public APIs:
 | business read | one row by primary key | none |
 | jobs | `Job.enqueue`; the job threads claim the row, run the handler (one business `INSERT`) and write the outcome | 1 commit to enqueue, 3 per job run (claim, the handler's insert, outcome) |
 | cache | `Cache.write` then `Cache.read` of the same key | 1 commit, then a read |
-| rate limit | the `Cache.increment` `Controller#run_rate_limit` runs for `store: :cache`, with its key (200 client addresses, a 60 s window) | 1 commit |
+| rate limit | the `Cache.increment` `Controller#apply_rate_limit` runs for `store: :cache`, with its key (200 client addresses, a 60 s window) | 1 commit |
 | stream | `Stream.broadcast`; the poller hands the row to a subscriber waiting in `Subscriber#stream_pop` | 1 commit |
 
 Each load runs alone for a fixed time (its baseline, with the other services

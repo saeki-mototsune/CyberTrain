@@ -18,4 +18,4 @@ ok   every status Symbol the controller knows, and Rails' :missing
 ok   Rails' CGI-style header names
 ok   Date, Time, Float, Integer, booleans and nil in params: are sent as the casts read them back
 ok   fixture_file_upload in params: sends post, patch and put as multipart/form-data
-20 tests, 211 assertions, 0 failures
+20 tests, 208 assertions, 0 failures

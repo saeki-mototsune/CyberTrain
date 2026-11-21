@@ -438,6 +438,35 @@ test "update_all_sql refuses an empty SET list and an Array bind" do
   assert_equal "update_all_sql: an Array bind is not expanded", msg
 end
 
+# These `case` statements had a `when Time` arm before `when Array` / `when
+# Hash` / `when Date` (spikes/NOTES.md rule 8); without it a Time, here one
+# read from a nullable attribute, must still take none of those arms.
+test "a Time is not taken for an Array, a Hash or a Date by the SQL binds, Cast or the validators" do
+  seed_stats
+  at = Time.utc(2026, 10, 25, 9, 30, 0)
+  assert_equal 1, Stat.where(project_id: 1).where_sql("seen_at >= ?", [at]).count
+  msg = assert_raises("ArgumentError") { Stat.all.where_sql("seen_at >= ? AND calls IN (?)", [at, [3, 4]]) }
+  assert_equal "where: an Array bind is not expanded; use where(column: [...])", msg
+  assert_equal 1, Stat.where(project_id: 1, key: "GET /a_b").update_all_sql("seen_at = ?", [at])
+  msg = assert_raises("ArgumentError") { Stat.all.update_all_sql("seen_at = ?, calls = ?", [at, [1, 2]]) }
+  assert_equal "update_all_sql: an Array bind is not expanded", msg
+  assert_nil Stat.all.set_having_sql("MAX(seen_at) >= ?", [at])
+  msg = assert_raises("ArgumentError") { Stat.all.set_having_sql("MAX(seen_at) >= ? AND COUNT(*) IN (?)", [at, [1, 2]]) }
+  assert_equal "having_sql: an Array bind is not expanded", msg
+
+  seen = Stat.find_by(project_id: 1, key: "GET /a_b").seen_at
+  assert_equal at.to_i, Cybertrain::Cast.time_or_nil(seen).to_i
+  assert_nil Cybertrain::Cast.date_or_nil(seen)
+  assert_equal 0, Cybertrain::Cast.hash(seen).size
+  assert_equal 0, Cybertrain::Cast.hash_or_nil(seen).size
+  assert_equal 0, Cybertrain::Cast.json_hash(seen).size
+  assert_equal "{}", Cybertrain::Cast.json_text(seen)
+  assert_equal 0, Cybertrain::Cast.array(seen).size
+  refute Cybertrain::Validator.numeric?(seen)
+  refute Cybertrain::Validator.integer_value?(seen)
+  assert_equal 0.0, Cybertrain::Validator.number_of(seen)
+end
+
 # ---- where_like -----------------------------------------------------------
 
 test "where_like is a substring match with the text's wildcards escaped" do

@@ -1,6 +1,6 @@
 # ActionDispatch::IntegrationTest: requests against the application
-# `cybertrain test` booted, from a class-form test (spec section 5.1, plan
-# decision 6). Each test is a new instance with its own
+# `cybertrain test` booted, from a class-form test (docs/design.md
+# D84). Each test is a new instance with its own
 # Cybertrain::Test::Client, so cookies (the session among them) persist
 # from one request to the next within a test and start empty in the next.
 # The bundle (gen/tests.rb) includes the application's Gen::UrlHelpers, so

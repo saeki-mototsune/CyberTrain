@@ -2,23 +2,15 @@ require "tmpdir"
 require "cybertrain/cli"
 require "cybertrain/generator/helper_scan"
 require "cybertrain/test"
+require_relative "support/file_tree"
 
 # `cybertrain generate helper`: an empty module under app/helpers and a test.
 TMP = Dir.mktmpdir("cybertrain-cli-generate-helper")
 Dir.chdir(TMP)
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 Cybertrain::CLI::NewApp.create("shop", "{ path = \"../cybertrain\" }")

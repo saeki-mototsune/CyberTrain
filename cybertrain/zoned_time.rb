@@ -1,5 +1,5 @@
 # Cybertrain::ZonedTime -- the wall fields of a UTC instant in one zone
-# (spec section 4, "Reading wall fields"), what Time#in_time_zone answers,
+# (docs/design.md D81), what Time#in_time_zone answers,
 # and Time.find_zone!, the name lookup that refuses a zone the system
 # zoneinfo does not have.
 #

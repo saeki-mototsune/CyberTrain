@@ -2,67 +2,35 @@ require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/generator"
 
-# gen/tests.rb (spec sections 5.2 and 8, plan decisions 5, 10, 14 and 19):
+# gen/tests.rb (docs/design.md D83):
 # the one program `cybertrain test` compiles, as gen writes it. The
-# emitted text, its requires and the bundle's refusals (pre-flight ruling
-# B2: a refused bundle is a gen/tests.rb that only aborts, and gen itself
+# emitted text, its requires and the bundle's refusals (a refused
+# bundle is a gen/tests.rb that only aborts, and gen itself
 # still succeeds). Text only: CRuby-portable.
 require_relative "fixtures/gen_app/config/routes"
+require_relative "support/file_tree"
 
 FIXTURE = "test/fixtures/gen_app"
 TEMP_ROOTS = Array.new(0) { "" }
-
-def copy_tree(from, to)
-  Dir.mkdir(to) unless File.directory?(to)
-  Dir.children(from).sort.each do |entry|
-    if File.directory?("#{from}/#{entry}")
-      copy_tree("#{from}/#{entry}", "#{to}/#{entry}")
-    else
-      File.write("#{to}/#{entry}", File.read("#{from}/#{entry}"))
-    end
-  end
-  nil
-end
-
-def remove_tree(dir)
-  Dir.children(dir).each do |entry|
-    path = "#{dir}/#{entry}"
-    if File.directory?(path)
-      remove_tree(path)
-    else
-      File.delete(path)
-    end
-  end
-  Dir.rmdir(dir)
-  nil
-end
-
-def make_dirs(dir)
-  return nil if File.directory?(dir)
-
-  make_dirs(File.dirname(dir))
-  Dir.mkdir(dir)
-  nil
-end
 
 # A copy of the fixture app with `files` (path => text) written into it.
 def temp_app(files)
   root = Dir.mktmpdir("cybertrain-gen-tests")
   TEMP_ROOTS << root
-  copy_tree(FIXTURE, root)
-  # Without the fixture app's own test/ (Task 8's fixtures) and what gen
+  FileTree.copy(FIXTURE, root)
+  # Without the fixture app's own test/ (its fixtures) and what gen
   # writes from it, the tree holds only the test files written here.
-  remove_tree("#{root}/test")
-  remove_tree("#{root}/gen/test")
+  FileTree.remove("#{root}/test")
+  FileTree.remove("#{root}/gen/test")
   File.delete("#{root}/gen/tests.rb")
   files.each do |rel, text|
-    make_dirs(File.dirname("#{root}/#{rel}"))
+    FileTree.make_dirs(File.dirname("#{root}/#{rel}"))
     File.write("#{root}/#{rel}", text)
   end
   root
 end
 
-at_exit { TEMP_ROOTS.each { |root| remove_tree(root) if File.directory?(root) } }
+at_exit { TEMP_ROOTS.each { |root| FileTree.remove(root) if File.directory?(root) } }
 
 def emitted(root, data = false)
   Cybertrain::Gen::TestsEmitter.emit(root, Cybertrain::Gen::TestScan.scan(root), data)

@@ -4,7 +4,7 @@
 # HTTP, routing, controllers, models, views and helpers, assets, sessions,
 # CSRF, CSP, the console, `db` and `migrate`: what every application
 # needs. An application adds the subsystems it uses with their own lines
-# in bin/NAME.rb (docs/superpowers/specs/2026-11-13-optional-subsystems-design.md):
+# in bin/NAME.rb (docs/design.md D85):
 #
 #   require "cybertrain/core"
 #   require "cybertrain/jobs"        # Job, Scheduler, the worker role, the jobs page and command

@@ -1,5 +1,6 @@
 require "cybertrain/db/cli"
 require "cybertrain/test"
+require_relative "support/file_tree"
 
 # `db backup` and `db vacuum` (Cybertrain::DB::CLI, issue #76): the copy is
 # written by SQLite into a 0700 temporary directory, chmod 0600 and renamed
@@ -23,21 +24,11 @@ BACKUPS = "#{ROOT}/backups"
 ENV.delete("CYBERTRAIN_DATABASE")
 ENV["CYBERTRAIN_ENV"] = "test"
 
-def remove_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| remove_tree("#{path}/#{child}") }
-    Dir.rmdir(path)
-  elsif File.exist?(path)
-    File.delete(path)
-  end
-  nil
-end
-
-remove_tree(ROOT)
+FileTree.remove(ROOT)
 Dir.mkdir("tmp") unless Dir.exist?("tmp")
 Dir.mkdir(ROOT)
 Dir.mkdir("#{ROOT}/storage")
-at_exit { remove_tree(ROOT) }
+at_exit { FileTree.remove(ROOT) }
 
 def run_db(*argv)
   CLI.run(argv, ROOT, "app")

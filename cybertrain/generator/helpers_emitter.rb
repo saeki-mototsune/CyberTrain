@@ -2,7 +2,7 @@ require "cybertrain/generator/helper_scan"
 
 module Cybertrain
   module Gen
-    # Writes gen/helpers.rb (spec 3.1): ApplicationHelpers, the
+    # Writes gen/helpers.rb (docs/design.md D38): ApplicationHelpers, the
     # Template::Helpers subclass that includes every app/helpers module and
     # dispatches a template's receiverless call to them through a `case`
     # on the literal name (Spinel has no `send`, spikes/NOTES.md rule 1),
@@ -24,7 +24,7 @@ module Cybertrain
         modules.each { |m| out << "  include ::#{m.name}\n" }
         out << "\n"
         out << "  def app_helper_call(name, args, kwargs, block, interp, env)\n"
-        defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        defs = HelperScan.no_helper_defs
         modules.each { |m| m.defs.each { |d| defs << d } }
         if defs.empty?
           out << "    super(name, args, kwargs, block, interp, env)\n"

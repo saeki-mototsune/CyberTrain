@@ -2,8 +2,7 @@ require "cybertrain/test"
 require "cybertrain/db"
 require "cybertrain/model"
 
-# Task 13 of phase 2: the validators of spec section 9.1
-# (docs/superpowers/specs/2026-11-06-phase2-data-layer-design.md) --
+# The validators (docs/design.md D48) --
 # inclusion, exclusion, format, numericality, uniqueness, length's is:/in:,
 # and allow_nil:, allow_blank:, on:, message:, if:/unless: on every rule --
 # each with Rails' default English message. SQLite is FFI, so the snapshot
@@ -419,8 +418,26 @@ test "an unknown option, a lambda condition and an on: other than :create or :up
   assert_equal ["can't be blank", "is too short (minimum is 2 characters)"], messages_for(:name, { name: "" })
 end
 
+# apply_list and listed? had a `when Time` arm first (spikes/NOTES.md rule
+# 8); without it a Time, here one read from a Hash of mixed values, is
+# still neither a Range, an Array nor a number.
+test "a Time is neither a list for in: nor a member of one" do
+  mixed = { "at" => Time.utc(2026, 1, 1), "n" => 2, "list" => [1, 2] }
+  msg = assert_raises("ArgumentError") { Cybertrain::Validator.new(:rating, :inclusion).apply_list(:in, mixed["at"]) }
+  assert_equal "validates: inclusion: in: takes an Array or an Integer Range", msg
+  ranged = Cybertrain::Validator.new(:rating, :inclusion)
+  ranged.apply_list(:in, 1..5)
+  assert ranged.listed?(mixed["n"])
+  refute ranged.listed?(mixed["at"])
+  refute ranged.listed?(mixed["list"])
+  listed = Cybertrain::Validator.new(:rating, :inclusion)
+  listed.apply_list(:in, mixed["list"])
+  assert listed.listed?(mixed["n"])
+  refute listed.listed?(mixed["at"])
+end
+
 # Last: it adds rules to Thing. What gen/concerns.rb writes for a model
-# concern (spec 4.2): the index counts the model's own `validates` calls
+# concern: the index counts the model's own `validates` calls
 # above the `include`, however many rules each call made.
 def thing_rules
   Cybertrain::Model.validators_for("Thing").map { |v| "#{v.attr}:#{v.kind}" }

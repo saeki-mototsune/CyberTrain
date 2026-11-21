@@ -25,6 +25,8 @@ require_relative "fixtures/gen_app/app/models/post"
 Cast = Cybertrain::Cast
 NH = Cybertrain::NumberHelper
 
+# Not test/support/schema_tables.rb: this test declares DECIMAL(precision,
+# scale) and a unique index, which are what it is about.
 def sql_type(column)
   case column.type
   when :integer, :boolean then "INTEGER"

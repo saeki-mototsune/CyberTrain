@@ -1,9 +1,9 @@
-# Phase 4b spike, item 6b (spec section 12, plan decision D3): the same
+# Phase 4b spike, item 6b: the same
 # Hash as locale_hash.rb, filled at load by 40 small methods
 # (`def self.fill_00(h)` ... `fill_39`, 50 `h["key"] = "text"` stores
 # each) and frozen into the constant (`TEXTS = Gen::Locales.texts.freeze`),
 # so no C function holds more than 50 stores. The shape gen/locales.rb
-# takes (spec section 12, item 6, result 6b). A record, not a test.
+# takes (docs/design.md D79). A record, not a test.
 #
 # Run (Spinel 2026.11.04.7026, from spikes/phase4b/; `ruby make_keys.rb`
 # rewrites the module between the BEGIN / END lines):

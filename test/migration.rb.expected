@@ -9,7 +9,6 @@ ok   inverse of add_index is remove_index
 ok   inverse of rename_column reverses the direction
 ok   inverse raises IrreversibleMigration for a kind with no automatic down
 ok   register/all order migrations by version regardless of registration order
-ok   self.version / self.version_string are per-subclass
 ok   up resets operations, so calling it twice does not duplicate them
 ok   down on a change-only migration replays the inverse operations in reverse order
 ok   down resets operations, so calling it twice does not duplicate them
@@ -35,4 +34,4 @@ ok   a rollback runs each reversible block's statements in the order written
 ok   reversible's blocks take only execute
 ok   rebuild_table copies the common columns through <table>_new and restores indexes, triggers and the sequence
 ok   table_after applies each rebuild kind to a copy of the table
-37 tests, 160 assertions, 0 failures
+36 tests, 158 assertions, 0 failures

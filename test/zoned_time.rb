@@ -2,8 +2,8 @@ require "cybertrain/test"
 require "cybertrain/time_ext"
 require_relative "support/zone_swap"
 
-# Time#in_time_zone and Cybertrain::ZonedTime (spec section 4, "Reading wall
-# fields"; acceptance 2): the wall fields of a UTC instant in Time.zone, in
+# Time#in_time_zone and Cybertrain::ZonedTime (docs/design.md
+# D81): the wall fields of a UTC instant in Time.zone, in
 # a zone named by a String or given as a TimeZone, the abbreviation and the
 # offset across a DST change, the UTC instant and the civil date back, and
 # the refusal of a name the system zoneinfo does not have. Plain Ruby, no

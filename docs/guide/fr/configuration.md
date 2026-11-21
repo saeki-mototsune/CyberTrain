@@ -1,5 +1,5 @@
 ---
-source_sha256: 5244c35315abf5c2a969beec2d47d9e2d299b8173f1adcddae995718f901b5dc
+source_sha256: 6a31d45e598b54446d9c4a8fac5c9e197285b1b4dd872a7905d91d3f24b3219d
 ---
 # Configuration
 
@@ -18,7 +18,7 @@ dernier mot&nbsp;:
 
 | Variable | Attribut | Par défaut |
 | --- | --- | --- |
-| `CYBERTRAIN_ENV` | `env` | `"development"`&nbsp;; `"production"` dans un binaire issu de `cybertrain build` (aussi `"test"`) |
+| `CYBERTRAIN_ENV` | `env` | `"development"`&nbsp;; `"production"` dans un binaire issu de `cybertrain build` (aussi `"test"`). Définissez la variable, pas `c.env`&nbsp;: `database_path`, `session_secure` et la valeur par défaut de `mail_delivery_method` en sont dérivés avant que `config/app.rb` s’exécute |
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | requis en production&nbsp;; en dev/test, un secret est généré automatiquement dans `tmp/secret_key` |
@@ -35,9 +35,9 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`&nbsp;; des adresses IPv4/IPv6 ou des CIDR séparés par des virgules (`172.16.0.0/12,10.0.0.0/8`) dont les connexions ont leur `request.client_ip` tiré de la dernière adresse de `X-Forwarded-For`, pour un proxy atteint par un réseau, comme kamal-proxy dans son conteneur&nbsp;; une entrée invalide arrête le serveur au démarrage |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`&nbsp;: la plus grande page que donne `params.page_number` et qu’accepte `Relation#page` (voir [Pagination](models.md#pagination))&nbsp;; une valeur qui n’est pas un nombre d’au plus 18 chiffres, ou inférieure à 1, donne la valeur par défaut |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`&nbsp;; des noms séparés par des virgules remplacent la liste. Un paramètre dont le nom contient l’un d’eux (sans tenir compte de la casse ASCII&nbsp;: `password` correspond aussi à `user[password]`) voit sa valeur écrite `[FILTERED]` dans le journal des requêtes et sur la page d’erreur de développement&nbsp;; `[]` dans `config/app.rb` désactive ce filtrage |
-| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`&nbsp;: le niveau le moins important écrit, `debug`, `info`, `warn`, `error`, `fatal` ou `none` (en majuscules ou minuscules&nbsp;; `none` coupe le journal des requêtes et écrit toujours les lignes d’erreur)&nbsp;; toute autre valeur arrête le démarrage (voir [Journaux](background-and-operations.md#logs)). `cybertrain test` utilise `:none` sauf si `config/app.rb` le fixe |
+| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`&nbsp;: le niveau le moins important écrit, `debug`, `info`, `warn`, `error`, `fatal` ou `none` (en majuscules ou minuscules&nbsp;; `none` coupe le journal des requêtes et écrit toujours les lignes d’erreur)&nbsp;; toute autre valeur arrête le démarrage (voir [Journaux](logs-and-errors.md#logs)). `cybertrain test` utilise `:none` sauf si `config/app.rb` le fixe |
 | `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text`&nbsp;; `json` écrit un objet JSON par ligne, pour un collecteur de journaux&nbsp;; toute autre valeur arrête le démarrage. `cybertrain test` garde des lignes de texte sauf si `config/app.rb` le fixe, quoi que dise la variable |
-| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`&nbsp;: rien n’est envoyé. Un DSN Sentry ou GlitchTip y envoie chaque rapport d’erreur (voir [Signalement des erreurs](background-and-operations.md#error-reporting))&nbsp;; il demande `require "cybertrain/error_reporter/sentry"` (ou `require "cybertrain"`) dans `bin/<app>.rb`, faute de quoi le démarrage est refusé. Un DSN illisible arrête le démarrage en nommant la partie fautive, jamais la clé. `cybertrain test` le vide sauf si `config/app.rb` l’affecte |
+| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`&nbsp;: rien n’est envoyé. Un DSN Sentry ou GlitchTip y envoie chaque rapport d’erreur (voir [Signalement des erreurs](logs-and-errors.md#error-reporting))&nbsp;; il demande `require "cybertrain/error_reporter/sentry"` (ou `require "cybertrain"`) dans `bin/<app>.rb`, faute de quoi le démarrage est refusé. Un DSN illisible arrête le démarrage en nommant la partie fautive, jamais la clé. `cybertrain test` le vide sauf si `config/app.rb` l’affecte |
 | `CYBERTRAIN_ERROR_SAMPLE_RATE` | `error_sample_rate` | `1.0`&nbsp;: la part des rapports d’erreur envoyés à Sentry, de 0.0 à 1.0, écrite en chiffres avec un `.chiffres` facultatif&nbsp;; les abonnés voient chaque rapport&nbsp;; toute autre valeur arrête le démarrage |
 | `CYBERTRAIN_RELEASE` | `release` | `""`&nbsp;: la version ou le commit envoyé avec chaque rapport d’erreur |
 | `CYBERTRAIN_WORKER` | `worker` | `true`&nbsp;; `0` ou `false` empêche un processus `server` d’exécuter les tâches planifiées, les jobs et les flux WebSocket (voir [Rôles des processus](background-and-operations.md#process-roles))&nbsp;; `./<app> worker` et `feeds` l’ignorent |
@@ -45,7 +45,7 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"`&nbsp;: le fuseau de l’application, un nom IANA comme `Asia/Tokyo`, pour `Time.zone`, les limites des jours et des mois, `Date.current`, `l` et `time_tag` (voir [Fuseaux horaires](#time-zones))&nbsp;; un fuseau absent du zoneinfo du système arrête le démarrage |
 | `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `time_zone` quand il n’est pas réglé&nbsp;: le fuseau dans lequel se lit une tâche `Scheduler.cron` sans `tz:`, un nom IANA (voir [Fuseaux horaires](#time-zones))&nbsp;; un fuseau absent du zoneinfo du système arrête le démarrage |
 | `CYBERTRAIN_JOBS_PAGE_PER_PAGE` | `jobs_page_per_page` | `50`&nbsp;: lignes par liste sur la [page des jobs](background-and-operations.md#the-jobs-page-and-the-jobs-command)&nbsp;; au moins 1 |
-| `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300`&nbsp;: secondes entre deux purges des lignes expirées du [cache](background-and-operations.md#the-cache-store), lu quand `cybertrain/cache` est requis&nbsp;; au moins 1 |
+| `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300`&nbsp;: secondes entre deux purges des lignes expirées du [cache](background-and-operations.md#the-cache-store)&nbsp;; au moins 1. Avec `cybertrain/jobs`, il est lu une seule fois, quand la purge planifiée est enregistrée, c’est-à-dire au chargement des deux et avant que `config/app.rb` s’exécute&nbsp;: définissez donc la variable. Sans les jobs, il est lu à chaque écriture dans le cache, et `c.cache_prune_interval` fonctionne aussi |
 | `CYBERTRAIN_FEED_STATUS_INTERVAL` | `feed_status_interval` | `10`&nbsp;: secondes entre deux écritures de la ligne d’état de chaque flux WebSocket (voir [Santé des flux](realtime.md#feed-health))&nbsp;; au moins 1 |
 | `CYBERTRAIN_FEED_RESTART_LIMIT` | `feed_restart_limit` | `10`&nbsp;: redémarrages du thread d’un flux dans la fenêtre au-delà desquels un processus `feeds` se termine avec le statut 1 quand le flux meurt encore (voir [Consommer des flux WebSocket](external-services.md#consuming-websocket-feeds))&nbsp;; au moins 1 |
 | `CYBERTRAIN_FEED_RESTART_WINDOW` | `feed_restart_window` | `600`&nbsp;: cette fenêtre, en secondes&nbsp;; au moins 1 |
@@ -60,7 +60,7 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_SMTP_USER` | `smtp_user` | `""`&nbsp;: pas d’AUTH&nbsp;; s’il est défini, le mailer s’authentifie avec AUTH PLAIN |
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`&nbsp;; un secret, jamais journalisé, jamais dans la bannière de démarrage ni dans un message d’erreur |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`&nbsp;: l’expéditeur qu’utilise `Mailer.deliver` quand `from:` n’est pas fourni |
-| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`&nbsp;; aussi `tls` (TLS implicite) ou `none` (texte en clair, identifiants vers le loopback uniquement)&nbsp;; les deux modes TLS demandent `require "cybertrain/net/tls"`, que `require "cybertrain"` charge |
+| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`&nbsp;; aussi `tls` (TLS implicite) ou `none` (texte en clair, identifiants vers le loopback uniquement)&nbsp;; les deux modes TLS demandent `require "cybertrain/net/tls"` dans `bin/<app>.rb`&nbsp;: `require "cybertrain"` le charge, `cybertrain/core` et `cybertrain/mailer` non ([Sous-systèmes](how-it-works.md#subsystems)) |
 | `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` dans l’environnement de test, `:smtp` dans tous les autres&nbsp;: `:test` garde chaque courriel dans `Cybertrain::Mailer.deliveries` au lieu de l’envoyer ([Tester les courriels](testing.md#testing-mail))&nbsp;; hors de l’environnement de test il démarre avec un avertissement et n’envoie rien&nbsp;; toute autre valeur arrête le démarrage&nbsp;; `cybertrain test` utilise `:test` sauf si `config/app.rb` le règle, quoi que dise la variable. |
 | `CYBERTRAIN_TEST_DATABASE` | — | `""`&nbsp;: le fichier que `cybertrain test` supprime, migre et sur lequel il exécute les tests, à la place de `storage/test.sqlite3`&nbsp;; un chemin de fichier (pas `:memory:` ni une URI `file:`). Un fichier existant n’est supprimé que si `cybertrain test` l’a créé (il marque ses bases), s’il est le `storage/test.sqlite3` de cette application ou s’il est vide&nbsp;; tout autre, et la base de développement ou de production, est refusé avec le code de sortie 2 sans rien supprimer ([Exécuter les tests](testing.md#running-the-tests)) |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`&nbsp;: la locale dans laquelle commence chaque requête, un nom comme `ja` ou `pt-BR` (voir [Locales](#locales))&nbsp;; toute autre valeur arrête le démarrage |
@@ -69,50 +69,53 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_AUTH_REMEMBER_FOR` | `auth_remember_for` | `2592000` (30 jours)&nbsp;: durée en secondes d’une connexion «&nbsp;rester connecté&nbsp;»&nbsp;; au moins 1 |
 | `CYBERTRAIN_AUTH_IDLE_TIMEOUT` | `auth_idle_timeout` | `604800` (7 jours)&nbsp;: secondes sans requête après lesquelles une connexion prend fin&nbsp;; `0` le désactive |
 
+`cybertrain test` donne à ses tests des valeurs qui lui sont propres pour
+certains de ces réglages, sauf si `config/app.rb` les affecte. Outre les quatre
+lignes qui le disent, `force_ssl` est désactivé et `CYBERTRAIN_HOSTS` est vidé
+quoi que disent les variables, `csrf` est désactivé, `upload_root` vaut
+`tmp/test_uploads`, et `smtp_from` vaut `"from@example.com"` sauf si
+`CYBERTRAIN_SMTP_FROM` est défini
+([Lancer les tests](testing.md#running-the-tests)).
+
 N’utilisez `None` (avec `CYBERTRAIN_SESSION_PARTITIONED=1`) que pour une
 application affichée dans un cadre d’un autre site&nbsp;; le navigateur doit
 atteindre l’application en HTTPS.
 
-Autres attributs aux valeurs par défaut fixes et modifiables&nbsp;: `views_root`
-(`"app/views"`), `public_root` (`"public"`), `layout`
-(`"layouts/application"`), `log_tags` (`[:request_id]`&nbsp;: les étiquettes de la
-requête sur chaque ligne de journal&nbsp;; `:remote_ip` ajoute l’adresse du client,
-`[]` n’en montre aucune, et toute autre valeur arrête le démarrage&nbsp;; voir
-[Identifiants de requête](background-and-operations.md#request-ids)), `session_cookie_name`,
-`session_max_age` (2 semaines), `session_secure` (`true` en production, ce qui
-marque le cookie de session `Secure`&nbsp;; `false` ailleurs, mais
-`SameSite=None` et `Partitioned` ajoutent `Secure` de toute façon),
-`pool_size` (4), `static_files`/`csrf` (`true`), `csrf_exempt_prefixes`
-(`[]`&nbsp;: des préfixes de chemin comme `"/api/"` dont les requêtes autres que
-GET sautent la vérification CSRF, pour un point d’accès que des programmes
-appellent avec un identifiant qui leur est propre&nbsp;; chacun doit commencer
-et finir par `/` et ne pas être `/` seul, sinon le démarrage échoue&nbsp;; le
-préfixe est comparé au chemin tel qu’envoyé, donc une graphie encodée en
-pourcent reste vérifiée&nbsp;; aucune autre route ne doit correspondre à un
-chemin sous ce préfixe, et le contrôleur exempté ne doit pas compter sur la
-session pour l’authentification, puisque la session y est tout de même
-chargée), `max_body_bytes` (10&nbsp;Mio&nbsp;: un corps de requête plus long,
-tel qu’envoyé, reçoit une 413 avant d’être lu&nbsp;; augmentez-le pour les gros
-envois de fichiers&nbsp;; la taille décompressée d’un corps gzip est bornée
-séparément par `request.decoded_body(limit)`), `max_render_depth` (12 rendus
-ouverts à la fois&nbsp;: la page et ses partiels&nbsp;; augmentez-le pour des
-partiels qui s’appellent récursivement plus profondément à juste titre&nbsp;; il
-doit valoir au moins 1, sinon le démarrage échoue). Note de mise à
-niveau&nbsp;: l’imbrication des rendus, illimitée auparavant, est désormais
-plafonnée à 12 par défaut (la page est à la profondeur 1, les partiels peuvent
-donc s’imbriquer sur 11 niveaux&nbsp;; le layout est rendu après la page et ne
-s’imbrique pas), et une application avec un arbre plus profond (commentaires en
-fil, menu de catégories) obtient une erreur de template tant qu’elle ne définit
-pas `max_render_depth`. Envois de fichiers&nbsp;: `max_upload_bytes`
-(5&nbsp;Mio par fichier envoyé&nbsp;; ne doit pas dépasser `max_body_bytes`),
-`max_multipart_parts` (128 parties, champs texte compris, au plus 4096),
-`upload_root` (`"storage/uploads"`, où écrit `Cybertrain::BlobStore`&nbsp;; créé
-au premier envoi, pas au démarrage).
+Les autres attributs n’ont pas de variable&nbsp;; `config/app.rb` les définit&nbsp;:
+
+| Attribut | Valeur par défaut | Signification |
+| --- | --- | --- |
+| `views_root` | `"app/views"` | D’où les templates sont lus en développement et en test&nbsp;; un binaire construit utilise ceux qu’il embarque |
+| `public_root` | `"public"` | Le répertoire des fichiers statiques, et là où se trouvent les pages d’erreur `public/<status>.html` |
+| `layout` | `"layouts/application"` | Le layout dans lequel chaque page est rendue&nbsp;; ignoré quand le fichier n’existe pas |
+| `secret_key_path` | `"tmp/secret_key"` | Où le développement et les tests conservent leur secret généré |
+| `log_tags` | `[:request_id]` | Les étiquettes de la requête sur chaque ligne de journal&nbsp;: `:remote_ip` ajoute l’adresse du client, `[]` n’en montre aucune, toute autre valeur arrête le démarrage ([Identifiants de requête](logs-and-errors.md#request-ids)) |
+| `session_cookie_name` | `"_cybertrain_session"` | Le nom du cookie de session |
+| `session_max_age` | `1209600` (2 semaines) | Le `Max-Age` du cookie de session, en secondes&nbsp;; il repart à chaque changement de la session |
+| `session_absolute_max_age` | `1209600` (2 semaines) | La durée de vie maximale d’une session en secondes, aussi souvent qu’elle serve&nbsp;: un cookie plus ancien est chargé comme une session vide. `0` supprime la limite |
+| `session_secure` | `true` en production, `false` ailleurs | Marque le cookie de session `Secure`&nbsp;; `SameSite=None` et `Partitioned` ajoutent `Secure` de toute façon |
+| `pool_size` | `4` | Connexions SQLite dans le pool |
+| `static_files` | `true` | Si `public/` est servi&nbsp;; désactivez-le quand un reverse proxy le sert |
+| `csrf` | `true` | Si une requête autre que GET doit porter le jeton CSRF (403 sans lui) |
+| `csrf_exempt_prefixes` | `[]` | Des préfixes de chemin dont les requêtes autres que GET sautent la vérification CSRF (voir plus bas) |
+| `max_body_bytes` | `10485760` (10&nbsp;Mio) | Un corps de requête plus long, tel qu’envoyé, reçoit une 413 avant d’être lu&nbsp;; augmentez-le pour les gros envois de fichiers. La taille décompressée d’un corps gzip est bornée séparément, par `request.decoded_body(limit)` |
+| `max_render_depth` | `12` | Rendus ouverts à la fois, la page et ses partiels&nbsp;: la page est à la profondeur 1, les partiels s’imbriquent donc sur 11 niveaux (le layout est rendu après la page et ne s’imbrique pas). Au-delà, c’est une erreur de template&nbsp;; au moins 1, sinon le démarrage échoue |
+| `max_upload_bytes` | `5242880` (5&nbsp;Mio) | La taille maximale d’un fichier envoyé&nbsp;; ne doit pas dépasser `max_body_bytes` |
+| `max_multipart_parts` | `128` | Le nombre maximal de parties d’un corps multipart, champs texte compris&nbsp;; au plus 4096 |
+| `upload_root` | `"storage/uploads"` | Où écrit `Cybertrain::BlobStore`&nbsp;; créé au premier envoi, pas au démarrage |
+
+**Préfixes exemptés de CSRF&nbsp;:** `csrf_exempt_prefixes` sert à un point
+d’accès que des programmes appellent avec un identifiant qui leur est propre,
+comme `"/api/"`. Chaque préfixe doit commencer et finir par `/` et ne pas être
+`/` seul, sinon le démarrage échoue. Il est comparé au chemin tel qu’envoyé,
+donc une graphie encodée en pourcent reste vérifiée. Aucune autre route ne doit
+correspondre à un chemin sous ce préfixe, et le contrôleur exempté ne doit pas
+compter sur la session pour l’authentification, puisque la session y est tout
+de même chargée.
 
 **Jobs et flux&nbsp;:** en plus des variables ci-dessus, `config/app.rb` règle
 `scheduler_interval` (1&nbsp;s, le tick du scheduler), `job_poll_interval`
-(1&nbsp;s, l’attente d’un thread de jobs inoccupé&nbsp;; c’était 5 avant les
-threads de jobs), `job_max_attempts` (5), `job_heartbeat_interval`
+(1&nbsp;s, l’attente d’un thread de jobs inoccupé), `job_max_attempts` (5), `job_heartbeat_interval`
 (30&nbsp;s), `job_heartbeat_stale` (300&nbsp;s, plus que l’intervalle),
 `job_drain_timeout` (10&nbsp;s, le temps que `SIGTERM` attend les jobs en
 cours) et `scheduler_lease_ttl` (30&nbsp;s, au moins deux fois
@@ -206,7 +209,10 @@ redéploiements, les retours arrière et les sauvegardes.
 [Kamal 2](https://kamal-deploy.org) a besoin&nbsp;: un `Dockerfile` qui exécute
 `cybertrain setup` et `cybertrain build` dans une étape de build Ubuntu et
 copie `dist/` dans une étape allégée de la même version (migration au
-démarrage, puis service sur `0.0.0.0:3000`), un `.dockerignore`,
+démarrage, puis service sur `0.0.0.0:3000`, avec `SPINEL_GC_FULL_INTERVAL=8`
+défini, une variable du ramasse-miettes de Spinel que
+[docs/deploy.en.md](../deploy.en.md) explique et définit aussi pour systemd),
+un `.dockerignore`,
 `config/deploy.yml` (kamal-proxy avec Let’s Encrypt en façade, le contrôle de
 santé sur `public/up.html`, le fichier SQLite sur un volume en
 `/app/storage`) et `.kamal/secrets` (`KAMAL_REGISTRY_PASSWORD` et
@@ -252,8 +258,10 @@ déclaré avec sa variable et sa valeur par défaut, et la bannière de démarra
 affiche les valeurs courantes (`=> Settings: base_url="" worker=true ...`)&nbsp;;
 un réglage `secret: true` n’apparaît dans les deux que par son nom, sous la
 forme `[FILTERED]`. Il n’y a pas d’accesseur `Cybertrain.config.base_url`&nbsp;:
-Spinel n’a pas de `define_method`, les lecteurs sont donc des méthodes typées
-qui prennent le nom.
+un réglage se déclare par un appel sur l’objet de configuration, et Spinel
+compile `define_method` dans un corps de classe mais refuse celui qu’appelle
+une méthode d’instance&nbsp;; les lecteurs sont donc des méthodes typées qui
+prennent le nom.
 
 ### Locales
 
@@ -279,7 +287,7 @@ convertir une heure la change pour tous les threads du processus.
 `Cybertrain::TimeZone` lit plutôt les fichiers de fuseaux du système&nbsp;:
 `/usr/share/zoneinfo/<name>`, ou `$TZDIR/<name>` quand `TZDIR` est défini
 (installez le paquet `tzdata` dans une image de conteneur allégée). Il analyse
-les versions 1 à 4 de TZif (RFC 8536), y compris la règle TZ POSIX dont dépend
+les versions 1 à 4 de TZif (RFC 9636, qui a remplacé la RFC 8536), y compris la règle TZ POSIX dont dépend
 un fichier «&nbsp;slim&nbsp;» après sa dernière transition, et met chaque
 fuseau en cache pour toute la durée de vie du processus (copie à l’écriture,
 donc les recherches depuis plusieurs workers ne prennent aucun verrou).
@@ -345,3 +353,8 @@ refusent un fuseau inconnu comme le démarrage, avec
 sortie 1, avant d’ouvrir la base. Dans `cybertrain test`, chaque test
 commence dans le fuseau configuré. ([Dates et heures](i18n.md#dates-and-times) donne les formats de
 `l`.)
+
+## Mise à jour
+
+La liste des réglages et des valeurs par défaut qu’une version change
+figure par version dans [Mise à jour](upgrading.md#notes-by-version).

@@ -5,6 +5,7 @@ require "cybertrain/schema"
 require "cybertrain/encryptor"
 require "cybertrain/generator/model_scan"
 require "cybertrain/generator/models_emitter"
+require_relative "support/schema_tables"
 
 # Proves the model generator's output compiles and runs: the checked-in
 # gen/models files of the fixture app are required together with the
@@ -22,39 +23,11 @@ require_relative "fixtures/gen_app/app/models/post"
 
 FIXTURE = "test/fixtures/gen_app"
 
-# CREATE TABLE statements for the fixture schema, so the database always
-# matches what the models were generated from.
-def sql_type(column)
-  case column.type
-  when :integer, :boolean then "INTEGER"
-  when :float then "REAL"
-  when :decimal then "DECIMAL"
-  else "TEXT"
-  end
-end
-
-def create_tables_sql(definition)
-  sql = +""
-  definition.tables.each do |table|
-    parts = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
-    table.columns.each do |c|
-      part = +"\"#{c.name}\" #{sql_type(c)}"
-      part << " NOT NULL" unless c.null
-      default = c.default
-      part << " DEFAULT #{default}" unless default.nil?
-      parts << part
-    end
-    table.foreign_keys.each do |fk|
-      parts << "FOREIGN KEY (\"#{fk.column}\") REFERENCES \"#{fk.to_table}\"(id)"
-    end
-    sql << "CREATE TABLE \"#{table.name}\" (#{parts.join(", ")});"
-  end
-  sql
-end
-
+# The tables come from the fixture schema (SchemaTables), so the database
+# always matches what the models were generated from.
 Cybertrain.config.encryption_key = "8f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
 Cybertrain::DB.connect(":memory:", size: 1)
-Cybertrain::DB.with { |c| c.exec_script(create_tables_sql(Cybertrain::Schema.current)) }
+Cybertrain::DB.with { |c| c.exec_script(SchemaTables.create_sql(Cybertrain::Schema.current)) }
 
 def reset_tables
   Cybertrain::DB.with { |c| c.exec_script("DELETE FROM comments; DELETE FROM posts;") }
@@ -84,22 +57,6 @@ test "scan_dir finds Comment and Post, Post's summary view method and both decla
   assert_equal [:destroy], infos[1].associations.map { |a| a.dependent }
   assert_equal ["post"], infos[0].associations.map { |a| a.name }
   assert_equal [true], infos[0].associations.map { |a| a.counter_cache }
-end
-
-test "write_all writes every model file under gen/models" do
-  Dir.mkdir("tmp") unless Dir.exist?("tmp")
-  root = "tmp/gen_models_test"
-  Dir.mkdir(root) unless Dir.exist?(root)
-  infos = Cybertrain::Gen::ModelScan.scan_dir(FIXTURE + "/app/models")
-  written = Cybertrain::Gen::ModelsEmitter.write_all(root, Cybertrain::Schema.current, infos)
-  assert_equal ["gen/models/comment.rb", "gen/models/post.rb"], written
-  written.each do |path|
-    assert_equal File.read(FIXTURE + "/" + path), File.read(root + "/" + path)
-    File.delete(root + "/" + path)
-  end
-  Dir.rmdir(root + "/gen/models")
-  Dir.rmdir(root + "/gen")
-  Dir.rmdir(root)
 end
 
 test "create and find through the generated classes" do

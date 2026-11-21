@@ -1,6 +1,6 @@
 module Cybertrain
   module Gen
-    # Writes gen/console.rb (spec 7): the tables `./app console` reaches the
+    # Writes gen/console.rb (docs/design.md D41): the tables `./app console` reaches the
     # generated models through, since a console line names a model by a
     # String and Spinel has no `const_get` (spikes/NOTES.md rule 1).
     # Gen::Console.scope / records / create are `case`s over the model
@@ -59,8 +59,8 @@ module Cybertrain
       # by the model; an unknown name goes to `unknown`, one of
       # Cybertrain::Console's raising helpers, which raises UnknownModel
       # listing the models and is typed as returning what the arm returns
-      # (a Relation for scope, a Model for create), so an app with no
-      # tables still compiles (NOTES rule 79).
+      # (a Relation for scope, a Model for create: NOTES rule 124), which
+      # an application with no tables gets as the method's whole body.
       def self.name_case(models, template, unknown)
         out = +""
         if models.empty?

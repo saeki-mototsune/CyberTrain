@@ -1,7 +1,6 @@
 # Cybertrain::Dev::Supervision -- what a development server learns from
 # `cybertrain server` when that command supervises it (the CRuby preview's
-# supervisor, docs/superpowers/specs/2026-11-12-cruby-preview-design.md
-# section 6): the listening descriptor it inherits, where to say that it is
+# supervisor, docs/design.md D87): the listening descriptor it inherits, where to say that it is
 # ready, where to leave the text of a boot failure, the state file and the
 # generation it was started for. Each answer reads ENV when asked; nothing
 # is cached, so a test can set and unset the variables.
@@ -66,7 +65,13 @@ module Cybertrain
       end
 
       # Tells the supervisor the listener accepts: writes the generation
-      # into the readiness file. Nothing without the variable.
+      # into the readiness file. Nothing without the variable. A file, not
+      # a line on STDOUT or a descriptor to write to: the same child code
+      # runs compiled by Spinel and under CRuby, and writing a file is the
+      # same on both; and a child's STDOUT is the supervisor's own (the
+      # terminal, Processes#child_out), never a pipe. It was left unpiped
+      # for fear a pipe would delay the application's log lines; that was
+      # never measured (STDERR's pipe was: Processes::STDERR_LINES).
       # @return [nil]
       def self.mark_ready
         path = ready_file

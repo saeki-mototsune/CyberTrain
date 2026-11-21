@@ -55,8 +55,8 @@ test "references adds an implicit foreign key column, index and foreign key" do
   refute index.unique
   assert_equal "index_comments_on_post_id", index.name
 
-  assert_equal 1, comments.references.size
-  fk = comments.references[0]
+  assert_equal 1, comments.foreign_keys.size
+  fk = comments.foreign_keys[0]
   assert_equal "comments", fk.from_table
   assert_equal "post_id", fk.column
   assert_equal "posts", fk.to_table
@@ -79,15 +79,15 @@ test "references and add_foreign_key inflect irregular and compound names throug
   end
 
   comments = definition.table("comments")
-  assert_equal 4, comments.references.size
-  assert_equal "person_id", comments.references[0].column
-  assert_equal "people", comments.references[0].to_table
-  assert_equal "blog_post_id", comments.references[1].column
-  assert_equal "blog_posts", comments.references[1].to_table
-  assert_equal "person_id", comments.references[2].column
-  assert_equal "people", comments.references[2].to_table
-  assert_equal "blog_post_id", comments.references[3].column
-  assert_equal "blog_posts", comments.references[3].to_table
+  assert_equal 4, comments.foreign_keys.size
+  assert_equal "person_id", comments.foreign_keys[0].column
+  assert_equal "people", comments.foreign_keys[0].to_table
+  assert_equal "blog_post_id", comments.foreign_keys[1].column
+  assert_equal "blog_posts", comments.foreign_keys[1].to_table
+  assert_equal "person_id", comments.foreign_keys[2].column
+  assert_equal "people", comments.foreign_keys[2].to_table
+  assert_equal "blog_post_id", comments.foreign_keys[3].column
+  assert_equal "blog_posts", comments.foreign_keys[3].to_table
 end
 
 test "references can skip the foreign key" do
@@ -99,7 +99,7 @@ test "references can skip the foreign key" do
 
   comments = definition.table("comments")
   assert_equal 1, comments.indexes.size
-  assert comments.references.empty?
+  assert comments.foreign_keys.empty?
 end
 
 test "tables are kept sorted by name regardless of declaration order" do
@@ -130,8 +130,8 @@ test "add_index and add_foreign_key can be declared outside create_table" do
   assert posts.indexes[0].unique
   assert_equal "index_posts_on_slug", posts.indexes[0].name
 
-  assert_equal 1, posts.references.size
-  fk = posts.references[0]
+  assert_equal 1, posts.foreign_keys.size
+  fk = posts.foreign_keys[0]
   assert_equal "author_id", fk.column
   assert_equal "authors", fk.to_table
 end
@@ -341,9 +341,9 @@ end
 
 test "references takes on_delete: and index:" do
   trades = rails_types_definition.table("trades")
-  assert_equal 2, trades.references.size
-  assert_equal :cascade, trades.references[0].on_delete
-  assert_equal :nullify, trades.references[1].on_delete
+  assert_equal 2, trades.foreign_keys.size
+  assert_equal :cascade, trades.foreign_keys[0].on_delete
+  assert_equal :nullify, trades.foreign_keys[1].on_delete
   assert_equal ["index_trades_on_post_id"], trades.indexes.map { |i| i.name }
 end
 
@@ -358,7 +358,7 @@ test "a foreign key defaults to on_delete :no_action" do
     end
     s.add_foreign_key "comments", "posts", column: "author_id", on_delete: :restrict
   end
-  refs = definition.table("comments").references
+  refs = definition.table("comments").foreign_keys
   assert_equal :no_action, refs[0].on_delete
   assert_equal :restrict, refs[1].on_delete
 end

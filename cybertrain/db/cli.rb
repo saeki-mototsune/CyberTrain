@@ -116,7 +116,7 @@ module Cybertrain
           puts "database already exists: #{path}"
           return 0
         end
-        Config.make_directory(File.dirname(path)) unless sqlite_name?(path)
+        ConfigFiles.make_directory(File.dirname(path)) unless sqlite_name?(path)
         Connection.new(path).close
         puts "created #{path}"
         0
@@ -124,7 +124,7 @@ module Cybertrain
 
       def self.migrate(root)
         path = resolved_path(root)
-        Config.make_directory(File.dirname(path)) unless sqlite_name?(path)
+        ConfigFiles.make_directory(File.dirname(path)) unless sqlite_name?(path)
         connection = Connection.new(path)
         begin
           Migrator.new(connection).migrate(Cybertrain::Migration.all)
@@ -296,7 +296,7 @@ module Cybertrain
           dir = target.end_with?("/") && target.size > 1 ? target[0, target.size - 1] : target
           # Backups hold password digests and session tokens: a directory
           # made here is the owner's alone.
-          Config.make_directory(dir, 0o700)
+          ConfigFiles.make_directory(dir, 0o700)
           stamp = now.strftime("%Y%m%dT%H%M%SZ")
           file = "#{prefix}-#{stamp}.sqlite3"
           path = File.join(dir, file)
@@ -330,8 +330,7 @@ module Cybertrain
       # renames it over target, so target is either what it was or the whole
       # new copy, never a partial one. On any failure the temporary
       # directory and its contents go and the error is re-raised. The rescue
-      # sits in this plain method (NOTES rules 32/45); JSON::NestingError is
-      # named first (rule 61).
+      # sits in this plain method (NOTES rules 32/45).
       def self.backup_to(source, target, force)
         raise Error, "#{target} is a directory" if File.directory?(target)
         parent = File.dirname(target)
@@ -357,7 +356,7 @@ module Cybertrain
           File.chmod(0o600, tmp)
           sync_file(tmp)
           File.rename(tmp, target)
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           remove_temporary(holder, tmp)
           raise e
         end

@@ -1,5 +1,5 @@
 ---
-source_sha256: 7352ab5630a6ce2fdcd80864869365d02d3ffb12e944d4f616a4a29a3a3e3cb1
+source_sha256: 482060de855362691c97a23308a1211859f96d1d52a161c7acda863db228e640
 ---
 # バックグラウンド処理と運用
 
@@ -32,7 +32,7 @@ Cybertrain::Scheduler.cron("0 4 * * *", "nightly digest", job: "DigestJob")
 Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
 ```
 
-- **どこで実行されるか。** ジョブは `job_threads` 本のジョブスレッド（3、`CYBERTRAIN_JOB_THREADS`）で、定期タスクはそれ専用の 1 本のスケジューラーのスレッドで実行されるので、長いジョブがタスクを遅らせることはありません。どちらも、バイナリが配信を行うとき（`./<app>`、`./<app> server`）か、ワーカーとして動くとき（`./<app> worker`。[プロセスの役割](#process-roles)を参照）に、起動処理がデータベースに接続し `SPINEL_WORKERS` を設定した後で始まります。`migrate`、`db ...`、`jobs ...`、`console`、`Main.command` のコマンドでは決して始まらず、`Cybertrain::Test::Client` でも始まりません。ジョブを require していれば、ジョブスレッドは、ジョブクラスのないアプリケーションでも、こうしたプロセスのすべてで始まります。フレームワークが自分のメールのジョブ（`Mailer.deliver_later`、[メールを送る](external-services.md#sending-e-mail)）を登録するからです。
+- **どこで実行されるか。** ジョブは `job_threads` 本のジョブスレッド（3、`CYBERTRAIN_JOB_THREADS`）で、定期タスクはそれ専用の 1 本のスケジューラーのスレッドで実行されるので、長いジョブがタスクを遅らせることはありません。どちらも、バイナリが配信を行うとき（`./<app>`、`./<app> server`）か、ワーカーとして動くとき（`./<app> worker`。[プロセスの役割](#process-roles)を参照）に、起動処理がデータベースに接続し `SPINEL_WORKERS` を設定した後で始まります。`migrate`、`db ...`、`jobs ...`、`console`、`Main.command` のコマンドでは決して始まらず、`Cybertrain::Test::Client` でも始まりません。ジョブスレッドが始まるのは、ジョブの種類が 1 つでも登録されているときだけです：ジョブクラス、`Job.handle` のブロック、またはフレームワーク自身のメールのジョブで、これは `require "cybertrain/mailer/later"`（したがって `require "cybertrain"` も）が登録します（[メールを送る](external-services.md#sending-e-mail)）。1 つもなければ、ログに `No job handler registered; job threads not started` と出て、定期タスクはそのまま実行されます。
 - **テーブル。** ジョブは `cybertrain_jobs` の行です。このテーブルはフレームワークが自分で作り（最初の使用時に `CREATE TABLE IF NOT EXISTS`）、`db/schema.rb` には含めません。`DB.transaction` の中では、行は他のものと一緒にコミットまたはロールバックされます。各ジョブスレッドは、期限の来た最も古い行を短い `BEGIN IMMEDIATE` トランザクションで確保し、トランザクションの外で実行して、次を探します。期限の来たものがなければ `job_poll_interval` 秒（1）待つので、リクエストがキューに入れたジョブは 1 秒ほどで始まります。行の状態は `queued`、`running`、`done`、`failed`（再試行を使い切ったもの。調べられるように残ります）、`discarded`（`discard_on` が止めたもの）のどれかです。
 
 ### ジョブクラス
@@ -72,9 +72,9 @@ Cybertrain::Scheduler.every(300, "refresh rates") { Rates.refresh }
 
 ### 再試行と破棄
 
-- **デフォルトのポリシー。** クラスのどの行にも当てはまらない例外（と `Job.handle` のブロックのあらゆる例外）は、1 分、5 分、15 分、その後は 60 分後に再試行され、`last_error` には `Class: message`（最大 1000 文字）が入ります。これは `job_max_attempts`（5）回の試行が失敗するまで続き、その後、行は `failed` になります。ジョブのコードが出す `NotImplementedError`（まだ書いていないヘルパー）、`SystemStackError`、その他の `ScriptError` も、どれも `StandardError` ではありませんが、このポリシーに従います。`StandardError` の外のそれ以外の例外はログに出され（`ERROR Job thread N: ...`）、[報告](#error-reporting)され、ジョブのスレッドは動き続け、行は回復（後述）が拾うまで `running` のままです。
+- **デフォルトのポリシー。** クラスのどの行にも当てはまらない例外（と `Job.handle` のブロックのあらゆる例外）は、1 分、5 分、15 分、その後は 60 分後に再試行され、`last_error` には `Class: message`（最大 1000 文字）が入ります。これは `job_max_attempts`（5）回の試行が失敗するまで続き、その後、行は `failed` になります。ジョブのコードが出す `NotImplementedError`（まだ書いていないヘルパー）、`SystemStackError`、その他の `ScriptError` も、どれも `StandardError` ではありませんが、このポリシーに従います。`StandardError` の外のそれ以外の例外はログに出され（`ERROR Job thread N: ...`）、[報告](logs-and-errors.md#error-reporting)され、ジョブのスレッドは動き続け、行は回復（後述）が拾うまで `running` のままです。
 - **`retry_on Klass, wait: 60, attempts: 5`。** `wait:` は秒数（省略すると Rails のデフォルトの 3）か `:polynomially_longer`（`attempts ** 4 + 2` 秒：3、18、83、258、...）です。`attempts:`（省略すると 5）は、最初の 1 回を含むすべての試行を数えます。複数の行を書けます。例外に当てはまる（サブクラスも当てはまる）最初の行が勝つので、狭いクラスを先に書いてください。`discard_on ArgumentError` より前に `retry_on StandardError` を書くと、`ArgumentError` は再試行されます。
-- **`discard_on Klass`** はすぐに止めます。行は `discarded` になり、`last_error` にエラーが入り、二度と再試行されません。ログには `ERROR [<Kind> <id>] [<request id>] job <id> (<Kind>) discarded: <Class>: <message>` と出て（リクエストがキューに入れたジョブならリクエスト ID 付き）、破棄は 1 回[報告](#error-reporting)されます。`job.max_attempts` は `job.attempt` と同じです。
+- **`discard_on Klass`** はすぐに止めます。行は `discarded` になり、`last_error` にエラーが入り、二度と再試行されません。ログには `ERROR [<Kind> <id>] [<request id>] job <id> (<Kind>) discarded: <Class>: <message>` と出て（リクエストがキューに入れたジョブならリクエスト ID 付き）、破棄は 1 回[報告](logs-and-errors.md#error-reporting)されます。`job.max_attempts` は `job.attempt` と同じです。
 - **`def retries_exhausted(error)`** は、`retry_on` の行の試行回数を使い切ったとき、行が本当に `failed` になった後で実行されます（別のワーカーが引き継いだ試行では決して実行されません。その試行はまだ成功するかもしれないからです）。Rails の `retry_on ... do |job, error|` のブロックにあたります。これが出した例外はログに出ます。
 - **回収**（下記）もクラスに従います。`attempts: 20` のクラスの行で、5 回目の試行中にプロセスが死んだものは、`failed` ではなくキューに戻されます。
 
@@ -97,7 +97,7 @@ Cybertrain::Scheduler.cron("*/5 * * * *", "poll feeds", catch_up: true) { Feeds.
 - **タイムゾーン。** `tz:` は IANA のゾーンを指定します（[タイムゾーン](configuration.md#time-zones)）。指定がなければ、タスクは `scheduler_tz`（`CYBERTRAIN_SCHEDULER_TZ`。設定しなければアプリケーションの `time_zone` に従います）で読まれます。夏時間で飛ばされる時刻は、その日は実行されません。秋の切り替えで繰り返される 1 時間では、時のフィールドが `*` で始まる式は両方の回に実行され、時が固定された式は 1 回だけ実行されます。Vixie cron と同じです。
 - **`job:`** はジョブの種類（String のクラス名か、`Job.handle` の種類）を、`args:` はその引数を指定します。このときタスクはジョブをキューに入れるだけです。本格的な作業のあるタスクはこうすべきです。未知の種類は、登録された種類の一覧を出して起動を止めます。
 - **時刻表** はデータベースに保存されます（`cybertrain_schedules`。`db/schema.rb` には含めません）。各タスクが最後に実行された時刻と、次に実行される時刻です。再起動しても、別のプロセスが主導権を取っても、そこから続きます。何も動いていない間に時刻が過ぎた `every` のタスクは、起動時に 1 回実行されます。何も動いていない間に過ぎた `cron` の枠は飛ばされます（cron の決まり）。ただしタスクが `catch_up: true` なら、起動時に 1 回実行されます。プロセスは動いていたのに、どのリーダーも実行しなかった枠（リースが持ち主を変えたとき）は、引き継いだときに 1 回実行されます。名前を変えたり消したりしたタスクの行は、次の起動まで残ります。まだ一度も実行されていないタスクは、前のリリースが保存した次の実行時刻より今のスケジュールのほうが早ければ、今のスケジュールに従います（初回の前に毎週から毎時に変えたタスクは、1 時間以内に実行されます）。
-- **タスクの実行のされ方。** ブロックはスケジューラーのスレッドで、一度に 1 つずつ実行されます。各実行は rescue で包まれており、`ERROR [schedule:name] Scheduled task "name" failed: ...` をログに出して報告し、ループは続きます。ブロックは引数を取りません（Spinel には `instance_eval` がありません）。SQLite の呼び出しは戻るまで OS のワーカーを占有します。`SPINEL_WORKERS=1`（デフォルト）では、長いクエリはその間すべてのリクエストとほかのすべてのスレッドを止めてしまいます。本格的な作業のあるタスクはジョブに任せ（`job:`、またはブロックから `Job.enqueue`）、大きな作業は分割してください（1 回の実行で 1000 行、項目ごとにジョブを 1 つ）。`Cybertrain::Scheduler.last_tick` は最後のティックのエポック秒で、自前のヘルスチェックに使えます。
+- **タスクの実行のされ方。** ブロックはスケジューラーのスレッドで、一度に 1 つずつ実行されます。各実行は rescue で包まれており、`ERROR [schedule:name] Scheduled task "name" failed: ...` をログに出して報告し、ループは続きます。ブロックは引数を取らず、その中の `self` はスケジューラーではありません。スケジューラーは保存しておいたブロックを呼び出しますが、Spinel は保存したブロックの `instance_exec` を拒むためです（spikes/NOTES.md のルール 2）。SQLite の呼び出しは戻るまで OS のワーカーを占有します。`SPINEL_WORKERS=1`（デフォルト）では、長いクエリはその間すべてのリクエストとほかのすべてのスレッドを止めてしまいます。本格的な作業のあるタスクはジョブに任せ（`job:`、またはブロックから `Job.enqueue`）、大きな作業は分割してください（1 回の実行で 1000 行、項目ごとにジョブを 1 つ）。`Cybertrain::Scheduler.last_tick` は最後のティックのエポック秒で、自前のヘルスチェックに使えます。
 
 ### ジョブページと `jobs` コマンド
 
@@ -133,12 +133,9 @@ end
 - **停止。** `SIGTERM` を受けると、ジョブスレッドは新しいジョブの確保をやめ、プロセスは実行中のジョブを最大 `job_drain_timeout`（10 秒）待ちます。それでも実行中のジョブの行は `running` のまま残ります。ハートビートは止まっているので、古くなった時点で別のプロセスがもう一度実行します。
 - **テスト。** `WelcomeJob.perform_now(args)` はジョブを 1 つ、`Cybertrain::Scheduler.run_due(now)` はティックを 1 回、`Cybertrain::Job.work_one(now)` はキューのジョブを 1 つ、自分で選んだエポック時刻で実行するので、テストがスリープすることはありません。アサーションは[ジョブのテスト](testing.md#testing-jobs)にあります。
 
-### 0.4 からの更新
+### ジョブのアップグレード
 
-- `cybertrain_jobs` に `concurrency_key` の列と `discarded` の状態が加わります。テーブルに最初に触れたプロセスが列を足します。状態を列挙するコード（`Job.state_count` を使うダッシュボード）は `discarded` を足してください。`Job.prune_done` が消すのは、これまでどおり `done` の行だけです。
-- `every` のタスクは、再起動の後に最初からやり直すのではなく、時刻表から続きます。プロセスが止まっている間に過ぎた間隔は、起動時に 1 回実行されます。
-- 既存の種類にキーを与えるとき（`limits_concurrency ... key:`）：ほかの更新と同じく、最初の新しいプロセスが起動する前に古いプロセスをすべて止めてください（[プロセスの役割](#process-roles)）。最初の新しいプロセスが、それ以前にキューに入った `queued` の行にキーを付けます（ペイロードにそのフィールドがない行の id はログに出します）。古いプロセスが残した `running` の行は、回収されるときにキーが付きます。
-- `jobs` は組み込みのコマンドになりました。`jobs` という名前のアプリケーションのコマンドは、名前を変えてください。
+ジョブと定期タスクについてリリースが変えることは、[アップグレード](upgrading.md#notes-by-version) にバージョンごとに載っています。
 
 まだないもの：ジョブの優先度、キューの名前と一意性、テスト用のインラインのジョブモード（テストは `perform_now` と `perform_enqueued_jobs` でまかなえます）。設計：`docs/design.md` D28 と D51〜D53。
 
@@ -155,8 +152,8 @@ end
 - `worker` と `feeds` はバナー（`=> worker: 3 job threads, 2 scheduled tasks`）を出し、`SIGTERM` か `SIGINT`（Ctrl-C）まで動き、それからサーバーと同じように止まります。これらは常に自分の作業を行います：Web の役割のために設定した `CYBERTRAIN_WORKER=0` では止まりません。
 - 名前を付けた `feeds` はその購読だけを動かし（フィードごとに 1 つのコンテナー）、未知の名前は、登録された名前の一覧を出して起動を止めます。フィードを専用のプロセスで動かすときは、サーバーに `CYBERTRAIN_WORKER=0` を設定してください。そうしないと、どのプロセスもすべてのフィードを受信します。
 - `feeds` のプロセスはスレッドが死んだフィードを再起動し、同じフィードが死に続けると（`feed_restart_window` のうちに `feed_restart_limit` 回の再起動）終了ステータス 1 で終わります。なので再起動ポリシーの下で動かしてください（Docker の `restart: unless-stopped`、systemd の `Restart=always`）。詳しくは[WebSocket フィードを購読する](external-services.md#consuming-websocket-feeds)にあります。`./<app> feeds status` は、各フィードが最後に報告した状態を表示します。
-- よくある分け方：プロキシの後ろに `CYBERTRAIN_WORKER=0` の `server`、1 つ以上の `worker`、購読があれば `feeds`。`cybertrain new` は `config/deploy.yml` に `web` と `worker` の役割（とコメントにした `feeds`）を書きます。systemd のユニットは [docs/deploy.en.md](../deploy.en.md) のパート 7「Splitting the roles」にあります。
-- **ハートビートのないリリースから上げるとき**：最初の新しいプロセスを起動する前に、古いプロセスをすべて止めてください。古いプロセスはハートビートを書かないので、新しいワーカーは、古いワーカーがまだ実行しているジョブを放棄されたものとして取ってしまいます。
+- よくある分け方：プロキシの後ろに `CYBERTRAIN_WORKER=0` の `server`、1 つ以上の `worker`、購読があれば `feeds`。`cybertrain new` は `config/deploy.yml` に `web` の役割を書き、`worker` と `feeds` の役割はコメントにしておきます。`require "cybertrain/jobs"` を追加する `cybertrain generate job` と `generate authentication` が、worker の役割のコメントを外します。systemd のユニットは [docs/deploy.en.md](../deploy.en.md) のパート 9「Splitting the roles」にあります。
+- 注意点が求めるアップグレードでは、最初の新しいプロセスが起動する前に、古いリリースのプロセスをすべて止めます（[アップグレード：デプロイ](upgrading.md#deploy)）。
 - `Cybertrain::Main.worker?(ARGV)` と `Main.feeds?(ARGV)` は、`Main.server?(ARGV)` と同じく、`bin/<app>.rb` にどの役割を起動しているかを教えます。
 - `worker` には `bin/<app>.rb` に `require "cybertrain/jobs"` が、`feeds` には `require "cybertrain/feeds"`（`cybertrain/websocket` が読み込みます）が必要です。ないと、バイナリはどの行が足りないかを表示して 1 で終了します。
 
@@ -175,7 +172,7 @@ count = Cybertrain::Cache.fetch_int("articles/count", expires_in: 60) { Article.
 Cybertrain::Cache.write("import-lock", "1", expires_in: 300, unless_exist: true)   # 書いたときに true
 ```
 
-- **値は String。** `fetch(key, expires_in:, race_condition_ttl:) { String }` は有効な値を返すか、ブロックを実行してその戻り値を保存します。`fetch_hash`、`fetch_array`、`fetch_int` は JSON か Integer のテキストを保存し、取り出すときに解釈するので、壊れたセルは期限が切れてブロックがもう一度実行されるまで `{}`、`[]`、`0` として読まれます（Spinel には `Marshal` がなく、1 つのメソッドは 1 つの型しか返せません）。残りは `read(key)`（String か nil）、`write(key, value, expires_in:, unless_exist:)`、`delete`、`exist?`、`increment(key, by: 1, expires_in:)`（1 つの文。期限の切れたカウンターは `by` からやり直します。`expires_in:` はカウンターの開始時にだけ期限を決めるので、1 分間のカウンターはその 1 分を数えます）、`clear` です。
+- **値は String。** `fetch(key, expires_in:, race_condition_ttl:) { String }` は有効な値を返すか、ブロックを実行してその戻り値を保存します。`fetch_hash`、`fetch_array`、`fetch_int` は JSON か Integer のテキストを保存し、取り出すときに解釈するので、壊れたセルは期限が切れてブロックがもう一度実行されるまで `{}`、`[]`、`0` として読まれます（セルに入るのはテキストで、`Marshal` のダンプではありません。キャッシュが返す型ごとに、別の名前のメソッドがあります）。残りは `read(key)`（String か nil）、`write(key, value, expires_in:, unless_exist:)`、`delete`、`exist?`、`increment(key, by: 1, expires_in:)`（1 つの文。期限の切れたカウンターは `by` からやり直します。`expires_in:` はカウンターの開始時にだけ期限を決めるので、1 分間のカウンターはその 1 分を数えます）、`clear` です。
 - **期限。** `expires_in:` は秒数です。デフォルトの `0` は期限切れになりません（負の値も同じです）。`race_condition_ttl: n`：行の期限が切れていると、最初の呼び出し元がそれを `n` 秒延ばして新しい値を計算し、その間ほかの呼び出し元は古い値を読み続けます。Rails と同じです。これがなければ、期限の切れたキーの呼び出し元が全員計算します。例外を出したブロックは何も書きません。
 - **保存先。** 行は `cybertrain_cache` にあります。このテーブルはフレームワークが最初の使用時に作り、`db/schema.rb` には含めません。メモリには何も保持しません。読み出しはどれも SELECT で、SQLite はそのページキャッシュから答えます。書き込みはどれもデータベースの書き込みロックを取り、自分の行を書くリクエストはそれを待ちます。忙しいリクエストの経路で書くのではなく、ジョブが作るものや、変わるよりはるかに頻繁に読まれる値をキャッシュしてください。
 - **掃除。** ジョブが読み込まれていれば、このファイルを require すると、定期タスク `"cybertrain cache prune"` が登録されます。これは `cache_prune_interval` 秒（300、`CYBERTRAIN_CACHE_PRUNE_INTERVAL`）ごとに、期限の切れた行を 1 文あたり 1000 行ずつ消します。ジョブがなければキャッシュが自分で掃除します：プロセスの最初の書き込みと、`cache_prune_interval` ごとの最初の書き込みが、期限の切れた行を最大 1000 行消します。間隔はファイルを require したときに読まれます。環境変数を設定するか、require より前に実行される `Cybertrain.configure` のブロックで `c.cache_prune_interval` を設定してください。`Cache.prune(now)` はテスト用の入り口です。
@@ -206,7 +203,7 @@ true
 
 ## 運用：バックアップ、VACUUM、ヘルスチェック
 
-デプロイしたアプリケーションのデータは 1 つの SQLite ファイルなので、バイナリはそうしたアプリケーションに必要な 3 つの運用ツールを備えています。ファイルアップロードのあるアプリケーションは、そのバイト列もアップロードのルート（`upload_root`。デフォルトは `storage/uploads/`）の下に置きます：このディレクトリもデータベースと一緒にバックアップ・復元してください。そうしないと、復元したレコードが存在しないファイルを指すことになります（[ファイルアップロードを追加する](tutorial.md#attachments)）。
+デプロイしたアプリケーションのデータは 1 つの SQLite ファイルなので、バイナリはそうしたアプリケーションに必要な 3 つの運用ツールを備えています。ファイルアップロードのあるアプリケーションは、そのバイト列もアップロードのルート（`upload_root`。デフォルトは `storage/uploads/`）の下に置きます：このディレクトリもデータベースと一緒にバックアップ・復元してください。そうしないと、復元したレコードが存在しないファイルを指すことになります（[カバー画像を追加する](tutorial.md#attachments)）。
 
 **バックアップ。** `./<app> db backup PATH` は、サーバーを動かしたまま、設定されたデータベース（`CYBERTRAIN_DATABASE`）の一貫したコピーを書き出します：SQLite の `VACUUM INTO`（3.27 以降。バイナリが確認します）が 1 つのスナップショットを読み、WAL のもとでは、その間もサーバーの書き込みは続きます。コピーは `PATH` の隣の一時ファイルに書き込まれ、そのファイルはモード 0600 で排他的に作成され（ファイルにはパスワードのダイジェストとセッションのトークンが含まれます）、fsync された後にはじめて `PATH` にリネームされます。そのため、失敗したり中断したりしたコピーが本来の名前で不完全なファイルを残すことはありません（一時ファイルは削除されます）。既存の `PATH` は、`--force` を渡さない限り拒否されます。データベース自体が書き込み先になることは決してなく、`:memory:` のデータベースがコピー元になることもありません。
 
@@ -246,184 +243,4 @@ end
 
 ポーリングは他のリクエストと同じようにログに記録されます（2 行）。パスは `config.health_path`（`CYBERTRAIN_HEALTH_PATH`。デフォルトは `/up`。空の値でチェックが無効になり、そのパスは以前と同じく `public/` とルーターに進みます）です。ロードバランサー、kamal-proxy、デプロイスクリプトがこれをポーリングできます。`cybertrain new` が書き出し、その Kamal の設定が今もポーリングしている `public/up.html` は、プロセスが HTTP に応答することを示すだけです。
 
-## ログ
-
-フレームワークとアプリケーションは `Cybertrain.logger` を通してログを出します。1 つのメッセージが標準出力の 1 行になり、行ごとにフラッシュされます。Twelve-Factor のアプリケーションと同じで、systemd の journal、Kamal、Docker がそれを集めます：
-
-```text 出力 — ./blog server
-2026-11-14T09:30:00.120Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Started GET "/articles" for 127.0.0.1
-2026-11-14T09:30:00.132Z INFO [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] Completed 200 in 12ms
-2026-11-14T09:30:01.002Z ERROR [WelcomeJob 42] [3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c] job 42 (WelcomeJob) attempt 1 of 5 failed: RuntimeError: smtp down; retrying in 60 s
-2026-11-14T09:30:02.410Z WARN [feed:prices] WebSocket "prices" silent for 60s; reconnecting
-```
-
-1 行は、ミリ秒までの UTC の時刻（テストでは `travel_to` に従います）、大文字のレベル、角括弧に入ったタグ、メッセージです。`Cybertrain.logger` には `debug`、`info`、`warn`、`error`、`fatal` があり、どれも String を 1 つ取ります。複数のスレッドの行が混ざることはありません。各行は丸ごと組み立ててから、その書き込みの間だけ持つロックの下で 1 回の write で書きます。失敗した書き込み（閉じたパイプ）はその行を捨てます。ログ出力が呼び出し元に例外を投げることはありません。標準出力を読む側が読むのをやめると（パイプが満杯になると）、また読むまでログを出すスレッドがすべて止まるので、ログ収集を止めないでください。
-
-**1 つのイベントが 1 行。** メッセージやタグの中の改行は 2 文字の `\n`、復帰は `\r` として書かれるので、複数行のメッセージや偽の行が、行を新しく始めることはできません。`Cybertrain.logger.info("ok\n2026-11-11T12:00:00.000Z ERROR fake")` は 1 行を書きます：
-
-```text 出力 — 1 つのイベントが 1 行
-2026-11-14T09:30:00.120Z INFO ok\n2026-11-11T12:00:00.000Z ERROR fake
-```
-
-メッセージの最後のちょうど 1 つの改行は行自身の終わりで、エスケープされません（`info("done\n")` は `done` と書きます）。2 つ目はエスケープされます。ほかには何もエスケープしません：バックスラッシュはバックスラッシュのまま、タブ、その他の制御バイト、正しくない UTF-8 はそのまま書かれます。JSON の行のエスケープは以前と同じです。
-
-**レベル。** `config/app.rb` の `c.log_level`、または `CYBERTRAIN_LOG_LEVEL`（`debug`、`info`、`warn`、`error`、`fatal`、`none`。大文字小文字は問いません）が、書き出す最も低いレベルです。デフォルトは `:info` です。`:none` はリクエストログも止めますが、エラーの行は書きます。`config/app.rb` での代入が変数より優先されます。それ以外の値では起動が止まります：`error: log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)`。
-
-**JSON の行。** `c.log_format = :json`（または `CYBERTRAIN_LOG_FORMAT=json`）にすると、ログ収集ツール向けに 1 行に 1 つの JSON オブジェクトを書きます：
-
-```json
-{"time":"2026-11-14T09:30:00.132Z","level":"INFO","request_id":"3f2a9c1e-6c1d-4f0b-9a52-0d1e2f3a4b5c","tags":[],"message":"Completed 200 in 12ms"}
-```
-
-`request_id` は、その行が ID を持ち（リクエストの中、またはリクエストがキューに入れたジョブの中）、`log_tags` がそれを表示するときだけ入ります。`tags` にはほかのタグが順に入ります。メッセージ（またはタグ）が UTF-8 として正しくないときは、その 0x80 以上のバイトがすべて、正しい文字のバイトも含めて、JSON ではエスケープ `\ufffd` として書かれます。正しくないバイトが 1 つあると、そのメッセージの ASCII 以外の文字がすべて置換文字になります。正しいメッセージはそのまま書かれ、テキストの行ではログに渡されたバイトのまま残ります。`:text` と `:json` 以外の形式では起動が止まります：`error: log_format must be :text or :json (got :xml)`。起動時の最初の行（テスト以外での `mail_delivery_method :test` の警告）は形式に従います。値が正しくないアプリケーション設定（`setting_int`、`setting_bool` がデフォルトに戻るとき）についての警告は、形式が決まる前の `config/app.rb` の実行中に出るので、常にテキストの行です。
-
-レベルと形式は `./<app> server`、`worker`、`feeds` に加えて、登録したコマンド、`jobs`、`console` にも効きます。これらは未知の値を同じメッセージで拒み、データベースを開く前に終了ステータス 1 で終わります。`migrate`、`db`、`dbconsole` には効きません。これらの行は `info` レベルのテキストです。
-
-### リクエスト ID
-
-すべてのリクエストに ID（バージョン 4 の UUID）が付きます。アクションは `request.request_id` で読み、レスポンスは `X-Request-Id` で返します。ホスト確認の 403、`force_ssl` の https へのリダイレクト、エラーページ、開発用の診断ページ、サーバー自身の 500 にも付きます。サーバーが読めないリクエストに、アプリケーションに渡す前に返す 400 と 413 には付きません。リクエストの実行中に出たすべての行は、その ID をタグとして（デフォルトの `log_tags` では最初のタグとして）持ちます。アプリケーション自身の `Cybertrain.logger.info` の行も、ストリーミングのボディ（`stream do ... end`、Server-Sent Events）や、リクエストが開いた WebSocket の接続も、開いている間ずっと同じです。
-
-```ruby
-Cybertrain.logger.info("export #{report.id} for #{request.request_id}")
-```
-
-プロキシの ID は、アプリケーションが信頼するプロキシからのものだけを使います。接続が信頼するプロキシ（`CYBERTRAIN_TRUSTED_PROXY` または `CYBERTRAIN_TRUSTED_PROXIES`。`request.client_ip` と同じ確認です。[プロキシの背後のクライアントアドレス](requests.md#the-client-address-behind-a-proxy)）から来て、その `X-Request-Id` が 1〜255 文字の ASCII の英字、数字、ハイフンなら、リクエストはその ID を使うので、プロキシのログとアプリケーションのログが同じ ID を共有します。それ以外の `X-Request-Id`（2 回送られたヘッダーも含む）は捨てて新しい ID を作ります。値を書き換えることはありません。
-
-`c.log_tags` はリクエストのタグとその順序を決めます。デフォルトは `[:request_id]`、`[:request_id, :remote_ip]` で `request.client_ip` を足します（アドレスは個人データなのでデフォルトでは付けません）、`[]` で何も付けません（ヘッダーは送ります）。それ以外では起動が止まります：`error: log_tags may hold :request_id and :remote_ip (got :user_agent)`。
-
-### タグ
-
-`Cybertrain.logger.tagged` は、ブロックの間にこのスレッドで出たすべての行に、リクエストのタグの後ろにタグを足し、ブロックが終わると（例外を投げたときも）外します。ブロックの値を返します。入れ子にできます。ブロックなしの形はありません。
-
-```ruby
-Cybertrain.logger.tagged("billing", "order #{order.id}") do
-  Cybertrain.logger.info("charged 300")
-  # 2026-11-14T09:30:00.140Z INFO [3f2a9c1e-...] [billing] [order 7] charged 300
-end
-```
-
-タグはスレッドのものです。自分で起こしたスレッドは、起こしたスレッドが何を持っていてもタグなしで始まります。フレームワークも自分の仕事に同じようにタグを付けます：
-
-- **ジョブ。** 各試行の行は `[<JobClass> <id>]`（`Job.handle` のブロックのジョブならその種類）を持ち、続けてキューに入れたリクエストの ID を持ちます：`INFO [WelcomeJob 7] [3f2a9c1e-...] welcome 1`。ID は `log_tags` にかかわらずジョブの行（`cybertrain_jobs.request_id`）に記録され、`log_tags` に `:request_id` があるときに表示されます。ジョブがキューに入れたジョブは親の ID を記録し、定期タスク、フィード、コマンドがキューに入れたジョブは何も記録しません。
-- **定期タスク。** タスクの実行中は `[schedule:<name>]`。失敗の行も含みます。
-- **フィード。** フィードのスレッドが出すすべての行（コールバックの行も含む）に `[feed:<name>]`。スーパーバイザー自身のスレッドで出る再起動とあきらめの行にはタグがありません。
-
-## エラー報告
-
-`Cybertrain.error` は、リクエスト、ジョブの試行、定期タスク、フィードを終わらせた例外と、アプリケーションが自分で報告する例外を集め、アプリケーションが追加したサブスクライバーに渡し、DSN が設定されていれば Sentry（または GlitchTip）にも送ります。これはコアにあります。Sentry への送信はそれだけの 1 行で、`require "cybertrain"` が読み込み、`cybertrain/core` のアプリケーションは `bin/<app>.rb` に足します（`bin/db.rb` には足しません。[サブシステム](how-it-works.md#subsystems)）。`cybertrain new` は、この節の行をコメントにして書きます：`.env.example` の変数、`config/app.rb` のサブスクライバー、`config/deploy.yml` と `.kamal/secrets` の DSN、そして `bin/<app>.rb` のコメントのこの行です：
-
-```ruby
-require "cybertrain/error_reporter/sentry"   # bin/<app>.rb の require "cybertrain/core" の後
-```
-
-```ruby
-# アプリケーションが rescue したものを、わかっていることと一緒に：
-begin
-  charge(order)
-rescue PaymentError => e
-  Cybertrain.error.report(e, context: { "order_id" => order.id })
-end
-
-# ブロックを実行し、投げたものを報告して、nil で続ける：
-price = Cybertrain.error.handle(context: { "feed" => "prices" }) do
-  parse_price(text)
-end
-```
-
-`report(e, handled: true, context: {})` はすぐに nil を返します。報告はレポーター自身のスレッドで届けられます。コンテキストのキーと値は String になり、フレームワークが足すコンテキスト（ジョブの ID と試行回数）の上に重なります。`handle(context: {}) { }` はブロックの値を返します。ブロックが `StandardError`（または `JSON::ParserError`、`JSON::NestingError`）を投げたときは、それを報告して nil を返します。ブロックの中の `break v` で `handle` は `v` を返し、`return` は周りのメソッドから戻ります。それ以外のクラスの例外が `handle` のブロックで投げられると、呼び出し元に届きます。報告すること自体は呼び出し元に例外を投げません。報告が失敗したときは、error レベルで `error report failed: <Class>: <message>` とログに出ます。
-
-**サブスクライバー。** サブスクライバーはアプリケーションのクラスで、`report(event)` を定義した `Cybertrain::ErrorSubscriber` のサブクラスです：
-
-```ruby
-# config/app.rb の、それを登録する行より上（bin/<app>.rb は app/ より前に
-# config/app を読み込むので、ここでは app/ の下のクラスはまだ読み込まれていない）
-class AuditSubscriber < Cybertrain::ErrorSubscriber
-  def report(event)
-    Cybertrain.logger.warn("reported #{event.error_class}: #{event.error_message} at #{event.error_where}")
-  end
-end
-Cybertrain.error.subscribe(AuditSubscriber.new)
-```
-
-各サブスクライバーはすべての報告を、失敗したリクエストやジョブの中ではなく、レポーターのスレッドで受け取ります。例外を投げたサブスクライバーは error レベルで `error subscriber AuditSubscriber failed: <Class>: <message>` とログに出し、それ自体は報告しません。ほかのサブスクライバーはそのままイベントを受け取ります。イベントは String でできた値です：
-
-| リーダー | 内容 |
-| --- | --- |
-| `error_class` | 例外のクラス名。名前空間付き（`"Cybertrain::DB::Error"`） |
-| `error_message` | そのメッセージ |
-| `error_where` | `"ArticlesController#create"`、`"request"`（アクションが動かなかった）、ジョブのクラスか種類、`"cybertrain mail"`、`"job thread"`、`"schedule:<name>"`、`"feed:<name>"`、または `""` |
-| `error_request_id`、`error_request_method`、`error_request_path` | リクエストのもの。パスはクエリを除き、リクエストログと同じようにフィルタされます。ジョブの中では、キューに入れたリクエストの ID。リクエストの外では `""` |
-| `error_environment`、`error_release` | `Cybertrain.config.env` と `c.release` |
-| `error_handled` | `report` と `handle` では true、フレームワークが報告したものでは false |
-| `error_context` | `Hash{String => String}`。アプリケーションのコンテキストと、ジョブの中では `job.id`、`job.attempt`、`job.max_attempts` |
-| `error_backtrace` | `Array<String>`。`cybertrain build` のバイナリでは空（後述） |
-| `error_occurred_at` | `Time`。クロックから |
-
-**自分で何も書かなくても報告されるもの：**
-
-- 500 で終わったリクエスト。1 回だけです（その後エラーページを返す処理が新しい例外を投げたとき、たとえば `public/500.html` が読めないときは、それも報告され、報告は 2 件になります。どちらも本当の失敗です）。`Cybertrain::ClientError.status_for` が 500 以上に対応させる例外です。4xx（不正なパラメーター、CSRF の失敗、404）と、`rescue_from` が処理したものは報告しません。
-- ジョブの失敗した試行（`where` はそのクラスか種類。コンテキストに `job.attempt` と `job.max_attempts`）。デフォルトのポリシー、`retry_on`、`discard_on` のどれでも報告されます。ジョブの中では重複除去のキーにジョブの ID も入ります（[配送](#error-reporting)、後述）。同じ種類の 2 つのジョブが同じように失敗すれば 2 件の報告になり、1 つのジョブの試行が、1 分以内に報告された自身の試行と同じクラスとメッセージで失敗したときは、ログに出ますがもう一度は報告されません（デフォルトのポリシーでは最初の再試行まで 1 分待つので各試行が報告されますが、`retry_on ..., wait: 30` では報告された試行の 30 秒後の試行は報告されません）。破棄は 1 回報告されます。`job.max_attempts` は、デフォルトのポリシーでは `job_max_attempts`、`retry_on` ではポリシーの `attempts:`、`discard_on` では破棄されたときの試行回数です。失敗した `deliver_later` のメールは `cybertrain mail` ジョブのものです。ジョブのスレッドのループから漏れた例外や、そこでのデータベースのエラーは `where` が `job thread` です。
-- ブロックが例外を投げた定期タスク、または 5 年以内に次の実行がない `cron` タスク（`schedule:<name>`）。
-- 例外を投げたフィードの `on_open`、`on_message`、`on_tick`、死んだフィードのスレッド、フィードをあきらめたスーパーバイザー（`Cybertrain::Background::FeedFailed`。裏にクラスのない名前だけで、メッセージは `feed <name> restarted <n> times in <w> s; exiting`）。どれも `feed:<name>` です。
-
-ストリーミングのボディ（`stream do ... end`、Server-Sent Events）やアップグレードした WebSocket の接続を書いている間に投げられた例外は、サーバーの `stream error: <Class>: <message>` の行の後に 1 回報告されます。リクエストの ID、メソッド、パスを持ち、`where` は `ArticlesController#index (stream)`（アクションが動かなかったときは `request (stream)`）です。去ったクライアント（ライターから出た `EOFError`、`IOError`、`Errno::ECONNRESET`、`Errno::EPIPE`）はその行でログに出ますが、報告されません。報告しないもの：ハンドラーのない種類のジョブ、そして開発中に、すでに報告された例外を表示している診断ページ自身が投げた例外。フレームワークが以前から出していたログの行はそのままで、報告はそれに加えて行われます。
-
-**送らないもの。** パラメーター、ヘッダー、Cookie、セッション、クライアントのアドレス、クエリ文字列はイベントに入りません。リクエストのパスはリクエストログと同じようにフィルタされます。足されるのはアプリケーションが `context:` に入れたものだけです。例外のメッセージは、フィルターが変えない限りそのまま送られます。個人データを含むメッセージ（宛先を書いた SMTP サーバーの拒否）にはフィルターが要ります。
-
-**フィルター。** フィルターは `filter_event(event)` を定義した `Cybertrain::ErrorReporter::Filter` のサブクラスで、イベントを残すなら true、捨てるなら false を返します。メッセージ（`event.error_message =`）とコンテキスト（`event.set_error_context(key, value)`、`event.delete_error_context(key)`）を変えられます。次の 1 つは引用符のない単純な ASCII のメールアドレスを隠し、もう 1 つはアプリケーションが報告したくないクラスを捨てます：
-
-```ruby
-# config/app.rb
-class MaskAddresses < Cybertrain::ErrorReporter::Filter
-  def filter_event(event)
-    event.error_message = event.error_message.gsub(/[\w.+-]+@[\w-]+(\.[\w-]+)+/, "[email]")
-    event.delete_error_context("email")
-    true
-  end
-end
-
-class DropDeclinedCards < Cybertrain::ErrorReporter::Filter
-  def filter_event(event)
-    event.error_class != "PaymentGateway::Declined"
-  end
-end
-
-Cybertrain.error.add_filter(MaskAddresses.new)
-Cybertrain.error.add_filter(DropDeclinedCards.new)
-```
-
-`MaskAddresses` のパターンが見逃すアドレスは 2 種類あります。1 つは `alice@例え.テスト` のように ASCII 以外の文字を含むものです。Ruby の `\w` は、Unicode のプロパティを求めない限り ASCII の英字、数字、`_` にしか一致しません。もう 1 つは `"alice smith"@example.com` のように局所部が引用符で囲まれたものです。パターンは `@` の直前に英字、数字、`.`、`+`、`-`、`_` のどれかを必要としますが、閉じる引用符の後にはそれがなく、この中の何にも一致しないので、アドレス全体がメッセージに残ります。想定するアドレスに合うパターンを書くか、イベントを捨ててください。
-
-フィルターはレポーターのスレッドで、追加した順に、サブスクライバーと送信側より前に動きます。次のフィルター、サブスクライバー、Sentry は、フィルターが変えた内容を見ます。1 つがイベントを捨てると、後のフィルターは動かず、誰もそのイベントを受け取りません（キューの破棄としては数えません）。例外を投げたフィルターはイベントを捨て（フィルターは何かが外に出ないようにするためにあるからです）、error レベルで `error filter failed: <Filter class>: <Class>: <message>` とログに出します。これは報告されません。重複除去はフィルターより前に、フィルター前のクラス、メッセージ、`where` で決まります。フィルターが書き換えても、どの報告がまとめられるかは変わらず、フィルターが捨てたイベントもその 1 分の枠を占めます。フレームワーク自身の `ERROR` のログ行はイベントができる前に書かれ、フィルタされません。フィルターだけでは報告はキューに入りません（サブスクライバーか DSN が要ります）。`config/app.rb` で追加したフィルターはすべてのテストで残り、テストで追加したものは次のテストの前に外れます。
-
-**配送。** 報告は 100 件のキューに入り、1 つのスレッドが届けます。同じクラス、メッセージ、`where`（ジョブの中ではジョブの ID も）の報告は 1 分に 1 回までしかキューに入らないので、訪問者全員に同じメッセージで失敗するページでも報告は 1 分に 1 件です（ID を含むメッセージ、`Couldn't find Article with id=5` なら、メッセージごとに 1 件です）。キューが満杯のときは報告を捨てて数え、`error reports dropped: <n>` を warn レベルで 1 分に 1 回まで出します。サブスクライバーも DSN もない間は、何もキューに入らず、スレッドも起動しません。失敗した配送は `error delivery failed: <Class>: <message>` とログに出し、前のスレッドが終わっていれば次の報告が新しいスレッドを起動します。サーバー、ワーカー、feeds プロセスは止まるとき、サービスを止めた後、キューの報告を最大 2 秒待ちます。残ったものは失われます。開発中の再ビルドも待ちます。登録したコマンド、`./<app> jobs`、`./<app> console` も、データベースを閉じて終了する前に待ちます。
-
-**Sentry または GlitchTip に送る。** `bin/<app>.rb` にその行があれば、`CYBERTRAIN_SENTRY_DSN`（または `c.sentry_dsn`）をプロジェクトの DSN にすると、各報告を Sentry のイベントとして送ります：
-
-```sh
-export CYBERTRAIN_SENTRY_DSN=https://PUBLIC_KEY@o1.ingest.sentry.io/42
-export CYBERTRAIN_RELEASE=2026.11.14-3f2a9c1    # 任意：イベントの release として送られる
-export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 任意：4 分の 1 を送る
-```
-
-- DSN は `http[s]://<public key>[:<secret>]@<host>[:<port>][/<path>]/<project id>` の形です（secret、Sentry の古い後半部分は無視します）。イベントは `<scheme>://<host>[:<port>][/<path>]/api/<project id>/envelope/` に送られ、Sentry と GlitchTip のどちらも受け付けます。キーを含むので、コミットするファイルではなくデプロイのシークレットに置いてください。読めない DSN では起動が止まり、どの部分かを示しますがキーは示しません：`error: sentry_dsn must look like https://<public key>@<host>/<project id>: the project id must be digits`。
-- 送信側をリンクしていないプログラムで DSN を設定すると、起動が止まり、登録したコマンド、`jobs`、`console` もデータベースを開く前に拒否されます（終了ステータス 1）：`error: CYBERTRAIN_SENTRY_DSN is set, but this program does not link the Sentry sender: add require "cybertrain/error_reporter/sentry" to bin/<app>.rb`。自分で作った送信側のクラス（`Cybertrain::ErrorReporter::Sender` のサブクラス）は、空でない名前を返す `sender_name` を定義します。そうしないと同じ拒否に当たります。
-- `CYBERTRAIN_ERROR_SAMPLE_RATE`（`c.error_sample_rate`、1.0）は送る報告の割合で、0.0〜1.0 です。サブスクライバーはすべての報告を受け取ります。変数は数字に任意の `.数字` が続く形でなければならず、そうでなければ起動が止まります：`error: error_sample_rate must be a number from 0.0 to 1.0 (got "x")`。
-- `CYBERTRAIN_RELEASE`（`c.release`。デフォルトは空）はバージョンかコミットを示します。検査はしません。
-- 1 回の送信は、ホスト名を解決した後は最大 5 秒待ち（名前解決は配送スレッドを止め、締め切りでは打ち切れないので、止まったリゾルバーは送信をそれ以上待たせることがあります）、再試行はしません。拒否は warn レベルで `error report not sent: Sentry answered 429` とログに出し、接続の失敗も `error report not sent: <Class>: <message>` と出します。
-- イベントには、クラスとメッセージ、トランザクションとしての `where`、環境、release、タグとしてのリクエスト ID、リクエストのメソッドとパス、`extra` としてのコンテキスト、そしてバックトレースがあればフレームが入ります。
-- 呼び出しは `Cybertrain::HttpClient` と、そのプライベートアドレスへの防御を通ります（[外向きの HTTP](external-services.md#outbound-http)）。プライベートネットワークや同じマシンの GlitchTip には `CYBERTRAIN_HTTP_ALLOW_PRIVATE=1` が要り、これはアプリケーションのすべての外向きの呼び出しで防御を外します。
-
-**バックトレース。** `cybertrain build` のバイナリは Spinel のリリースビルドで、その例外はバックトレースを持ちません。報告にはクラス、メッセージ、`where` が入ります。`--debug` ビルドと CRuby では、フレームが付きます。
-
-`cybertrain test` は Sentry に何も送りません。`config/app.rb` が代入していない限り、エクスポートされた `CYBERTRAIN_SENTRY_DSN` を空にします。テストは代わりに DSN を `Test::SentryReceiver` に向けます（[ログとエラー報告のテスト](testing.md#testing-logs-and-error-reports)）。設計：[docs/design.md](../design.md) の D86 と D88。
-
-### ログとエラー報告の 0.4 からの更新
-
-- ログの行の形がすべて変わります。行頭の角括弧のレベル（`[INFO]`）が、時刻、レベル、タグに置き換わります：`2026-11-14T09:30:00.132Z INFO [<request id>] Completed 200 in 3ms`。ログを読むもの（スクリプトの `[ERROR]` の grep、アラート）も合わせて変えます。行を丸ごと探していたテストは、レベルとメッセージを別々に探します（`" ERROR "` とメッセージ。[0.4 からのアップグレード](testing.md#upgrading-from-04)）。
-- アプリケーションが返すすべてのレスポンスが `X-Request-Id` を持ちます（サーバーが読めないリクエストに返す 400 と 413 は除きます）。それを付けていたプロキシの値は、プロキシが信頼されているときだけ使われます。
-- `cybertrain_jobs` に `request_id` の列が増えます。最初にテーブルに触ったプロセスが足します。
-- テキストのログ行は次の行に続かなくなりました。メッセージやタグの中の改行と復帰は `\n` と `\r` として書かれます。複数行のメッセージを数行から読んでいたものは、エスケープを読みます。
-- `handle` という名前のモデルの列は `handle_column` として読むようになりました。`users.handle` の列を持つアプリケーションは、`user.handle` の呼び出しを `user.handle_column` に変えます（クエリは SQL の名前のままです）。テキストでない `request_id` や `release` の列は gen が拒否します（[列の名前](models.md#column-names)）。
-- `cybertrain test` は、`config/app.rb` が設定していない限り、エクスポートされた `CYBERTRAIN_LOG_FORMAT` と `CYBERTRAIN_SENTRY_DSN` を無視します（テストはテキストの行を読み、何も送りません）。`generate authentication` が書くパスワードのテストは、`with_config` の中で JSON の行を止めるようになりました。テストを `log_format :json` で動かしている、以前に生成したアプリケーションは、ジェネレーターを再実行するか、その変更を写してください。
-- `require "cybertrain"` は、Sentry の送信側を通じて `HttpClient` と TLS 層をリンクするようになりました。
+プロセスがログに書くものと、エラーの報告のされ方は、[ログとエラー報告](logs-and-errors.md)にあります。

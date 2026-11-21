@@ -3,7 +3,7 @@ require "test_helper"
 # The source of gen/probe_test.rb (TestScan.rewrite_in with ProbeBase as the
 # one class-form base), which test/gen_test_rewrite.rb compiles and calls:
 # every rewritten method answers nil whatever its body's last value, its
-# rescue or ensure clause or a bare return (pre-flight ruling R8).
+# rescue or ensure clause or a bare return (rule 34).
 class ProbeTest < ProbeBase
   setup do
     PROBE_LOG << "setup"

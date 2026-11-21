@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/ident"
 require "cybertrain/generator/concern_scan"
 
@@ -15,7 +16,7 @@ module Cybertrain
     # the attributes of its `validates ..., uniqueness:` calls, with their
     # lines in unique_lines (the emitter refuses an encrypted one).
     #
-    # A model concern (spec 4.2) counts as written at its `include`: the
+    # A model concern counts as written at its `include`: the
     # declarations of its `included` body join the lists above in that
     # place, and its instance methods join defined_methods and
     # view_methods. includes / include_lines / include_validates: the
@@ -25,12 +26,11 @@ module Cybertrain
     # with concern_from the index (into includes) of the `include` that
     # brought each in (a concern an `included` body includes counts as
     # brought in by the `include` of the concern around it).
-    # defined_places: per defined_methods entry, the "file:line" of its def.
     class ModelInfo
       attr_reader :file, :class_name, :view_methods, :scopes, :associations, :custom_validations,
                   :condition_methods, :condition_lines, :defined_methods, :encrypted, :encrypted_lines,
                   :unique_columns, :unique_lines, :includes, :include_lines, :include_validates,
-                  :concern_names, :concern_from, :defined_places
+                  :concern_names, :concern_from
 
       def initialize(file, class_name, view_methods, scopes, associations, custom_validations,
                      condition_methods, condition_lines, defined_methods, encrypted, encrypted_lines,
@@ -53,13 +53,6 @@ module Cybertrain
         @include_validates = Array.new(0) { 0 }
         @concern_names = Array.new(0) { "" }
         @concern_from = Array.new(0) { 0 }
-        @defined_places = Array.new(0) { "" }
-      end
-
-      # Per defined_methods entry, the "app/...:line" of its def.
-      def record_defined_places(places)
-        places.each { |p| @defined_places << p }
-        nil
       end
 
       def add_include(name, line, validates)
@@ -86,7 +79,7 @@ module Cybertrain
     end
 
     # One method of a `validate :a, :b, on: :update, if: :x, unless: :y`
-    # line (spec section 9.2): `on` is "create", "update" or "" (every
+    # line: `on` is "create", "update" or "" (every
     # context), `condition_if` / `condition_unless` a method name or "".
     class CustomValidationInfo
       attr_reader :file, :name, :on, :condition_if, :condition_unless, :line
@@ -167,7 +160,7 @@ module Cybertrain
         encrypted_column? check_not_encrypted add_where_sql set_order set_order_hash add_order_sql set_limit set_offset to_sql rows count exists?
         delete_all first_row last_row page add_where_like pluck_str pluck_int pluck_float count_by count_by_sql
         sum_int sum_float increment update_all update_all_sql ids batch_rows pluck_rows aggregate_cell
-        order_or_id pick_row write_scope_sql select_sql
+        order_or_id windowed? pick_row write_scope_sql select_sql
         set_having_sql pluck pick minimum_int minimum_float minimum_time maximum_int maximum_float maximum_time
         average sum_float_sql minimum_float_sql maximum_float_sql average_sql sum_int_by sum_float_by
         minimum_int_by minimum_float_by minimum_time_by maximum_int_by maximum_float_by maximum_time_by average_by
@@ -222,7 +215,7 @@ module Cybertrain
       # `include A, B` brings in B, then A, as Module#include does. within
       # names the concerns whose `included` body is being read (an
       # `include` in one is expanded too; a cycle through them raises).
-      def self.scan_source(file, source, concerns = Array.new(0) { ConcernInfo.new("", "", 0) }, within = Array.new(0) { "" })
+      def self.scan_source(file, source, concerns = ConcernScan.no_concern_infos, within = Array.new(0) { "" })
         class_name = ""
         class_indent = -1
         skip_indent = -1
@@ -237,7 +230,6 @@ module Cybertrain
         conditions = Array.new(0) { "" }
         condition_lines = Array.new(0) { 0 }
         defined = Array.new(0) { "" }
-        defined_places = Array.new(0) { "" }
         encrypted = Array.new(0) { "" }
         encrypted_lines = Array.new(0) { 0 }
         unique = Array.new(0) { "" }
@@ -261,7 +253,7 @@ module Cybertrain
           # A line back at the call's own indent (or left of it) that does
           # not close a bracket is the next statement: an unbalanced
           # bracket inside a Regexp literal cannot swallow the class.
-          if pending != "" && line != "" && indent_of(raw) <= pending_indent && !line.start_with?(")") &&
+          if pending != "" && line != "" && SourceText.indent_of(raw) <= pending_indent && !line.start_with?(")") &&
              !line.start_with?("}") && !line.start_with?("]")
             collect_validates(file, pending, pending_line, conditions, condition_lines, unique, unique_lines)
             pending = +""
@@ -276,18 +268,18 @@ module Cybertrain
           end
           next if line == ""
 
-          indent = indent_of(raw)
+          indent = SourceText.indent_of(raw)
           if class_name == ""
             class_name = class_name_in(line)
             class_indent = indent if class_name != ""
           elsif skip_indent >= 0
-            skip_indent = -1 if indent == skip_indent && closing_end?(line)
-          elsif indent <= class_indent && closing_end?(line)
+            skip_indent = -1 if indent == skip_indent && SourceText.closing_end?(line)
+          elsif indent <= class_indent && SourceText.closing_end?(line)
             break
-          elsif def_indent >= 0 && indent == def_indent && closing_end?(line)
+          elsif def_indent >= 0 && indent == def_indent && SourceText.closing_end?(line)
             def_indent = -1
-          elsif opens_block?(line)
-            skip_indent = indent unless one_line_block?(line)
+          elsif SourceText.opens_block?(line)
+            skip_indent = indent unless SourceText.one_line_block?(line)
           elsif def_indent < 0 && scope_line?(line)
             scopes << scope_on(file, line, lineno, scopes)
           elsif def_indent < 0 && association_kind(line) != ""
@@ -331,7 +323,7 @@ module Cybertrain
                 scanned = scan_concern(c, concerns, within)
                 concern_names << c.concern_name
                 concern_from << includes.size - 1
-                merge_concern(scanned, scopes, associations, validations, conditions, condition_lines, defined, defined_places,
+                merge_concern(scanned, scopes, associations, validations, conditions, condition_lines, defined,
                               methods, encrypted, encrypted_lines, unique, unique_lines)
                 # The concerns its `included` body includes, spliced after it.
                 scanned.concern_names.each do |inner|
@@ -348,10 +340,7 @@ module Cybertrain
             in_private = false
           else
             defined_name = def_name(line)
-            if def_indent < 0 && defined_name != "" && !defined.include?(defined_name)
-              defined << defined_name
-              defined_places << "#{ControllerScan.app_path(file)}:#{lineno}"
-            end
+            defined << defined_name if def_indent < 0 && defined_name != "" && !defined.include?(defined_name)
             unless in_private
               name = view_method_name(line)
               methods << name if name != "" && !methods.include?(name)
@@ -366,7 +355,6 @@ module Cybertrain
                              defined, encrypted, encrypted_lines, unique, unique_lines)
         includes.each_with_index { |name, k| info.add_include(name, include_lines[k], include_validates[k]) }
         concern_names.each_with_index { |name, k| info.add_concern(name, concern_from[k]) }
-        info.record_defined_places(defined_places)
         info
       end
 
@@ -419,7 +407,7 @@ module Cybertrain
             keep = false if n == start || n == stop || !lines[start - 1].to_s.match?(ConcernScan::INCLUDED_OPEN)
           end
           if n == concern.concern_line
-            out << (" " * indent_of(raw)) << "class " << concern.concern_name.split("::").last.to_s << "\n"
+            out << (" " * SourceText.indent_of(raw)) << "class " << concern.concern_name.split("::").last.to_s << "\n"
           elsif keep
             out << raw
           else
@@ -433,7 +421,7 @@ module Cybertrain
       # scanned, as if written at its `include`. A scope or association
       # named like one the model already has raises Error naming both
       # places.
-      def self.merge_concern(part, scopes, associations, validations, conditions, condition_lines, defined, defined_places,
+      def self.merge_concern(part, scopes, associations, validations, conditions, condition_lines, defined,
                              methods, encrypted, encrypted_lines, unique, unique_lines)
         part.scopes.each do |sc|
           scopes.each do |e|
@@ -460,12 +448,7 @@ module Cybertrain
           conditions << name
           condition_lines << part.condition_lines[k]
         end
-        part.defined_methods.each_with_index do |name, k|
-          next if defined.include?(name)
-
-          defined << name
-          defined_places << part.defined_places[k]
-        end
+        part.defined_methods.each { |name| defined << name unless defined.include?(name) }
         part.view_methods.each { |name| methods << name unless methods.include?(name) }
         part.encrypted.each_with_index do |name, k|
           next if encrypted.include?(name)
@@ -605,7 +588,7 @@ module Cybertrain
             end
           elsif ch == "\"" || ch == "'"
             quote = ch
-          elsif (i == 0 || !word_char?(text[i - 1, 1])) && text[i, 11] == "uniqueness:"
+          elsif (i == 0 || !SourceText.word_char?(text[i - 1, 1])) && text[i, 11] == "uniqueness:"
             found = true
           end
           i += 1
@@ -647,10 +630,10 @@ module Cybertrain
           elsif ch == "\"" || ch == "'"
             refuse_condition_spelling(file, lineno, text[i + 1, text.size - i - 1], ch)
             quote = ch
-          elsif ch == ":" && (i == 0 || !word_char?(text[i - 1, 1]))
+          elsif ch == ":" && (i == 0 || !SourceText.word_char?(text[i - 1, 1]))
             refuse_condition_spelling(file, lineno, text[i + 1, text.size - i - 1], "")
             i += 1
-          elsif (i == 0 || !word_char?(text[i - 1, 1])) &&
+          elsif (i == 0 || !SourceText.word_char?(text[i - 1, 1])) &&
                 (text[i, 3] == "if:" || text[i, 7] == "unless:")
             key_size = text[i, 3] == "if:" ? 3 : 7
             rest = text[i + key_size, text.size - i - key_size].lstrip
@@ -677,7 +660,7 @@ module Cybertrain
 
           tail = rest[key.size, rest.size - key.size]
           if quote == ""
-            next if tail != "" && (word_char?(tail[0, 1]) || tail[0, 1] == "?" || tail[0, 1] == "!")
+            next if tail != "" && (SourceText.word_char?(tail[0, 1]) || tail[0, 1] == "?" || tail[0, 1] == "!")
             next unless tail.lstrip.start_with?("=>")
           else
             next unless tail.start_with?(quote + ":")
@@ -902,7 +885,7 @@ module Cybertrain
         i = from
         while i < text.size
           ch = text[i, 1]
-          break unless word_char?(ch)
+          break unless SourceText.word_char?(ch)
 
           name << ch
           i += 1
@@ -950,7 +933,7 @@ module Cybertrain
       def self.constant_name?(text)
         return false if text == "" || !(text[0] >= "A" && text[0] <= "Z")
 
-        text.each_char { |ch| return false unless word_char?(ch) }
+        text.each_char { |ch| return false unless SourceText.word_char?(ch) }
         true
       end
 
@@ -969,7 +952,7 @@ module Cybertrain
       # endless `def x = ...` / `def x(a) = ...`, nor `def x; ...; end`.
       def self.def_opens_body?(line)
         return false unless line.start_with?("def ")
-        return false if one_line_block?(line)
+        return false if SourceText.one_line_block?(line)
 
         rest = line[4, line.size - 4].lstrip
         i = 0
@@ -977,7 +960,7 @@ module Cybertrain
         # starts with "=", so "=" ends a name only after its first char).
         while i < rest.size
           ch = rest[i, 1]
-          break if ch == " " || ch == "(" || (ch == "=" && i > 0 && word_char?(rest[i - 1, 1]))
+          break if ch == " " || ch == "(" || (ch == "=" && i > 0 && SourceText.word_char?(rest[i - 1, 1]))
           i += 1
         end
         tail = rest[i, rest.size - i].lstrip
@@ -1032,7 +1015,7 @@ module Cybertrain
 
         name = +""
         rest[1, rest.size - 1].each_char do |ch|
-          break unless word_char?(ch)
+          break unless SourceText.word_char?(ch)
           name << ch
         end
         rest = rest[name.size + 1, rest.size - name.size - 1].lstrip
@@ -1086,7 +1069,7 @@ module Cybertrain
           text = part.strip
           name = +""
           text.each_char do |ch|
-            break unless word_char?(ch)
+            break unless SourceText.word_char?(ch)
             name << ch
           end
           return "!" if name == "" || (name[0] >= "0" && name[0] <= "9")
@@ -1097,35 +1080,6 @@ module Cybertrain
           names << name
         end
         names.join(", ")
-      end
-
-      # Leading spaces of a raw line (a tab counts as one column).
-      def self.indent_of(raw)
-        n = 0
-        raw.each_char do |ch|
-          break unless ch == " " || ch == "\t"
-          n += 1
-        end
-        n
-      end
-
-      # "end", "end # comment" or "end." chains are block closers.
-      def self.closing_end?(line)
-        return false unless line.start_with?("end")
-        return true if line == "end"
-
-        nxt = line[3, 1]
-        nxt == " " || nxt == "#" || nxt == ";" || nxt == "."
-      end
-
-      # A nested `class << self`, `class X` or `module X` inside the model.
-      def self.opens_block?(line)
-        line.start_with?("class ") || line.start_with?("class<<") || line.start_with?("module ")
-      end
-
-      # `class << self; def x = 1; end` or `class Error < StandardError; end`.
-      def self.one_line_block?(line)
-        !line.index(";").nil? && (line.end_with?(" end") || line.end_with?(";end"))
       end
 
       # Every app/models/*.rb under `dir` that defines a class, sorted by
@@ -1147,7 +1101,7 @@ module Cybertrain
 
         name = +""
         line[6, line.size - 6].lstrip.each_char do |ch|
-          break unless word_char?(ch) || ch == ":"
+          break unless SourceText.word_char?(ch) || ch == ":"
           name << ch
         end
         name
@@ -1161,7 +1115,7 @@ module Cybertrain
         rest = line[4, line.size - 4].lstrip
         name = +""
         rest.each_char do |ch|
-          break unless word_char?(ch)
+          break unless SourceText.word_char?(ch)
           name << ch
         end
         return "" if name == "" || name == "initialize"
@@ -1179,9 +1133,6 @@ module Cybertrain
         ""
       end
 
-      def self.word_char?(ch)
-        (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch == "_"
-      end
     end
   end
 end

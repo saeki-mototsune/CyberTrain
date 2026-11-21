@@ -4,8 +4,9 @@ module Cybertrain
     # into deliveries: every {Config#stream_poll_ms} ms it reads
     # `SELECT MAX(id)` (one B-tree descent on the primary key) and, when that
     # passed the last id it delivered, the new rows, which it hands to
-    # {Stream.hub}. Every minute it also deletes the rows older than
-    # {Config#stream_retention} seconds; the one place that prunes. Started
+    # the process's subscribers. Every minute it also deletes the rows
+    # older than {Config#stream_retention} seconds; the one place that
+    # prunes. Started
     # by Application#serve before it binds the port (so no subscription can
     # come before the start position) and stopped with the server; the
     # endpoint answers 503 while it is not running. It
@@ -72,12 +73,9 @@ module Cybertrain
       end
 
       # What start! does to the position, for a test that ticks by hand:
-      # the next run_once delivers only rows written after this call. The
-      # hub is the one the test ticks (accepted for symmetry with run_once;
-      # it holds no position of its own).
-      # @param hub [Hub]
+      # the next run_once delivers only rows written after this call.
       # @return [nil]
-      def self.reset!(hub)
+      def self.reset!
         @last_id = Stream.max_id
         nil
       end
@@ -133,8 +131,8 @@ module Cybertrain
       end
 
       # run_once and the minute's prune, with the rescue in a plain method
-      # (rules 32/45); JSON::NestingError first (rule 61), the full DB error
-      # name (rule 70). A database that is gone is logged and polled again.
+      # (rules 32/45). A database that is gone (a DB::Error, which is a
+      # StandardError) is logged and polled again.
       def self.tick(retention)
         Poller.run_once(Stream.hub)
         # The interval between prunes on the monotonic clock; the cut-off
@@ -145,7 +143,7 @@ module Cybertrain
           Stream.prune(Clock.now.to_i - retention)
         end
         nil
-      rescue Cybertrain::DB::Error, JSON::NestingError, JSON::ParserError, StandardError => e
+      rescue StandardError => e
         Cybertrain.logger.error("stream poller: #{e.class.name}: #{e.message}")
         nil
       end

@@ -8,15 +8,11 @@ module Cybertrain
   # belongs_to's foreign key gets one from Model.validates_foreign_key.
   #
   # kind is :presence, :length, :inclusion, :exclusion, :format,
-  # :numericality, :uniqueness or :foreign_key. (:custom is not used: a
-  # `validate :method` line is generated into run_custom_validations, which
-  # calls the method itself.) Unset options keep a sentinel or nil:
-  # minimum / maximum / exact_length are -1, the Regexps and the
+  # :numericality, :uniqueness or :foreign_key. Unset options keep a
+  # sentinel or nil: minimum / maximum / exact_length are -1, the Regexps and the
   # numericality limits nil (each read is guarded), message "" (the Rails
   # default then), on / condition_if / condition_unless / scope_attr nil.
   class Validator
-    KINDS = [:presence, :length, :inclusion, :exclusion, :format, :numericality, :uniqueness, :custom, :foreign_key]
-
     # The keys Model.validates takes beside the rules, applied to each rule
     # of the line.
     COMMON_OPTIONS = [:allow_nil, :allow_blank, :on, :message, :if, :unless]
@@ -26,18 +22,18 @@ module Cybertrain
     COMPARISONS = [:greater_than, :greater_than_or_equal_to, :equal_to, :less_than, :less_than_or_equal_to,
                    :other_than]
 
-    attr_reader :attr, :kind, :minimum, :maximum, :allow_blank
+    attr_reader :attr, :kind
 
-    def initialize(attr, kind, minimum = -1, maximum = -1, allow_blank = false)
+    def initialize(attr, kind)
       @attr = attr
       @kind = kind
-      @minimum = minimum
-      @maximum = maximum
+      @minimum = -1
+      @maximum = -1
       @exact_length = -1
       # Strings or Integers, seeded with both (spikes/NOTES.md rule 9).
       @in_list = Array.new(0) { [0, ""][0] }
-      # An Integer Range (the only kind Spinel builds: NOTES rule 86) as its
-      # two ends; an open end has its has_range_* flag false.
+      # An Integer Range (the only kind apply_list accepts: NOTES rule 86)
+      # as its two ends; an open end has its has_range_* flag false.
       @has_range = false
       @range_min = 0
       @range_max = 0
@@ -61,7 +57,7 @@ module Cybertrain
       @scope_attr = nil
       @case_sensitive = true
       @allow_nil = false
-      @allow_blank = allow_blank
+      @allow_blank = false
       @on = nil
       @message = ""
       @condition_if = nil
@@ -196,15 +192,16 @@ module Cybertrain
     end
 
     # inclusion / exclusion `in:` (or `within:`): an Array of Strings or
-    # Integers, or a Range of Integers. Spinel builds no other Range (NOTES
-    # rule 86), and one with other ends raises here under CRuby too.
+    # Integers, or a Range of Integers. A Range with other ends raises here
+    # on both runtimes: under Spinel a Range of Time or Date raises when it
+    # is built, and a Float Range is not matched by `when Range` once boxed
+    # (NOTES rule 86 and its status; a String Range is matched there).
     def apply_list(key, value)
       unless key == :in || key == :within
         raise ArgumentError, "validates: #{@kind}: takes in: (got #{key}:)"
       end
 
       case value
-      when Time then raise ArgumentError, "validates: #{@kind}: in: takes an Array or an Integer Range"
       when Range
         from = value.begin
         to = value.end
@@ -362,7 +359,7 @@ module Cybertrain
         add_message(record, :blank) if blank
       when :foreign_key
         # 0 is the id of no saved record (Model#id before the first save).
-        # The key stays blank, not Rails' required (plan decision D10).
+        # The key stays blank, not Rails' required.
         add_message(record, :blank) if blank || value == 0
       when :length
         # nil is left to a presence rule, as `length` alone allows it.
@@ -388,8 +385,8 @@ module Cybertrain
     end
 
     # The message: message: when the line gives one, else type's text in
-    # the dictionaries (I18n.error_message, Rails' key chain, plan decision
-    # D10), looked up now, in the current locale. options carry the limit:
+    # the dictionaries (I18n.error_message, Rails' key chain),
+    # looked up now, in the current locale. options carry the limit:
     # count: an Integer (length, which picks the plural form), count_text:
     # numericality's limit as written ("1.5": no plural form). A text's
     # %{value} is the attribute's value, as Rails passes it.
@@ -423,7 +420,6 @@ module Cybertrain
       if @has_range
         number = 0.0
         case value
-        when Time then return false
         when Integer then number = value.to_f
         when Float then number = value
         else return false
@@ -509,7 +505,6 @@ module Cybertrain
 
     def self.numeric?(value)
       case value
-      when Time then false
       when Integer then true
       when Float then true
       when String then Validator.number_text?(value.strip)
@@ -519,7 +514,6 @@ module Cybertrain
 
     def self.integer_value?(value)
       case value
-      when Time then false
       when Integer then true
       when String then Validator.integer_text?(value)
       else false
@@ -528,7 +522,6 @@ module Cybertrain
 
     def self.number_of(value)
       case value
-      when Time then 0.0
       when Integer then value.to_f
       when Float then value
       when String then value.strip.to_f

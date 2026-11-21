@@ -1,7 +1,6 @@
 #!/usr/bin/env ruby
 # The CRuby preview end to end, on a real application: `cybertrain server`
-# (the supervisor of docs/superpowers/specs/2026-11-12-cruby-preview-design.md
-# section 6) run on a temporary copy of examples/blog, driven over HTTP the
+# (the supervisor of docs/design.md D87) run on a temporary copy of examples/blog, driven over HTTP the
 # way a developer's browser and editor would. It builds the blog with Spinel
 # several times, so a run takes minutes (about ten here).
 #
@@ -50,7 +49,7 @@
 #     releasing the lock applies them (cruby, the new validation).
 #  8  (the supervisor dying uncleanly) Once the build started in step 7 is
 #     over, SIGKILL the supervisor; the child it leaves still holds the port.
-#     `cybertrain server PORT` again stops that child (P14: the line naming
+#     `cybertrain server PORT` again stops that child (the line naming
 #     its PID, the PID gone) and answers 200 within 5 s (from spinel, at
 #     once, when the binary is up to date: step 16).
 #  9  A syntax error in a model: a GET answers 503 naming SyntaxError within

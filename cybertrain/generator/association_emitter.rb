@@ -6,7 +6,7 @@ require "cybertrain/generator/model_validation"
 
 module Cybertrain
   module Gen
-    # The association half of ModelsEmitter (spec section 7): emitting the
+    # The association half of ModelsEmitter (docs/design.md D47): emitting the
     # readers, caches, `dependent:`, counter_cache and read_association of
     # a model's associations from their AssociationPlans. Planning them
     # (the declared and the foreign-key-derived ones) and every check of
@@ -24,9 +24,9 @@ module Cybertrain
         src
       end
 
-      # A reader (spec 7.2). has_many: the children's Relation, so
+      # A reader. has_many: the children's Relation, so
       # `post.comments.where(...).count` chains, created preloaded with the
-      # records includes left in the cache (spec 8: to_a, each, first,
+      # records includes left in the cache (to_a, each, first,
       # last, size and empty? answer from memory until a chain method).
       # belongs_to: the parent, cached with the foreign key it was read
       # for, so a reassigned key never answers the old parent; a nil key
@@ -77,7 +77,7 @@ module Cybertrain
           "    @#{n}_loaded_key = #{stored}\n    nil\n  end\n"
       end
 
-      # The Relation's `includes(*names)` (spec 8): each name checked by a
+      # The Relation's `includes(*names)`: each name checked by a
       # `case` over the model's associations (no computed send, NOTES rule
       # 1), an unknown one an ArgumentError; `preload` is the same. With no
       # association every name is unknown.
@@ -295,7 +295,7 @@ module Cybertrain
         src
       end
 
-      # The counter_cache methods (spec 7.2): increment the parent's counter
+      # The counter_cache methods: increment the parent's counter
       # after create; for an update or a destroy, read the persisted foreign
       # key inside the transaction (before_update / before_destroy:
       # counter_cache_was, which also notes whether the row was there), then

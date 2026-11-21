@@ -462,7 +462,7 @@ test "a segment named options leaves the helper's options Hash another name" do
   Cybertrain::Routes.reset!
 end
 
-test "Gen.with_options appends format, query and anchor (spec 2.6, plan decision 14)" do
+test "Gen.with_options appends format, query and anchor" do
   assert_equal "/p", Cybertrain::Gen.with_options("/p", {})
   assert_equal "/p.json?page=2&q=a+b%26c#x%20y", Cybertrain::Gen.with_options("/p", { anchor: "x y", page: 2, format: :json, q: "a b&c" })
   assert_equal "/p?b=1&a=2", Cybertrain::Gen.with_options("/p", { b: 1, a: 2 })

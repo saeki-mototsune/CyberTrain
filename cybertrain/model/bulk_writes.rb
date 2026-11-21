@@ -12,7 +12,7 @@ module Cybertrain
     #
     # `attrs` are column => value, bound, never interpolated; a generated
     # model casts each by its column's type as a save does
-    # ({Relation.typed_bind}: a decimal rounded to its scale, a boolean as
+    # (a decimal rounded to its scale, a boolean as
     # 1/0, a Hash as JSON, a Time in the storage format) and refuses an
     # encrypted column (`encrypts`) among the attrs, the conflict columns
     # and the update keys, which only a save can encrypt. A hand-written
@@ -56,8 +56,7 @@ module Cybertrain
       raise ArgumentError, "upsert: no conflict columns" if conflict.empty?
 
       columns = Array.new(0) { "" }
-      binds = [nil, 0, 0.0, "", Cybertrain::DB::Blob.new("")]
-      binds.clear
+      binds = Cybertrain::Cast.empty_binds
       attrs.each do |key, value|
         columns << Relation.checked_column("upsert", key)
         name = key.to_s
@@ -103,10 +102,7 @@ module Cybertrain
       else
         sql << " DO UPDATE SET " << sets.join(", ")
       end
-      Cybertrain::DB.with do |c|
-        c.execute(sql, binds)
-        c.changes
-      end
+      Relation.execute_write(sql, binds)
     end
 
     # --- bulk writes (insert_all, insert_all!, upsert_all) ------------------
@@ -241,8 +237,7 @@ module Cybertrain
         column_scales << (scales.key?(name) ? scales[name].to_i : -1)
       end
 
-      binds = [nil, 0, 0.0, "", Cybertrain::DB::Blob.new("")]
-      binds.clear
+      binds = Cybertrain::Cast.empty_binds
       i = 0
       while i < rows.size
         cells = Model.bulk_cells(rows[i])
@@ -332,8 +327,8 @@ module Cybertrain
       end
     end
 
-    # An empty RETURNING row, seeded with every type a cell can be
-    # (NOTES rules 9 and 46).
+    # An empty row (a RETURNING row, or the cells of an input row), seeded
+    # with every type a cell can be (NOTES rules 9 and 46).
     def self.bulk_empty_row
       row = { "" => [nil, 0, 0.0, "", true, Time.at(0), Date.new(1970, 1, 1)][0] }
       row.delete("")
@@ -370,8 +365,7 @@ module Cybertrain
 
     # One row's values keyed by the String of each key.
     def self.bulk_cells(row)
-      cells = { "" => [nil, 0, 0.0, "", true, Time.at(0), Date.new(1970, 1, 1)][0] }
-      cells.delete("")
+      cells = Model.bulk_empty_row
       row.each { |k, v| cells[k.to_s] = v }
       cells
     end

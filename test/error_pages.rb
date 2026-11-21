@@ -131,7 +131,7 @@ test "error answers carry the security defaults on the wire, once" do
   end
 end
 
-# ---- What ErrorPages reports (Task 9; spec section 13.2, plan D7) -----------
+# ---- What ErrorPages reports (docs/design.md D88) --------------------------
 
 def no_report_context
   h = { "" => "" }

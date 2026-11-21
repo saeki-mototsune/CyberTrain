@@ -208,7 +208,7 @@ expect_upgrade_tests() {
 
 # `delete_replaced OUTPUT`: deletes the files the generator's output names
 # as replaced by its class-form tests (`manual  <path>: replaced by ...;
-# delete it`, plan decision D15), as its user is told to.
+# delete it`), as its user is told to.
 delete_replaced() {
   local names
   names=$(sed -n 's/^manual  \([^:]*\): replaced by .*; delete it$/\1/p' "$1")

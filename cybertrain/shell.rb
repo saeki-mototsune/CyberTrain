@@ -11,8 +11,8 @@ module Cybertrain
     # mode (-O0 -g). Both tools run for milliseconds, and at -O2 gen takes
     # 38 s to build while its C is one unit (under 4 MiB) and 18 s on four
     # cores once it is split; in debug mode gen builds in 8.5 s and writes
-    # the same files
-    # (docs/superpowers/specs/2026-11-12-dev-flow-bottlenecks-design.md, C3).
+    # the same files (docs/design.md D12, the 2026-11-12 note;
+    # docs/spinel-feedback.md, "spin: no build flags per executable").
     # spin keeps the mode per executable in build/bin/.<name>.mode, so a
     # debug gen is up to date for the next debug run and the application,
     # built without the prefix, stays a release build. The one definition:

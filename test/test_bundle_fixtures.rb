@@ -1,4 +1,4 @@
-# The whole fixture chain in a bundle (spec sections 5.3, 6 and 7): a
+# The whole fixture chain in a bundle (docs/design.md D82 and D83): a
 # program in gen/tests.rb's shape (Bundle.boot on a new test database,
 # Gen::Tests.fixtures_hook registered through before_each_bundled,
 # Bundle.run! over a class-form table and a top-level-form file) with

@@ -1,6 +1,6 @@
 # Cybertrain::Feature and Cybertrain::Features -- how the core reaches an
-# optional subsystem without naming it (docs/superpowers/specs/
-# 2026-11-13-optional-subsystems-design.md, section 4). Spinel compiles every
+# optional subsystem without naming it (docs/design.md D85, "The
+# mechanism"). Spinel compiles every
 # method of every file a program requires, so a core file that named
 # Scheduler or Job would pull jobs into every application. Instead the core
 # calls hooks on the features that were required:

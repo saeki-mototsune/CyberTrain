@@ -1,0 +1,5 @@
+top level: NameError
+42
+module body: NameError
+class body: NameError
+12

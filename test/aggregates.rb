@@ -2,7 +2,7 @@ require "cybertrain/test"
 require "cybertrain/db"
 require "cybertrain/model"
 
-# Task 9 of phase 2: the typed aggregates on Relation -- minimum_*,
+# The typed aggregates on Relation (docs/design.md D45) -- minimum_*,
 # maximum_*, average (nil on an empty relation, never 0), their grouped
 # `_by(group, column)` forms (a Hash keyed by the group's cell as a
 # String), sum_int_by / sum_float_by, the `_sql` expression forms,

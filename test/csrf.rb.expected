@@ -9,6 +9,6 @@ ok   a POST under an exempt prefix passes without a token
 ok   a POST outside every exempt prefix is still checked
 ok   an exempt prefix is matched on the path as sent, so a percent-encoded spelling is checked
 ok   an empty prefix exempts nothing and the default is no exemption
-ok   token_for mints a token once and reuses it
-ok   token_for marks the session changed and stores the token under TOKEN_KEY
+ok   csrf_token! mints a token once and reuses it
+ok   csrf_token! marks the session changed and stores the token under TOKEN_KEY
 13 tests, 31 assertions, 0 failures

@@ -3,7 +3,7 @@ require "cybertrain/asset_manifest"
 
 module Cybertrain
   module Gen
-    # One asset file (spec section 7.1): its logical path (the path below
+    # One asset file (docs/design.md D63): its logical path (the path below
     # its root: "logo.svg", "controllers/hello_controller.js"), its source
     # path relative to the application root ("app/assets/images/logo.svg"),
     # its bytes (for a stylesheet, the text with its url()s rewritten), the
@@ -45,13 +45,13 @@ module Cybertrain
       end
     end
 
-    # Finds the application's assets (spec section 7.1) under
+    # Finds the application's assets (docs/design.md D63) under
     # app/assets/*/ (each subdirectory a root), app/javascript and
     # vendor/javascript, and digests them. Dotfiles (.keep, .DS_Store) and
     # symlinked directories are skipped (a root that is a symlink stops
-    # gen). A logical path found under two roots is refused (plan decision
-    # 29; Propshaft silently takes the first). Stylesheets have their url()s rewritten to digested paths
-    # before they are digested, each after the stylesheets it names.
+    # gen). A logical path found under two roots is refused (Propshaft
+    # silently takes the first). Stylesheets have their url()s rewritten to
+    # digested paths before they are digested, each after those it names.
     module AssetScan
       URL_SKIPPED = ["data:", "http:", "https:", "//", "#", "%23"].freeze
 
