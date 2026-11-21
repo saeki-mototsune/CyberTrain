@@ -12,6 +12,12 @@ module Cybertrain
   # name.
   # Not called Rejected: Cybertrain::Rejected is the Server's own
   # status-carrying error.
+  #
+  # The class to rescue around `Query.parse`, `Query.decode`,
+  # `request.form_value` and {Request#decoded_body}: every refusal of
+  # request text is one of its subclasses. Unhandled, the request is
+  # answered 400.
+  # @api public
   class QueryInvalid < StandardError
   end
 

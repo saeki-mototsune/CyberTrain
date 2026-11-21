@@ -68,7 +68,7 @@ generates ({Article}, {ArticleRelation}, {Gen::UrlHelpers}).
 | {Cybertrain::Params::ParameterMissing} | {Cybertrain::Params#require} | 400 |
 | {Cybertrain::BodyUndecodable}, {Cybertrain::BodyTooLarge} | {Cybertrain::Request#decoded_body} on a corrupt or unsupported `Content-Encoding`, or a body that would inflate past its size limit | 400 |
 | `ArgumentError` | `order` with anything but `column [ASC\|DESC]`, `render` with the wrong options | 500 |
-| `Cybertrain::DB::Error` | SQLite refusing a query (a NOT NULL or foreign key constraint, a missing column) | 500 |
+| {Cybertrain::DB::Error} | SQLite refusing a query (a NOT NULL or foreign key constraint, a missing column) | 500 |
 
 {Cybertrain::Controller.rescue_from} matches the exception's class exactly.
 In production a bare error response is replaced by `public/<status>.html`
