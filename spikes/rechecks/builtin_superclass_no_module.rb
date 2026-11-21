@@ -2,7 +2,7 @@
 # module and requires nothing, and in it `superclass` on Ruby's own
 # exception classes answers the whole chain on 2026.11.04.7026. Adding one
 # `module Pkg; end` line makes the compiled program stop with NoMethodError
-# (differing/builtin_superclass_with_module.rb), so keep this file free of
+# (builtin_superclass_with_module.rb), so keep this file free of
 # modules and of requires.
 
 def chain(kind)

@@ -590,10 +590,9 @@ module Cybertrain
         # loggers never get an io, @io is nil-only, and Spinel
         # 2026.10.26.7019 sent `@io.puts(line)` through a dispatch whose
         # fallback failed C compilation once the TLS layer was in the
-        # program. The rule's reduced program still fails that way
-        # (spikes/rechecks/differing/nil_only_puts_openssl.rb); the program
-        # of test/logger_tls.rb, written for it, builds with `puts` put
-        # back (NOTES status 78).
+        # program. `write` is right on its own and stays until
+        # docs/spinel-feedback.md K is closed; the rule's reduced program
+        # is spikes/rechecks/nil_only_puts_openssl.rb.
         @io.write(line)
       else
         # Flushed per line: a server's stdout is usually a pipe or a file,

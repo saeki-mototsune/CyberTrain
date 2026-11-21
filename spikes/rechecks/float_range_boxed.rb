@@ -1,9 +1,9 @@
 # NOTES 86 (docs/spinel-feedback.md Q): a Range of Time, and a Float Range
 # behind `when Range`. Integer and String Ranges in the same places match
-# CRuby and are in ../container_shapes.rb.
+# CRuby and are in container_shapes.rb.
 #
-#   ruby spikes/rechecks/differing/float_range_boxed.rb
-#   spinel spikes/rechecks/differing/float_range_boxed.rb -O 0 -o "$TMPDIR/fr" && "$TMPDIR/fr"
+#   ruby spikes/rechecks/float_range_boxed.rb
+#   spinel spikes/rechecks/float_range_boxed.rb -O 0 -o "$TMPDIR/fr" && "$TMPDIR/fr"
 #
 # Linux x86_64, Spinel 2026.11.04.7026 (a2d06115, GCC 13.3.0), CRuby 3.3.6,
 # 2026-11-19.

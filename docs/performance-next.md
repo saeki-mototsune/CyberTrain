@@ -146,8 +146,8 @@ change: 6. Explained and worked around: 10. Held: 11.
    the C parse existed. It changes the attribute's typing (a nullable Time
    ivar that is filled lazily), which the generated models avoid on purpose
    (spikes/NOTES.md rules 7 and 43), so it needs a Spinel probe first.
-   Probes of rules 7 and 43 pass on 2026.11.04.7026 (NOTES, "Status on
-   2026.11.04.7026"); the lazily filled ivar itself has not been probed.
+   Probes of rules 7 and 43 pass on 2026.11.04.7026 (docs/spinel-feedback.md,
+   "Status by rule"); the lazily filled ivar itself has not been probed.
 4. **`Interpreter` environments, about 11 + 21 on 2026.09.12.**
    `render_helper` copies the environment per partial (`env.dup`, about 11
    Hashes) and `eval_kwargs` builds a Hash per call with keywords (about
