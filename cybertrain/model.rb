@@ -665,14 +665,14 @@ module Cybertrain
 
       names = Array.new(0) { "" }
       attrs.each do |key, _value|
-        name = key.to_s
+        name = Key.string_of(key)
         unless name != "id" && column?(name)
           raise ArgumentError, "update_columns: #{name.inspect} is not a column of #{model_name}"
         end
 
         names << name
       end
-      attrs.each { |key, value| write_attribute(key.to_s.to_sym, value) }
+      attrs.each { |key, value| write_attribute(Key.string_of(key).to_sym, value) }
       # to_row's expressions for those columns: the generated casts and
       # scale rounding, read off the values just written.
       row = to_row
@@ -860,3 +860,4 @@ module Cybertrain
 end
 
 require "cybertrain/model/bulk_writes"
+require "cybertrain/key"

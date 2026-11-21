@@ -27,6 +27,7 @@ require "cybertrain/html"
 require "cybertrain/model"
 require "cybertrain/generator/inflector"
 require "cybertrain/i18n"
+require "cybertrain/key"
 
 module Cybertrain
   class FormBuilder
@@ -355,7 +356,7 @@ module Cybertrain
     # [-a-zA-Z0-9:.] become `_`). Reads its argument through a fresh local
     # (spikes/NOTES.md rule 62).
     def self.tag_id(name)
-      s = name.to_s
+      s = Key.string_of(name)
       n = s.bytesize
       out = +""
       i = 0
@@ -374,7 +375,7 @@ module Cybertrain
     # [-a-zA-Z0-9:.] become `_`, a trailing `_` is dropped). Fresh local:
     # rule 62.
     def self.scope_id(scope)
-      s = scope.to_s
+      s = Key.string_of(scope)
       n = s.bytesize
       out = +""
       i = 0

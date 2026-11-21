@@ -3,6 +3,7 @@ require "cybertrain/locales/bundled"
 require "cybertrain/strftime"
 require "cybertrain/clock"
 require "cybertrain/zoned_time"
+require "cybertrain/key"
 
 # I18n, a top-level module as in Rails (plan decision D1), so application
 # code writes `I18n.t` and `I18n.locale` as there.
@@ -185,8 +186,8 @@ module I18n
   def self.locale_available?(value)
     return false if value.nil?
 
-    name = value.to_s
-    I18n.available_locales.each { |l| return true if l.to_s == name }
+    name = Cybertrain::Key.string_of(value)
+    I18n.available_locales.each { |l| return true if Cybertrain::Key.string_of(l) == name }
     false
   end
 
@@ -194,8 +195,8 @@ module I18n
   # accepts, as in Rails (the default locale must be in the list too).
   # @api private
   def self.resolve_locale(value)
-    name = value.to_s
-    I18n.available_locales.each { |l| return l if l.to_s == name }
+    name = Cybertrain::Key.string_of(value)
+    I18n.available_locales.each { |l| return l if Cybertrain::Key.string_of(l) == name }
     message = "\"#{name}\" is not an available locale"
     raise InvalidLocale, message
   end
@@ -251,7 +252,7 @@ module I18n
     found = I18n.find_translation(key, options)
     return found unless found.nil?
 
-    I18n.missing_answer(I18n.option_locale(options), key.to_s)
+    I18n.missing_answer(I18n.option_locale(options), Cybertrain::Key.string_of(key))
   end
 
   # What {I18n.t} answers for key, or nil when no dictionary holds it and
@@ -262,7 +263,7 @@ module I18n
   # @return [String, nil]
   # @api private
   def self.find_translation(key, options = {})
-    k = key.to_s
+    k = Cybertrain::Key.string_of(key)
     loc = I18n.option_locale(options)
     vars = I18n.interpolation_vars(options)
     count = options[:count]
@@ -272,9 +273,9 @@ module I18n
     if found.nil?
       fallback = options[:default]
       if fallback.is_a?(Symbol)
-        found = I18n.find_in_locales(loc, fallback.to_s, counted, n)
+        found = I18n.find_in_locales(loc, Cybertrain::Key.string_of(fallback), counted, n)
       elsif !fallback.nil?
-        found = fallback.to_s
+        found = Cybertrain::Key.string_of(fallback)
       end
     end
     return nil if found.nil?
@@ -297,9 +298,9 @@ module I18n
         end
         vars["count"] = value.to_i.to_s
       elsif name == :count_text
-        vars["count"] = value.to_s unless options.key?(:count)
+        vars["count"] = Cybertrain::Key.string_of(value) unless options.key?(:count)
       elsif name != :default && name != :locale
-        vars[name.to_s] = value.to_s
+        vars[Cybertrain::Key.string_of(name)] = Cybertrain::Key.string_of(value)
       end
     end
     vars
@@ -326,7 +327,7 @@ module I18n
   # @return [Boolean]
   # @api public
   def self.html_key?(key)
-    k = key.to_s
+    k = Cybertrain::Key.string_of(key)
     k == "html" || k.end_with?("_html") || k.end_with?(".html")
   end
 
@@ -398,7 +399,7 @@ module I18n
     format = options[:format]
     pattern = ""
     if format.nil? || format.is_a?(Symbol)
-      name = format.nil? ? "default" : format.to_s
+      name = format.nil? ? "default" : Cybertrain::Key.string_of(format)
       key = "#{kind}.formats.#{name}"
       found = I18n.find_in_locales(loc, key, false, 0)
       if found.nil?
@@ -407,7 +408,7 @@ module I18n
       end
       pattern = found
     elsif format.is_a?(String)
-      pattern = format.to_s
+      pattern = Cybertrain::Key.string_of(format)
     else
       message = "l: format: must be a Symbol or a String (got #{format.class.name})"
       raise ArgumentError, message
@@ -508,7 +509,7 @@ module I18n
   # @return [Array<String>]
   # @api public
   def self.translate_list(key, options = {})
-    k = key.to_s
+    k = Cybertrain::Key.string_of(key)
     wanted = options[:locale]
     loc = wanted.nil? ? I18n.locale : I18n.resolve_locale(wanted)
     found = I18n.list_in_locale(loc, k)
@@ -529,7 +530,7 @@ module I18n
   # @return [Symbol]
   # @api public
   def self.plural_category(locale, count)
-    s = locale.to_s
+    s = Cybertrain::Key.string_of(locale)
     lang = I18n.base_language(s)
     n = count.abs
     case lang
@@ -555,7 +556,7 @@ module I18n
   # `"pt"` from `"pt-BR"` (or `"pt_BR"`).
   # @api private
   def self.base_language(name)
-    s = name.to_s
+    s = Cybertrain::Key.string_of(name)
     i = 0
     n = s.bytesize
     while i < n
@@ -573,7 +574,7 @@ module I18n
   # @return [String]
   # @api public
   def self.humanize_key(segment)
-    s = segment.to_s
+    s = Cybertrain::Key.string_of(segment)
     spaced = s.tr("_", " ")
     spaced.capitalize
   end
@@ -588,7 +589,7 @@ module I18n
   # @return [String]
   # @api public
   def self.humanize_attribute(name)
-    s = name.to_s
+    s = Cybertrain::Key.string_of(name)
     base = s.end_with?("_id") && s.length > 3 ? s[0, s.length - 3].to_s : s
     spaced = base.tr("_", " ")
     spaced.capitalize
@@ -608,8 +609,8 @@ module I18n
   # @return [String]
   # @api public
   def self.human_attribute_name(model_key, attr)
-    a = attr.to_s
-    mk = model_key.to_s
+    a = Cybertrain::Key.string_of(attr)
+    mk = Cybertrain::Key.string_of(model_key)
     unless mk.empty?
       found = I18n.find_translation("activerecord.attributes.#{mk}.#{a}")
       return found unless found.nil?
@@ -625,7 +626,7 @@ module I18n
   # @return [String]
   # @api public
   def self.human_model_name(model_key)
-    mk = model_key.to_s
+    mk = Cybertrain::Key.string_of(model_key)
     found = I18n.find_translation("activerecord.models.#{mk}", { count: 1 })
     return found unless found.nil?
 
@@ -661,9 +662,9 @@ module I18n
   #   asked to (the text names the most specific key)
   # @api public
   def self.error_message(model_key, attr, type, options = {}, value = nil)
-    mk = model_key.to_s
-    a = attr.to_s
-    ty = type.to_s
+    mk = Cybertrain::Key.string_of(model_key)
+    a = Cybertrain::Key.string_of(attr)
+    ty = Cybertrain::Key.string_of(type)
     keys = Array.new(0) { "" }
     unless mk.empty?
       keys << "activerecord.errors.models.#{mk}.attributes.#{a}.#{ty}"
@@ -685,7 +686,7 @@ module I18n
     # The human names cost a lookup each: made only for a text that uses them.
     vars["attribute"] = I18n.human_attribute_name(mk, a) if found.include?("%{attribute}") && !vars.key?("attribute")
     vars["model"] = I18n.human_model_name(mk) if found.include?("%{model}") && !vars.key?("model")
-    vars["value"] = value.to_s if !value.nil? && !vars.key?("value")
+    vars["value"] = Cybertrain::Key.string_of(value) if !value.nil? && !vars.key?("value")
     I18n.interpolate_vars(found, vars)
   end
 
@@ -698,8 +699,8 @@ module I18n
   # @return [String]
   # @api public
   def self.full_message(model_key, attr, message)
-    a = attr.to_s
-    m = message.to_s
+    a = Cybertrain::Key.string_of(attr)
+    m = Cybertrain::Key.string_of(message)
     return m if a == "base"
 
     attribute = I18n.human_attribute_name(model_key, a)
@@ -732,7 +733,7 @@ module I18n
 
     dot = key.rindex(".")
     last = dot.nil? ? key : key[(dot + 1)..]
-    I18n.humanize_key(last.to_s)
+    I18n.humanize_key(Cybertrain::Key.string_of(last))
   end
 
   # The text at key in the locale, then in the default locale; nil when
@@ -772,7 +773,7 @@ module I18n
       return zero unless zero.nil?
     end
     category = I18n.plural_category(loc, n)
-    form = I18n.merged_form(full, category.to_s)
+    form = I18n.merged_form(full, Cybertrain::Key.string_of(category))
     return form unless form.nil?
 
     I18n.merged_form(full, "other")

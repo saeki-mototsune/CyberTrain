@@ -20,6 +20,7 @@ require "cybertrain/pagination"
 require "cybertrain/params"
 require "cybertrain/views"
 require "cybertrain/component"
+require "cybertrain/key"
 require "cybertrain/feature"
 require "cybertrain/template/engine"
 require "cybertrain/template/form_builder"
@@ -423,7 +424,7 @@ module Cybertrain
       def string_keys_of(attrs)
         out = { "" => [nil, 0, 0.0, "", true][0] }
         out.delete("")
-        attrs.each_key { |key| out[key.to_s] = attrs[key] }
+        attrs.each_key { |key| out[Key.string_of(key)] = attrs[key] }
         out
       end
 
@@ -1292,7 +1293,7 @@ module Cybertrain
         return "#{n} #{text_arg(args, 2, "pluralize")}" if args.size > 2
         # The English inflector only in English (D11); Rails has no rules
         # for other languages either, so the word stays as it is.
-        return "#{n} #{word}" unless I18n.base_language(I18n.locale.to_s) == "en"
+        return "#{n} #{word}" unless I18n.base_language(I18n.locale.name) == "en"
 
         "#{n} #{Inflector.pluralize(word)}"
       end
@@ -1355,7 +1356,7 @@ module Cybertrain
         given = kwargs["units"]
         i = 0
         while i < NumberHelper::UNIT_KEYS.length
-          key = NumberHelper::UNIT_KEYS[i].to_s
+          key = NumberHelper::UNIT_KEYS[i].name
           names[i] = Helpers.number_text("number.human.decimal_units.units.#{key}", false, 0)
           i += 1
         end
@@ -1363,7 +1364,7 @@ module Cybertrain
         when Hash
           i = 0
           while i < NumberHelper::UNIT_KEYS.length
-            key = NumberHelper::UNIT_KEYS[i].to_s
+            key = NumberHelper::UNIT_KEYS[i].name
             names[i] = FormBuilder.value_text(given[key]) if given.key?(key)
             i += 1
           end
@@ -1950,7 +1951,7 @@ module Cybertrain
       # text.downcase, without the copy for an already lowercase method:.
       def lower_text(v)
         case v
-        when Symbol then HeaderName.lower(v.to_s) # a Symbol's text is not copied
+        when Symbol then HeaderName.lower(v.name) # name: one String per Symbol (NOTES rule 123)
         else HeaderName.lower(FormBuilder.value_text(v))
         end
       end

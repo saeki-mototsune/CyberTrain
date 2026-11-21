@@ -41,6 +41,7 @@ require "cybertrain/encryptor"
 require "cybertrain/http/cookies"
 require "cybertrain/http/response"
 require "cybertrain/session"
+require "cybertrain/key"
 
 module Cybertrain
   # The request's cookies, from {Controller#cookies}. Names are Strings or
@@ -98,7 +99,7 @@ module Cybertrain
     # @return [String, nil]
     # @api public
     def [](name)
-      @cookies[name.to_s]
+      @cookies[Key.string_of(name)]
     end
 
     # Writes the cookie (see the class comment for the Hash form).
@@ -107,7 +108,7 @@ module Cybertrain
     # @return [String] the value written
     # @api public
     def []=(name, value)
-      assign_cookie(name.to_s, value, PLAIN, false)
+      assign_cookie(Key.string_of(name), value, PLAIN, false)
     end
 
     # Deletes the cookie: a Set-Cookie with an empty value and `Max-Age=0`
@@ -117,7 +118,7 @@ module Cybertrain
     # @return [String, nil]
     # @api public
     def delete(name, path: "/")
-      key = name.to_s
+      key = Key.string_of(name)
       set_cookie = Cookies.serialize(key, "", path: path, max_age: 0, secure: @secure)
       @response.replace_cookie(key, set_cookie)
       @cookies.delete(key)
@@ -284,7 +285,7 @@ module Cybertrain
     # @return [String]
     # @api public
     def []=(name, value)
-      @jar.assign_cookie(name.to_s, value, CookieJar::PLAIN, true)
+      @jar.assign_cookie(Key.string_of(name), value, CookieJar::PLAIN, true)
     end
 
     # @param name [String, Symbol]
@@ -326,7 +327,7 @@ module Cybertrain
     # @return [String, nil]
     # @api public
     def [](name)
-      @jar.verified_cookie(name.to_s)
+      @jar.verified_cookie(Key.string_of(name))
     end
 
     # @param name [String, Symbol]
@@ -334,7 +335,7 @@ module Cybertrain
     # @return [String]
     # @api public
     def []=(name, value)
-      @jar.assign_cookie(name.to_s, value, CookieJar::SIGNED, @permanent)
+      @jar.assign_cookie(Key.string_of(name), value, CookieJar::SIGNED, @permanent)
     end
 
     # @param name [String, Symbol]
@@ -359,7 +360,7 @@ module Cybertrain
     # @return [String, nil]
     # @api public
     def [](name)
-      @jar.opened_cookie(name.to_s)
+      @jar.opened_cookie(Key.string_of(name))
     end
 
     # @param name [String, Symbol]
@@ -367,7 +368,7 @@ module Cybertrain
     # @return [String]
     # @api public
     def []=(name, value)
-      @jar.assign_cookie(name.to_s, value, CookieJar::ENCRYPTED, @permanent)
+      @jar.assign_cookie(Key.string_of(name), value, CookieJar::ENCRYPTED, @permanent)
     end
 
     # @param name [String, Symbol]

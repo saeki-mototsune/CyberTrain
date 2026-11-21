@@ -1,4 +1,5 @@
 require "json"
+require "cybertrain/key"
 
 module Cybertrain
   # Rails-style flash: values set with []= are queued for the NEXT request
@@ -35,7 +36,7 @@ module Cybertrain
     # @return [String, nil]
     # @api public
     def [](key)
-      @current[key.to_s]
+      @current[Key.string_of(key)]
     end
 
     # Queues a message for the next request.
@@ -43,7 +44,7 @@ module Cybertrain
     # @param value [Object] stored as `value.to_s`
     # @api public
     def []=(key, value)
-      k = key.to_s
+      k = Key.string_of(key)
       @queued_order << k unless @queued.key?(k)
       @queued[k] = value.to_s
     end
@@ -80,7 +81,7 @@ module Cybertrain
     # queue -- used by FlashNow and by .load to seed this request's values
     # from the previous request's queue.
     def set_now(key, value)
-      k = key.to_s
+      k = Key.string_of(key)
       @current_order << k unless @current.key?(k)
       @current[k] = value.to_s
     end
