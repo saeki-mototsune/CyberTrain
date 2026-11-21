@@ -274,7 +274,9 @@ development server.
 ### What CI runs
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the
-framework's tests and the example application on Ubuntu and macOS, builds
+framework's tests and the example application on Ubuntu and, for the
+changes step 4 of [Pull requests](#pull-requests) lists and on `main`, on
+macOS; it builds
 and installs the gem, and scaffolds, builds and serves applications end to
 end. Three of those end-to-end checks are scripts you can run yourself after
 changing a generator or the test command: `script/auth-e2e signup` (or
@@ -439,9 +441,17 @@ blank second line) and leaves merge, revert, fixup! and squash! commits alone.
    checklist is this file in five lines (the gate, `spin test`, a compiled
    run for a structural change, a test for new behaviour with changed
    snapshots explained, documentation updated). Mark it a draft if it is not ready
-   for review.
-4. CI must be green: the Gate workflow, the CI workflow (both operating
-   systems) and, when the change touches an image, that image's workflow.
+   for review: on a draft only the Gate runs, and CI and the image workflows
+   start when it is marked ready, so push to a draft as often as you like.
+4. CI must be green: the Gate workflow, the CI workflow and, when the change
+   touches an image, that image's workflow. On a pull request CI runs its
+   macOS jobs only when the change reaches what has differed between the
+   systems (the CLI and its toolchain, the development server and the CRuby
+   preview, the HTTP server, the pins, the actions; `macos` in
+   [script/ci-changes](script/ci-changes) has the list), and the
+   `setup-cybertrain` job only when the action, `cybertrain new` or the pins
+   change; `main` runs both after every merge. Add the label `ci:macos` to
+   run macOS anyway (it is read when CI starts: push, or close and reopen).
    The `required` check waits for all of them and is what `main` asks for
    (see [Branch rules](#branch-rules)). A failure you believe is unrelated
    to your change is still worth a sentence in the pull request.
