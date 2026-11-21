@@ -189,10 +189,12 @@ The `.env.example` that `cybertrain new` writes lists the other variables an
 app reads. One of them is required as soon as a model declares `encrypts`:
 without `CYBERTRAIN_ENCRYPTION_KEY` such an app does not start. Make the key
 with `cybertrain secret --hex`, keep it with the other secret, and pass it
-the way the Sentry DSN below is passed: `- CYBERTRAIN_ENCRYPTION_KEY` under
-`env: secret:` in `config/deploy.yml`,
+the way the Sentry DSN below is passed. The generated files have these
+lines ready too, commented out: uncomment `- CYBERTRAIN_ENCRYPTION_KEY` under
+`env: secret:` in `config/deploy.yml` and
 `CYBERTRAIN_ENCRYPTION_KEY=$CYBERTRAIN_ENCRYPTION_KEY` in `.kamal/secrets`,
-and an `export` in the shell.
+and export the key in the shell (add the two lines to files from an older
+cybertrain).
 
 To send error reports to Sentry (or GlitchTip), the generated files have
 the lines ready, commented out: uncomment `- CYBERTRAIN_SENTRY_DSN` under

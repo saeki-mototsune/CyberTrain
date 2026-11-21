@@ -1080,9 +1080,10 @@ export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"   # 初回だけ作�
 `cybertrain new` が書く `.env.example` には、アプリが読むほかの変数が並んでいます。そのうち一つは、
 モデルが `encrypts` を宣言したときから必須になります。`CYBERTRAIN_ENCRYPTION_KEY` がないと、
 そういうアプリは起動しません。鍵は `cybertrain secret --hex` で作ってもう一つの秘密鍵と一緒に
-保管し、下の Sentry の DSN と同じ形で渡します。`config/deploy.yml` の `env: secret:` に
-`- CYBERTRAIN_ENCRYPTION_KEY`、`.kamal/secrets` に
-`CYBERTRAIN_ENCRYPTION_KEY=$CYBERTRAIN_ENCRYPTION_KEY` を書き、シェルで export します。
+保管し、下の Sentry の DSN と同じ形で渡します。そのための行も、生成されたファイルにコメントで
+用意してあります。`config/deploy.yml` の `env: secret:` の `- CYBERTRAIN_ENCRYPTION_KEY` と、
+`.kamal/secrets` の `CYBERTRAIN_ENCRYPTION_KEY=$CYBERTRAIN_ENCRYPTION_KEY` のコメントを外し、
+シェルで export します（古い cybertrain で作ったファイルにはこの 2 行を足してください）。
 
 エラー報告を Sentry（または GlitchTip）に送るための行は、生成されたファイルにコメントで用意して
 あります。`config/deploy.yml` の `env: secret:` の `- CYBERTRAIN_SENTRY_DSN` と、`.kamal/secrets` の

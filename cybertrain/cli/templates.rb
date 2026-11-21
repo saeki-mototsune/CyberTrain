@@ -803,6 +803,9 @@ module Cybertrain
               # CYBERTRAIN_LOG_FORMAT: json
             secret:
               - CYBERTRAIN_SECRET_KEY_BASE
+              # Encrypts the columns a model declares with `encrypts`; boot
+              # fails without it once one does. Also list it in .kamal/secrets.
+              # - CYBERTRAIN_ENCRYPTION_KEY
               # Where error reports are sent (a Sentry DSN); also list it in
               # .kamal/secrets.
               # - CYBERTRAIN_SENTRY_DSN
@@ -849,6 +852,12 @@ module Cybertrain
           # Encrypts the session cookie; changing it signs everyone out. Generate it
           # once with `openssl rand -hex 32` and keep it somewhere safe.
           CYBERTRAIN_SECRET_KEY_BASE=$CYBERTRAIN_SECRET_KEY_BASE
+
+          # Encrypts the columns a model declares with `encrypts`; boot fails
+          # without it once one does. Make it once with `cybertrain secret --hex`
+          # and keep it safe: encrypted data cannot be read without it. Add it
+          # to env: secret: in config/deploy.yml too.
+          # CYBERTRAIN_ENCRYPTION_KEY=$CYBERTRAIN_ENCRYPTION_KEY
 
           # Where error reports are sent (a Sentry DSN, which holds a key). Add
           # it to env: secret: in config/deploy.yml too.

@@ -231,6 +231,10 @@ test "config/deploy.yml and .kamal/secrets configure Kamal for the app" do
   secrets = read("blog/.kamal/secrets")
   assert_includes secrets, "KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD\n"
   assert_includes secrets, "CYBERTRAIN_SECRET_KEY_BASE=$CYBERTRAIN_SECRET_KEY_BASE\n"
+  # The encryption key, needed only once a model declares `encrypts`:
+  # commented in both files, like .env.example's line.
+  assert_includes deploy, "    # - CYBERTRAIN_ENCRYPTION_KEY\n"
+  assert_includes secrets, "\n# CYBERTRAIN_ENCRYPTION_KEY=$CYBERTRAIN_ENCRYPTION_KEY\n"
   assert_includes read("blog/public/up.html"), "OK"
   assert_includes read("blog/README.md"), "kamal setup"
 end
