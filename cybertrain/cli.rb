@@ -286,7 +286,7 @@ module Cybertrain
     def self.toml_string(value)
       raise InvalidArgument, "control characters are not allowed in --path, --version, --git or --ref" unless value.bytes.all? { |b| b >= 32 && b != 127 }
 
-      "\"#{value.gsub("\\", "\\\\\\\\").gsub("\"", "\\\"")}\""
+      "\"#{value.gsub(/[\\"]/) { |c| "\\#{c}" }}\""
     end
 
     # The value after `--flag`, or "" when the flag is absent. An empty

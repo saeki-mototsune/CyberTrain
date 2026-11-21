@@ -215,7 +215,7 @@ test "a test file the class-form rewrite refuses refuses the bundle, and gen sti
   File.write(write_file, "class OtherTest < ActiveSupport::TestCase\n  test \"b\" do\n  end\nend\n")
   assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
   reason = "test/models/article_test.rb:8: test \"a\" has the same method name test_a as test \"a\" (line 4)"
-  assert_equal "#{Cybertrain::Gen::TestsEmitter::HEADER}abort(\"#{reason.gsub("\"", "\\\"")}\")\n", File.read("#{root}/gen/tests.rb")
+  assert_equal "#{Cybertrain::Gen::TestsEmitter::HEADER}abort(\"#{reason.gsub(/[\\"]/) { |c| "\\#{c}" }}\")\n", File.read("#{root}/gen/tests.rb")
   # The application's other outputs are written as usual; gen/test's copies
   # are left as they were (none written, none swept).
   assert File.exist?("#{root}/gen/routes.rb")

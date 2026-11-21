@@ -67,17 +67,13 @@ on:
   # every group starts this workflow and the `changes` job skips the jobs
   # the group does not need. Until the queue is on, nothing sends the event.
   merge_group:
-  # release.yml runs this whole file on the tag before it creates a release
-  # (with `ref` set to the tag on a manual release run, which takes this file
-  # from the branch it was started on, but .github/actions/setup-spinel and
-  # script/test-shard from the tag: a tag older than those two fails here).
+  # release.yml runs this whole file on the tag before it creates a release,
+  # in the tag's own run (a push of the tag, or a manual run started on it):
+  # every checkout below takes the commit that run started on, never a ref
+  # from an input, so this file, .github/actions/setup-spinel and
+  # script/test-shard all come from the tag, and the caches the jobs save
+  # are scoped to the tag, not to main.
   workflow_call:
-    inputs:
-      ref:
-        description: "Git ref to check out and test (default: the commit that triggered the run)"
-        type: string
-        required: false
-        default: ""
 
 # A new push to a pull request cancels the run still going for its previous
 # commit: only the latest commit's result matters, and a run takes about 15
@@ -95,8 +91,7 @@ env:
   # Must equal Cybertrain::SPINEL_TAG (script/gate checks, in the Gate
   # workflow): the release the CLI installs and the framework is tested against.
   # The cache key (.github/actions/setup-spinel) reads the tag from the checked-out
-  # cybertrain/version.rb instead, so that a release run testing a tag with
-  # another branch's copy of this file still keys the toolchain it builds.
+  # cybertrain/version.rb instead, the one place the pin is defined.
   SPINEL_TAG: "2026.11.15.7033"
 
 # Every job has a timeout-minutes, so that a hung compile or a server that
@@ -109,8 +104,9 @@ jobs:
   # setup-cybertrain): `framework` is false when every changed file is one
   # only the API reference reads, or one `paths` above leaves out
   # (script/ci-changes); `cruby_preview` and `preview_e2e` decide the
-  # cruby-preview and preview-e2e jobs the same way. A release run (release.yml passes `ref`) runs
-  # everything, and so does a run whose changed files cannot be listed.
+  # cruby-preview and preview-e2e jobs the same way. A release run (a run on
+  # a tag: this file's own push runs only on main) runs everything, and so
+  # does a run whose changed files cannot be listed.
   changes:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
@@ -124,20 +120,20 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.ref }}
           fetch-depth: 2
 
       - name: Decide from the changed files
         id: decide
         env:
           EVENT: ${{ github.event_name }}
-          CALLED_WITH_REF: ${{ inputs.ref }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
           BEFORE: ${{ github.event.before }}
           MERGE_GROUP_BASE: ${{ github.event.merge_group.base_sha }}
         run: |
           base=""
-          if [ -n "$CALLED_WITH_REF" ]; then
-            echo "a run for $CALLED_WITH_REF (release.yml): every job"
+          if [ "$REF_TYPE" = tag ]; then
+            echo "a run for the tag $REF_NAME (release.yml): every job"
           elif [ "$EVENT" = pull_request ]; then
             # HEAD is the merge of the pull request into its base.
             base=$(git rev-parse --verify --quiet "HEAD^2" > /dev/null && git rev-parse HEAD^1) || base=""
@@ -174,7 +170,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.ref }}
 
       - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         with:
@@ -212,7 +207,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.ref }}
 
       - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         with:
@@ -258,7 +252,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       - uses: ./.github/actions/setup-spinel
@@ -299,7 +292,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       - uses: ./.github/actions/setup-spinel
@@ -326,7 +318,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       - uses: ./.github/actions/setup-spinel
@@ -559,7 +550,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.ref }}
           path: framework
 
       # For `cybertrain new` below only; the action sets up Ruby itself.

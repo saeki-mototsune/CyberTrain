@@ -5,8 +5,8 @@
 # CI and reads the framework commit out of the application's spin.lock.
 #
 # A local action comes from the checkout, so every job runs actions/checkout
-# first (with ref: ${{ inputs.ref }}) and takes this file from the same commit
-# it tests.
+# first and takes this file from the same commit it tests (the commit the
+# run started on: a release run is a run on the tag, see release.yml).
 name: Set up Spinel
 description: Install Ruby, the system packages, the gem CLI of this checkout and the Spinel release it pins.
 
