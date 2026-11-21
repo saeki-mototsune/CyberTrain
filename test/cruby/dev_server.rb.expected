@@ -14,6 +14,7 @@ ok   bounded_run answers a pipe it cannot make as a failure, and keeps a bounded
 ok   a TERM or HUP during the probe of the children's ruby stops the probe's process group too
 ok   a port that is in use is refused with today's wording, before any child
 ok   a port argument overrides the application's port
+ok   the supervisor's port messages are the ones `cybertrain server` prints, hint included
 ok   a PORT that is not a number, or a word after it, is refused
 ok   an application on another release of the framework is refused, with the ways out
 ok   an application that does not load under CRuby is refused, naming --spinel
@@ -49,4 +50,4 @@ ok   a child that dies of the Ctrl-C that stops the driver is not reported as a 
 ok   every cleanup step runs when the machine's stop raises
 ok   the banner's CRuby version is the one the children run
 ok   the gate passes events to the machine until a stop is asked
-51 tests, 306 assertions, 0 failures
+52 tests, 308 assertions, 0 failures

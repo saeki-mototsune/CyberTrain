@@ -3,7 +3,7 @@ require "cybertrain/http/header_name"
 require "cybertrain/http/parser"
 require "cybertrain/http/multipart"
 require "cybertrain/http/ip_address"
-require "cybertrain/logger"
+require "cybertrain/http/log"
 
 module Cybertrain
   # The request body cannot be decoded as its Content-Encoding says
@@ -101,19 +101,22 @@ module Cybertrain
       @request_id = id
     end
 
-    # The log Scope of the request ({Logger::Scope}), set by the RequestId
-    # middleware that gave it its id; {Logger::NO_SCOPE} until then. The
-    # Server swaps it in around the error line it logs for what escaped
-    # the stack, after RequestId has put the thread's own Scope back, so
-    # that line carries the request's id too.
-    # @return [Logger::Scope]
+    # The request's log context ({HttpLogContext}), set by whatever gave
+    # the request its id (a request-id middleware sets its own subclass of
+    # HttpLogContext); {HttpLogContext::NONE} until then. The Server swaps
+    # it in through {HttpLogSwitch.installed_switch} around the error line it logs
+    # for what escaped the handler, after the handler has put the thread's
+    # own context back, so that line carries the request's id too.
+    # @return [HttpLogContext]
     # @api private
-    attr_reader :log_scope
+    attr_reader :log_context
 
-    # @param scope [Logger::Scope]
+    # Sets {#log_context}.
+    # @param ctx [HttpLogContext]
+    # @return [HttpLogContext] ctx
     # @api private
-    def log_scope=(scope)
-      @log_scope = scope
+    def log_context=(ctx)
+      @log_context = ctx
     end
 
     def initialize(method, target, headers, body, remote_addr = "", http_version = "HTTP/1.1")
@@ -131,7 +134,7 @@ module Cybertrain
       @remote_addr = remote_addr
       @http_version = http_version
       @request_id = ""
-      @log_scope = Logger::NO_SCOPE
+      @log_context = HttpLogContext::NONE
       @utf8_query_string = nil
       @utf8_body = nil
       @decoded_body = nil
@@ -205,10 +208,10 @@ module Cybertrain
       :html
     end
 
-    # The most bytes of `Accept-Language` {#preferred_locale} reads.
+    # The most bytes of `Accept-Language` {#negotiate_locale} reads.
     LOCALE_HEADER_LIMIT = 4096
 
-    # The most `Accept-Language` entries {#preferred_locale} reads.
+    # The most `Accept-Language` entries {#negotiate_locale} reads.
     LOCALE_ENTRY_LIMIT = 32
 
     # The locale the client prefers among `available`, from
@@ -216,28 +219,27 @@ module Cybertrain
     # breaks a tie; `ja-JP` matches `:ja` (the full tag is tried before its
     # language, ASCII case-insensitively); `q=0`, `*` and a malformed entry
     # match nothing. Without a match (no header, junk, nothing available)
-    # it answers `I18n.default_locale`, never nil. Only the first 4 KB and
-    # 32 entries are read, and the answer is always an element of
-    # `available` (or the default): request text is compared, never turned
-    # into a Symbol.
-    # The default comes from `I18n` (cybertrain/i18n), which the HTTP layer
-    # does not require (script/check-http-layer keeps it standalone): a
-    # program that calls this loads it, as `require "cybertrain"` does.
+    # it answers `default`, never nil. Only the first 4 KB and 32 entries
+    # are read, and the answer is always an element of `available` (or
+    # `default`): request text is compared, never turned into a Symbol.
     # @example
-    #   request.preferred_locale([:en, :ja])   # "ja-JP, en;q=0.5" => :ja
-    # @param available [Array<Symbol>] the locales the application serves
-    # @return [Symbol]
+    #   request.negotiate_locale([:en, :ja], :en)   # "ja-JP, en;q=0.5" => :ja
+    #   request.negotiate_locale(["en", "ja"], "fr")   # no header => "fr"
+    # @param available [Array<Symbol>, Array<String>] the locales the
+    #   application serves, compared by name
+    # @param default [Symbol, String] the answer when nothing matches
+    # @return [Symbol, String] an element of `available`, or `default`
     # @api public
-    def preferred_locale(available)
+    def negotiate_locale(available, default)
       raw = header("Accept-Language").to_s
-      return I18n.default_locale if raw.empty?
+      return default if raw.empty?
 
       text = raw.bytesize > LOCALE_HEADER_LIMIT ? raw.byteslice(0, LOCALE_HEADER_LIMIT).to_s : raw
       # A header that is not valid text (or was cut inside a character)
       # cannot be split; it is no preference.
-      return I18n.default_locale unless text.valid_encoding?
+      return default unless text.valid_encoding?
 
-      best = I18n.default_locale
+      best = default
       best_q = 0
       entries = text.split(",", LOCALE_ENTRY_LIMIT + 1)
       i = 0
@@ -663,7 +665,7 @@ module Cybertrain
     # the output, so a body that is small on the wire and huge inflated is
     # refused as soon as the ceiling is reached, not after), and a plain body
     # over the limit is refused as well. The bytes on the wire are bounded
-    # separately by the server (Config#max_body_bytes). Other encodings
+    # separately by the server (its max_body_bytes). Other encodings
     # (`deflate`, `br`) are not decoded: a 400. A multi-member gzip file is
     # inflated whole; bytes after the last member that are not a member of
     # their own make the body undecodable.
@@ -673,9 +675,9 @@ module Cybertrain
     # about 14 ms of the worker's time (the inflate runs in C and does not
     # yield), which is the cost a hostile client can impose per request.
     #
-    # `require "cybertrain"` installs the inflater. A program that loads only
-    # the HTTP layer answers every gzip body as undecodable (a 400) until it
-    # requires `cybertrain/http/gzip_ffi` and calls {GzipFFI.install!}.
+    # {GzipFFI.install!} (`cybertrain/http/gzip_ffi`) installs the
+    # inflater; until a program requires that file and calls it, every gzip
+    # body is answered as undecodable (a 400).
     # @example
     #   JSON.parse(request.decoded_body)
     #   request.decoded_body(52_428_800)   # an endpoint that takes bodies up to 50 MiB
@@ -807,9 +809,10 @@ module Cybertrain
     # The default refuses every gzip body: the only bounded inflater is
     # GzipFFI (system zlib through Spinel FFI), which cannot be loaded here
     # (CRuby loads this file for the portable tests and check-http-layer),
-    # so `require "cybertrain"` installs it. A module-level ivar with a
+    # so {GzipFFI.install!} (cybertrain/http/gzip_ffi) installs it; hence
+    # the default's message. A module-level ivar with a
     # lambda default, the shape Views.url_resolver has (NOTES rules 18, 42).
-    @inflater = ->(data, limit) { raise BodyUndecodable, "gzip request bodies are not decoded: no inflater is installed (require \"cybertrain\")" }
+    @inflater = ->(data, limit) { raise BodyUndecodable, "gzip request bodies are not decoded: no inflater is installed (require the gzip support)" }
 
     def self.inflater
       @inflater

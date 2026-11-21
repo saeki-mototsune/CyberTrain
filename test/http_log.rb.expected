@@ -1,0 +1,9 @@
+ok   the installed switch is the base, and its current context is NONE
+ok   the base switch's swap stores nothing and answers NONE
+ok   an installed subclass switch, from a second thread: swap answers the previous context
+ok   an installed subclass switch, from a second thread: current there is the swapped-in context
+ok   an installed subclass switch, from a second thread: swapping NONE back empties it
+ok   the main thread's context was never touched
+ok   HttpLog writes `level: msg` lines on stderr and drops debug
+ok   each HttpLog call answers nil
+0 failures

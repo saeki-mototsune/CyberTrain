@@ -30,6 +30,21 @@ def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 # directory or a relative path run only with /proc.
 PROC = File.directory?("/proc/self")
 
+# What `cybertrain server` prints when it cannot bind its port: the HTTP
+# layer's PortInUse message for `reason` (a PortInUse constant's name) and
+# the hint Roles::ServerRunner.port_message adds to it (`stop the other
+# server or set PORT` for IN_USE). ServerRunner loads only with the
+# preview's FFI shim, so a child of its own computes it, from this checkout.
+def framework_port_message(host, port, reason = "IN_USE")
+  script = 'require "cybertrain/roles/server"; e = Cybertrain::PortInUse.new(ARGV[0], Integer(ARGV[1]), ' \
+           "Cybertrain::PortInUse.const_get(ARGV[2])); print Cybertrain::Roles::ServerRunner.port_message(e)"
+  out, status = Open3.capture2(RbConfig.ruby, "-E", "UTF-8", "-I", REPO, "-r", "cybertrain/preview", "-e", script,
+                               host, port.to_s, reason)
+  raise "framework_port_message: the child failed (#{status.inspect}): #{out}" unless status.success?
+
+  out
+end
+
 def wait_until(seconds = 5)
   deadline = now + seconds
   loop do
@@ -192,7 +207,7 @@ test "the gem's files alone load the supervisor; the dev files come from the app
       out = probe(dir, gem_dir, framework, root)
       refute out.include?("LoadError"), out
       # Stopped at the port, which this test holds: past the loading.
-      assert_includes out, "error: port #{taken.addr[1]} on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE}"
+      assert_includes out, "error: #{framework_port_message("127.0.0.1", taken.addr[1])}"
       assert_includes out, "exit 1"
       lines = out.lines.map(&:chomp)
       required = lines.grep(/\Arequired /)
@@ -474,7 +489,7 @@ test "a port that is in use is refused with today's wording, before any child" d
     File.write(File.join(root, "port"), port.to_s)
     code, out = run_server(root)
     assert_equal 1, code
-    assert_includes out, "error: port #{port} on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE}"
+    assert_includes out, "error: #{framework_port_message("127.0.0.1", port)}"
     refute File.exist?(File.join(root, "child-started")), "no child was started"
     refute File.exist?(File.join(root, "tmp", "cybertrain-dev", "supervisor.pid")), "no supervisor.pid is left"
   end
@@ -488,10 +503,17 @@ test "a port argument overrides the application's port" do
   with_app do |root|
     code, out = run_server(root, ["server", port.to_s])
     assert_equal 1, code
-    assert_includes out, "error: port #{port} on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE}"
+    assert_includes out, "error: #{framework_port_message("127.0.0.1", port)}"
   end
 ensure
   taken&.close
+end
+
+test "the supervisor's port messages are the ones `cybertrain server` prints, hint included" do
+  # cli/dev_server.rb restates them (the gem does not ship the framework):
+  # the supervisor's refusal and the compiled server's must not drift.
+  assert_equal framework_port_message("127.0.0.1", 3000), "port 3000 on 127.0.0.1 #{DevServer::PORT_IN_USE}"
+  assert_equal framework_port_message("127.0.0.1", 80, "PERMISSION_DENIED"), "port 80 on 127.0.0.1 #{DevServer::PORT_DENIED}"
 end
 
 test "a PORT that is not a number, or a word after it, is refused" do
@@ -545,7 +567,7 @@ test "an application that loads only after gen is not refused: gen runs once and
     code, out = run_server(root)
     # Past the address: it stops at the port, which this test holds.
     assert_equal 1, code
-    assert_includes out, "error: port #{taken.addr[1]} on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE}"
+    assert_includes out, "error: #{framework_port_message("127.0.0.1", taken.addr[1])}"
     assert File.exist?(File.join(root, "gen-ran")), "gen ran"
   end
 ensure
@@ -620,7 +642,7 @@ test "a cybertrain server in another directory is not a refusal" do
           code, out = run_server(root)
           # Past the check: it stops at the port, which this test holds.
           assert_equal 1, code
-          assert_includes out, Cybertrain::PortInUse::IN_USE
+          assert_includes out, "error: #{framework_port_message("127.0.0.1", taken.addr[1])}"
           refute gone?(other), "the other application's server is left alone"
         else
           assert DevServer.in_root?(other, root), "without /proc the directory is not known"
@@ -656,7 +678,7 @@ test "a supervisor.pid naming a process that is not a cybertrain server is not a
       code, out = run_server(root)
       # Past the check: it stops at the port, which this test holds.
       assert_equal 1, code
-      assert_includes out, Cybertrain::PortInUse::IN_USE
+      assert_includes out, "error: #{framework_port_message("127.0.0.1", taken.addr[1])}"
       refute gone?(stranger), "the stranger is left alone"
     ensure
       Process.kill(:KILL, stranger)

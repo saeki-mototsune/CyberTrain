@@ -2,14 +2,14 @@ module Cybertrain
   # What the Server tells when a streamed or upgraded body's writer raised
   # (docs/design.md D88): {Server} calls {#stream_failed} on
   # {Cybertrain.stream_failure} after it logged its `stream error:` line,
-  # with the request's log Scope current ({Response#body_scope}), once per
-  # failed stream. A client that went away (EOFError, IOError,
+  # with the request's log context current ({Response#body_log_context}),
+  # once per failed stream. A client that went away (EOFError, IOError,
   # Errno::ECONNRESET, Errno::EPIPE: what the server treats as a closed
   # peer) is not a failure and is not told.
   #
   # The HTTP layer loads alone (script/check-http-layer), so it names no
-  # reporter: this base does nothing, and cybertrain/error_reporter
-  # installs the subclass that reports (ErrorReporter::StreamReport). An
+  # reporter: this base does nothing, and a framework's error reporter
+  # installs a subclass that reports ({Cybertrain.stream_failure=}). An
   # object with a method, not a stored block (spikes/NOTES.md rules 88 and
   # 103).
   # @api private

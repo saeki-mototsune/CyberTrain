@@ -39,6 +39,7 @@ ok   a streamed body is written under the request's Scope, the server's stream e
 ok   an upgraded connection's writer that raises is reported once, with the request's id
 ok   a streamed body whose client went away is logged and not reported
 ok   an upgraded (101) connection behind RequestId: the id echoed, the writer under the request's Scope, NO_SCOPE after
+ok   a handler's exception is logged under the request's log context; the next request on the connection is under NONE
 ok   run serves until stop is called
 ok   request_stop (what the TERM trap calls) makes run return without joining
 ok   request_stop waits for a request in flight and answers it completely
@@ -70,4 +71,4 @@ ok   listen_fd naming a read-write regular file raises PortInUse
 ok   listen_fd naming a connected socket that does not listen raises PortInUse
 ok   where SO_ACCEPTCONN cannot be read (macOS) an inherited listener is still served
 ok   where SO_ACCEPTCONN cannot be read (macOS) a file, a closed number and a connected socket are still refused
-72 tests, 300 assertions, 0 failures
+73 tests, 309 assertions, 0 failures

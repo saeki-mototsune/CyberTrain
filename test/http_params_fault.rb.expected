@@ -1,0 +1,6 @@
+registered: true
+/found?title=Hi 200 Hi
+/missing 400 Bad Request
+/boom 500 Internal Server Error
+info: rejected request (400 Bad Request): param is missing or the value is empty: article
+error: ArgumentError: the app's own

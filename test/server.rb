@@ -895,6 +895,71 @@ test "an upgraded (101) connection behind RequestId: the id echoed, the writer u
   assert_equal [true], $after_writer_no_scope
 end
 
+# The HTTP layer's own log context (cybertrain/http/log.rb), without the
+# RequestId middleware: a context of the test's, set on the request by a
+# bare handler, carrying an id.
+class IdLogContext < Cybertrain::HttpLogContext
+  attr_reader :context_id
+
+  def initialize(id)
+    @context_id = id
+  end
+end
+
+REQ1_CONTEXT = IdLogContext.new("req-1")
+
+# A sink that records each line with the thread's context when it was
+# written ({Cybertrain::HttpLogSwitch.installed_switch}'s current).
+$context_lines = Array.new(0) { "" }
+$context_seen = Array.new(0) { Cybertrain::HttpLogContext::NONE }
+
+class ContextRecordingLog < Cybertrain::HttpLog
+  def info(msg) = record("info", msg)
+  def warn(msg) = record("warn", msg)
+  def error(msg) = record("error", msg)
+
+  def record(level, msg)
+    $context_lines << "#{level}: #{msg}"
+    $context_seen << Cybertrain::HttpLogSwitch.installed_switch.current_context
+    nil
+  end
+end
+
+CONTEXT_LOG = ContextRecordingLog.new
+
+# /raise sets the request's log context and raises; anything else logs one
+# line through the same sink and answers.
+class ContextRaisingHandler < Cybertrain::HttpHandler
+  def call(request)
+    if request.path == "/raise"
+      request.log_context = REQ1_CONTEXT
+      raise "context boom"
+    end
+    CONTEXT_LOG.info("served #{request.path}")
+    response = Cybertrain::Response.new
+    response.content_type = "text/plain"
+    response.body = "ok"
+    response
+  end
+end
+
+test "a handler's exception is logged under the request's log context; the next request on the connection is under NONE" do
+  $context_lines = Array.new(0) { "" }
+  $context_seen = Array.new(0) { Cybertrain::HttpLogContext::NONE }
+  server = Cybertrain::Server.new(ContextRaisingHandler.new, port: 0, logger: CONTEXT_LOG)
+  server.start
+  c = RawClient.new(server.port)
+  assert_equal "HTTP/1.1 500 Internal Server Error", c.get("/raise").status_line
+  assert_equal "ok", c.get("/after", "Connection: close\r\n").body
+  c.close
+  server.stop
+  assert_equal ["error: RuntimeError: context boom", "info: served /after"], $context_lines
+  assert $context_seen[0].equal?(REQ1_CONTEXT)
+  assert_equal "req-1", REQ1_CONTEXT.context_id
+  assert $context_seen[1].equal?(Cybertrain::HttpLogContext::NONE)
+  assert Cybertrain::HttpLogSwitch.installed_switch.current_context.equal?(Cybertrain::HttpLogContext::NONE)
+end
+
 test "run serves until stop is called" do
   server = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: 0, logger: Cybertrain::Logger.new($log, :info))
   runner = Thread.new { server.run }
@@ -1220,7 +1285,7 @@ test "start raises Cybertrain::PortInUse when the port is already bound" do
   port = first.port
   second = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: port, logger: Cybertrain::Logger.new($log, :info))
   message = assert_raises("Cybertrain::PortInUse") { second.start }
-  assert_equal "port #{port} on 127.0.0.1 is already in use (stop the other server or set PORT)", message
+  assert_equal "port #{port} on 127.0.0.1 is already in use", message
   assert_equal port, second.port
   # the first server is unaffected
   c = RawClient.new(port)
@@ -1234,7 +1299,9 @@ test "PortInUse names the reason the port could not be bound" do
   assert_equal "port 80 on 127.0.0.1 cannot be bound: permission denied (ports below 1024 need root or a capability)", denied.message
   assert_equal 80, denied.port
   busy = Cybertrain::PortInUse.new("127.0.0.1", 3000)
-  assert_equal "port 3000 on 127.0.0.1 is already in use (stop the other server or set PORT)", busy.message
+  assert_equal "port 3000 on 127.0.0.1 is already in use", busy.message
+  assert_equal "is already in use", busy.reason
+  assert_equal Cybertrain::PortInUse::PERMISSION_DENIED, denied.reason
 end
 
 # Exercises the real, compiled bind path (not a hand-built PortInUse): under

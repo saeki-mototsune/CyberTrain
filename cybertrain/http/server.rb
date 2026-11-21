@@ -7,7 +7,7 @@ require "cybertrain/http/handler"
 require "cybertrain/http/body_writer"
 require "cybertrain/http/client_error"
 require "cybertrain/http/stream_failure"
-require "cybertrain/logger"
+require "cybertrain/http/log"
 
 module Cybertrain
   # Raised by Server#start when the listener cannot bind: another process
@@ -18,21 +18,30 @@ module Cybertrain
   # apart there) -- its own reason so the operator does not hunt for a
   # process that is not there. With reuse_port a host that does not resolve
   # or is not this machine's is a third reason and a name with several
-  # addresses a fourth, both naming the setting; with listen_fd, a
-  # descriptor that is not a listening socket is a fifth. The message is what
-  # Application#serve prints before exiting.
+  # addresses a fourth; with listen_fd, a descriptor that is not a
+  # listening socket is a fifth. The message is the HTTP layer's own and
+  # names no application's settings; {#reason} is the constant that ends
+  # it, for a caller that adds a hint of its own.
   class PortInUse < StandardError
+    # @return [Integer] the port that could not be bound
     attr_reader :port
 
-    IN_USE = "is already in use (stop the other server or set PORT)"
+    # Which of the five it is: one of IN_USE, PERMISSION_DENIED,
+    # REUSE_PORT_HOST, REUSE_PORT_NAME and NOT_LISTENING, compared with
+    # `==`. The message ends with it.
+    # @return [String]
+    attr_reader :reason
+
+    IN_USE = "is already in use"
     PERMISSION_DENIED = "cannot be bound: permission denied (ports below 1024 need root or a capability)"
-    REUSE_PORT_HOST = "cannot be bound with reuse_port: the host is not an address of this machine (check CYBERTRAIN_HOST)"
-    REUSE_PORT_NAME = "cannot be bound with reuse_port: the host names several addresses (set CYBERTRAIN_HOST to one of them)"
+    REUSE_PORT_HOST = "cannot be bound with reuse_port: the host is not an address of this machine"
+    REUSE_PORT_NAME = "cannot be bound with reuse_port: the host names several addresses"
     NOT_LISTENING = "cannot be served: the inherited descriptor is not a listening socket"
 
     def initialize(host, port, reason = IN_USE)
       super("port #{port} on #{host} #{reason}")
       @port = port
+      @reason = reason
     end
   end
 
@@ -125,10 +134,13 @@ module Cybertrain
     # flight; keep it below the process manager's stop timeout (systemd's
     # TimeoutStopSec, 15 s in docs/deploy.md).
     # stream_write_timeout: how long one write of a streaming response may
-    # wait for a client that does not read (Sink); Application passes
-    # Config#stream_ping_interval.
+    # wait for a client that does not read (Sink); an application passes
+    # its configured stream ping interval.
+    # logger: the {HttpLog} the server writes its lines to; the base, the
+    # default, writes `"<level>: <msg>"` lines to standard error, and a
+    # framework passes its own subclass.
     def initialize(handler, host: "127.0.0.1", port: 3000, read_timeout: 15, drain_timeout: 10.0,
-                   max_head_bytes: 65536, max_body_bytes: 10_485_760, logger: Cybertrain.logger,
+                   max_head_bytes: 65536, max_body_bytes: 10_485_760, logger: HttpLog.new,
                    reuse_port: false,
                    stream_write_timeout: 15, listen_fd: -1)
       @handler = handler
@@ -656,21 +668,23 @@ module Cybertrain
       sink = Sink.new(sock, chunked, @stream_write_timeout)
       Server.keep_alive_probes(sock)
       conn.streaming = true
-      sink.sink_finish if run_writer_scoped(writer, sink, response.body_scope)
+      sink.sink_finish if run_writer_scoped(writer, sink, response.body_log_context)
       false
     end
 
-    # {run_writer} under the request's log Scope ({Response#body_scope}),
-    # so the writer's lines and the `stream error:` line carry the
-    # request's id; this thread's own Scope is back afterwards, also when
-    # the writer raised something run_writer does not rescue. Save, work,
-    # restore in `ensure`, no rescue (spikes/NOTES.md rule 103).
-    def run_writer_scoped(writer, sink, scope)
-      saved = Logger.swap_scope(scope)
+    # {run_writer} under the request's log context
+    # ({Response#body_log_context}), swapped through
+    # {HttpLogSwitch.installed_switch}, so the writer's lines and the `stream
+    # error:` line carry the request's id; this thread's own context is
+    # back afterwards, also when the writer raised something run_writer
+    # does not rescue. Save, work, restore in `ensure`, no rescue
+    # (spikes/NOTES.md rule 103).
+    def run_writer_scoped(writer, sink, ctx)
+      saved = HttpLogSwitch.installed_switch.swap_context(ctx)
       ok = run_writer(writer, sink)
       ok
     ensure
-      Logger.swap_scope(saved)
+      HttpLogSwitch.installed_switch.swap_context(saved)
     end
 
     # TCP keep-alive on a streaming connection, best effort: a peer that
@@ -687,8 +701,8 @@ module Cybertrain
     # The writer with its rescue, in a plain method (spikes/NOTES.md rules
     # 32/45). False when it raised.
     # Either arm logs the `stream error:` line; a failure is then told to
-    # {Cybertrain.stream_failure} (reported, once cybertrain/error_reporter
-    # is loaded), under the request's Scope (run_writer_scoped). A client
+    # {Cybertrain.stream_failure} (a no-op until a reporter is installed),
+    # under the request's log context (run_writer_scoped). A client
     # that went away (the closed peer serve rescues) is logged only.
     def run_writer(writer, sink)
       writer.write_body(sink)
@@ -715,30 +729,31 @@ module Cybertrain
       # not named: nothing proves Spinel's exception table has them (a
       # stack overflow is a SIGSEGV there anyway); the depth limits in Query
       # and the template Interpreter are the guard against those.
-      # ClientError maps and logs (a client's fault is its 4xx at info);
-      # ErrorPages and Dev::ErrorPage ask it too, this is the bare-app path.
-      response = error_response(classify_scoped(e, request.log_scope))
-      # The id a RequestId in the app gave the request, echoed on this
-      # answer too (the response the stack had is replaced). The header's
-      # name is written out: the HTTP layer loads alone
-      # (script/check-http-layer) and cannot name the middleware.
+      # ClientError maps and logs (a client's fault is its 4xx at info); a
+      # framework's own error pages ask it too, this is the bare-app path.
+      response = error_response(classify_scoped(e, request.log_context))
+      # The id the handler gave the request ({Request#request_id}), echoed
+      # on this answer too (the response the handler had is replaced). The
+      # header's name is written out: the HTTP layer loads alone
+      # (script/check-http-layer) and names no request-id scheme.
       id = request.request_id
       response.set_header("X-Request-Id", id) unless id.empty?
       response
     end
 
     # {ClientError.classify} (which logs the error or rejection line) under
-    # the request's log Scope ({Request#log_scope}): a RequestId in the app
-    # has already put the thread's own Scope back when the exception gets
-    # here, and the line must carry the request's id all the same (spec
-    # section 12.2). The thread's Scope is back afterwards. Save, work,
-    # restore in `ensure`, no rescue (spikes/NOTES.md rule 103).
-    def classify_scoped(e, scope)
-      saved = Logger.swap_scope(scope)
+    # the request's log context ({Request#log_context}), swapped through
+    # {HttpLogSwitch.installed_switch}: the handler's request-id scheme has
+    # already put the thread's own context back when the exception gets
+    # here, and the line must carry the request's id all the same. The
+    # thread's context is back afterwards. Save, work, restore in
+    # `ensure`, no rescue (spikes/NOTES.md rule 103).
+    def classify_scoped(e, ctx)
+      saved = HttpLogSwitch.installed_switch.swap_context(ctx)
       status = ClientError.classify(e, @logger)
       status
     ensure
-      Logger.swap_scope(saved)
+      HttpLogSwitch.installed_switch.swap_context(saved)
     end
 
     # Writes an error response; serve closes the socket afterwards.

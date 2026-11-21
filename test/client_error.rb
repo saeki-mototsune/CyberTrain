@@ -2,6 +2,7 @@ require "cybertrain/http/query"
 require "cybertrain/http/multipart"
 require "cybertrain/http/request"
 require "cybertrain/http/client_error"
+require "cybertrain/context"
 require "cybertrain/test"
 
 # ClientError decides on the full class NAME, so an app's own class that

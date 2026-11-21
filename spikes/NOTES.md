@@ -250,7 +250,7 @@ The rules are numbered in the order they were found. By topic:
 - A method name shared by unrelated classes, or with a builtin: 10, 34, 41,
   43, 51, 62, 66 (second paragraph), 87, 105, 106, 121
 - Typing of ivars, locals, containers and return values: 3, 4, 5, 7, 9, 11,
-  37, 46 (Hash literals), 56, 63, 71, 73, 86, 94, 97, 109, 110
+  37, 46 (Hash literals), 56, 63, 71, 73, 86, 94, 97, 109, 110, 126
 - Polymorphic values and narrowing: 8, 14, 29, 35, 86, 100, 109
 - Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81, 93,
   101
@@ -343,6 +343,7 @@ follows the rule even where a probe passes.
 | Sockets: `wait_readable` before every `readpartial`; a socket reaches its thread through a method parameter; `connect_nonblock` instead of `connect_timeout:` | 20, 21, 72 | http/server.rb, http/body_writer.rb, net/socket.rb, websocket.rb | test/server.rb, test/response_stream.rb, test/main_roles.rb, test/http_client.rb | rule 20, rule 21, O, rule 72 |
 | `SPINEL_WORKERS` is set to `workers + 1` (1 for a single worker) before the first thread; development serves on one worker; no lock on the request path (the logger's one-write `Logger::LOCK` is the measured exception, rule 115) | 22, 57 | application.rb (`spinel_workers_for`), template/engine.rb, http/server.rb | test/dev_application.rb, test/template_embedded.rb, test/db_busy_wait.rb; bench/run's two-core run | L, item 7 |
 | A large generated table (an application's dictionary, the bundled ones) is a Hash filled at load by methods of at most 50 stores, never one literal | 101 | generator/locales_emitter.rb, locales/bundled.rb | build time only: test/gen_locales.rb compiles it; one literal of 2,000 keys takes some 13 s of cc | AI |
+| In the HTTP layer and its tests, a call that always answers nil is a statement, its result asserted after, never an argument (`dropped = res.drop_header(...)`, then `assert_nil dropped`) | 126 | test/http_response.rb | test/http_response.rb under upstream 2026.10.25 (CI's http-upstream job) | F |
 | `exit` only on the main thread: a feeds supervisor sets a flag the main thread acts on | 91 | background/supervisor.rb, roles/feeds.rb | test/feeds_exit.rb | T |
 | `Logger#write_now` writes with `@io.write`; the console flushes after each prompt | 78, 83 | logger.rb, console.rb | test/logger_flush.rb, test/main_console.rb; test/logger_tls.rb was written for 78 and no longer fails without it (status 78) | K, M |
 | Integer-only Ranges: a Time range is `where_between`; `time_tag`'s `format:` (and `I18n.l`) walks the pattern itself instead of calling `strftime` with a built one | 86, 96 | relation.rb, validator.rb, template/helpers.rb, strftime.rb | test/relation_where.rb, test/validators.rb, test/helpers.rb | Q, V |
@@ -2384,7 +2385,6 @@ decision, and 77 explicitly retires a workaround.
      arms of gen/console.rb call. test/console.rb's rescuing-caller case
      holds the shape and does not compile without the two values.
      Kept until docs/spinel-feedback.md AY is closed.
-
 125. A frozen heap String is never freed under Spinel 2026.11.15.7033, and
      `Symbol#to_s` answers a new frozen String at every call, so every
      `sym.to_s` leaks it for the life of the process. The runtime pins a
@@ -2403,7 +2403,8 @@ decision, and 77 explicitly retires a workaround.
      `cookies[:x]`, `flash[:notice]`, `t(:key)`, `where(col: v)`, the
      action name, the template interpreter's `article[:title]`, helper names.
      Name a key given as a String or a Symbol with
-     `Cybertrain::Key.string_of(key)` (cybertrain/key.rb: `Symbol#name`, one
+     `Cybertrain::Key.string_of(key)` (cybertrain/http/key.rb, required as
+     `cybertrain/key` too: `Symbol#name`, one
      cached String per Symbol), never `key.to_s`, and use `sym.name` where
      the value is known to be a Symbol (`I18n.locale.name`); freeze only
      Strings made once (constants, boot). test/key_text.rb is the
@@ -2413,6 +2414,25 @@ decision, and 77 explicitly retires a workaround.
      requests; the warm-up's first `Symbol#name` of each Symbol pins once,
      which is bounded. docs/spinel-feedback.md AZ asks Spinel to let a
      frozen run-time String be collected.
+
+126. Under upstream Spinel 2026.10.25 (matz/spinel's release, which CI's
+     `http-upstream` job builds the HTTP layer's tests with) a call of a
+     method that always answers nil, written as the argument of a
+     parameter typed otherwise, compiles to `NULL`: the call and its side
+     effects are gone. `assert_nil res.drop_header("Location")` became
+     `sp_assert_nil(NULL)`, so the header stayed and the next assertion
+     failed (test/http_response.rb, 2 of its cases, found 2026-11-21 in
+     the spinel-http spike; spikes/spinel-http/README.md has the
+     reduction). The pinned fork is fixed (2026.10.26.7019), and so is
+     matz/spinel after the tag (#10260). So in the HTTP layer and its
+     tests, which upstream compiles too, a nil-returning call is a
+     statement of its own and its result is asserted after:
+     `dropped = res.drop_header("Location")`, then `assert_nil dropped`
+     (test/http_response.rb, four calls of `drop_header` and
+     `client_error!`). Nothing in cybertrain/http/ failed this way under
+     upstream.
+     Kept until the http-upstream job's SPINEL_UPSTREAM_TAG includes
+     matz/spinel #10260 (docs/spinel-feedback.md F).
 
 <a id="numbers-worth-remembering"></a>
 

@@ -305,7 +305,10 @@ NAME_HOMES = {
   "with_locale" => %w[cybertrain/i18n.rb],
   "default_locale" => %w[cybertrain/i18n.rb],
   "available_locales" => %w[cybertrain/i18n.rb],
-  "preferred_locale" => %w[cybertrain/http/request.rb],
+  # The HTTP layer negotiates against a default it is given; cybertrain's
+  # reopening of Request beside I18n supplies I18n.default_locale.
+  "negotiate_locale" => %w[cybertrain/http/request.rb],
+  "preferred_locale" => %w[cybertrain/i18n.rb],
   "human_attribute_name" => %w[cybertrain/i18n.rb cybertrain/generator/models_emitter.rb],
   # gen/locales.rb's Gen::Locales and the checked-in locales/bundled.rb's
   # Cybertrain::BundledLocales, both written by locales_emitter.rb.
@@ -472,9 +475,9 @@ NAME_HOMES = {
   # Phase 5b (logs and error reporting): each name was compiled beside its
   # namesakes in one program with the whole framework on 2026-11-13
   # (spikes/phase5/error_names.rb, deleted since).
-  # Logger#error (nil), Template::Parser's two private #error (raise) and
-  # Cybertrain.error (the ErrorReporter).
-  "error" => %w[cybertrain/logger.rb cybertrain/template/parser.rb cybertrain/error_reporter.rb],
+  # Logger#error and the HttpLog#error it overrides (nil), Template::Parser's
+  # two private #error (raise) and Cybertrain.error (the ErrorReporter).
+  "error" => %w[cybertrain/logger.rb cybertrain/http/log.rb cybertrain/template/parser.rb cybertrain/error_reporter.rb],
   # CLI::Toolchain.report prints; ErrorReporter#report and
   # ErrorSubscriber#report answer nil (a subscriber's override may answer
   # anything: the spike's answered an Array).
@@ -491,7 +494,17 @@ NAME_HOMES = {
   # DB::Connection#error_message(sql), I18n.error_message and
   # ErrorEvent#error_message: all String.
   "error_message" => %w[cybertrain/db/connection.rb cybertrain/i18n.rb cybertrain/error_reporter.rb],
-  "info" => %w[cybertrain/cli/toolchain.rb cybertrain/logger.rb],
+  # HttpLogSwitch's and its Logger::ScopeSwitch overrides (an
+  # HttpLogContext): no other definer, kept so a new one is checked.
+  "current_context" => %w[cybertrain/http/log.rb cybertrain/logger.rb],
+  "swap_context" => %w[cybertrain/http/log.rb cybertrain/logger.rb],
+  # GzipDecoder.installed (a GzipDecoder). HttpLogSwitch's slot is
+  # installed_switch (an HttpLogSwitch), not installed: one return type
+  # per name (rule 34), and core loads both files.
+  "installed" => %w[cybertrain/http/gzip_decoder.rb],
+  "installed_switch" => %w[cybertrain/http/log.rb],
+  # Logger#info and the HttpLog#info it overrides (nil).
+  "info" => %w[cybertrain/cli/toolchain.rb cybertrain/logger.rb cybertrain/http/log.rb],
   # Server#drain; the reporter's is drain_reports. The CRuby preview's
   # holding desk (cli/dev_server/holding.rb, Desk#drain, nil as Server's)
   # runs only under CRuby: Spinel never compiles it.
@@ -505,7 +518,7 @@ NAME_HOMES = {
 NAME_CANDIDATES = %w[select format expect layout cookies signed encrypted permanent html json turbo_stream
                      csv xml text any permit scope t l translate localize locale remember
                      current zone advance now render_inline setup teardown response travel_to travel_back hour day
-                     error report handle subscribe tagged request_id release].freeze
+                     error report handle subscribe tagged request_id release installed].freeze
 root = File.expand_path("..", __dir__)
 home_rows_missing = NAME_CANDIDATES - NAME_HOMES.keys
 homeless = []
