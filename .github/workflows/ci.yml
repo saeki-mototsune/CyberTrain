@@ -41,7 +41,12 @@ on:
       - "script/preview-parity"
       - "script/test-cruby"
       - "script/preview-e2e"
+  # A draft pull request starts the workflow and runs no job (the `changes`
+  # and `api-docs` jobs skip it, and every other job needs `changes`): the
+  # runners are shared by every open pull request, and a draft is pushed
+  # to often. Marking it ready for review starts the run that tests it.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "**"
       - "!site/**"
@@ -109,15 +114,23 @@ jobs:
   # setup-cybertrain): `framework` is false when every changed file is one
   # only the API reference reads, or one `paths` above leaves out
   # (script/ci-changes); `cruby_preview` and `preview_e2e` decide the
-  # cruby-preview and preview-e2e jobs the same way. A release run (release.yml passes `ref`) runs
+  # cruby-preview and preview-e2e jobs the same way. `macos` and
+  # `setup_action` narrow a pull request only (the macOS legs, and the
+  # setup-cybertrain job): on main, a merge group and a release they are
+  # true, and the label `ci:macos` on a pull request sets `macos` (read
+  # from the event, so add the label, then push or close and reopen).
+  # A release run (release.yml passes `ref`) runs
   # everything, and so does a run whose changed files cannot be listed.
   changes:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     outputs:
       framework: ${{ steps.decide.outputs.framework }}
       cruby_preview: ${{ steps.decide.outputs.cruby_preview }}
       preview_e2e: ${{ steps.decide.outputs.preview_e2e }}
+      macos: ${{ steps.decide.outputs.macos }}
+      setup_action: ${{ steps.decide.outputs.setup_action }}
     steps:
       # Two commits: on a pull request the checkout is the merge commit, whose
       # first parent is the base branch; on main, the commit before a merge.
@@ -134,6 +147,7 @@ jobs:
           CALLED_WITH_REF: ${{ inputs.ref }}
           BEFORE: ${{ github.event.before }}
           MERGE_GROUP_BASE: ${{ github.event.merge_group.base_sha }}
+          MACOS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:macos') }}
         run: |
           base=""
           if [ -n "$CALLED_WITH_REF" ]; then
@@ -155,19 +169,30 @@ jobs:
               echo "framework=true"
               echo "cruby_preview=true"
               echo "preview_e2e=true"
+              echo "macos=true"
+              echo "setup_action=true"
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git diff --name-only "$base" HEAD > "$RUNNER_TEMP/changed"
           echo "changed since $base:"
           sed 's/^/  /' "$RUNNER_TEMP/changed"
-          script/ci-changes < "$RUNNER_TEMP/changed" | tee -a "$GITHUB_OUTPUT"
+          script/ci-changes < "$RUNNER_TEMP/changed" > "$RUNNER_TEMP/decided"
+          if [ "$EVENT" != pull_request ]; then
+            echo "not a pull request: the macOS legs and setup-cybertrain run whatever changed"
+            sed -i 's/^macos=.*/macos=true/; s/^setup_action=.*/setup_action=true/' "$RUNNER_TEMP/decided"
+          elif [ "$MACOS_LABEL" = true ]; then
+            echo "label ci:macos: the macOS legs run"
+            sed -i 's/^macos=.*/macos=true/' "$RUNNER_TEMP/decided"
+          fi
+          tee -a "$GITHUB_OUTPUT" < "$RUNNER_TEMP/decided"
 
   # The API reference (YARD, published with the site) must build without
   # a warning: an unknown tag or a {Link} to nothing fails it. On every run
   # of this workflow: its inputs are the framework's sources (.yardopts) as
   # well as docs/api/, and it takes under a minute.
   api-docs:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     steps:
@@ -205,7 +230,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-latest]
+        # macOS only where `changes` says so (a pull request that reaches
+        # what differs between the systems; always on main).
+        os: ${{ fromJSON(needs.changes.outputs.macos == 'true' && '["ubuntu-26.04", "macos-latest"]' || '["ubuntu-26.04"]') }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -315,7 +342,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-26.04, macos-latest]
+        # macOS only where `changes` says so: on a pull request that reaches
+        # the CLI, the toolchain, the server or the pins, or has the label
+        # `ci:macos`; on main always (docs/design.md, D34).
+        os: ${{ fromJSON(needs.changes.outputs.macos == 'true' && '["ubuntu-26.04", "macos-latest"]' || '["ubuntu-26.04"]') }}
     runs-on: ${{ matrix.os }}
     # macOS also runs the whole of `spin test` here, in one job. Both run
     # script/auth-e2e (four applications compiled and served), which took
@@ -535,19 +565,20 @@ jobs:
   # and the framework-path input. macOS runs the git route only: the steps
   # that differ by OS (the packages, Homebrew's OpenSSL) are the same on
   # both routes.
+  # On a pull request it runs only when the action, `cybertrain new` or the
+  # pins change (`setup_action`), and its macOS leg as the other macOS legs
+  # do; on main always.
   setup-cybertrain:
     needs: changes
-    if: needs.changes.outputs.framework == 'true'
+    if: needs.changes.outputs.framework == 'true' && needs.changes.outputs.setup_action == 'true'
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: ubuntu-26.04
-            route: git
-          - os: ubuntu-26.04
-            route: framework-path
+        os: ${{ fromJSON(needs.changes.outputs.macos == 'true' && '["ubuntu-26.04", "macos-latest"]' || '["ubuntu-26.04"]') }}
+        route: [git, framework-path]
+        exclude:
           - os: macos-latest
-            route: git
+            route: framework-path
     name: setup-cybertrain (${{ matrix.os }}, ${{ matrix.route }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
