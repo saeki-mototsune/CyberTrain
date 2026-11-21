@@ -296,6 +296,27 @@ applications use in their own CI
 on a newly generated application, so a change to that action is tested like
 any other.
 
+Its `http-upstream` job builds the HTTP layer's own tests (the files that
+will move with `cybertrain/http/` into a library of its own, and
+`test/http_standalone.rb`, which loads the layer and nothing else) with
+upstream Spinel, matz/spinel's release `SPINEL_UPSTREAM_TAG` in `ci.yml`,
+rather than the fork. A failure there that the fork's run does not have is
+usually a shape upstream compiles differently from the fork
+(spikes/NOTES.md rule 125 is the one known so far).
+To reproduce it, build upstream once as the job does (`git clone --depth 1
+--branch 2026.10.25 https://github.com/matz/spinel`, then `make deps`,
+`make -j"$(nproc)"`, `make install PREFIX=$HOME/.spinel-upstream/2026.10.25`),
+then run the job's `spin test` line with `~/.spinel-upstream/2026.10.25/bin`
+first on `PATH`, in an export of your tree outside the checkout, so the two
+compilers do not share `build/`:
+
+```sh
+dir=$(mktemp -d)
+git archive HEAD | tar -x -C "$dir"   # commit first: the export is of HEAD
+cd "$dir"
+PATH=$HOME/.spinel-upstream/2026.10.25/bin:$PATH spin test test/http_standalone.rb test/http_response.rb
+```
+
 ## Conventions CI enforces
 
 Each of these exists because of a bug or a constraint that was found the hard

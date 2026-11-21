@@ -109,8 +109,8 @@ env:
 # measurements are in docs/design.md (D34, the status of 2026-11-11). Raise a
 # limit when the suite has grown into it, not when one run was slow.
 jobs:
-  # Whether this run needs the jobs that compile (framework-tests, test,
-  # setup-cybertrain): `framework` is false when every changed file is one
+  # Whether this run needs the jobs that compile (framework-tests,
+  # http-upstream, test, setup-cybertrain): `framework` is false when every changed file is one
   # only the API reference reads, or one `paths` above leaves out
   # (script/ci-changes); `cruby_preview` and `preview_e2e` decide the
   # cruby-preview and preview-e2e jobs the same way. `macos` and
