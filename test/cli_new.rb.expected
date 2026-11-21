@@ -2,6 +2,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -45,6 +47,7 @@ ok   bin/db.rb runs migrations in development without the app's models
 ok   the layout renders csrf_meta_tags, the flash and yield
 ok   application_controller.rb and config/app.rb are ready to edit
 ok   README.md gives the cybertrain command sequence
+ok   AGENTS.md tells an AI agent where the app is not Rails; CLAUDE.md imports it
 ok   the Dockerfile builds dist/ in the image and runs it on 0.0.0.0:3000
 ok   config/deploy.yml and .kamal/secrets configure Kamal for the app
 ok   .github/workflows/ci.yml sets up the toolchain and runs the app's checks
@@ -54,6 +57,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -91,6 +96,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -134,6 +141,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -172,6 +181,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -208,6 +219,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -246,6 +259,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -282,6 +297,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -323,6 +340,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -361,6 +380,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -813,4 +834,4 @@ ok   new writes the logging and reporting variables, all commented
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-32 tests, 683 assertions, 0 failures
+33 tests, 697 assertions, 0 failures

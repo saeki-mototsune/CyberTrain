@@ -2,6 +2,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -81,6 +83,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -122,6 +126,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -173,6 +179,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -215,6 +223,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -399,6 +409,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -521,6 +533,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -680,6 +694,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -756,6 +772,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -894,6 +912,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -966,6 +986,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -1099,6 +1121,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -1187,6 +1211,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -1277,6 +1303,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -1412,6 +1440,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -1457,6 +1487,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -1572,6 +1604,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -1658,6 +1692,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -1745,6 +1781,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -1836,6 +1874,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -1929,6 +1969,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -2118,6 +2160,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -2198,6 +2242,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -2467,6 +2513,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -2507,6 +2555,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -2625,6 +2675,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -2784,6 +2836,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml
@@ -2831,6 +2885,8 @@ create spin.toml
 create .gitignore
 create .env.example
 create README.md
+create AGENTS.md
+create CLAUDE.md
 create config/app.rb
 create config/routes.rb
 create config/locales/en.yml

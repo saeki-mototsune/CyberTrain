@@ -1,5 +1,5 @@
 ---
-source_sha256: 833da4a0dce30786eda2530ad79e7508d974d847037c7f4d608e5d886d11bdbe
+source_sha256: 5eff6b39d0621ee0f07cd8319c7e6e783ac69c4b344edb3fd4cf2b07191e3dcf
 ---
 # Installer cybertrain
 
@@ -218,7 +218,10 @@ son cache, `~/.cache/spin/packages/`, et épingle le commit dans `spin.lock`) et
 commitez `spin.toml` et `spin.lock`. `bin/<app>.rb` et `bin/db.rb` requièrent
 `cybertrain/core`, le framework sans ses sous-systèmes optionnels&nbsp;; les
 générateurs qui en demandent un ajoutent sa ligne
-([Sous-systèmes](how-it-works.md#subsystems)).
+([Sous-systèmes](how-it-works.md#subsystems)). Elle écrit aussi `AGENTS.md`,
+les instructions destinées aux agents de programmation IA (ce qui distingue
+l’application de Rails et les vérifications à lancer avant de considérer une
+modification comme terminée), et `CLAUDE.md`, qui l’importe pour Claude Code.
 
 Si Spinel ou l’une des deux étapes `spin` échoue, les fichiers restent en
 place, `new` sort avec le code 1 et affiche ce qu’il faut lancer une fois la
