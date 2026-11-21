@@ -37,12 +37,12 @@ instead of guessing.
 ## Commands
 
 ```sh
-cybertrain generate scaffold post title:string body:text  # also: authentication, attachment, job, component, helper
+cybertrain generate scaffold tag name:string  # also: authentication, attachment, job, component, helper
 cybertrain db migrate                       # regenerate gen/, apply db/migrate, regenerate (rewrites db/schema.rb)
 cybertrain test                             # every test, compiled into one program
-cybertrain test test/models/post_test.rb    # one file; -n /text/ for the tests whose name contains text
-SPIN_DEBUG=1 spin run gen                   # regenerate gen/ after editing routes, models, controllers or locales
-SPIN_DEBUG=1 spin run gen -- --check        # gen/ is current and every view helper has its require line
+cybertrain test test/models/article_test.rb # one file; -n /text/ for the tests whose name contains text
+SPIN_DEBUG=1 cybertrain spin run gen        # regenerate gen/ after editing routes, models, controllers or locales
+SPIN_DEBUG=1 cybertrain spin run gen -- --check  # gen/ is current and every view helper has its require line
 cybertrain build                            # the release binary in dist/ (slow: a minute or more)
 cybertrain server                           # development server on http://127.0.0.1:3000
 cybertrain help                             # every command and option
@@ -56,10 +56,10 @@ whole suite before you finish.
 
 1. `cybertrain test` passes. Add or update tests under `test/` for
    the behaviour you changed.
-2. `SPIN_DEBUG=1 spin run gen -- --check` passes, and `gen/` is
+2. `SPIN_DEBUG=1 cybertrain spin run gen -- --check` passes, and `gen/` is
    committed along with the change that produced it. Check new
    files as well: `git status --porcelain --untracked-files=all -- gen/`
-   is empty after `spin run gen`.
+   is empty after `cybertrain spin run gen`.
 3. `script/gate` passes, run from the repository root.
 4. `cybertrain build` succeeds when the change touches
    `bin/blog.rb` (or `app/commands/`): the test program does not
@@ -86,7 +86,7 @@ compiled binary serves it; its background build logs to
   subsystems.
 - `app/commands/`: the code of the `user` command.
 - `gen/`: **generated, never edit by hand.** Change the source and
-  run `SPIN_DEBUG=1 spin run gen`. It is committed because
+  run `SPIN_DEBUG=1 cybertrain spin run gen`. It is committed because
   `spin build` compiles what is checked in.
 - `test/`: Rails-shaped tests, `test/fixtures/*.yml`, and shared
   helpers in `test/support/`.

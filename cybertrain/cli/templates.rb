@@ -332,8 +332,8 @@ module Cybertrain
           cybertrain db migrate                       # regenerate gen/, apply db/migrate, regenerate (rewrites db/schema.rb)
           cybertrain test                             # every test, compiled into one program
           cybertrain test test/models/post_test.rb    # one file; -n /text/ for the tests whose name contains text
-          SPIN_DEBUG=1 spin run gen                   # regenerate gen/ after editing routes, models, controllers or locales
-          SPIN_DEBUG=1 spin run gen -- --check        # gen/ is current and every view helper has its require line
+          SPIN_DEBUG=1 cybertrain spin run gen        # regenerate gen/ after editing routes, models, controllers or locales
+          SPIN_DEBUG=1 cybertrain spin run gen -- --check  # gen/ is current and every view helper has its require line
           cybertrain build                            # the release binary in dist/ (slow: a minute or more)
           cybertrain server                           # development server on http://127.0.0.1:3000
           cybertrain help                             # every command and option
@@ -347,7 +347,7 @@ module Cybertrain
 
           1. `cybertrain test` passes. Add or update tests under `test/` for
              the behaviour you changed.
-          2. `SPIN_DEBUG=1 spin run gen -- --check` passes, and `gen/` is
+          2. `SPIN_DEBUG=1 cybertrain spin run gen -- --check` passes, and `gen/` is
              committed along with the change that produced it.
           3. `cybertrain build` succeeds when the change uses a subsystem
              (jobs, streams, mail, the cache, ...): the test program links
@@ -373,11 +373,11 @@ module Cybertrain
             operational commands (`Cybertrain::Main.command`), job handlers.
             `bin/db.rb` must require the same subsystems.
           - `gen/`: **generated, never edit by hand.** Change the source and
-            run `SPIN_DEBUG=1 spin run gen`. It is committed because
+            run `SPIN_DEBUG=1 cybertrain spin run gen`. It is committed because
             `spin build` compiles what is checked in.
           - `test/`: Rails-shaped tests and `test/fixtures/*.yml`.
           - `spin.toml`, `spin.lock`: the framework dependency; change it
-            with `spin lock`, never by editing the lock.
+            with `cybertrain spin lock`, never by editing the lock.
 
           ## Ruby that Spinel compiles
 

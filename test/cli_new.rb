@@ -205,7 +205,7 @@ test "AGENTS.md tells an AI agent where the app is not Rails; CLAUDE.md imports 
   agents = read("blog/AGENTS.md")
   assert(agents.start_with?("# AGENTS.md\n\nInstructions for AI coding agents working on Blog."))
   # The checks before a change is done, and the binary they name.
-  assert_includes agents, "SPIN_DEBUG=1 spin run gen -- --check"
+  assert_includes agents, "SPIN_DEBUG=1 cybertrain spin run gen -- --check"
   assert_includes agents, "a missing `require` line in\n   `bin/blog.rb` passes the tests"
   assert_includes agents, "- `gen/`: **generated, never edit by hand.**"
   # The Rails habits that do not compile or mean something else.
