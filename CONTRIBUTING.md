@@ -22,11 +22,18 @@ an ahead-of-time Ruby compiler. That shapes everything about working on it:
   compiles); that preview is never the program that ships. Things
   Ruby programmers take for granted (`method_missing`, `define_method`,
   `instance_variable_get`, `eval`) do not exist. [spikes/NOTES.md](spikes/NOTES.md)
-  lists the constraints found so far and how the code works around them.
-  When something will not compile, look there first, and add a note when you
-  find a new one. Its section "Workarounds that shape the design" says which
-  shapes are permanent, which are tied to the pinned build and which test
-  covers each, and what a Spinel update re-checks.
+  has the rules the code follows because of the compiler and how it works
+  around each behaviour; [docs/spinel-feedback.md](docs/spinel-feedback.md)
+  is the one record of the behaviours themselves: what Spinel does on which
+  build, what was asked upstream, and whether an item is closed. When
+  something will not compile, look in NOTES first. When you find a new
+  behaviour, write the item in spinel-feedback (it takes the next letter),
+  put its reduced program under `spikes/`, listed in the README beside it,
+  and add the rule to NOTES, ending with the line that names the item;
+  rules and programs stay until their item is closed. NOTES' section
+  "Workarounds that shape the design" says which shapes are permanent,
+  which are tied to the pinned build and which test covers each, and what
+  a Spinel update re-checks.
 - **A CRuby pass, a test run under CRuby or a page seen in the preview, is
   not acceptance.** The commit gate, `ruby -I. test/<name>.rb`,
   `script/preview-parity` and the development server's CRuby preview run
@@ -710,7 +717,7 @@ and output, and point at `cybertrain version` and `cybertrain doctor`, which
 print them. [script/check-version-mentions](script/check-version-mentions),
 run by the Gate, fails when one of those pages names the current numbers. A
 record of what was measured or re-checked on a given release belongs outside
-those files (`docs/benchmark.md`, `spikes/rechecks/README.md`).
+those files (`docs/benchmark.md`, `docs/spinel-feedback.md`).
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
 release `cybertrain setup` installs. It must equal `SPINEL_TAG` in

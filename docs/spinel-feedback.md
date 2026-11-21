@@ -256,7 +256,7 @@ the cell names another build.
 | AE | bug | 47, 53, 54 | passes on the pin, workaround kept (status 54; 47 and 53 match in rechecks/exception_shapes.rb) |  |
 | AF | bug | 100 | passes on the pin, workaround kept (status 100) |  |
 | AG | bug |  | not re-checked on the pin (last: fails on 2026.11.04.7026, 2026-11-13) |  |
-| AH | bug | 100 (its `JSON.generate` sentence) | not re-checked on the pin as a program; the difference recorded was with CRuby 3.3, and CRuby 4.0.7 writes these Floats as Spinel does (status 100) |  |
+| AH | bug |  | no workaround and no rule; not re-checked on the pin as a program; the difference recorded was with CRuby 3.3, and CRuby 4.0.7 writes these Floats as Spinel does (status 100) |  |
 | AI | cost | 101 | open (status 101: still one C function; the time was not reproduced on macOS) |  |
 | AJ | bug | 104 | passes on the pin, workaround kept (status 104) |  |
 | AK | cost |  | not re-checked on the pin (last: seen on 2026.11.04.7026, 2026-11-12) |  |
