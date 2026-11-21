@@ -945,7 +945,10 @@ sudo systemctl start notes
 
 ### Upgrading the framework
 
-In this order:
+This section is the order of an upgrade on this tutorial's server. The whole
+procedure, the same for every release (regenerating, running the generators
+again, the tests), and what each release asks of an app are in
+[the upgrading guide](guide/upgrading.md). In this order:
 
 1. Locally, change the `ref` in `spin.toml` to the new tag (`"vX.Y.Z"`).
 2. Locally, bring the CLI to the same version with `gem install cybertrain`.

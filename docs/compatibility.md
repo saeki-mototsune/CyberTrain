@@ -118,8 +118,12 @@ header, the stream protocol).
    (0.x.y to 0.x.y+1) carries none. The release notes are generated from
    pull request titles, so the title says "compatibility:" or names the
    change plainly.
-4. **The guides get an "Upgrading from 0.x" entry** (as the models and
-   requests guides have for 0.4), with the steps in the order to run them.
+4. **The upgrading guide gets the entry.** The release's section under
+   "Notes by version" in [docs/guide/upgrading.md](guide/upgrading.md) says
+   what changed and what to do, by topic, with the steps in the order to
+   run them (as "From 0.4 to 0.5" does). The
+   procedure on that page names no release and does not change; the guide
+   of the topic describes the new behaviour only.
 5. **Where it is possible, the old meaning is announced before it goes.**
    A change that can be detected at build time is a generator diagnostic
    first; one that can only be seen at run time is a boot-log warning for
