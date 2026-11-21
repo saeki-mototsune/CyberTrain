@@ -4,7 +4,9 @@
 # The structure (four typed Hashes: scalars, lists, nested Params, uploaded
 # files; the readers; what Query and Multipart fill) is the HTTP layer's,
 # in cybertrain/http/params.rb. This file reopens the class to add the
-# strong parameters, ParameterMissing and the filtered #inspect.
+# strong parameters, ParameterMissing and #filtered_inspect, the formatter
+# that redacts the values ParameterFilter names; the layer's #inspect does
+# not redact.
 # ParameterMissing is registered here with ClientError.extra_faults, so the
 # HTTP layer answers it with 400 in any program that can raise it. Through
 # cybertrain/http/extra_faults.rb, which loads nothing else: Config-only

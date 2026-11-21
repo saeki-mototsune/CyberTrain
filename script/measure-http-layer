@@ -150,7 +150,12 @@ stop_server
 
 # One run: a fresh server, a status check (wrk counts a 303 as success, so
 # the 200 is asserted here), a warm-up, then the measured 10 s. A wrk report of
-# non-2xx/3xx responses fails the run.
+# non-2xx/3xx responses fails the run. The requests per second are left in
+# `sample`: rps runs in this shell, not in a `$(...)` subshell, so that a
+# failure's exit reaches the EXIT trap with `server` set and the server is
+# stopped (a subshell would exit alone, with its own copy of `server`, and
+# leave the process running).
+sample=
 rps() {
   start_server
   local code
@@ -167,11 +172,14 @@ rps() {
     echo "$report" >&2
     exit 1
   fi
-  awk '/Requests\/sec/ { print $2 }' <<< "$report"
+  sample=$(awk '/Requests\/sec/ { print $2 }' <<< "$report")
 }
 up=() arts=()
 for i in 1 2 3 4 5; do
-  up+=("$(rps /up)"); arts+=("$(rps /articles)")
+  rps /up
+  up+=("$sample")
+  rps /articles
+  arts+=("$sample")
   echo "run $i: /up ${up[-1]} req/s, /articles ${arts[-1]} req/s" >&2
 done
 
