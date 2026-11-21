@@ -1,5 +1,5 @@
 ---
-source_sha256: 455d9c71c3b91be4d97f8f383cdde3e0bcb7c6663fd0b7289cda0bc28af08439
+source_sha256: 43043e60ceef489d3b51e2fc972979fe5ae170ebdb2811b96b7f7c5f692f09c2
 ---
 # 設定
 
@@ -179,9 +179,6 @@ end
 
 `c.time_zone` は IANA の名前を取り（「Tokyo」のような Rails 独自の名前は読みません）、システムにないゾーンでは起動が止まります。値は UTC の瞬間のままです：カラム、`Time.current`、カレンダーのメソッドは UTC の `Time` を返し、`time.hour` は UTC の時です。ゾーンが決めるのはカレンダー（`beginning_of_day` などや `Date.current`。[時刻とタイムゾーン](models.md#times-and-the-time-zone)）と表示です：`l(time)` と `time_tag(time)` は Time をそのゾーンで表示し（`%z` と `%Z` も含む）、`time_tag` の `datetime` はゾーンのオフセット付きの ISO 8601 です（`2026-11-12T05:00:00+09:00`）。`l(time, zone: "America/New_York")` と `time_tag(time, zone: "...")` は 1 つの値を別のゾーンで表示します。オフセット 0 の Time、つまりフレームワークが渡すすべての Time はそのゾーンで表示されます。自分自身の別のオフセットを持つ Time（`time.getlocal("+05:30")`）は、`zone:` を渡さない限りそのオフセットのままです。Date はそのまま表示されます。`tz:` のない cron のタスクも、`scheduler_tz` を設定しない限りこのゾーンに従います。登録されたコマンド（`Main.command`）、`./<app> jobs`、`./<app> console` も実行の前にゾーンを設定し、未知のゾーンは起動と同じく `error: time_zone "Mars/Base" is not a known time zone` を出して、データベースを開く前に終了ステータス 1 で拒否します。`cybertrain test` では、各テストは設定したゾーンで始まります。（`l` の書式は[日付と時刻](i18n.md#dates-and-times)にあります。）
 
-## 0.4 からのアップグレード
+## アップグレード
 
-このページのデフォルトのうち 2 つが 0.4 の後で変わりました：
-
-- レンダリングのネストは無制限でしたが、`max_render_depth`（デフォルトは 12）までになりました。パーシャルのツリーがより深いアプリケーション（スレッド形式のコメント、カテゴリーメニュー）は、この設定を引き上げるまでテンプレートエラーになります。
-- `job_poll_interval` は 5 秒でしたが 1 秒になりました：ジョブは専用のスレッドで実行され、手の空いたスレッドは 1 秒ごとに仕事を探します。
+リリースが変える設定とデフォルトは、[アップグレード](upgrading.md#notes-by-version) にバージョンごとに載っています。

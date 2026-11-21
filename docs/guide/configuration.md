@@ -340,12 +340,7 @@ status 1, before the database is opened. In `cybertrain test` every test
 starts in the configured zone. ([Dates and times](i18n.md#dates-and-times) has `l`'s
 formats.)
 
-## Upgrading from 0.4
+## Upgrading
 
-Two defaults on this page changed after 0.4:
-
-- Render nesting was unlimited and is now capped by `max_render_depth`, 12 by
-  default. An application with a deeper tree of partials (threaded comments, a
-  category menu) gets a template error until it raises the setting.
-- `job_poll_interval` was 5 seconds and is now 1: jobs run on their own
-  threads, and an idle one looks for work every second.
+The settings and defaults a release changes are listed by version in
+[Upgrading](upgrading.md#notes-by-version).

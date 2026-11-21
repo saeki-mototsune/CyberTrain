@@ -1,5 +1,5 @@
 ---
-source_sha256: bdd93406515ea0423e255fb7a519b654ed9a56bc10cb7d18940a78ca0d3a9f35
+source_sha256: 6a9265e8cc11206efd57f2283164a48771657a3ce876972b6e9492031c11de61
 ---
 # Modèles et base de données
 
@@ -1049,38 +1049,7 @@ Un fichier SQLite créé par une application Rails 8 se lit tel quel&nbsp;:
 les scopes qu’avaient les modèles Rails, sous les formes que montre cette
 page.
 
-## Mettre à jour depuis 0.4
+## Mise à jour
 
-Chaque changement ci-dessous est une modification à faire en un passage dans
-une application écrite pour CyberTrain 0.4&nbsp;:
-
-1. Un lecteur `has_many` renvoie une relation, pas un Array&nbsp;: ajoutez
-   `.to_a` avant une méthode propre aux Array (`map`, `select`, `[]`, `+`).
-   Les templates ne changent pas.
-2. Les dates-heures sont stockées au format de Rails&nbsp;: lancez
-   `db normalize` une fois après la mise à jour ([Dates-heures et `db
-   normalize`](#datetimes-and-db-normalize))&nbsp;; d’ici là, une colonne
-   qui mélange les deux formats se trie par format.
-3. `as_json` et `to_json` écrivent les heures sous la forme
-   `2026-10-05T09:00:00.000Z` (c’était `2026-10-05T09:00:00Z`)&nbsp;: les
-   snapshots JSON des tests changent.
-4. Un attribut `t.date` est une `Date`, pas une String&nbsp;: `strftime`
-   fonctionne toujours, la concaténation demande `to_s`. Une colonne date NOT
-   NULL valide maintenant sa présence.
-5. Un `belongs_to` déclaré sans `optional: true` valide sa clé
-   étrangère&nbsp;; ceux qui ne sont pas déclarés ne changent pas.
-6. `where(x: a..b)` avec des bornes Integer est une condition d’intervalle
-   (c’était une égalité avec le texte de la Range, qui ne correspondait
-   jamais)&nbsp;; les bornes Time et Date utilisent `where_between`.
-7. `Cybertrain::Cast.iso8601` est le format d’affichage&nbsp;: le code qui
-   s’en servait pour construire du texte SQL passe à `Cast.sql_datetime`, et
-   `Cast.binds` lie un Time au format stocké.
-8. `allow_blank: true` sur une ligne `validates` laisse aussi `presence` de
-   cette ligne accepter une valeur vide, comme dans Rails (il ne s’appliquait
-   qu’à `length`).
-9. Une colonne nommée comme une méthode qu’a maintenant chaque modèle
-   (`update_columns`, `destroy_dependents`, `run_custom_validations`, ...) est
-   générée sous `<column>_column` ([Noms de colonnes](#column-names)).
-10. Un lecteur `belongs_to` garde le parent qu’il a lu jusqu’à ce que la clé
-    étrangère change (il le relisait à chaque appel)&nbsp;: appelez `reload`
-    pour voir un changement fait par un autre processus.
+Ce qu’une version change pour les modèles et la base de données
+figure par version dans [Mise à jour](upgrading.md#notes-by-version).

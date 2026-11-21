@@ -1,5 +1,5 @@
 ---
-source_sha256: c8f47ec98151950153c9d5b9e8b80b0d29dad7442a19f22ed054f2f057350ac5
+source_sha256: 6a1655f18b429bd1cfd676a69d23b8a7edf43720044e4bc6ff0b24537c141f17
 ---
 # 認証
 
@@ -27,7 +27,7 @@ cybertrain db migrate
 | `app/views/...` | 画面（すべてのテキストは `t()` を通る）と `sessions/_nav` パーシャル |
 | `test/fixtures/users.yml`、`test/support/session_test_helper.rb`、`test/models/`、`test/controllers/`、`test/integration/` | フィクスチャのユーザー、`sign_in_as`、各部分のテスト（[テスト](#testing)） |
 
-そして次の編集を 1 回ずつ行います：`ApplicationController` への `include Authentication`、ルート、ジョブページの行（[管理者ユーザー](#admin-users-and-the-jobs-page)）、レイアウトへの nav パーシャル、`bin/<app>.rb` へのユーザーコマンド、`config/app.rb` への `base_url` 設定（[メール中のリンク](#links-in-mails)）、そして `bin/<app>.rb` と `bin/db.rb` への、コードが使うサブシステムの行（`require "cybertrain"` がすでにすべてを読み込む場合を除く）：`cybertrain/jobs`、`cybertrain/mailer`、`cybertrain/mailer/later`、`cybertrain/rate_limit`（[サブシステム](how-it-works.md#subsystems)）。さらに、`test/test_helper.rb` に `SessionTestHelper` を include し、すでにあるスキャフォールドと添付のテストの冒頭で `users(:one)` をサインインさせ（[テスト](#testing)）、`cybertrain new` が `config/deploy.yml` にコメントアウトして書いたワーカーのロールのコメントを外します。メールを送るのはジョブスレッドだからです。同じオプションでもう一度実行しても何も変わりません：すでに行った編集は見つけて飛ばし、書き出すとおりのファイルはそのままにします。違う内容で書き出すことになるファイル（自分で編集したもの、古いジェネレーターや別のオプションが書いたもの）は、`--force` なしでは決して上書きせず、代わりに差分を表示します（[0.4 からのアップグレード](#upgrading-from-04)、[あとから確認を有効にする](#turning-on-confirmation-later)）。
+そして次の編集を 1 回ずつ行います：`ApplicationController` への `include Authentication`、ルート、ジョブページの行（[管理者ユーザー](#admin-users-and-the-jobs-page)）、レイアウトへの nav パーシャル、`bin/<app>.rb` へのユーザーコマンド、`config/app.rb` への `base_url` 設定（[メール中のリンク](#links-in-mails)）、そして `bin/<app>.rb` と `bin/db.rb` への、コードが使うサブシステムの行（`require "cybertrain"` がすでにすべてを読み込む場合を除く）：`cybertrain/jobs`、`cybertrain/mailer`、`cybertrain/mailer/later`、`cybertrain/rate_limit`（[サブシステム](how-it-works.md#subsystems)）。さらに、`test/test_helper.rb` に `SessionTestHelper` を include し、すでにあるスキャフォールドと添付のテストの冒頭で `users(:one)` をサインインさせ（[テスト](#testing)）、`cybertrain new` が `config/deploy.yml` にコメントアウトして書いたワーカーのロールのコメントを外します。メールを送るのはジョブスレッドだからです。同じオプションでもう一度実行しても何も変わりません：すでに行った編集は見つけて飛ばし、書き出すとおりのファイルはそのままにします。違う内容で書き出すことになるファイル（自分で編集したもの、古いジェネレーターや別のオプションが書いたもの）は、`--force` なしでは決して上書きせず、代わりに差分を表示します（[ジェネレーターをもう一度実行する](#running-the-generator-again)、[あとから確認を有効にする](#turning-on-confirmation-later)）。
 
 生成される画面のテキストは、フレームワークの英語と日本語の辞書に、それぞれの遅延ルックアップのキー（`sessions.new.title`、`passwords.create.sent`）で入っています。アプリケーションは `config/locales/` でそれらを上書きしたり、言語を足したりできます（[国際化](i18n.md#the-bundled-dictionaries)）。
 
@@ -206,9 +206,9 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 
 このリポジトリの `script/auth-e2e signup invite confirmable upgrade04` は、ジェネレーターでアプリケーションを作り、端から端まで動かします。
 
-## 0.4 からのアップグレード
+## ジェネレーターをもう一度実行する
 
-0.4 が生成したアプリケーションで、ジェネレーターをもう一度実行します。足りないファイル、既存のマイグレーションにない列を足すマイグレーション、そして編集を書き出します。丸ごと書き出すはずのファイルが別の内容で存在する場合は何も変えず、差分を表示します：
+以前のリリースが生成したアプリケーションで、ジェネレーターをもう一度実行します。足りないファイル、既存のマイグレーションにない列を足すマイグレーション、そして編集を書き出します。丸ごと書き出すはずのファイルが別の内容で存在する場合は何も変えず、差分を表示します。0.4 が生成したアプリケーションでは：
 
 ```text 出力 — cybertrain generate authentication（抜粋）
 exist db/migrate/20260925120000_create_users.rb
@@ -232,14 +232,11 @@ manual  app/controllers/application_controller.rb: apply this diff by hand, or r
 +  include Authentication
 ```
 
-[test/fixtures/auth_04_app.upgrade.diff](../../test/fixtures/auth_04_app.upgrade.diff) は、0.4 が生成したサインアップ型のアプリケーションに対する出力の全体です。
-
 <!-- list: points -->
 - 出力を保存し、アプリケーションのディレクトリで `patch -p1` で適用するか（patch は差分でない行を読み飛ばします）、ファイルを変更した箇所では差分を手で適用してください。適用するまでアプリケーションはビルドできないことがあります：新しいファイルが、差分で足されるものを呼ぶからです。
-- `--force` は代わりに新しいファイルを古いファイルの上に書き出します。編集していないファイル向けです。`ApplicationController` の 0.4 のブロックが置き換えられるのは、0.4 が書いたとおりのままのときだけです。
+- `--force` は代わりに新しいファイルを古いファイルの上に書き出します。編集していないファイル向けです。
 - 新しいマイグレーションは足りない列だけを足します。`cybertrain db migrate` を実行してください。`--confirmable` では、すでにいるユーザーを（作成時から）確認済みとして扱います。そうしないと誰もサインインできなくなるからです。
-- `--confirmable` では、sessions と registrations のコントローラーの差分に `IMPORTANT:` の行が付きます：適用するまで、未確認のアカウントはサインインできない理由を知らされず、サインアップしてもリンクがメールされません。0.4 のアプリケーションではコンサーンは新しいファイルで、確認の検査とともに書き出されるので、それらの差分が適用されなくても、未確認のアカウントにセッションを始めません（そして `WARN [<request id>] no session started: user <id> has not confirmed its address` をログに出します）。
-- アップグレードの際、すべてのセッションは一度終わります（クッキーが暗号化されたため）。[0.4 のアプリケーションのアップグレード](requests.md#upgrading-an-application-from-04) の残りも当てはまります。
+- リリースのジェネレーターが変えること、そしてそのリリースがほかにアプリケーションに求めることは、[アップグレード](upgrading.md#notes-by-version) にバージョンごとに載っています。
 
 ### あとから確認を有効にする
 

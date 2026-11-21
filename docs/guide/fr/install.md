@@ -1,5 +1,5 @@
 ---
-source_sha256: 4f41772e35e37674b8e1389ae3eb7abbc95e52b3b89635a88fbfa531e3cac42d
+source_sha256: 5b290cc8bfe97d7f7325b9a91ff2161dd1976379ce789c906598463f9da7b6e2
 ---
 # Installer cybertrain
 
@@ -358,6 +358,5 @@ pas vérifiée. Une application sans `spin.lock` est comparée à la version que
 nomme son `spin.toml` (`"X.Y.Z"` ou `ref = "vX.Y.Z"`)&nbsp;; une branche, un
 commit ou une plage n’en nomme aucune, elle n’est donc pas vérifiée.
 
-Une application écrite pour 0.4 a quelques changements à faire (chaque session
-prend fin une fois, OpenSSL est lié, un segment de route contenant un point a
-besoin de `format: false`, etc.)&nbsp;: voir [Mettre à jour une application écrite pour 0.4](requests.md#upgrading-an-application-from-04).
+Reverrouiller n’est qu’une étape d’une mise à jour. [Mise à jour](upgrading.md) décrit
+toute la procédure, et ce que chaque version change pour une application.

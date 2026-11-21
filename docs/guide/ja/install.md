@@ -1,5 +1,5 @@
 ---
-source_sha256: 4f41772e35e37674b8e1389ae3eb7abbc95e52b3b89635a88fbfa531e3cac42d
+source_sha256: 5b290cc8bfe97d7f7325b9a91ff2161dd1976379ce789c906598463f9da7b6e2
 ---
 # インストール
 
@@ -142,4 +142,4 @@ or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then 
 
 どちらか一方を行ってください。`cybertrain spin ...` は確認の対象にならないので、`cybertrain spin lock` はいつでも実行できます。インデックスのバージョンに依存している場合、メッセージは `cybertrain = "A.B.C"` と `cybertrain spin lock` だけを示します。spin が固定されたリリースをビルドするのは `spin.toml` がそれを許している間だけなので、`spin.toml` が指すバージョンがロックと違えば、すぐにそのバージョンが比べられます。範囲（`"~> X.Y"`）が固定されたリリースを許さなくなった場合は、`cybertrain spin lock` を実行するまで拒否されます。フレームワークのチェックアウトに依存するアプリ（`path = ...`）は確認されません。`spin.lock` のないアプリは、`spin.toml` が指すリリース（`"X.Y.Z"` または `ref = "vX.Y.Z"`）と比べられます。ブランチ、コミット、範囲はリリースを指さないので、確認されません。
 
-0.4 向けに書いたアプリケーションには、いくつか変更が要ります（どのセッションも一度だけ終わる、OpenSSL をリンクする、ドットを含むルートのセグメントには `format: false` が要る、など）：[0.4 のアプリを更新する](requests.md#upgrading-an-application-from-04)を見てください。
+ロックし直すことは、アップグレードの 1 ステップです。手順の全体と、各リリースがアプリケーションに対して変えることは、[アップグレード](upgrading.md) にあります。

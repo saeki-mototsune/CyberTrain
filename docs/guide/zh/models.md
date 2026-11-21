@@ -1,5 +1,5 @@
 ---
-source_sha256: bdd93406515ea0423e255fb7a519b654ed9a56bc10cb7d18940a78ca0d3a9f35
+source_sha256: 6a9265e8cc11206efd57f2283164a48771657a3ce876972b6e9492031c11de61
 ---
 # 模型与数据库
 
@@ -566,17 +566,6 @@ Rails 8 应用创建的 SQLite 文件可以直接读取：
 
 然后按本页所示的形式，在 `app/models/*.rb` 中写出 Rails 模型原有的校验、关联和 scope。
 
-## 从 0.4 升级
+## 升级
 
-下面每一项都是为 CyberTrain 0.4 编写的应用一次就能改完的修改：
-
-1. `has_many` 读取方法返回 relation，而不是 Array：在仅 Array 才有的方法（`map`、`select`、`[]`、`+`）前加 `.to_a`。模板不变。
-2. 日期时间以 Rails 的格式存储：升级后运行一次 `db normalize`（[日期时间与 `db normalize`](#datetimes-and-db-normalize)）；在那之前，混有两种格式的列按格式排序。
-3. `as_json` 和 `to_json` 把时间写成 `2026-10-05T09:00:00.000Z`（以前是 `2026-10-05T09:00:00Z`）：测试中的 JSON 快照会变化。
-4. `t.date` 属性是 `Date`，不是 String：`strftime` 仍然可用，拼接需要 `to_s`。NOT NULL 的日期列现在会校验存在性。
-5. 没有 `optional: true` 的已声明 `belongs_to` 会校验其外键；未声明的不变。
-6. Integer 端点的 `where(x: a..b)` 是范围条件（以前是与 Range 文本的相等比较，永远不会匹配）；Time 和 Date 边界使用 `where_between`。
-7. `Cybertrain::Cast.iso8601` 是显示格式：用它拼 SQL 文本的代码改用 `Cast.sql_datetime`，`Cast.binds` 以存储格式绑定 Time。
-8. `validates` 行上的 `allow_blank: true` 也让该行的 `presence` 放过空白值，与 Rails 相同（以前只作用于 `length`）。
-9. 与每个模型现在都有的方法同名的列（`update_columns`、`destroy_dependents`、`run_custom_validations` 等）会生成为 `<column>_column`（[列名](#column-names)）。
-10. `belongs_to` 读取方法会记住读到的父记录，直到外键改变（以前每次调用都会重新读取）：要看到其他进程所做的修改，请调用 `reload`。
+某个版本在模型和数据库方面的变化，按版本列在[升级](upgrading.md#notes-by-version)中。

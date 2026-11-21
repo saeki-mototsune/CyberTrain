@@ -1,5 +1,5 @@
 ---
-source_sha256: 1e29b0e14d2ad564cb22b5c5188c8b2388d0b55976e6d2ceaf6261531d6657a7
+source_sha256: 0a42aac62329b3813c3f4f0bb7ef05dd5d50c03801c23e8cfd6ef604bb38cc85
 ---
 # Tester une application
 
@@ -973,48 +973,10 @@ L’instantané d’un test qui touche SQLite vient du binaire compilé&nbsp;:
 `script/regen-snapshot test/<name>.rb` dans le dépôt du framework, ou
 `rm -f build/test/<name>; cybertrain spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`.
 
-## Mettre à niveau depuis 0.4
+## Mise à jour
 
-- Ajoutez `test/test_helper.rb` comme ci-dessus, et sortez-en ce qu’un
-  fichier de support faisait au chargement (`AppTest.boot`,
-  `BlogTest.boot`, migrer une base)&nbsp;: le programme de test démarre sur une
-  base neuve avant le premier test, et un second démarrage ne fait que
-  coûter du temps.
-- Remplacez l’étape de CI `spin test` par `cybertrain test`.
-- Deux fichiers qui définissent la même aide ou constante de premier
-  niveau (un `new_client` dans chacun, comme les générateurs de 0.4 les
-  écrivaient) sont refusés ensemble&nbsp;: déplacez l’aide dans
-  `test/support/` ou renommez-en une.
-- Toutes les tables sont vidées avant chaque test, donc un test ultérieur
-  ne peut plus compter sur les lignes qu’un précédent a créées&nbsp;: déplacez
-  ces données dans les fixtures ou dans `setup`.
-- Les points d’injection d’horloge ont disparu&nbsp;: `Cybertrain::Cache.clock=`,
-  `Cache.system_clock`, `RateLimit.current_time=`, `SessionStore#fixed_now=`,
-  `Application.status_now=` et `Background.supervisor_clock=`. Utilisez
-  `travel_to`, `travel` ou `freeze_time`, dont le bloc rétablit l’heure sans
-  `ensure` de votre part.
-- Les courriels des tests sont gardés dans `Cybertrain::Mailer.deliveries`&nbsp;;
-  un test qui lit un courriel sur un `Test::SmtpReceiver` règle d’abord
-  `Cybertrain.config.mail_delivery_method = :smtp`.
-- Un test de helper écrit par le `generate helper` de 0.4 définit un
-  `render_inline(source)` de premier niveau, en conflit avec celui du
-  framework&nbsp;: renommez-le `render_helper_template` dans ce fichier, appels
-  compris.
-- `1.month.ago` s’écrit `Time.current.months_ago(1)`.
-- `assert_equal` échoue avec le texte sur deux lignes de Minitest&nbsp;; un
-  instantané de test qui passe ne change pas.
-- `cybertrain generate authentication`, relancé, écrit les tests en forme
-  de classe et nomme chaque ancien fichier qu’ils remplacent
-  (`test/authentication.rb`, `test/support/app_test.rb`, ...)&nbsp;; `--force`
-  les supprime.
-- Un test qui cherchait une ligne de journal entière, son niveau entre
-  crochets en tête, cherche le niveau et le message séparément (`" ERROR "`
-  et `"password reset mail not sent: "`)&nbsp;: une ligne commence
-  maintenant par l’heure et peut porter l’identifiant de la requête
-  ([Journaux](background-and-operations.md#logs)).
-- Un `CYBERTRAIN_LOG_FORMAT` ou un `CYBERTRAIN_SENTRY_DSN` exporté n’atteint
-  plus les tests&nbsp;; pour tester avec, fixez-les dans `config/app.rb`, ou
-  affectez le DSN dans le test.
+Ce qu’une version change pour les tests d’une application
+figure par version dans [Mise à jour](upgrading.md#notes-by-version).
 
 ## Intégration continue
 

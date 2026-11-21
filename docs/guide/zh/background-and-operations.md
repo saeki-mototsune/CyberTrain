@@ -1,5 +1,5 @@
 ---
-source_sha256: b8966fe43fcd456b2e389fe3ddd71d5c48ad7db2fa2e9082c6fee1e306ddffb9
+source_sha256: ce5c1ef87df71c5c21185d7f5e95504246aff791584e0749cc3dc5a57797a15a
 ---
 # 后台任务与运维
 
@@ -133,12 +133,9 @@ end
 - **关闭。** 收到 `SIGTERM` 时，作业线程停止认领新作业，进程最多等待 `job_drain_timeout`（10 秒）让进行中的作业完成。届时仍在运行的作业的行保持 `running`；它的心跳已经停止，所以一旦过期，另一个进程会再次运行它。
 - **测试。** `WelcomeJob.perform_now(args)` 运行一个作业，`Cybertrain::Scheduler.run_due(now)` 运行一次心跳，`Cybertrain::Job.work_one(now)` 运行一个排队的作业，时间是你选定的纪元时间，所以测试永远不必休眠；断言见[测试作业](testing.md#testing-jobs)。
 
-### 从 0.4 升级
+### 升级作业
 
-- `cybertrain_jobs` 新增 `concurrency_key` 列和 `discarded` 状态；第一个接触这张表的进程会添加该列。列举状态的代码（基于 `Job.state_count` 的仪表板）要加上 `discarded`。`Job.prune_done` 仍然只清理 `done` 的行。
-- `every` 任务在重启之后从时间表继续，而不是从头开始：进程停止期间过去的间隔会在启动时运行一次。
-- 给已有的种类加上键（`limits_concurrency ... key:`）：与任何升级一样，在第一个新进程启动之前停止所有旧进程（[进程角色](#process-roles)）。第一个新进程会为之前入队的 `queued` 行设置键（对负载中没有该字段的行，它会记录其 id），旧进程留下的 `running` 行会在被回收时获得它的键。
-- `jobs` 现在是一个内置命令：名为 `jobs` 的应用命令必须改名。
+某个版本在作业和定时任务方面的变化，按版本列在[升级](upgrading.md#notes-by-version)中。
 
 尚未实现：作业优先级、队列名称和唯一性、供测试使用的内联作业模式（`perform_now` 和 `perform_enqueued_jobs` 已覆盖测试的需要）。设计说明：`docs/design.md` D28 以及 D51 至 D53。
 
@@ -418,12 +415,6 @@ export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 可选：发送其中四分之
 
 `cybertrain test` 不向 Sentry 发送任何东西：除非 `config/app.rb` 赋了值，它会清空导出的 `CYBERTRAIN_SENTRY_DSN`，测试改为把 DSN 指向 `Test::SentryReceiver`（[测试日志与错误报告](testing.md#testing-logs-and-error-reports)）。设计：[docs/design.md](../design.md) D86 和 D88。
 
-### 从 0.4 升级日志与错误报告
+### 升级日志与错误报告
 
-- 每一行日志的形状都变了：行首方括号中的级别（`[INFO]`）换成了时间、级别和标签，`2026-11-14T09:30:00.132Z INFO [<request id>] Completed 200 in 3ms`。读取日志的东西（脚本中对 `[ERROR]` 的 grep、告警）也要随之修改；查找整行的测试改为分别查找级别和消息（`" ERROR "` 和消息；[从 0.4 升级](testing.md#upgrading-from-04)）。
-- 应用返回的每个响应都带 `X-Request-Id`（服务器对无法读取的请求返回的 400 和 413 除外）。设置了它的代理，只有在受信任时才会采用它的值。
-- `cybertrain_jobs` 增加 `request_id` 列；第一个访问该表的进程会添加它。
-- 文本日志行不再延续到后面的行：消息或标签中的换行和回车写成 `\n` 和 `\r`。从多行读取多行消息的东西改为读取转义。
-- 名为 `handle` 的模型列现在读作 `handle_column`：有 `users.handle` 列的应用把 `user.handle` 的调用改为 `user.handle_column`（查询仍用 SQL 名称）。不是文本的 `request_id` 或 `release` 列会被 gen 拒绝（[列名](models.md#column-names)）。
-- 除非 `config/app.rb` 设置了它们，`cybertrain test` 忽略导出的 `CYBERTRAIN_LOG_FORMAT` 和 `CYBERTRAIN_SENTRY_DSN`（测试读取文本行，不发送任何东西）。`generate authentication` 写的密码测试会在其 `with_config` 中关闭 JSON 行；以前生成的、测试以 `log_format :json` 运行的应用，请重新运行生成器或照搬这一修改。
-- `require "cybertrain"` 现在通过 Sentry 发送器链接 `HttpClient` 和 TLS 层。
+某个版本在日志和错误报告方面的变化，按版本列在[升级](upgrading.md#notes-by-version)中。

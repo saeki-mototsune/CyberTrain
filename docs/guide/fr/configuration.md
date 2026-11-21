@@ -1,5 +1,5 @@
 ---
-source_sha256: 455d9c71c3b91be4d97f8f383cdde3e0bcb7c6663fd0b7289cda0bc28af08439
+source_sha256: 43043e60ceef489d3b51e2fc972979fe5ae170ebdb2811b96b7f7c5f692f09c2
 ---
 # Configuration
 
@@ -354,14 +354,7 @@ sortie 1, avant d’ouvrir la base. Dans `cybertrain test`, chaque test
 commence dans le fuseau configuré. ([Dates et heures](i18n.md#dates-and-times) donne les formats de
 `l`.)
 
-## Mettre à niveau depuis 0.4
+## Mise à jour
 
-Deux valeurs par défaut de cette page ont changé après 0.4&nbsp;:
-
-- L’imbrication des rendus était illimitée&nbsp;; elle est désormais plafonnée
-  par `max_render_depth`, 12 par défaut. Une application dont l’arbre de
-  partiels est plus profond (commentaires en fil, menu de catégories) obtient
-  une erreur de template tant qu’elle n’augmente pas ce réglage.
-- `job_poll_interval` valait 5 secondes et vaut maintenant 1&nbsp;: les jobs
-  s’exécutent sur leurs propres threads, et un thread inoccupé cherche du
-  travail chaque seconde.
+La liste des réglages et des valeurs par défaut qu’une version change
+figure par version dans [Mise à jour](upgrading.md#notes-by-version).

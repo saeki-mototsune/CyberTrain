@@ -1,5 +1,5 @@
 ---
-source_sha256: bdd93406515ea0423e255fb7a519b654ed9a56bc10cb7d18940a78ca0d3a9f35
+source_sha256: 6a9265e8cc11206efd57f2283164a48771657a3ce876972b6e9492031c11de61
 ---
 # モデルとデータベース
 
@@ -566,17 +566,6 @@ Rails 8 のアプリケーションが作った SQLite のファイルは、そ�
 
 そのうえで、Rails のモデルにあったバリデーション、関連付け、スコープを、このページの形で `app/models/*.rb` に書きます。
 
-## 0.4 からの更新
+## アップグレード
 
-以下の変更はどれも、CyberTrain 0.4 向けに書いたアプリケーションを一回で直せるものです：
-
-1. `has_many` の読み出しは Array ではなくリレーションを返します：Array にしかないメソッド（`map`、`select`、`[]`、`+`）の前に `.to_a` を付けてください。テンプレートは変わりません。
-2. 日時は Rails の形で保存されます：更新のあとで一度 `db normalize` を実行してください（[日時と `db normalize`](#datetimes-and-db-normalize)）。それまでは、二つの形が混ざったカラムは形の順に並びます。
-3. `as_json` と `to_json` は時刻を `2026-10-05T09:00:00.000Z` と書きます（以前は `2026-10-05T09:00:00Z`）：テストの JSON のスナップショットが変わります。
-4. `t.date` の属性は String ではなく `Date` です：`strftime` はそのまま使え、連結には `to_s` が要ります。NOT NULL の日付カラムは存在を検証するようになりました。
-5. `optional: true` のない宣言した `belongs_to` は外部キーを検証します。宣言していないものは変わりません。
-6. Integer の端を持つ `where(x: a..b)` は範囲の条件です（以前は Range のテキストとの等値で、一致することはありませんでした）。Time と Date の端は `where_between` を使います。
-7. `Cybertrain::Cast.iso8601` は表示用の形です：これで SQL のテキストを組み立てていたコードは `Cast.sql_datetime` に替え、`Cast.binds` は Time を保存用の形でバインドします。
-8. `validates` の行の `allow_blank: true` は、Rails と同じく、その行の `presence` にも空の値を通させます（以前は `length` にだけ効きました）。
-9. すべてのモデルが持つようになったメソッドと同じ名前のカラム（`update_columns`、`destroy_dependents`、`run_custom_validations` など）は `<column>_column` として生成されます（[カラム名](#column-names)）。
-10. `belongs_to` の読み出しは、外部キーが変わるまで読んだ親を覚えています（以前は呼ぶたびに読みました）：別のプロセスによる変更を見るには `reload` を呼んでください。
+モデルとデータベースについてリリースが変えることは、[アップグレード](upgrading.md#notes-by-version) にバージョンごとに載っています。

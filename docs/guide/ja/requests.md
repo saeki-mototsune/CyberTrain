@@ -1,5 +1,5 @@
 ---
-source_sha256: 2b5fded6e781bd7858eecd4087a657f9a3942325ea7b3d7be3ac8a684a924643
+source_sha256: e5f13b67f73f98ad2be5ced715df0a920cd281aca9ffcab3112285ef8e9f39dc
 ---
 # リクエスト
 
@@ -277,24 +277,6 @@ request.header_params("prefer").key?("respond-async")   # => true
 
 Rack は gzip されたリクエストボディをそのままにします。ここでは、`Content-Encoding: gzip` で送られたボディ（数キロバイトを超える SDK や API クライアント）は `request.decoded_body` で、出力の上限のもとでシステムの zlib を通じて一度だけ展開されます：上限はデフォルトで 10 MiB で、それ以上を期待するエンドポイントは自分の上限を渡します（`request.decoded_body(limit)`）。壊れたボディや gzip/identity 以外のエンコーディングは `Cybertrain::BodyUndecodable`、上限を超えて展開されそうなものは `Cybertrain::BodyTooLarge` で、どちらも 400 を返す `QueryInvalid` です。`request.body` は送られたままのバイト列です。
 
-## 0.4 のアプリを更新する
+## アップグレード
 
-0.4 向けに書いたアプリで変わること（全体は [設計](../superpowers/specs/2026-11-10-phase4-web-layer-design.md) の 14 節にあります）：
-
-- モデルとデータベースには別の一覧があり、`db normalize` を一度実行することもそこに含まれます（[0.4 からの更新](models.md#upgrading-from-04)）。テスト（[0.4 からのアップグレード](testing.md#upgrading-from-04)）とジョブ（[0.4 からの更新](background-and-operations.md#upgrading-from-04)）にも、それぞれ一覧があります。
-- どのセッションも一度だけ終わります：暗号化した Cookie は以前の署名付きのものを読めないので、ユーザーはもう一度サインインします。`Session.load` や `Session.dump` を呼ぶコードは、導いた鍵 `Crypto.derive_key(secret, SessionStore::SESSION_KEY_LABEL)` を渡します。生の秘密鍵を渡すと `Encryptor::Error` になります。
-- どのアプリも OpenSSL をリンクします（[インストール](install.md#requirements)）。以前の `cybertrain new` が書いた Dockerfile には、ビルド段に `libssl-dev`、実行段に `libssl3t64` が要ります。
-- フォーマットを取るルートでは、動的セグメントが `.` を取り込まなくなりました：ドットを含む id のルートには `format: false` が要ります。
-- 手で書いた `url_resolver` のラムダは三つの引数 `->(name, args, options)` を取ります。`Gen::Routes.url_resolver` を渡しているアプリは `spin run gen` だけで済みます。
-- `params.permit` は `Hash{String => Object}` を返します：値を String として使う前に `Cast.str` か `.to_s` を呼んでください。
-- `rate_limit` はキャッシュで数えます：`store: :memory` で以前のプロセスごとのカウンターになり、一つのコントローラーの二つの制限にはそれぞれの `name:` が要り、nil か `""` を返す `by:` のメソッドは例外を発生させ、何も描画しない `with:` のメソッドの後には 429 が続きます。
-- 数値のヘルパーは、数でない値と、0 から 100 の範囲外の精度で例外を発生させます（nil はテンプレートでは従来どおり `""` になります）。
-- コントローラーやモデルの `include A, B` は、Ruby と同じく B を先に include します。コンサーンでないモジュールの `include` は Ruby に任されます。
-- すべての ETag が一度変わります（リクエストのフォーマットとビルドのダイジェストを含むようになったため）。`Accept` で決まった応答は `Vary: Accept` を送り、html のフォールバックは `text/html` か `*/*` を挙げるどの `Accept` にも働きます。html にフォールバックしうるリクエスト（`application/json, text/html`）は、そのフォーマットだけを求めるリクエストとは別の ETag を持ちます。`Accept` の `text/html;q=0` には、`*/*` が並んでいても html のフォールバックは働きません（html しかないアクションでは 406）。`If-None-Match: *` は、`last_modified:` だけで検証した応答からも 304 を受け取ります。
-- `permit` と `expect` は、Array でないフィルターで `ArgumentError` を発生させます。存在しないレイアウトを指す `layout` は `MissingTemplate` を発生させます（既定の `application` レイアウトは省略可能なままです）。ジャーの Cookie が 4096 バイトを超えると `Session::CookieOverflow` を発生させます。
-- `public/style.css` はそのまま動きます。`app/assets/stylesheets/` への移動は任意です（[アセット](assets.md#moving-publicstylecss)）。
-- バリデーションメッセージは同梱の辞書から来ます（[国際化](i18n.md#models-and-validation-messages)）。英語の文面は同じですが、3 つだけ違います：`:base` のメッセージの頭に "Base" が付かなくなり、`_id` で終わる属性は "id" なしで呼ばれ（"Article id can't be blank" ではなく "Article can't be blank"）、長さの上限 1 は "1 character" になります。これらのメッセージを比べるテストは変わります。
-- `format:` なし、または書式名つきの `time_tag` は `I18n.l` で整形されます（英語のページでは以前と同じ英語の文面です）。
-- gen は `gen/locales.rb`（`config/locales/` がなければ空）を書き、`app/mailers/**/*.rb` を読み込みます。`cybertrain new` は `config/locales/en.yml` を書きます。古いアプリケーションも足せます。
-- `allow_unauthenticated_access` はフレームワークのメソッドになりました。0.4 のジェネレーターが `ApplicationController` に書いたものも動き続け、そちらが優先されます。`cybertrain generate authentication` をもう一度実行すると、パスワードリセット、ロックアウト、ログインしたままにする、アカウントページ、管理者ユーザーが加わり、0.4 が書いたファイルの差分が表示されます（[0.4 からのアップグレード](authentication.md#upgrading-from-04)）。
-- アプリケーションが返すすべてのレスポンスが `X-Request-Id` を持ち（サーバーが読めないリクエストに返す 400 と 413 は除きます）、プロキシの `X-Request-Id` はそのプロキシが信頼されているときだけ使われます。ログの行の形もすべて変わります（[ログとエラー報告の 0.4 からの更新](background-and-operations.md#upgrading-logs-and-error-reports-from-04)）。
+ルーティング、コントローラー、そのほかの Web 層についてリリースが変えることは、[アップグレード](upgrading.md#notes-by-version) にバージョンごとに載っています。

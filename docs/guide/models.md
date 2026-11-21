@@ -1016,34 +1016,7 @@ A SQLite file that a Rails 8 application created can be read as it is:
 Then write `app/models/*.rb` with the validations, associations and scopes
 the Rails models had, in the shapes this page shows.
 
-## Upgrading from 0.4
+## Upgrading
 
-Each change below is a one-pass edit to an application written for
-CyberTrain 0.4:
-
-1. A `has_many` reader returns a relation, not an Array: add `.to_a` before
-   an Array-only method (`map`, `select`, `[]`, `+`). Templates are
-   unchanged.
-2. Datetimes are stored in Rails' format: run `db normalize` once after
-   upgrading ([Datetimes and `db normalize`](#datetimes-and-db-normalize));
-   until then a column mixing the two formats sorts by format.
-3. `as_json` and `to_json` write times as `2026-10-05T09:00:00.000Z` (it was
-   `2026-10-05T09:00:00Z`): JSON snapshots in tests change.
-4. A `t.date` attribute is a `Date`, not a String: `strftime` still works,
-   concatenation needs `to_s`. A NOT NULL date column now validates presence.
-5. A declared `belongs_to` without `optional: true` validates its foreign
-   key; undeclared ones are unchanged.
-6. `where(x: a..b)` with Integer ends is a range condition (it was an
-   equality with the Range's text, which never matched); Time and Date
-   bounds use `where_between`.
-7. `Cybertrain::Cast.iso8601` is the display format: code that built SQL
-   text with it switches to `Cast.sql_datetime`, and `Cast.binds` binds a
-   Time in the stored format.
-8. `allow_blank: true` on a `validates` line also lets `presence` on that
-   line pass a blank value, as in Rails (it applied to `length` only).
-9. A column named like a method every model now has (`update_columns`,
-   `destroy_dependents`, `run_custom_validations`, ...) is generated as
-   `<column>_column` ([Column names](#column-names)).
-10. A `belongs_to` reader keeps the parent it read until the foreign key
-    changes (it read it again on every call): call `reload` to see a change
-    another process made.
+What a release changes for models and the database is listed by version in
+[Upgrading](upgrading.md#notes-by-version).

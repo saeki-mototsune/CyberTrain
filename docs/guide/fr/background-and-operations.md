@@ -1,5 +1,5 @@
 ---
-source_sha256: b8966fe43fcd456b2e389fe3ddd71d5c48ad7db2fa2e9082c6fee1e306ddffb9
+source_sha256: ce5c1ef87df71c5c21185d7f5e95504246aff791584e0749cc3dc5a57797a15a
 ---
 # Tâches de fond et exploitation
 
@@ -366,25 +366,10 @@ Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400) }`).
   votre choix, si bien qu’un test ne dort jamais&nbsp;;
   [Tester les jobs](testing.md#testing-jobs) donne les assertions.
 
-### Mise à jour depuis 0.4
+### Mise à jour des jobs
 
-- `cybertrain_jobs` gagne la colonne `concurrency_key` et l’état
-  `discarded`&nbsp;; le premier processus qui touche la table ajoute la
-  colonne. Le code qui liste les états (un tableau de bord sur
-  `Job.state_count`) ajoute `discarded`. `Job.prune_done` ne purge toujours
-  que les lignes `done`.
-- Les tâches `every` reprennent à partir du calendrier après un redémarrage
-  au lieu de repartir de zéro&nbsp;: un intervalle écoulé pendant que le
-  processus était arrêté s’exécute une fois au démarrage.
-- Donner une clé à un kind existant (`limits_concurrency ... key:`)&nbsp;:
-  arrêtez tous les anciens processus avant que le premier nouveau démarre,
-  comme pour toute mise à jour ([Rôles des processus](#process-roles)). Le
-  premier nouveau processus attribue leur clé aux lignes `queued` mises en
-  file auparavant (il journalise les ids des lignes dont la charge utile n’a
-  pas ce champ), et une ligne `running` laissée par un ancien processus
-  reçoit sa clé quand elle est reprise.
-- `jobs` est désormais une commande intégrée&nbsp;: une commande de
-  l’application nommée `jobs` doit être renommée.
+Ce qu’une version change pour les jobs et les tâches planifiées
+figure par version dans [Mise à jour](upgrading.md#notes-by-version).
 
 Non construit&nbsp;: la priorité des jobs, les noms de file et l’unicité, un
 mode de job en ligne pour les tests (`perform_now` et
@@ -1056,35 +1041,7 @@ test pointe plutôt le DSN vers un `Test::SentryReceiver`
 ([Tester les journaux et les rapports d’erreur](testing.md#testing-logs-and-error-reports)).
 La conception&nbsp;: [docs/design.md](../design.md) D86 et D88.
 
-### Mettre à jour les journaux et les rapports d’erreur depuis 0.4
+### Mise à jour des journaux et des rapports d’erreur
 
-- Chaque ligne de journal change de forme&nbsp;: le niveau entre crochets au
-  début (`[INFO]`) cède la place à l’heure, au niveau et aux étiquettes,
-  `2026-11-14T09:30:00.132Z INFO [<request id>] Completed 200 in 3ms`. Ce
-  qui lit le journal (un grep de `[ERROR]` dans un script, une alerte)
-  change avec elle&nbsp;; un test qui cherchait une ligne entière cherche
-  le niveau et le message séparément (`" ERROR "` et le message&nbsp;;
-  [Mettre à jour depuis 0.4](testing.md#upgrading-from-04)).
-- Chaque réponse de l’application porte `X-Request-Id` (pas les 400 et 413
-  du serveur pour une requête qu’il ne peut pas lire). Un proxy qui en
-  posait un voit le sien utilisé seulement s’il est de confiance.
-- `cybertrain_jobs` gagne la colonne `request_id`&nbsp;; le premier processus
-  qui touche la table l’ajoute.
-- Une ligne de journal en texte ne continue plus sur les lignes
-  suivantes&nbsp;: un saut de ligne ou un retour chariot dans un message ou
-  une étiquette s’écrit `\n` ou `\r`. Ce qui lisait un message sur
-  plusieurs lignes lit les échappements.
-- Une colonne de modèle nommée `handle` se lit maintenant `handle_column`&nbsp;:
-  une application qui a une colonne `users.handle` change ses appels
-  `user.handle` en `user.handle_column` (les requêtes gardent le nom SQL).
-  Les colonnes `request_id` ou `release` qui ne sont pas du texte sont
-  refusées par gen ([Noms de colonnes](models.md#column-names)).
-- `cybertrain test` ignore un `CYBERTRAIN_LOG_FORMAT` et un
-  `CYBERTRAIN_SENTRY_DSN` exportés (les tests lisent des lignes de texte et
-  n’envoient rien) sauf si `config/app.rb` les fixe. Les tests de mot de passe
-  qu’écrit `generate authentication` coupent les lignes JSON dans leur
-  `with_config`&nbsp;; une application générée plus tôt dont les tests
-  tournent avec `log_format :json` relance le générateur ou recopie ce
-  changement.
-- `require "cybertrain"` lie maintenant `HttpClient` et la couche TLS, à
-  travers l’envoyeur Sentry.
+Ce qu’une version change dans les journaux et les rapports d’erreur
+figure par version dans [Mise à jour](upgrading.md#notes-by-version).

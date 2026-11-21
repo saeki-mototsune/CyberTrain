@@ -1,5 +1,5 @@
 ---
-source_sha256: b8966fe43fcd456b2e389fe3ddd71d5c48ad7db2fa2e9082c6fee1e306ddffb9
+source_sha256: ce5c1ef87df71c5c21185d7f5e95504246aff791584e0749cc3dc5a57797a15a
 ---
 # バックグラウンド処理と運用
 
@@ -133,12 +133,9 @@ end
 - **停止。** `SIGTERM` を受けると、ジョブスレッドは新しいジョブの確保をやめ、プロセスは実行中のジョブを最大 `job_drain_timeout`（10 秒）待ちます。それでも実行中のジョブの行は `running` のまま残ります。ハートビートは止まっているので、古くなった時点で別のプロセスがもう一度実行します。
 - **テスト。** `WelcomeJob.perform_now(args)` はジョブを 1 つ、`Cybertrain::Scheduler.run_due(now)` はティックを 1 回、`Cybertrain::Job.work_one(now)` はキューのジョブを 1 つ、自分で選んだエポック時刻で実行するので、テストがスリープすることはありません。アサーションは[ジョブのテスト](testing.md#testing-jobs)にあります。
 
-### 0.4 からの更新
+### ジョブのアップグレード
 
-- `cybertrain_jobs` に `concurrency_key` の列と `discarded` の状態が加わります。テーブルに最初に触れたプロセスが列を足します。状態を列挙するコード（`Job.state_count` を使うダッシュボード）は `discarded` を足してください。`Job.prune_done` が消すのは、これまでどおり `done` の行だけです。
-- `every` のタスクは、再起動の後に最初からやり直すのではなく、時刻表から続きます。プロセスが止まっている間に過ぎた間隔は、起動時に 1 回実行されます。
-- 既存の種類にキーを与えるとき（`limits_concurrency ... key:`）：ほかの更新と同じく、最初の新しいプロセスが起動する前に古いプロセスをすべて止めてください（[プロセスの役割](#process-roles)）。最初の新しいプロセスが、それ以前にキューに入った `queued` の行にキーを付けます（ペイロードにそのフィールドがない行の id はログに出します）。古いプロセスが残した `running` の行は、回収されるときにキーが付きます。
-- `jobs` は組み込みのコマンドになりました。`jobs` という名前のアプリケーションのコマンドは、名前を変えてください。
+ジョブと定期タスクについてリリースが変えることは、[アップグレード](upgrading.md#notes-by-version) にバージョンごとに載っています。
 
 まだないもの：ジョブの優先度、キューの名前と一意性、テスト用のインラインのジョブモード（テストは `perform_now` と `perform_enqueued_jobs` でまかなえます）。設計：`docs/design.md` D28 と D51〜D53。
 
@@ -418,12 +415,6 @@ export CYBERTRAIN_ERROR_SAMPLE_RATE=0.25        # 任意：4 分の 1 を送る
 
 `cybertrain test` は Sentry に何も送りません。`config/app.rb` が代入していない限り、エクスポートされた `CYBERTRAIN_SENTRY_DSN` を空にします。テストは代わりに DSN を `Test::SentryReceiver` に向けます（[ログとエラー報告のテスト](testing.md#testing-logs-and-error-reports)）。設計：[docs/design.md](../design.md) の D86 と D88。
 
-### ログとエラー報告の 0.4 からの更新
+### ログとエラー報告のアップグレード
 
-- ログの行の形がすべて変わります。行頭の角括弧のレベル（`[INFO]`）が、時刻、レベル、タグに置き換わります：`2026-11-14T09:30:00.132Z INFO [<request id>] Completed 200 in 3ms`。ログを読むもの（スクリプトの `[ERROR]` の grep、アラート）も合わせて変えます。行を丸ごと探していたテストは、レベルとメッセージを別々に探します（`" ERROR "` とメッセージ。[0.4 からのアップグレード](testing.md#upgrading-from-04)）。
-- アプリケーションが返すすべてのレスポンスが `X-Request-Id` を持ちます（サーバーが読めないリクエストに返す 400 と 413 は除きます）。それを付けていたプロキシの値は、プロキシが信頼されているときだけ使われます。
-- `cybertrain_jobs` に `request_id` の列が増えます。最初にテーブルに触ったプロセスが足します。
-- テキストのログ行は次の行に続かなくなりました。メッセージやタグの中の改行と復帰は `\n` と `\r` として書かれます。複数行のメッセージを数行から読んでいたものは、エスケープを読みます。
-- `handle` という名前のモデルの列は `handle_column` として読むようになりました。`users.handle` の列を持つアプリケーションは、`user.handle` の呼び出しを `user.handle_column` に変えます（クエリは SQL の名前のままです）。テキストでない `request_id` や `release` の列は gen が拒否します（[列の名前](models.md#column-names)）。
-- `cybertrain test` は、`config/app.rb` が設定していない限り、エクスポートされた `CYBERTRAIN_LOG_FORMAT` と `CYBERTRAIN_SENTRY_DSN` を無視します（テストはテキストの行を読み、何も送りません）。`generate authentication` が書くパスワードのテストは、`with_config` の中で JSON の行を止めるようになりました。テストを `log_format :json` で動かしている、以前に生成したアプリケーションは、ジェネレーターを再実行するか、その変更を写してください。
-- `require "cybertrain"` は、Sentry の送信側を通じて `HttpClient` と TLS 層をリンクするようになりました。
+ログとエラー報告についてリリースが変えることは、[アップグレード](upgrading.md#notes-by-version) にバージョンごとに載っています。

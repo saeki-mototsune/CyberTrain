@@ -1,5 +1,5 @@
 ---
-source_sha256: 1e29b0e14d2ad564cb22b5c5188c8b2388d0b55976e6d2ceaf6261531d6657a7
+source_sha256: 0a42aac62329b3813c3f4f0bb7ef05dd5d50c03801c23e8cfd6ef604bb38cc85
 ---
 # Тестирование приложения
 
@@ -942,47 +942,10 @@ headers)`, `client.follow_redirect!`, `client.response` и формы с дву�
 фреймворка или
 `rm -f build/test/<name>; cybertrain spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`.
 
-## Обновление с 0.4
+## Обновление
 
-- Добавьте `test/test_helper.rb`, как показано выше, и уберите из
-  вспомогательного файла то, что он делал при загрузке (`AppTest.boot`,
-  `BlogTest.boot`, миграцию базы): тестовая программа загружается на новой
-  базе перед первым тестом, а повторная загрузка лишь отнимает время.
-- Замените шаг CI `spin test` на `cybertrain test`.
-- Два файла, определяющих один и тот же хелпер или константу верхнего
-  уровня (по `new_client` в каждом, как их писали генераторы 0.4),
-  отклоняются вместе: перенесите хелпер в `test/support/` или
-  переименуйте один из них.
-- Перед каждым тестом все таблицы очищаются, поэтому более поздний тест
-  уже не может полагаться на строки, созданные предыдущим: перенесите
-  такие данные в фикстуры или в `setup`.
-- Точки подмены часов удалены: `Cybertrain::Cache.clock=`,
-  `Cache.system_clock`, `RateLimit.current_time=`, `SessionStore#fixed_now=`,
-  `Application.status_now=` и `Background.supervisor_clock=`. Используйте
-  `travel_to`, `travel` или `freeze_time`, блок которых возвращает время
-  без вашего собственного `ensure`.
-- Почта в тестах хранится в `Cybertrain::Mailer.deliveries`; тест,
-  читающий письма на `Test::SmtpReceiver`, сначала задаёт
-  `Cybertrain.config.mail_delivery_method = :smtp`.
-- Тест хелпера, написанный `generate helper` версии 0.4, определяет
-  `render_inline(source)` верхнего уровня, который конфликтует с методом
-  фреймворка: переименуйте его в этом файле в `render_helper_template`,
-  вместе с вызовами.
-- `1.month.ago` пишется `Time.current.months_ago(1)`.
-- `assert_equal` падает с двухстрочным текстом Minitest; снимок
-  проходящего теста не меняется.
-- `cybertrain generate authentication`, запущенный снова, записывает тесты
-  в форме классов и называет каждый старый файл, который они заменяют
-  (`test/authentication.rb`, `test/support/app_test.rb`, ...); `--force`
-  их удаляет.
-- Тест, который искал строку лога целиком, с уровнем в квадратных скобках
-  в начале, ищет уровень и сообщение по отдельности (`" ERROR "` и
-  `"password reset mail not sent: "`): теперь строка начинается со времени и
-  может нести идентификатор запроса
-  ([Журнал](background-and-operations.md#logs)).
-- Экспортированные `CYBERTRAIN_LOG_FORMAT` или `CYBERTRAIN_SENTRY_DSN` больше
-  не доходят до тестов; чтобы тестировать с ними, задайте их в
-  `config/app.rb` или присвойте DSN в тесте.
+Что релиз меняет для тестов приложения,
+перечислено по версиям в разделе [Обновление](upgrading.md#notes-by-version).
 
 ## Непрерывная интеграция
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 1e29b0e14d2ad564cb22b5c5188c8b2388d0b55976e6d2ceaf6261531d6657a7
+source_sha256: 0a42aac62329b3813c3f4f0bb7ef05dd5d50c03801c23e8cfd6ef604bb38cc85
 ---
 # アプリをテストする
 
@@ -518,20 +518,9 @@ Cybertrain::Test.run!
 
 トップレベルの `setup do` と `teardown do` は、そのファイルの各テストの前後に実行されます。`cybertrain spin test` は各 `test/*.rb` を別々のプログラムにコンパイルし、出力を `test/<name>.rb.expected` と比べます。そこではテーブルを空にすることもフィクスチャもなく（どちらも gen のテーブルの一覧が要ります）、`Cybertrain::Test.run!` がファイルのテストを実行します。`cybertrain test` では、ファイルのテストはテーブルを空にしてフィクスチャを入れたあとにほかのテストと一緒に実行され、`run!` は何もしません。`spin test` ではそのファイルのためにアプリケーションを起動するものがないので、そのようなファイルは 0.4 のサポートファイル（`AppTest.boot`、`BlogTest.boot`）がしていたように自分で起動し、フィクスチャは使いません。`Cybertrain::Test::Client` は cookie jar を持ち、CSRF も含めてアプリケーションを操作します（`client.get`、`client.post(path, fields, headers)`、`client.follow_redirect!`、`client.response`、引数 2 つの `assert_response res, :ok` と `assert_redirected_to res, path`）。SQLite に触れるテストのスナップショットはコンパイル済みのバイナリから取ります：フレームワークのチェックアウトでは `script/regen-snapshot test/<name>.rb`、または `rm -f build/test/<name>; cybertrain spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`。
 
-## 0.4 からのアップグレード
+## アップグレード
 
-- 上のとおりに `test/test_helper.rb` を加え、サポートファイルが読み込み時にしていたこと（`AppTest.boot`、`BlogTest.boot`、データベースのマイグレート）をそこから外してください：テストプログラムは最初のテストの前に新しいデータベースで起動し、2 回目の起動は時間がかかるだけです。
-- CI のステップを `spin test` から `cybertrain test` に変えてください。
-- 同じトップレベルのヘルパーや定数を定義する 2 つのファイル（0.4 のジェネレーターが書いたように、それぞれにある `new_client`）は一緒に拒否されます：ヘルパーを `test/support/` に移すか、どちらかの名前を変えてください。
-- 各テストの前にすべてのテーブルが空になるので、あとのテストが前のテストの作った行に頼ることはもうできません：そのようなデータはフィクスチャか `setup` に移してください。
-- 時計の差し込み口はなくなりました：`Cybertrain::Cache.clock=`、`Cache.system_clock`、`RateLimit.current_time=`、`SessionStore#fixed_now=`、`Application.status_now=`、`Background.supervisor_clock=`。`travel_to`、`travel`、`freeze_time` を使ってください。ブロックの形なら、自分で `ensure` を書かなくても時刻が戻ります。
-- テストのメールは `Cybertrain::Mailer.deliveries` に保持されます。`Test::SmtpReceiver` でメールを読むテストは、先に `Cybertrain.config.mail_delivery_method = :smtp` を設定します。
-- 0.4 の `generate helper` が書いたヘルパーのテストはトップレベルの `render_inline(source)` を定義しており、これはフレームワークのものとぶつかります：そのファイルの中で、呼び出しも含めて `render_helper_template` に名前を変えてください。
-- `1.month.ago` は `Time.current.months_ago(1)` と書きます。
-- `assert_equal` は Minitest の 2 行のテキストで失敗します。通るテストのスナップショットは変わりません。
-- `cybertrain generate authentication` をもう一度実行すると、クラスの形のテストを書き出し、それらが置き換える古いファイル（`test/authentication.rb`、`test/support/app_test.rb` など）をそれぞれ示します。`--force` でそれらを削除します。
-- 角括弧のレベルで始まるログの行を丸ごと探していたテストは、レベルとメッセージを別々に探します（`" ERROR "` と `"password reset mail not sent: "`）。行はいまは時刻で始まり、リクエストの ID を持つことがあります（[ログ](background-and-operations.md#logs)）。
-- エクスポートされた `CYBERTRAIN_LOG_FORMAT` や `CYBERTRAIN_SENTRY_DSN` はテストに届かなくなりました。それらでテストするには、`config/app.rb` で設定するか、テストで DSN を代入します。
+アプリケーションのテストについてリリースが変えることは、[アップグレード](upgrading.md#notes-by-version) にバージョンごとに載っています。
 
 ## 継続的インテグレーション
 

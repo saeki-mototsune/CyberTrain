@@ -327,23 +327,10 @@ Cybertrain::Job.prune_done(Time.now.to_i - 7 * 86_400) }`).
   choose, so a test never sleeps; [Testing jobs](testing.md#testing-jobs)
   has the assertions.
 
-### Upgrading from 0.4
+### Upgrading jobs
 
-- `cybertrain_jobs` gains the column `concurrency_key` and the state
-  `discarded`; the first process that touches the table adds the column.
-  Code that lists states (a dashboard over `Job.state_count`) adds
-  `discarded`. `Job.prune_done` still prunes `done` rows only.
-- `every` tasks continue from the timetable after a restart instead of
-  starting afresh: an interval that passed while the process was down runs
-  once at start.
-- Giving an existing kind a key (`limits_concurrency ... key:`): stop every
-  old process before the first new one starts, as for any upgrade
-  ([Process roles](#process-roles)). The first new process keys the `queued`
-  rows enqueued before (it logs the ids of rows whose payload has no such
-  field), and a `running` row left by an old process gets its key when it is
-  recovered.
-- `jobs` is now a built-in command: an application command named `jobs`
-  must be renamed.
+What a release changes for jobs and scheduled tasks is listed by version in
+[Upgrading](upgrading.md#notes-by-version).
 
 Not built: job priority, queue names and uniqueness, an inline job mode for
 tests (`perform_now` and `perform_enqueued_jobs` cover tests). The design:
@@ -963,34 +950,7 @@ the DSN at a `Test::SentryReceiver` instead
 ([Testing logs and error reports](testing.md#testing-logs-and-error-reports)).
 The design: [docs/design.md](../design.md) D86 and D88.
 
-### Upgrading logs and error reports from 0.4
+### Upgrading logs and error reports
 
-- Every log line changes shape: the level in brackets at the start
-  (`[INFO]`) gives way to the time, the level and the tags,
-  `2026-11-14T09:30:00.132Z INFO [<request id>] Completed 200 in 3ms`.
-  Anything that reads the log (a grep for `[ERROR]` in a script, an alert)
-  changes with it; a test that looked for a whole line looks for the level
-  and the message separately (`" ERROR "` and the message;
-  [Upgrading from 0.4](testing.md#upgrading-from-04)).
-- Every response the application answers carries `X-Request-Id` (not the
-  server's own 400 and 413 for a request it cannot read). A proxy that set
-  one has it used only when the proxy is trusted.
-- `cybertrain_jobs` gains the column `request_id`; the first process that
-  touches the table adds it.
-- A text log line no longer continues on the next lines: a line feed or
-  carriage return in a message or a tag is written as `\n` or `\r`.
-  Anything that read a multi-line message from several lines reads the
-  escapes instead.
-- A model column named `handle` now reads as `handle_column`: an
-  application with a `users.handle` column changes its `user.handle` calls
-  to `user.handle_column` (queries keep the SQL name). Columns named
-  `request_id` or `release` that are not text are refused by gen
-  ([Column names](models.md#column-names)).
-- `cybertrain test` ignores an exported `CYBERTRAIN_LOG_FORMAT` and
-  `CYBERTRAIN_SENTRY_DSN` (tests read text lines and send nothing) unless
-  `config/app.rb` sets them. The password tests `generate authentication`
-  writes turn JSON lines off inside their `with_config`; an application
-  generated earlier whose tests run with `log_format :json` runs the
-  generator again or copies that change.
-- `require "cybertrain"` now links `HttpClient` and the TLS layer, through
-  the Sentry sender.
+What a release changes in the logs and the error reports is listed by
+version in [Upgrading](upgrading.md#notes-by-version).

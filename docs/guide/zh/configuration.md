@@ -1,5 +1,5 @@
 ---
-source_sha256: 455d9c71c3b91be4d97f8f383cdde3e0bcb7c6663fd0b7289cda0bc28af08439
+source_sha256: 43043e60ceef489d3b51e2fc972979fe5ae170ebdb2811b96b7f7c5f692f09c2
 ---
 # 配置
 
@@ -179,9 +179,6 @@ end
 
 `c.time_zone` 接受 IANA 名称（不读取 Rails 自己的名称，比如 “Tokyo”），系统中没有的时区会让启动停止。值仍然是 UTC 瞬间：列、`Time.current` 和日历方法返回 UTC 的 `Time`，`time.hour` 是 UTC 的小时。时区决定日历（`beginning_of_day` 等以及 `Date.current`；[时间与时区](models.md#times-and-the-time-zone)）和显示：`l(time)` 和 `time_tag(time)` 在该时区显示 Time，包括 `%z` 和 `%Z`，`time_tag` 的 `datetime` 是带时区偏移的 ISO 8601（`2026-11-12T05:00:00+09:00`）。`l(time, zone: "America/New_York")` 和 `time_tag(time, zone: "...")` 在另一个时区显示一个值。偏移为 0 的 Time，也就是框架给出的所有 Time，在该时区显示；自己带着另一个偏移的 Time（`time.getlocal("+05:30")`）保持它的偏移，除非给出 `zone:`；Date 原样显示。没有 `tz:` 的 cron 任务也跟随这个时区，除非设置了 `scheduler_tz`。注册的命令（`Main.command`）、`./<app> jobs` 和 `./<app> console` 也会在运行前设置时区，并像启动时一样拒绝未知的时区：输出 `error: time_zone "Mars/Base" is not a known time zone`，在打开数据库之前以退出状态 1 结束。在 `cybertrain test` 中，每个测试都从配置的时区开始。（`l` 的格式见[日期和时间](i18n.md#dates-and-times)。）
 
-## 从 0.4 升级
+## 升级
 
-本页中有两个默认值在 0.4 之后发生了变化：
-
-- 渲染嵌套以前没有限制，现在由 `max_render_depth` 限制，默认为 12。局部模板树更深的应用（分层评论、分类菜单）在调高这个设置之前会得到模板错误。
-- `job_poll_interval` 以前是 5 秒，现在是 1 秒：作业在自己的线程上运行，空闲的线程每秒查找一次工作。
+某个版本改变的设置和默认值，按版本列在[升级](upgrading.md#notes-by-version)中。
