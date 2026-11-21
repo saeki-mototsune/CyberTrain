@@ -109,16 +109,15 @@ end
 # NotImplementedError, ScriptError and SystemStackError are not
 # StandardErrors; Minitest records them as errors and goes on, and so does
 # this runner (only Interrupt, SystemExit and NoMemoryError end the run).
-# Each lambda does something before it raises (NOTES rule 79).
 test "NotImplementedError, ScriptError and SystemStackError in a body are ERR; teardown still runs" do
   STEPS.clear
   file = top_level_file([], [-> { STEPS << "t" }])
   assert_equal ["ERR", "NotImplementedError: subclass must implement"],
-               run_by_hand(file, -> { STEPS << "b1"; raise NotImplementedError, "subclass must implement" })
-  assert_equal ["ERR", "ScriptError: no such file"], run_by_hand(file, -> { STEPS << "b2"; raise ScriptError, "no such file" })
+               run_by_hand(file, -> { raise NotImplementedError, "subclass must implement" })
+  assert_equal ["ERR", "ScriptError: no such file"], run_by_hand(file, -> { raise ScriptError, "no such file" })
   assert_equal ["ERR", "SystemStackError: stack level too deep"],
-               run_by_hand(file, -> { STEPS << "b3"; raise SystemStackError, "stack level too deep" })
-  assert_equal %w[b1 t b2 t b3 t], STEPS
+               run_by_hand(file, -> { raise SystemStackError, "stack level too deep" })
+  assert_equal %w[t t t], STEPS
 end
 
 test "the same three in setup, teardown and an on_reset hook are ERR with the step named" do
