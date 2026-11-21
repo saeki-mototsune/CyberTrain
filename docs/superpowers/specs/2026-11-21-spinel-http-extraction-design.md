@@ -127,8 +127,9 @@ Moves to spinel-http (renamed into `SpinelHttp`):
 | `server.rb`, `handler.rb`, `parser.rb`, `body_writer.rb`, `header_name.rb`, `stream_failure.rb`, `client_error.rb` | the core. `PortInUse` messages lose `CYBERTRAIN_HOST`, `PORT` (section 7) |
 | `request.rb`, `response.rb` | minus the cybertrain-only parts (section 7) |
 | `query.rb`, `cookies.rb`, `sse.rb`, `ip_address.rb` | parsers a server needs |
-| `multipart.rb`, `uploaded_file.rb` | behind `require "spinel-http/multipart"` (author's call: a small API server should not compile it) |
-| `gzip_ffi.rb`, `gzip_decoder.rb` | behind `require "spinel-http/gzip"`: it links zlib (`ffi_lib "z"`), which the user's machine must have |
+| `uploaded_file.rb` | core: `Params#initialize` and every query parse name `UploadedFile` |
+| `multipart.rb` | behind `require "spinel-http/multipart"` (author's call: a small API server should not compile it). `Request#multipart_boundary` and `#multipart_form` call it today; they go through a class-level parser slot, as `Request.inflater` does for gzip, which the multipart file installs at load. Without it, `multipart_form` raises a client fault answered **415 Unsupported Media Type** (listed in `ClientError`), and `multipart_boundary` answers `""` |
+| `gzip_decoder.rb`, `gzip_ffi.rb` | `gzip_decoder.rb` (the `GzipDecoder` base with `installed`/`installed=`, no zlib) is core, since cybertrain's `HttpClient` reads `GzipDecoder.installed`. `gzip_ffi.rb` is behind `require "spinel-http/gzip"`: it links zlib (`ffi_lib "z"`), which the user's machine must have, and installs the decoder (and `Request.inflater`) at load, so it is installed before any request or `HttpClient` call |
 | the nested-params structure of `params.rb` that `Query` and `Multipart` fill | see section 7 |
 
 cybertrain itself always requires both, so its applications keep gzip
@@ -162,16 +163,20 @@ and cybertrain installs a subclass at boot.
 | Log scope | `Request#log_scope` (`Logger::Scope`): `Server#handle` logs a handler's exception under it (`classify_scoped`, the line must carry the request's id), and `Response#body_scope` carries `Logger.current_scope` to a streamed body's writer thread (`run_writer_scoped`) | *author's call*: spinel-http keeps both slots as an opaque **log context**: a base class `SpinelHttp::LogContext` with no behaviour, `Request#log_context` and `Response#body_log_context` hold one, and the `Log` sink is handed it with every line and asked to "enter" it on the writer thread. cybertrain's `Logger::Scope` becomes a subclass, so its behaviour (and every log line that carries a request id today) is unchanged. A general hook, since any user may want per-request fields in their log lines; rejected: moving the scope into `Context` (the server cannot see it, and those lines would lose the id) |
 | Request id | `Request#request_id` | stays as a plain string attribute the server echoes as `X-Request-Id` when set: a general feature, not cybertrain's |
 | Params | `Query.parse` fills a `Cybertrain::Params` | the structure (nested values, lists, uploads) moves as `SpinelHttp::Params`; cybertrain's strong-parameter methods are added on top. How (reopening the class, a subclass `Query` is told to build, or a wrapper) is settled by the spike (section 9), since what Spinel compiles well decides it |
-| `I18n.default_locale` | `Request#preferred_locale` | the default becomes an argument: `preferred_locale(available, default)`; cybertrain passes `I18n.default_locale` |
+| `I18n.default_locale` | `Request#preferred_locale` | spinel-http has `negotiate_locale(available, default)`; cybertrain keeps `preferred_locale(available)` (documented for applications in docs/guide/i18n.md) with its behaviour, as `negotiate_locale(available, I18n.default_locale)`, by reopening `Request` beside `I18n` |
 | Formats | `format_extension=` set by the Router; `format`, `mime_type` | the Accept and MIME tables are general and move; the setter stays, documented as "set by your router" |
 | `Html.escape` | query, cookies | a private copy of the byte-level escape in spinel-http |
 | Error classes | `QueryInvalid` and friends under `Cybertrain::` | defined in `SpinelHttp`; cybertrain refers to them there. Constant aliases (`Cybertrain::QueryInvalid = SpinelHttp::QueryInvalid`) keep cybertrain's own code and applications' `rescue` lines working, if Spinel compiles them (spike) |
 | Multipart limits | installed from `Config` by `Application#boot` | stays: a setter on `SpinelHttp::Multipart`, called by cybertrain's boot |
 | Messages naming cybertrain settings | `PortInUse` names `CYBERTRAIN_HOST`, `PORT` | spinel-http's messages name the server's own arguments; cybertrain's `Application#serve` adds its setting names when it prints them |
 
-`Cybertrain::Server`, `Request`, `Response` and `HttpHandler` remain
-reachable under their current names, by constant alias or a thin
-subclass, so neither cybertrain's code nor an application changes
+`Cybertrain::Server`, `Request`, `Response`, `HttpHandler`, `Cookies`
+(documented in docs/guide/requests.md), `GzipDecoder`, the error classes,
+and every other public constant that moves, remain reachable under their
+current names, by constant alias (or a thin subclass, for a class; a module
+such as `Cookies` needs the alias), and the require paths applications use,
+`cybertrain/http/gzip_ffi` above all (docs/guide/external-services.md),
+keep working as files that require the new ones, so neither cybertrain's code nor an application changes
 (anti-goal 2). Which one is a spike question.
 
 ## 8. How cybertrain depends on it
