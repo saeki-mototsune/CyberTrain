@@ -92,7 +92,11 @@ port=$(ruby -rsocket -e 's = TCPServer.new("127.0.0.1", 0); print s.addr[1]; s.c
 export CYBERTRAIN_SECRET_KEY_BASE=$(ruby -rsecurerandom -e 'print SecureRandom.hex(64)')
 cd "$app/dist"
 mkdir -p storage tmp
-rm -f storage/production.sqlite3*
+# The database is named explicitly, inside the workspace, so that a
+# CYBERTRAIN_DATABASE in the caller's environment cannot redirect the setup to
+# another database; it starts empty.
+export CYBERTRAIN_DATABASE=$app/dist/storage/measure.sqlite3
+rm -f "$CYBERTRAIN_DATABASE"*
 { ./blog migrate && ./blog user bench@example.com measure-http-layer-pw; } > "$work/migrate.log" 2>&1 || { echo "measure-http-layer: migrate or user creation failed" >&2; cat "$work/migrate.log" >&2; exit 1; }
 
 # The server's memory grows by about 70 MB per 10 s of load and its
