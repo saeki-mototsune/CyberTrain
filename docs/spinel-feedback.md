@@ -4,8 +4,8 @@ This document is the one record of what Spinel does that CyberTrain has had
 to know about, and of where each behaviour stands: what happens, the
 program that shows it, what it did on each build tried, what is asked of
 Spinel, and whether it is closed. Each behaviour is an item whose
-identifier never changes: a digit (1 to 7), a letter (A to AZ so far; the
-next is BA) or, for a behaviour first written as a rule of spikes/NOTES.md
+identifier never changes: a digit (1 to 7), a letter (A to AY so far; the
+next is AZ) or, for a behaviour first written as a rule of spikes/NOTES.md
 and never lettered, "rule N". "Item register" lists them all.
 
 [spikes/](../spikes/README.md) is the other half and does not say where a
@@ -280,14 +280,13 @@ the cell names another build.
 | AP | bug | 117 | passes on the pin, workaround kept (status 117) |  |
 | AQ | bug | 116 | open (status 116) |  |
 | AR | bug | 122 | open (status 122) |  |
-| AS | bug | 123 | open, not reduced (status 123) |  |
+| AS | bug | 123 | open, not reduced (status 123); upstream 2026.10.25 the same, seen there with cybertrain/http/query and cybertrain/config required together. Not worked around: cybertrain/context.rb, not cybertrain/params.rb, registers ParameterMissing with ClientError, so the programs that load Config without the rest do not load Query |  |
 | AT | bug | 112 | open (status 112) |  |
 | AU | bug | 52 | open (status 52) |  |
 | AV | bug | 17 | open (status 17): a class used above its definition runs compiled where CRuby raises NameError (rechecks/differing/class_before_definition.rb). A constant assigned with `=` and read before its assignment raises NameError as under CRuby (rechecks/constant_order.rb matches on the pin). Nothing in the framework is written around it: the rule's advice is to keep an order CRuby accepts |  |
 | AW | bug | 27 | open (status 27) for an append of socket bytes to a UTF-8 String that holds non-ASCII, which appends where CRuby raises; passes on the pin for `IO#gets` on a socket, which answers a byte String as CRuby does (Linux, 2026-11-21), and `readpartial`, `read(n)` and `read_nonblock` match on the pin (rechecks/socket_shapes.rb). Closed once both lines of rechecks/differing/socket_bytes.rb, `gets` and `append`, print CRuby's result on the pin. Framing by byte is no workaround to remove: it is right under both runtimes and stays in rule 27 as advice after AW is closed |  |
 | AX | bug |  | open ("Status by rule", row AX): `JSON.parse` does not count an innermost empty Array or Object against the nesting limit, so 101 nested Arrays with nothing inside parse where CRuby raises JSON::NestingError, and one level deeper with `max_nesting:` too (rechecks/differing/json_parse_nesting.rb). Documents that hold a value raise at the depth and with the class and message CRuby gives. No workaround and no rule: nothing in the framework depends on where the limit falls |  |
 | AY | bug | 124 | open (status 124): a rescuing method given, as blocks, a method that only raises and the call of a lambda that ends in it does not compile, "incompatible types when assigning to type 'sp_RbVal' from type 'const char *'" at the method's `yield` (rechecks/differing/raising_helper_beside_lambda.rb; 2026.11.04.7026 the same). Workaround kept: `Console.unknown_model` and `unknown_record` (cybertrain/console.rb) name a typed value after their `raise`. Closed once that program prints CRuby's line on the pin and test/console.rb's case "an unknown model or record raises through a rescuing caller" passes compiled with the two values removed |  |
-| AZ | bug |  | open, not reduced: the cause of AS, seen with Query and Config required together (`Config.env_or` answers the variable's name). Not worked around: cybertrain/context.rb, not cybertrain/params.rb, registers ParameterMissing with ClientError, so the programs that load Config without the rest do not load Query |  |
 | rule 1 | constraint | 1 | settled (1.4: no run-time code); the probes of a computed `send` and of reflection with a non-literal name match on the pin (rechecks/dispatch_shapes.rb) |  |
 | rule 2 | constraint | 2 | settled (1.4); a stored block handed to `instance_exec` still raises when reached on the pin (status 2) |  |
 | rule 3 | bug | 3 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
@@ -407,9 +406,8 @@ rule":
 
 Letters are the items of this document (AA to AH are new, written up
 under "Written up on 2026-11-13"; AI, phase 4b's, AJ to AO, phase 5a's,
-AP and AQ, phase 5b's, AR, the follow-ups', AS, found in the clean-up
-of 2026-11-15, and AZ, found in the spinel-http extraction, were merged
-in after the inventory); numbers after "rule"
+AP and AQ, phase 5b's, AR, the follow-ups', and AS, found in the clean-up
+of 2026-11-15, were merged in after the inventory); numbers after "rule"
 are spikes/NOTES.md's.
 
 The items stand where they were found, so the letters do not run in order
@@ -422,8 +420,7 @@ under the sections of phases 2, 3 and 4a; Y and Z under "Re-checked on
 and AQ, and AR under the sections of phases 4b, 5a and 5b and the phase 5b
 follow-ups; AS under "Found in the clean-up of 2026-11-15"; AT, AU, AV
 and AW, written up from rules 112, 52, 17 and 27 on 2026-11-21, and AX
-and AY, found that day, are the next section; AZ, found in the
-spinel-http extraction the same day, is the last.
+and AY, found that day, are the last section.
 
 ### 1. What CyberTrain does today because of Spinel
 
@@ -470,7 +467,7 @@ CRuby's result; "Item register" has the state of every row.
 | AP (rule 117) | `pop(timeout:)` on a Queue that was put in an Array is compiled as `Array#pop`: fails (2026-11-14) | No Queue is kept in an Array; a test passes each Queue as a local or a parameter (test/logger_scope.rb) | Open; not reported |
 | AQ (rule 116) | Threads on several workers writing one StringIO with no lock corrupt the heap: fails (2026-11-14) | Every Logger writes under `Logger::LOCK` (logger.rb; test/logger_threads.rb) | Open; not reported |
 | AR (rule 122) | A regex literal holding a require-shaped text is read as a require; without `--strict-require` it is dropped with a warning: fails (2026-11-15) | A program that scans source for requires builds the keyword from pieces (test/gen_jobs.rb's `core_closure`) | Open; not reported |
-| AS (rule 123) | `ENV[name]` with a key held in a variable answers the key in a program that requires two framework files: fails (2026-11-15) | Nothing; the four reads with such a key (config.rb, dev/supervision.rb) stay, `Config.env_or` answered the value in the programs tried that require `cybertrain/core`, and no new one is added | Open; not reduced, not reported |
+| AS (rule 123) | `ENV[name]` with a key held in a variable answers the key in a program that requires two framework files: fails (2026-11-15) | Nothing; the four reads with such a key (config.rb, dev/supervision.rb) stay, `Config.env_or` answered the value in the programs tried that require `cybertrain/core`, and no new one is added. Since 2026-11-21, cybertrain/context.rb, not cybertrain/params.rb, registers ParameterMissing with ClientError, so the Config-only programs do not load Query | Open; not reduced, not reported |
 
 #### 1.2 Kept, though a small program of the shape now passes on the pin
 
@@ -4509,15 +4506,42 @@ the shell, to the same effect; again 2026-11-19).
   application. cybertrain/config.rb alone answered the value, and so did
   six standalone programs with the same method (spikes/NOTES.md rule
   123). `ENV["LITERAL"]` was not seen to be affected.
+- Seen again on 2026-11-21 from the HTTP layer's side, in the
+  spinel-http extraction (at d9e62f9), with two other requires and the
+  variable set by the program:
+
+  ```ruby
+  require "cybertrain/http/query"
+  require "cybertrain/config"
+  ENV["AS_VARIABLE"] = "value"
+  puts Cybertrain::Config.env_or("AS_VARIABLE", "default")       # AS_VARIABLE (CRuby: value)
+  puts Cybertrain::Config.env_or("AS_UNSET_VARIABLE", "default") # default, as CRuby
+  ```
+
+  The same on the fork's 2026.11.15.7033 and on upstream 2026.10.25
+  (2814693f), so it is not a fork regression. `require "cybertrain"` in
+  place of the two requires prints `value`, and so does `json`, `uri` or
+  `cybertrain/http/response` in place of Query: Query pulls in URI's
+  code, which seems to be what switches the C. The emitted read is
+  `_sp_ret_strbuf = NULL; _v2 = sp_env_str(getenv(sp_env_chk(SP_STR_B(sp_strbuf_read_pub(lv_name)), 0))); ... _sp_ret_strbuf ? (sp_String *)_sp_ret_strbuf : SP_STR_HDL(_v2)`;
+  `sp_strbuf_read_pub` (spinel_rt.h:3222) sets `_sp_ret_strbuf` to the
+  argument's handle while the argument is evaluated. An unset variable is
+  not affected, since the wrapper answers NULL first. The programs that
+  answer the value get the plain `SP_STR_B(sp_env_str(getenv(...)))`.
 - Today: nothing guards against it. The reads with a key that is not a
   literal are `Config.env_or`, `Config.int_from_env` and
   `Config.bool_from_env` (cybertrain/config.rb) and
   `Dev::Supervision.supervision_variable` (cybertrain/dev/supervision.rb);
   only `env_or` was run. A test program that requires part of the
   framework can meet it. New code does not add an `ENV[variable]` read.
+  Since 2026-11-21 the HTTP layer's `ClientError` learns of
+  `Params::ParameterMissing` in cybertrain/context.rb, not in
+  cybertrain/params.rb, so the programs that load Config without the
+  rest (the db CLI, the mailer, the scheduler) do not load Query.
 - Asked of Spinel: clear `_sp_ret_strbuf` after the arguments are read,
   or take a builtin's String result from its return value when the
-  builtin never publishes one.
+  builtin never publishes one (a builtin that returns a fresh `char *`
+  needs no wrapper).
 - Not reported upstream; to be reduced first, with V.
 
 ## Written up on 2026-11-21
@@ -4845,47 +4869,3 @@ and which 2026.11.15.7033 compiles.
   block cannot complete and another answers a boxed value; or box the
   rescue's String there.
 - Not reported upstream.
-
-## Found in the spinel-http extraction, phase 1 (2026-11-21)
-
-Task 3 of docs/superpowers/plans/2026-11-21-spinel-http-phase1-plan.md met
-one Spinel item, AZ.
-
-### AZ. `ENV[name]` answers `name` in some programs
-
-A program that loads Query beside Config, without the rest of the
-framework, reads every set environment variable as its own name:
-
-```ruby
-require "cybertrain/http/query"
-require "cybertrain/config"
-ENV["AS_VARIABLE"] = "value"
-puts Cybertrain::Config.env_or("AS_VARIABLE", "default")       # AS_VARIABLE (CRuby: value)
-puts Cybertrain::Config.env_or("AS_UNSET_VARIABLE", "default") # default, as CRuby
-```
-
-This is AS's behaviour, found again from the HTTP layer's side on a
-branch that did not yet have AS, and lettered there on its own. It stays
-an item of its own beside AS: it adds the generated C of the call and
-the requires that switch it.
-
-The same on the fork's 2026.11.15.7033 and on upstream 2026.10.25, at
-d9e62f9 (before Task 3). `require "cybertrain"` in place of the two
-requires prints `value`. So does `json`, `uri` or `cybertrain/http/response`
-in place of Query. Query pulls in URI's code, which seems to be what
-switches the C.
-
-- Cause: `Config.env_or`'s `ENV[name] || ""` is emitted as
-  `_sp_ret_strbuf = NULL; _v2 = sp_env_str(getenv(sp_env_chk(SP_STR_B(sp_strbuf_read_pub(lv_name)), 0))); ... _sp_ret_strbuf ? (sp_String *)_sp_ret_strbuf : SP_STR_HDL(_v2)`.
-  `sp_strbuf_read_pub` (spinel_rt.h:3222) sets `_sp_ret_strbuf` to the
-  argument's handle while the argument is evaluated, so the wrapper answers
-  `name` instead of getenv's result. An unset variable is not affected,
-  since the wrapper answers NULL first. Other programs get the plain
-  `SP_STR_B(sp_env_str(getenv(...)))`, which is right.
-- Today: not worked around. Task 3 keeps Query out of the Config-only
-  programs (the db CLI, the mailer, the scheduler) instead: cybertrain/context.rb, not
-  cybertrain/params.rb, registers ParameterMissing with ClientError.
-- Asked of Spinel: the wrapper should not see a `_sp_ret_strbuf` that one of
-  the call's arguments set. It could clear the global after the arguments
-  are evaluated, or not wrap a builtin that returns a fresh `char *`.
-- Not reduced below the two requires; not reported upstream.

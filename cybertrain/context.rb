@@ -14,7 +14,7 @@ module Cybertrain
   # their errors (core, Controller, the middlewares, Test::Client) loads
   # this file, while Config-only programs (the db CLI, the mailer, the
   # scheduler) load params.rb without the HTTP layer, and loading Query
-  # beside Config there miscompiles ENV reads (docs/spinel-feedback.md AZ).
+  # beside Config there miscompiles ENV reads (docs/spinel-feedback.md AS).
   ClientError.extra_faults = ClientError.extra_faults + ["Cybertrain::Params::ParameterMissing"]
 
   # Everything one request carries through the middleware stack, the router
