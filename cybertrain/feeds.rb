@@ -1,7 +1,6 @@
 # cybertrain/feeds: WebSocket feeds and the Background services they run
 # on, an optional subsystem (require "cybertrain/feeds" in bin/NAME.rb, or
-# require "cybertrain"; docs/superpowers/specs/
-# 2026-11-13-optional-subsystems-design.md):
+# require "cybertrain"; docs/design.md D85):
 #
 #   Background services and the feed supervisor  cybertrain/background.rb, background/*.rb
 #   the feed status table                        cybertrain/websocket/feed_table.rb
@@ -92,7 +91,8 @@ module Cybertrain
       @feed_read_warned
     end
 
-    # Spec section 9's two independent conditions over every status row:
+    # The feed health check's two independent conditions over every status
+    # row (docs/design.md D56):
     # the publishing process stopped writing (updated_at old), or the feed
     # is silent under a live publisher (COALESCE(last_activity_at,
     # started_at) old: a feed never active counts from its start). No rows,

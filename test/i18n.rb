@@ -3,7 +3,7 @@ require "cybertrain/i18n"
 require "cybertrain/generator/locale_yaml"
 require_relative "support/zone_swap"
 
-# I18n (plan decisions D2 and D5-D7, Task 4): t with interpolation,
+# I18n (docs/design.md D79): t with interpolation,
 # defaults, count: plurals and the fallback to the default locale, the
 # missing-key modes, the plural rules, and the thread-local locale. Runs
 # under CRuby (`ruby -I. test/i18n.rb`) and compiled (`spin test

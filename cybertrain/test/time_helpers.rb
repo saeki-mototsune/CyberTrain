@@ -1,6 +1,6 @@
 require "cybertrain/clock"
 
-# Rails' ActiveSupport::Testing::TimeHelpers (spec section 2.1), as top-level
+# Rails' ActiveSupport::Testing::TimeHelpers (docs/design.md D81), as top-level
 # methods like the assertions, so the class form and the top-level form of a
 # test both reach them. Each one moves {Cybertrain::Clock}. With a block,
 # the state found before comes back when the block ends, also when it

@@ -2,8 +2,8 @@
 # requires (as Rails' rails/test_help): the harness and its assertions,
 # the request client, the job helpers, the views helper, the receivers'
 # base and the Sentry receiver, the test base classes and the Time.now
-# override (spec section 5.1), and the reset hooks every test runs before
-# its setup (spec section 5.3, step 3).
+# override, and the reset hooks every test runs before its setup (step 3
+# of the order in cybertrain/test.rb).
 #
 # It loads the helpers of every subsystem too (cybertrain/test/jobs,
 # test/mail, test/broadcasts, and rate_limit's reset), each in that

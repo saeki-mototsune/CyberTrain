@@ -1,5 +1,5 @@
 ---
-source_sha256: 1e29b0e14d2ad564cb22b5c5188c8b2388d0b55976e6d2ceaf6261531d6657a7
+source_sha256: 8ba2e62d2c362f35699ce82fb776cd00bb7db9b0a602c62f2116c8bfffb91dee
 ---
 # アプリをテストする
 
@@ -108,7 +108,7 @@ test/models/article_test.rb
 
 ### テスト用データベース
 
-テストは `storage/test.sqlite3` の上で動き、プログラムは実行のたびにこのファイルを削除してマイグレートし直します。`CYBERTRAIN_TEST_DATABASE` を設定すると代わりに別のファイルを使います。プログラムはテストに使うファイルを削除するので、自分が作るデータベースすべてに印を付け（`PRAGMA application_id`、専用の値）、既存のファイルを削除したり空にしたりするのは、その印があるとき、このアプリケーション自身の `storage/test.sqlite3`（パスの書き方は問いません）であるとき、空のファイルであるときだけです。それ以外は終了ステータス 2 で何も削除せずに拒否します：`cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`。
+テストは `storage/test.sqlite3` の上で動き、プログラムは実行のたびにこのファイルを削除してマイグレートし直します。`CYBERTRAIN_TEST_DATABASE` を設定すると代わりに別のファイルを使います。エクスポートされた `CYBERTRAIN_ENV` と `CYBERTRAIN_DATABASE` は読みません：プログラムは常にテスト環境で動き、`CYBERTRAIN_DATABASE` でファイルが決まることはありません。プログラムはテストに使うファイルを削除するので、自分が作るデータベースすべてに印を付け（`PRAGMA application_id`、専用の値）、既存のファイルを削除したり空にしたりするのは、その印があるとき、このアプリケーション自身の `storage/test.sqlite3`（パスの書き方は問いません）であるとき、空のファイルであるときだけです。それ以外は終了ステータス 2 で何も削除せずに拒否します：`cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`。
 
 ほかに次の 3 つも拒否されます：
 

@@ -16,7 +16,7 @@ module Cybertrain
     # the attributes of its `validates ..., uniqueness:` calls, with their
     # lines in unique_lines (the emitter refuses an encrypted one).
     #
-    # A model concern (spec 4.2) counts as written at its `include`: the
+    # A model concern counts as written at its `include`: the
     # declarations of its `included` body join the lists above in that
     # place, and its instance methods join defined_methods and
     # view_methods. includes / include_lines / include_validates: the
@@ -87,7 +87,7 @@ module Cybertrain
     end
 
     # One method of a `validate :a, :b, on: :update, if: :x, unless: :y`
-    # line (spec section 9.2): `on` is "create", "update" or "" (every
+    # line: `on` is "create", "update" or "" (every
     # context), `condition_if` / `condition_unless` a method name or "".
     class CustomValidationInfo
       attr_reader :file, :name, :on, :condition_if, :condition_unless, :line

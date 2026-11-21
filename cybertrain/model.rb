@@ -486,7 +486,7 @@ module Cybertrain
     # Cybertrain::Model, so a stub here would be the method they call.
     def destroy_dependents = nil
     def reset_association_caches = nil
-    # Validations (spec section 9): the generated model answers uniqueness
+    # Validations (docs/design.md D48): the generated model answers uniqueness
     # with a query, if: / unless: through a `case` over the names the model
     # file gives, and `validate :method` lines by calling each method. A
     # hand-written model has no uniqueness conflicts, every condition true
@@ -512,7 +512,7 @@ module Cybertrain
       return e unless e.nil?
 
       # The dictionary key full_messages and the validators look names
-      # and messages up by ("post", "admin/post"; plan decision D9).
+      # and messages up by ("post", "admin/post").
       e = Errors.new(Inflector.underscore(model_name))
       @errors = e
       e

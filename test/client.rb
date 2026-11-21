@@ -290,7 +290,7 @@ test "status symbols map to codes" do
     res.status = pair[0]
     assert_response res, pair[1]
   end
-  # :error means exactly 500, as the plan's Interfaces block specifies.
+  # :error means exactly 500 (Rails takes any 5xx).
   res.status = 503
   message = assert_raises("AssertionFailed") { assert_response res, :error }
   assert_equal "expected response :error, got 503", message

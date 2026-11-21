@@ -1,11 +1,11 @@
 # Cybertrain::Test::Base and ActiveSupport::TestCase: the base classes of
-# the class form (spec section 5.1).
+# the class form (docs/design.md D82).
 #
-# A class-form test file is rewritten by gen into gen/test/ (spec section
-# 5.2): each `test "name" do` becomes `def test_name`, `setup do` blocks one
+# A class-form test file is rewritten by gen into gen/test/
+# (Gen::TestScan): each `test "name" do` becomes `def test_name`, `setup do` blocks one
 # `def setup` that calls `super` first, `teardown do` blocks one
 # `def teardown` that calls `super` last, every method ending in `nil`
-# (one return type per name, pre-flight R8). `cybertrain test` then runs
+# (one return type per name, rule 34). `cybertrain test` then runs
 # each test on a new instance through Cybertrain::Test.before_case,
 # run_body and after_case (cybertrain/test.rb owns the order). `setup` and
 # `teardown` are ordinary overrides of the empty ones here, called through
@@ -13,7 +13,7 @@
 #
 # The class methods `test`, `setup` and `teardown` are reached only when a
 # class-form file was compiled without the rewrite (`spin test` of it):
-# they refuse with the way to run it (plan D9).
+# they refuse with the way to run it.
 require "cybertrain/test"
 
 module Cybertrain

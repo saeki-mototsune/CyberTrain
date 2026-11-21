@@ -1,9 +1,9 @@
 # Cybertrain::Test::Bundle -- the runner of `cybertrain test`'s program,
-# gen/tests.rb (spec sections 5.2 and 8): its boot (a fresh, migrated test
-# database and the application, plan decision 19) and its run over every
-# test of the application, filtered by the run-time arguments
-# (Cybertrain::Test::Args, plan decision 11), printed as plan decision 5
-# says: a heading per file, a line per test, then the totals.
+# gen/tests.rb (docs/design.md D83): its boot (a fresh, migrated test
+# database and the application) and its run over every test of the
+# application, filtered by the run-time arguments (Cybertrain::Test::Args),
+# printed as docs/guide/testing.md's "Running the tests" shows: a heading
+# per file, a line per test, then the totals.
 require "cybertrain"
 require "cybertrain/test"
 require "cybertrain/test/args"
@@ -203,8 +203,8 @@ module Cybertrain
         app
       end
 
-      # {boot}, or, when it refuses, the reason on STDOUT and exit status 2
-      # (plan decision 19): what gen/tests.rb calls.
+      # {boot}, or, when it refuses, the reason on STDOUT and exit status 2:
+      # what gen/tests.rb calls.
       # @return [nil]
       def self.boot!(router, url_resolver)
         check_database!

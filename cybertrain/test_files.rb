@@ -1,4 +1,4 @@
-# Which files of an application are its tests (spec 5.2, 8): shared by gen
+# Which files of an application are its tests (docs/design.md D83): shared by gen
 # (Gen::TestScan) and `cybertrain test`, so the two never disagree. No
 # requires: the CLI loads it without the generator.
 module Cybertrain

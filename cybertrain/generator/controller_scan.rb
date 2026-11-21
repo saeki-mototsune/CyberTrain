@@ -27,7 +27,7 @@ module Cybertrain
       end
     end
 
-    # One method a `rate_limit` line names (spec C-4): rate_limit_option is
+    # One method a `rate_limit` line names: rate_limit_option is
     # "by", "with", "if" or "unless", rate_limit_method the method's name,
     # rate_limit_place the line ("app/controllers/x.rb:3"), for a refusal.
     class RateLimitRef
@@ -56,8 +56,8 @@ module Cybertrain
       # include_lines: per include, its line number. method_names /
       # method_lines: the class's instance `def`s. module_prefix: the
       # modules around the class line ("Admin"; "" at the top level).
-      # helper_methods: the names of the class's `helper_method` lines
-      # (spec 4.3), in order; defs: a HelperDef per instance `def` (its
+      # helper_methods: the names of the class's `helper_method` lines,
+      # in order; defs: a HelperDef per instance `def` (its
       # parameters when HelperScan.parse_def reads them, else the name and
       # line); def_errors: per def, HelperScan's message when it could not
       # read the parameters ("" when it could), so a helper_method naming
@@ -107,8 +107,8 @@ module Cybertrain
     # `end` at its own indentation, so `module Admin` around `class
     # ArticlesController < ApplicationController` is Admin::ArticlesController
     # (the compact `class Admin::ArticlesController` too), and reads the
-    # class's `include` lines (concerns, spec 4.1), its `helper_method`
-    # lines (spec 4.3) and instance `def`s.
+    # class's `include` lines (concerns), its `helper_method`
+    # lines and instance `def`s.
     module ControllerScan
       CLASS_LINE = /\A\s*class\s+([A-Z][\w:]*)\s*<\s*([A-Z][\w:]*)/
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:#.*)?\z/

@@ -1,7 +1,7 @@
 A sign-up application as cybertrain v0.4.1's generators wrote it, kept so
 that test/cli_authentication_upgrade.rb and `script/auth-e2e upgrade04`
 can re-run today's `generate authentication` over a 0.4 application
-(the upgrade path, D19 of the phase 4b plan).
+(the upgrade path, docs/design.md D80, "re-runs").
 
 Tag: v0.4.1 (commit d8a9825). Produced once, on 2026-11-12, with:
 

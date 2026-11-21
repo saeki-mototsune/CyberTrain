@@ -7,7 +7,7 @@ require "cybertrain/model"
 require "cybertrain/job"
 require "cybertrain/generator"
 require_relative "fixtures/gen_app/config/routes"
-# Controller concerns (spec 4.1, plan decisions 8, 11 and 12), on the
+# Controller concerns (docs/design.md D60), on the
 # fixture app loaded through its checked-in gen/app.rb: the concerns of
 # app/controllers/concerns first, the application's classes, then
 # gen/concerns.rb, which splices each concern's `included` body into the

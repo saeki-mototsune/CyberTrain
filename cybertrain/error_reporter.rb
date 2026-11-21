@@ -1,5 +1,5 @@
-# Cybertrain.error -- error reporting shaped like Rails.error (spec section
-# 13): `report` records an exception the application rescued, `handle`
+# Cybertrain.error -- error reporting shaped like Rails.error
+# (docs/design.md D88): `report` records an exception the application rescued, `handle`
 # runs a block and reports what it raised, `subscribe` adds a
 # Cybertrain::ErrorSubscriber, `add_filter` an ErrorReporter::Filter that
 # may change or drop an event before it is handed on. The framework reports what ends a request,
@@ -9,7 +9,7 @@
 # caller's thread, from the exception (its class name, message and
 # backtrace), the thread's log Scope (the request id, method, path,
 # `where` and context) and the configuration (env, release), so that it
-# can cross threads (spec section 13.1). It is put on a bounded queue
+# can cross threads. It is put on a bounded queue
 # ({ErrorReporter::QUEUE_LIMIT}); one delivery thread, started on the
 # first queued event, runs the filters over each event, then hands it to
 # every subscriber and then to the sender (the Sentry sender,
@@ -793,7 +793,7 @@ module Cybertrain
     end
 
     # The sender (`sends?` and the send), in a plain rescuing method: a
-    # raise is logged at warn, as a failed send is (spec section 13.4).
+    # raise is logged at warn, as a failed send is.
     def send_to(sender, event)
       sender.deliver_event(event) if sender.sends?
       nil

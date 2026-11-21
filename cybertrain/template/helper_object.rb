@@ -5,8 +5,7 @@ module Cybertrain
     # TurboStreamBuilder: `turbo_stream.replace ...`). The interpreter hands
     # `obj.x` to Helpers#call_object_method, which hands it here for any
     # HelperObject, so the core's helpers never name the subsystem's class
-    # (docs/superpowers/specs/2026-11-13-optional-subsystems-design.md,
-    # section 4). A block is rendered by the helpers before the call and
+    # (docs/design.md D85; script/check-core-closure enforces it). A block is rendered by the helpers before the call and
     # arrives as its output, so the object never holds one (spikes/NOTES.md
     # rule 88).
     #

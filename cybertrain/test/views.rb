@@ -1,5 +1,5 @@
-# Cybertrain::Test.render_partial / render_component (spec 3.5) and the
-# top-level render_inline (phase 5 spec 9.1): render a
+# Cybertrain::Test.render_partial / render_component (docs/design.md D38) and the
+# top-level render_inline (docs/design.md D84): render a
 # partial or a component with no controller, to assert on the HTML.
 #
 #   require "cybertrain/test/views"

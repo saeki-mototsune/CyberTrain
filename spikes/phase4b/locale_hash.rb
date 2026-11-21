@@ -1,4 +1,4 @@
-# Phase 4b spike, item 6b (spec section 12, plan decision D3): the same
+# Phase 4b spike, item 6b: the same
 # 2,000 keys as locale_case.rb, as a frozen Hash literal constant (TEXTS,
 # 1,980 Strings; LISTS, 20 Arrays): `lookup(key) = TEXTS[key]` (String or
 # nil), `lookup_list(key) = LISTS.fetch(key, [])`. A record, not a test.
@@ -21,7 +21,7 @@
 # generation take under 0.1 s): the literal becomes one C function, the
 # program's main body, with 1,980 inlined sp_StrStrHash_set calls, and cc
 # at -O2 is slow on so long a function (spikes/NOTES.md rule 101). Over the
-# 10 s the plan allows; locale_hash_split.rb builds the same Hash in 4.7
+# 10 s allowed for it; locale_hash_split.rb builds the same Hash in 4.7
 # to 5.4 s. CRuby 3.3.6: 109 / 97 / 102 / 76 ns.
 # BEGIN generated
 module Gen

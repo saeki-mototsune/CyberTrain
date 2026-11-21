@@ -1,4 +1,4 @@
-# The fixture app's posts (Task 8): `one` keeps its created_at, `two` its
+# The fixture app's posts: `one` keeps its created_at, `two` its
 # own id; both get updated_at from the Clock when they are inserted.
 one:
   title: First post

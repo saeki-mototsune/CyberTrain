@@ -534,7 +534,7 @@ test "a missing binary, or one older than a Ruby file, is built incrementally" d
   end
 end
 
-# R24: only the runner's first build may be plain. A later build follows a
+# Only the runner's first build may be plain. A later build follows a
 # change round, and a save that landed in the last instant of the build
 # before it (after spinel had read the sources, before the binary was
 # written) leaves a binary newer than the saved file: by the files' times it
@@ -611,7 +611,7 @@ test "a save in the last instant of a plain build is compiled by the next build,
     drive(runner, machine, 5) { machine.serving != :cruby }
     assert_equal :none, machine.serving
     refute File.exist?(File.join(root, "binary-spawned")), "the binary without the save never took the port"
-    # R25: the build left the binary at its launch, before the save.
+    # The build left the binary at its launch, before the save.
     assert File.mtime(File.join(root, "build", "bin", "app")) < File.mtime(model), "the binary is older than the save"
     runner.watch.delivered
     drive(runner, machine, 5) { machine.serving == :spinel }
@@ -622,7 +622,7 @@ end
 
 # A toolchain that refuses --incremental leaves only the plain command, and
 # spin's own check, which reads the files' times, decides. The binary is
-# left at the launch of the build that wrote it (R25), so that the save made
+# left at the launch of the build that wrote it, so that the save made
 # during that build is newer and spin compiles it.
 LATE_SAVE_OLD_SPIN = <<~RUBY
   first = !File.exist?("spin-calls.txt")
@@ -662,7 +662,7 @@ test "without --incremental, a save in the last instant of a build leaves the bi
   end
 end
 
-# R25: a build of the session that ends ok leaves build/bin/NAME at the
+# A build of the session that ends ok leaves build/bin/NAME at the
 # time read just before it was launched. The stand-in spin writes the binary
 # after a delay; a save is made during the delay. The compiler read the
 # sources at some moment after the launch, so the save is newer than the
@@ -1236,7 +1236,7 @@ SLOW_GEN = <<~RUBY
   loop { sleep 1 }
 RUBY
 
-# R32: a stop asked while gen runs (the driver's flag, the stopping
+# A stop asked while gen runs (the driver's flag, the stopping
 # predicate) reaches gen: its whole group gets TERM, then KILL after the
 # stop grace, and run_gen answers [false, "stopped"] without the "gen
 # failed" message. Within the grace (0.3 s here) and a margin.
@@ -1423,7 +1423,7 @@ test "a build that succeeds hands the port to the binary" do
   end
 end
 
-# R14: the save lands while the CRuby child drains, before the watcher's next
+# The save lands while the CRuby child drains, before the watcher's next
 # poll (its interval is a minute here), so only the fresh snapshot that
 # change_pending? takes can see it.
 # The build waits for the child's ready file, which the child writes after its

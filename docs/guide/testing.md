@@ -188,7 +188,9 @@ helper to `test/support/`, or into the class), and for the other cases of
 
 The tests run on `storage/test.sqlite3`, which the program deletes and
 migrates again at every run; `CYBERTRAIN_TEST_DATABASE` names another file
-instead. Since the program deletes the file it tests on, it marks every
+instead. An exported `CYBERTRAIN_ENV` or `CYBERTRAIN_DATABASE` is not read:
+the program always runs in the test environment, and `CYBERTRAIN_DATABASE`
+does not choose the file. Since the program deletes the file it tests on, it marks every
 database it creates (`PRAGMA application_id`, a value of its own) and deletes
 or empties an existing file only when it carries that mark, when it is this
 application's own `storage/test.sqlite3` (however the path is written), or

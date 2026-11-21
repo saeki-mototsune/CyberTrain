@@ -132,8 +132,9 @@ COPY --chown=dev:dev playground/routes.rb config/routes.rb
 # spinel's object cache (/opt/cybertrain-cache/spinel), so that the build
 # after a visitor's edit recompiles only the C units whose text changed; its
 # binary is then removed, so that the release build runs and comes last. The
-# first `cybertrain server` picks its startup build by file times (decision
-# P23): a binary newer than every Ruby file of the blog and the framework
+# first `cybertrain server` picks its startup build by file times
+# (docs/design.md D87): a binary newer than every Ruby file of the blog and
+# the framework
 # (a tie counts as stale) gets a plain `spin build blog`, which says "up to
 # date" in a fraction of a second; any other gets `spin build blog --
 # --incremental`, which compiles every time. The last RUN checks both rules.
@@ -151,7 +152,7 @@ RUN cybertrain spin run gen \
 # `cybertrain server` gives them to its children. Built as dev, the user
 # every container runs as (devcontainer.json's remoteUser, smoke.sh's
 # docker run and exec): the shim loads nothing from a cache that another
-# user owns or that its group or others may write to (decision P26), so a
+# user owns or that its group or others may write to (docs/design.md D87), so a
 # cache warmed by root would be refused at the first CRuby request. The
 # second run is that check as the visitor's shim makes it: it must find
 # every library and compile none.
@@ -169,7 +170,7 @@ RUN git init -q -b main \
         commit -q -m "Tutorial steps 02-04 and 07: new, scaffold article, root route, db migrate" \
  && test -z "$(git status --porcelain)"
 
-# P23's rule as the supervisor reads it, once nothing more is written: the
+# The startup build's rule as the supervisor reads it, once nothing more is written: the
 # binary is newer than every *.rb of the blog (Build.binary_stale?) and of
 # the other -I directories of `spin flags` (the framework), and spin agrees.
 # No -I directory, or none but the blog's, would check nothing: that fails.

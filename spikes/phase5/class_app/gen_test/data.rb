@@ -1,4 +1,4 @@
-# What Task 8's gen/test/data.rb would hold for test/fixtures/users.yml
+# What gen/test/data.rb (Gen::TestDataEmitter) would hold for test/fixtures/users.yml
 # (alice) and articles.yml (one, two), hand-written: the tables, one INSERT
 # per row with Rails' CRC-32 ids, and the fixture accessors.
 module Gen

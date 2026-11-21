@@ -1,5 +1,5 @@
-# `cybertrain server` under CRuby: the supervisor of
-# docs/superpowers/specs/2026-11-12-cruby-preview-design.md section 6. It
+# `cybertrain server` under CRuby: the supervisor of the CRuby preview
+# (docs/design.md D87). It
 # owns the listening socket for its whole life and runs one child on it at
 # a time: the application under CRuby right after a change, the compiled
 # binary once the background build has made it. What to do on each event is
@@ -78,7 +78,7 @@ module Cybertrain
       # A refusal at startup: its message follows `error: `.
       Failure = Class.new(StandardError)
 
-      # The supervisor's files in the application (P2).
+      # The supervisor's files in the application.
       DEV_DIR = "tmp/cybertrain-dev"
 
       # The framework's files the preview needs, in the order they are
@@ -102,11 +102,11 @@ module Cybertrain
       # What the banner says when the children's Ruby does not answer.
       UNKNOWN_VERSION = "(unknown version)"
 
-      # The driver's tick (P11): the longest the loop waits before it polls
+      # The driver's tick: the longest the loop waits before it polls
       # the processes and gives the machine its on_tick.
       TICK = 0.05
 
-      # A leftover child (P14) gets this long after TERM before KILL.
+      # A leftover child gets this long after TERM before KILL.
       LEFTOVER_GRACE = 5
 
       # Cybertrain::PortInUse's reasons, restated: that class lives in the
@@ -235,7 +235,7 @@ module Cybertrain
         compiled_loop(argv)
       end
 
-      # exe/cybertrain hands `server ... --spinel` to CLI.run (P8).
+      # exe/cybertrain hands `server ... --spinel` to CLI.run.
       def self.compiled_loop(argv)
         CLI.run(argv + ["--spinel"])
       end
@@ -266,7 +266,7 @@ module Cybertrain
         raise Failure, "`spin flags` could not run: #{e.message}"
       end
 
-      # P14: a supervisor.pid naming a live `cybertrain server` means one
+      # A supervisor.pid naming a live `cybertrain server` means one
       # already serves this application. A PID that is gone, or that now
       # names another program, is a leftover of a killed supervisor.
       def self.refuse_second_supervisor(root)
@@ -277,7 +277,7 @@ module Cybertrain
         raise Failure, "a cybertrain server is already running here (pid #{pid})"
       end
 
-      # P14: a child a killed supervisor left still holds the listener (and
+      # A child a killed supervisor left still holds the listener (and
       # may run jobs): when child.pid names a live process that is this
       # application's child (application_child?), TERM, then KILL after
       # LEFTOVER_GRACE. Any other process is left alone. A child of the live
@@ -399,7 +399,7 @@ module Cybertrain
         nil
       end
 
-      # P10: host and port as the application's config gives them, from
+      # Host and port as the application's config gives them, from
       # `bin/NAME.rb dev-address` under CRuby. bin/NAME.rb requires gen/,
       # which may be stale here (a model renamed while no server ran, gen/
       # not committed): when the first answer fails and `cybertrain build`
@@ -436,12 +436,12 @@ module Cybertrain
       end
 
       # How long a start-up probe (gen, dev-address) gets after TERM before
-      # KILL: a stopped child's grace (P11).
+      # KILL: a stopped child's grace.
       def self.probe_grace
         Processes::STOP_GRACE
       end
 
-      # What every child, gen and dev-address add to the environment (P9):
+      # What every child, gen and dev-address add to the environment:
       # development unless CYBERTRAIN_ENV is set (no_preview_reason sends
       # any other value to the compiled loop).
       # @return [Hash{String => String}]
@@ -451,7 +451,7 @@ module Cybertrain
         env
       end
 
-      # `ruby -E UTF-8 -I<dir>...` (P9, P19): `-E UTF-8` whatever the
+      # `ruby -E UTF-8 -I<dir>...`: `-E UTF-8` whatever the
       # locale, since the application's sources and templates are UTF-8, as
       # the compiled binary takes them.
       # @param load_path [Array<String>] the -I directories of `spin flags`
@@ -553,7 +553,7 @@ module Cybertrain
       end
 
       # What the children's Ruby is, asked once at start in one run of the
-      # `ruby` on PATH (P9): under a version manager it can be another CRuby
+      # `ruby` on PATH: under a version manager it can be another CRuby
       # than the one running this supervisor. Its version (for the banner)
       # and what keeps it from running the preview (no_preview_reason): nil
       # when it loads fiddle; NO_RUBY when there is no `ruby` on PATH; a

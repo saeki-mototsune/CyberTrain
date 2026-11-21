@@ -6,7 +6,7 @@
 # `spin test` compares the program's stdout against test/<name>.rb.expected,
 # so every line printed here is deterministic (no timings, no addresses).
 #
-# The order of one test (spec section 5.3, plan D3) is owned here and
+# The order of one test (docs/design.md D82) is owned here and
 # nowhere else: 1-2. the bundle's database steps (Test.before_each_bundled,
 # `cybertrain test` only), 3. the Test.on_reset hooks, 4. setup, 5. the
 # body (only if 1-4 raised nothing), 6. teardown, always, 7. travel_back and
@@ -72,7 +72,7 @@ module Cybertrain
         @setup_blocks = Array.new(0) { -> { nil } }
         @teardown_blocks = Array.new(0) { -> { nil } }
         # In the bundle, gen's record of the file's `test "<literal>"`
-        # calls and their lines (plan decision 10), from Test.begin_file.
+        # calls and their lines, from Test.begin_file.
         @case_names = Array.new(0) { "" }
         @case_lines = Array.new(0) { 0 }
       end
@@ -119,7 +119,7 @@ module Cybertrain
     @cases = Array.new(0) { Case.new("", -> { nil }, TopLevelFile.new("")) }
     @failures = 0
     @assertions = 0
-    # The hooks of the order (plan D3, D4): each takes no receiver and no
+    # The hooks of the order: each takes no receiver and no
     # argument (rules 2 and 88) and is a lambda created in a method or
     # passed positionally (rule 82).
     @before_each = Array.new(0) { -> { nil } }
@@ -137,7 +137,7 @@ module Cybertrain
     # The case just run: "ok", "FAIL" or "ERR", and its message.
     @status = ""
     @message = ""
-    # Read by later features (pre-flight ruling R7): the application the
+    # Read by the request and view helpers: the application the
     # bundle booted, and the HTML the last request or render answered.
     @app = nil
     @last_html = ""
@@ -479,7 +479,7 @@ module Cybertrain
       @message = ""
       @case_marks << @after_this_case.length
       @travel_marks << (@in_case && Cybertrain::Clock.travelling? ? Cybertrain::Clock.travelled_micros : -1)
-      # The log tags (spec section 20): each test starts with no log scope;
+      # The log tags: each test starts with no log scope;
       # a case driven inside a running one keeps the outer case's.
       @scope_marks << (@in_case ? Cybertrain::Logger.current_scope : Cybertrain::Logger::NO_SCOPE)
       Cybertrain::Logger.reset_scope unless @in_case
@@ -519,7 +519,7 @@ module Cybertrain
     end
 
     # Step 7: a travel without a block lasts to the end of its case,
-    # whatever happened (spec section 2.1), so the clock is real again,
+    # whatever happened, so the clock is real again,
     # and the log scope is the outer case's (none for an outermost case);
     # then each after_this_case callable the case registered, newest first
     # and each on its own (one that raises does not stop the others); then

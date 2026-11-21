@@ -17,7 +17,7 @@ module Cybertrain
     # ivars too (gen/concerns.rb splices the declarations themselves).
     #
     # A controller that declares `helper_method :x` (or includes a concern
-    # whose `included` block does, spec 4.3) gets helper_method?(name) and
+    # whose `included` block does) gets helper_method?(name) and
     # call_helper_method(name, args, kwargs): a `case` over the names that
     # reaches the controller's method through HelpersEmitter's argument
     # checks and arms, and `super` for the rest, so a parent's helper

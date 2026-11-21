@@ -1,8 +1,8 @@
-# ActionDispatch::IntegrationTest (spec section 5.1, plan decision 6):
+# ActionDispatch::IntegrationTest (docs/design.md D84):
 # get, post, patch, put, delete and head with nested params:, the cookie
 # jar per test, follow_redirect!, the instance assert_response /
-# assert_redirected_to beside the top-level forms (one shared check each,
-# pre-flight R17), *_url targets on the test host reduced to their
+# assert_redirected_to beside the top-level forms (one shared check
+# each), *_url targets on the test host reduced to their
 # path (another host refused), Rails' header names and status Symbols,
 # Cybertrain::Test.flatten_params, with_forgery_protection (put back when
 # an assertion in it fails), and the bundle's boot silencing the request

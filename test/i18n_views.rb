@@ -1,8 +1,8 @@
 require "cybertrain/test"
 require "cybertrain/controller"
 
-# i18n in views (spec 8, plan Task 5): the template helpers t and l, lazy
-# lookup by the rendering template's name (plan decision D8, Rails'
+# i18n in views (docs/design.md D79): the template helpers t and l, lazy
+# lookup by the rendering template's name (Rails'
 # virtual path) in a page, a partial, a layout, a component and a mail
 # partial, the missing-translation span, `_html` keys, and Controller#t.
 #

@@ -138,7 +138,7 @@ test "the User model hashes with Cybertrain::Password and validates in before_va
   assert model.index("errors.add(:password, \"").nil?
   # The admin flag, which require_admin asks for.
   assert_includes model, "  def admin? = admin\n"
-  # Lockout (D17): a locked account costs the dummy verification and
+  # Lockout: a locked account costs the dummy verification and
   # answers nil, as a wrong password does; a wrong password is counted in
   # the database, the attempt that reaches the limit locks; the right one
   # clears the count.
@@ -703,7 +703,7 @@ test "every view and flash string goes through t" do
   assert_equal [], untranslated("shop")
 end
 
-# Where a lazy key ("." first) of a view resolves (D8): the template's
+# Where a lazy key ("." first) of a view resolves: the template's
 # path, a partial's leading "_" dropped (sessions/_nav.html.erb ->
 # sessions.nav).
 def view_scope(path)
@@ -786,7 +786,7 @@ def bundled(locale, key)
   text
 end
 
-# The password reset's keys (Task 13), in both modes: its form labels are
+# The password reset's keys, in both modes: its form labels are
 # the User model's attribute names.
 RESET_KEYS = ["activerecord.attributes.user.email_address", "activerecord.attributes.user.password",
               "activerecord.attributes.user.password_confirmation"]
@@ -795,7 +795,7 @@ RESET_TAIL_KEYS = ["mail.password_reset.greeting", "mail.password_reset.ignore",
                    "passwords.create.rate_limited", "passwords.create.sent", "passwords.edit.invalid",
                    "passwords.edit.submit", "passwords.edit.title", "passwords.new.sign_in", "passwords.new.submit",
                    "passwords.new.title", "passwords.update.updated", "passwords_mailer.reset.subject"]
-# The account page's keys (Task 14), in both modes.
+# The account page's keys, in both modes.
 ACCOUNT_KEYS = ["accounts.destroy.deleted", "accounts.destroy.not_deleted", "accounts.destroy.wrong_password", "accounts.edit.delete",
                 "accounts.edit.delete_intro", "accounts.edit.delete_title", "accounts.edit.model",
                 "accounts.edit.new_password", "accounts.edit.password_hint", "accounts.edit.submit",
@@ -1669,7 +1669,7 @@ test "password reset: the token in the model, the base URL in the concern" do
         user
       end
   RUBY
-  # Task 14's review, M5: the address is bound too, so a new address (at
+  # The address is bound too, so a new address (at
   # once, or with --confirmable once confirmed) ends the links sent before.
   assert_includes model, indented(<<~RUBY, 2)
       # The token of a password reset link (PasswordsController): signed,
@@ -1760,7 +1760,7 @@ test "password reset: the generated tests and their helpers" do
   assert spec.index("noreply").nil?
   assert spec.index("SmtpReceiver").nil?
   assert_includes spec, "  def last_mail_link\n    mail = Cybertrain::Mailer.deliveries.last\n"
-  # Review Focus 4: a forged Host, both addresses, one mail, base_url.
+  # A forged Host, both addresses, one mail, base_url.
   assert_includes spec, "      request_reset(\"One@Example.com\", \"evil.example\")\n      known = response\n"
   assert_includes spec, "      request_reset(\"nobody@example.com\", \"evil.example\")\n      unknown = response\n"
   assert_includes spec, "      assert_equal known.body, unknown.body\n"
@@ -2002,7 +2002,7 @@ test "account pages: the controller, the view, the route and the nav link in bot
   assert_includes controller, "    remember = current.nil? ? false : current.remember\n"
   assert_includes controller, "    start_new_session_for(@user, remember: remember)\n"
   # A wrong current password is rate limited with the sign-in's numbers, per
-  # client address and (Task 14's review, M1) per user.
+  # client address and per user.
   assert_includes controller, "  rate_limit to: 10, within: 3 * 60, only: [:update, :destroy], with: :rate_limited\n"
   assert_includes controller, "  rate_limit to: 10, within: 3 * 60, only: [:update, :destroy], by: :account_key, name: \"user\", with: :rate_limited\n"
   assert_includes controller, "  def account_key\n    @current_user.id.to_s\n  end\n"
@@ -2032,7 +2032,7 @@ test "account pages: the generated test" do
    "a deletion the database refuses changes nothing and says so"].each do |name|
     assert_includes spec, "  test \"#{name}\" do\n"
   end
-  # Task 14's review, M4: the fields the form lacks, the lockout count, and
+  # The fields the form lacks, the lockout count, and
   # CSRF, each with concrete values.
   assert_includes spec, "admin: \"1\", failed_attempts: \"7\""
   assert_includes spec, "    assert_equal false, changed.admin?\n    assert_equal 0, changed.failed_attempts\n"
@@ -2213,7 +2213,7 @@ test "--confirmable writes the confirmation files and columns" do
   assert_equal AUTH_FILES, CONF_FILES - CONF_ONLY_FILES
   CONF_FILES.each { |f| assert(File.exist?("conf/#{f}"), "missing #{f}") }
   # The two columns, for a new application's users table (an older one's
-  # upgrade is Task 16's).
+  # upgrade is test/cli_authentication_upgrade.rb's).
   assert_equal <<~RUBY, read("conf/db/migrate/20260925120000_create_users.rb")
     class CreateUsers < Cybertrain::Migration::Base
       def change
@@ -2264,7 +2264,7 @@ test "--confirmable writes the confirmation files and columns" do
                            "    path = confirmation_path(token)\n    mail = ConfirmationsMailer.confirmation_instructions(user, base + path)\n" \
                            "    mail.deliver_later if deliver\n    nil\n  rescue ArgumentError => e\n" \
                            "    Cybertrain.logger.error(\"confirmation mail not sent: \#{e.message}\")\n    nil\n  end\n"
-  # Task 16 review I1: the concern itself starts no session for an account
+  # The concern itself starts no session for an account
   # whose address is not confirmed, so a sessions controller without that
   # check (an upgrade's diff not applied) signs nobody unconfirmed in.
   backstop = "  def start_new_session_for(user, remember: false)\n" \
@@ -2285,7 +2285,7 @@ test "--confirmable writes the confirmation files and columns" do
   assert_includes confirmations, "    SessionStartProbeController.new(ctx).probe_start(ann)\n    assert_equal 0, Session.count\n"
   assert_equal 1, concern.scan("def mail_link_base(mail)").size
   # The controllers that mail a confirmation ask the concern; none builds a
-  # link base of its own (pre-flight finding 16).
+  # link base of its own.
   ["confirmations_controller.rb", "registrations_controller.rb", "accounts_controller.rb"].each do |f|
     source = read("conf/app/controllers/#{f}")
     assert_includes source, "send_confirmation_mail("
@@ -2402,7 +2402,7 @@ test "--confirmable writes the confirmation files and columns" do
   same.each { |f| assert_equal read("shop/#{f}").gsub("SHOP_", "CONF_").gsub("./shop ", "./conf "), read("conf/#{f}") }
 end
 
-test "--confirmable confirms the users nothing mails: the user command's and /setup's (pre-flight finding 6)" do
+test "--confirmable confirms the users nothing mails: the user command's and /setup's" do
   # The user command, in sign-up mode too.
   command = read("conf/app/commands/user_command.rb")
   assert_includes command, "    user.password = password\n    # A user made here gets no mail with a link: the address counts as\n" \

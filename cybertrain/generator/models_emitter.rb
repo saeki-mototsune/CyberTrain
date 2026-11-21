@@ -79,7 +79,7 @@ module Cybertrain
         src
       end
 
-      # The validation hooks Cybertrain::Model stubs (spec section 9):
+      # The validation hooks Cybertrain::Model stubs (docs/design.md D48):
       # unique_value_taken? for every model, then validation_condition? (a
       # `case` over the if: / unless: names of the model file's `validates`
       # lines) and run_custom_validations (its `validate` lines) when the
@@ -208,7 +208,7 @@ module Cybertrain
       def self.emit_relation(model, table, scopes, plans, encrypted)
         src = +""
         src << "class #{model}Relation < Cybertrain::Relation\n"
-        # The records `preloaded` keeps (includes, spec section 8), seeded
+        # The records `preloaded` keeps (includes, docs/design.md D47), seeded
         # with the model's type (NOTES rule 9).
         src << "  def initialize(table)\n"
         src << "    super(table)\n"
@@ -518,7 +518,7 @@ module Cybertrain
         src << "  def self.column_names = [\"id\", #{quoted}]\n"
         src << "  def model_name = \"#{model}\"\n"
         # Rails' Post.human_attribute_name(:title), through the model's
-        # dictionary key (plan decision D9).
+        # dictionary key.
         src << "  def self.human_attribute_name(attr, options = {}) = I18n.human_attribute_name(\"#{Inflector.underscore(model)}\", attr)\n"
         src << "\n"
         # Plain attr_accessor, on purpose: not typed `def x=(v)` writers.
@@ -644,7 +644,7 @@ module Cybertrain
       # upsert_all, each one call of Cybertrain::Model.insert_all_into, and
       # upsert, one call of Cybertrain::Model.upsert_into with the same
       # constants (so it casts by type and refuses an encrypted column)
-      # (spec section 6). The empty containers come from typed helpers
+      # (docs/design.md D46). The empty containers come from typed helpers
       # (NOTES rule 9).
       def self.emit_bulk_writes(table, encrypted)
         src = +""

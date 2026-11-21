@@ -74,7 +74,7 @@ class Post < Cybertrain::Model
   def summary = "#{@title[0, 5]}..."
 end
 
-# A value the interpreter has no method table for (Task 13's FormBuilder is
+# A value the interpreter has no method table for (FormBuilder is
 # one): calls on it go to HelperBase#call_object_method.
 class Widget
   def label = "widget"

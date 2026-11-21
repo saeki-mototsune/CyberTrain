@@ -1,5 +1,5 @@
 ---
-source_sha256: 1e29b0e14d2ad564cb22b5c5188c8b2388d0b55976e6d2ceaf6261531d6657a7
+source_sha256: 8ba2e62d2c362f35699ce82fb776cd00bb7db9b0a602c62f2116c8bfffb91dee
 ---
 # 测试应用
 
@@ -108,7 +108,7 @@ test/models/article_test.rb
 
 ### 测试数据库
 
-测试在 `storage/test.sqlite3` 上运行，程序每次运行都会删除它并重新迁移；`CYBERTRAIN_TEST_DATABASE` 可以改为指定另一个文件。由于程序会删除它测试所用的文件，它会给自己创建的每个数据库加上标记（`PRAGMA application_id`，一个专用的值），只有当已有文件带着这个标记、就是本应用自己的 `storage/test.sqlite3`（无论路径怎么写）或是空文件时，才会删除或清空它。其他文件都会以退出状态 2 被拒绝，什么都不删除：`cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`。
+测试在 `storage/test.sqlite3` 上运行，程序每次运行都会删除它并重新迁移；`CYBERTRAIN_TEST_DATABASE` 可以改为指定另一个文件。已导出的 `CYBERTRAIN_ENV` 和 `CYBERTRAIN_DATABASE` 不会被读取：程序始终在测试环境中运行，`CYBERTRAIN_DATABASE` 不决定所用的文件。由于程序会删除它测试所用的文件，它会给自己创建的每个数据库加上标记（`PRAGMA application_id`，一个专用的值），只有当已有文件带着这个标记、就是本应用自己的 `storage/test.sqlite3`（无论路径怎么写）或是空文件时，才会删除或清空它。其他文件都会以退出状态 2 被拒绝，什么都不删除：`cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`。
 
 另外三种情况也会被拒绝：
 

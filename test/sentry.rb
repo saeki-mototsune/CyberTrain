@@ -5,15 +5,15 @@ require "cybertrain/test"
 require "cybertrain/test/sentry_receiver"
 require_relative "support/log_capture"
 
-# The Sentry sender (spec section 13.4; plan D13, D14) against
+# The Sentry sender (docs/design.md D88) against
 # Cybertrain::Test::SentryReceiver: one envelope per event with Sentry's
 # auth header, the DSN's path prefix, the sample rate, the frames of a
 # backtrace, and a refusing, rate-limiting, silent or blocked Sentry that
 # never blocks the caller nor raises. The program is the core plus the
-# sender's line alone (the optional-subsystems spec, section 7: the line
-# compiles on its own). It links TLS (openssl) and SQLite through FFI, so
+# sender's line alone (as test/features_*.rb do for each subsystem line,
+# docs/design.md D85: the line compiles on its own). It links TLS (openssl) and SQLite through FFI, so
 # its snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
-# Restores go through teardown and plain helpers (pre-flight ruling G4).
+# Restores go through teardown and plain helpers.
 
 NOON = Time.utc(2026, 11, 11, 12)
 ORIGINAL_ENV = Cybertrain.config.env
@@ -101,8 +101,8 @@ def server_closer(server)
 end
 
 # A listener that never answers: the kernel completes the connection, the
-# request is written, and nothing ever comes back. Closed after the case
-# (pre-flight ruling for Task 10). Answers its port.
+# request is written, and nothing ever comes back. Closed after the case.
+# Answers its port.
 def silent_port
   server = TCPServer.new("127.0.0.1", 0)
   Cybertrain::Test.after_this_case(server_closer(server))
@@ -110,7 +110,7 @@ def silent_port
 end
 
 # Whether `text` is 32 lower-case hex digits, read byte by byte (no
-# regexp, pre-flight ruling G5).
+# regexp).
 def hex32?(text)
   s = text.to_s
   return false unless s.bytesize == 32

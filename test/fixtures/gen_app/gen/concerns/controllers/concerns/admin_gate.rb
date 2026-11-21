@@ -1,4 +1,4 @@
-# The concern of spec section 4.1. The fixture app has no Current.user, so
+# A controller concern. The fixture app has no Current.user, so
 # the admin check reads the x-admin header. The after_action block calls
 # gate_header and per_page without a receiver: gen/concerns.rb runs it in
 # the including class, where ApplicationController.gate_header and the

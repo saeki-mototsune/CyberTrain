@@ -463,7 +463,7 @@ module Cybertrain
       end
 
       # The associations of `table`'s model, in reader order: the ones its
-      # app/models file declares (spec 7.1), in source order, then the ones
+      # app/models file declares, in source order, then the ones
       # the schema's foreign keys give (D10) -- a belongs_to per foreign key
       # of this table, a has_many per foreign key pointing here -- except
       # those a declaration covers (same foreign key column: the declared
@@ -638,8 +638,8 @@ module Cybertrain
                             a.optional, a.counter_cache, counter, true, notes)
       end
 
-      # The ivars an association keeps its cache in (spec 7.2; Task 12's
-      # includes fills them): has_many `@<name>_preloaded` (nil or an Array),
+      # The ivars an association keeps its cache in (`includes` fills
+      # them; docs/design.md D47): has_many `@<name>_preloaded` (nil or an Array),
       # belongs_to `@<name>_loaded` / `_loaded_key` / `_record` (plus
       # `@<foreign key>_was` under counter_cache), has_one `@<name>_loaded` /
       # `_record`.

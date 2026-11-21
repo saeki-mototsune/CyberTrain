@@ -59,7 +59,7 @@ module Cybertrain
       # HAVING text for the grouped readers (having_sql) and its binds.
       @having = ""
       @having_binds = Cast.empty_binds
-      # includes / preload (spec section 8): the association names `to_a`
+      # includes / preload (docs/design.md D47): the association names `to_a`
       # preloads, and whether the subclass's `preloaded` records answer the
       # record readers (true from `preloaded` until the next chain method).
       @includes = Array.new(0) { :x }
@@ -463,7 +463,7 @@ module Cybertrain
       nil
     end
 
-    # --- includes / preload (spec section 8) --------------------------------
+    # --- includes / preload (docs/design.md D47) ----------------------------
     # The generated subclass's `includes(*names)` checks each name against
     # the model's associations and adds it here; its `to_a` runs
     # `preload_association(name, records)` for each after loading the rows.

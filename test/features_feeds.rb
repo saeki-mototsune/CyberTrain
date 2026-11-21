@@ -8,9 +8,7 @@ require "cybertrain/websocket"
 require_relative "support/log_capture"
 require_relative "support/file_tree"
 
-# The core and cybertrain/feeds alone (the optional-subsystems design,
-# docs/superpowers/specs/2026-11-13-optional-subsystems-design.md, section
-# 3): it compiles without jobs, streams, the mailer, the cache or rate
+# The core and cybertrain/feeds alone (docs/design.md D85): it compiles without jobs, streams, the mailer, the cache or rate
 # limiting; FeedsFeature is the one registered feature; `help` lists the
 # feeds role and `feeds` is a known command (with no subscription it says
 # there is nothing to run and returns 0); `/up` with health_feeds is ok

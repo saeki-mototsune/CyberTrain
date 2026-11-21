@@ -1,5 +1,5 @@
-# cybertrain/error_reporter/sentry -- the Sentry sender (spec section
-# 13.4): `require "cybertrain/error_reporter/sentry"` in bin/NAME.rb (or
+# cybertrain/error_reporter/sentry -- the Sentry sender
+# (docs/design.md D88): `require "cybertrain/error_reporter/sentry"` in bin/NAME.rb (or
 # `require "cybertrain"`, which loads it) installs
 # Cybertrain::ErrorReporter::SentrySender as the reporter's sender, and
 # CYBERTRAIN_SENTRY_DSN ({Config#sentry_dsn}) turns it on. Unset, it sends

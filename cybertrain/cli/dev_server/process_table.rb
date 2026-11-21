@@ -177,7 +177,7 @@ module Cybertrain
         cwd.nil? ? path == relative : File.expand_path(path, cwd) == File.join(root, relative)
       end
 
-      # P14's identity of a child: the program (a ruby interpreter's script,
+      # What makes a process this application's child: the program (a ruby interpreter's script,
       # or the executable itself) is this application's bin/NAME.rb or
       # build/bin/NAME, whole paths. An editor with the file open, another
       # application's bin/NAME.rb, or build/bin/NAMEx is not. Without /proc
@@ -199,8 +199,8 @@ module Cybertrain
         names?(pid, program, root, "bin/#{name}.rb") || names?(pid, program, root, "build/bin/#{name}")
       end
 
-      # The CRuby child's arguments after the interpreter, but for the port
-      # (P9): Processes#child_command spawns `ruby` with these.
+      # The CRuby child's arguments after the interpreter, but for the port:
+      # Processes#child_command spawns `ruby` with these.
       # @param load_path [Array<String>] the -I directories of `spin flags`
       # @param name [String]
       # @return [Array<String>]
@@ -225,7 +225,7 @@ module Cybertrain
         line.match?(/\A.+ #{Regexp.escape(tail)} [0-9]+\z/m)
       end
 
-      # P14's identity of a build: the program is spin (the one on PATH,
+      # What makes a process this application's build: the program is spin (the one on PATH,
       # so by name) with exactly the arguments Processes#build_command
       # gives it, in this application's directory where /proc shows it.
       # @param pid [Integer] the group's leader

@@ -8,7 +8,7 @@ require "cybertrain/job"
 require "cybertrain/generator"
 require_relative "support/schema_tables"
 require_relative "fixtures/gen_app/config/routes"
-# Model concerns (spec 4.2, plan decision 9), on the fixture app loaded
+# Model concerns (docs/design.md D60), on the fixture app loaded
 # through its checked-in gen/app.rb: gen/concerns/models/concerns/visible.rb
 # (app/models/concerns/visible.rb with its `included` block blanked) before
 # the models, then gen/concerns.rb, which splices Visible's `included` body

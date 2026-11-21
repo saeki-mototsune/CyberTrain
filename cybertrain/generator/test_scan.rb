@@ -52,7 +52,7 @@ module Cybertrain
     # ("test/models/article_test.rb"), test_form (:class when the file
     # holds a class-form class, else :top_level), test_classes (its
     # class-form classes), test_lines (its top-level `test "<literal>"`
-    # calls, plan decision 10), test_helpers (its top-level defs and
+    # calls), test_helpers (its top-level defs and
     # constants) and copy_path ("gen/test/models/article_test.rb" for a
     # class-form file, the rewritten copy the bundle requires; "" for a
     # file the bundle requires as it is).
@@ -90,13 +90,13 @@ module Cybertrain
       end
     end
 
-    # The lexical scan of test/ (spec 5.2): which files are tests, which
+    # The lexical scan of test/ (docs/design.md D82): which files are tests, which
     # classes are Rails-shaped test classes ("class form"), and the rewrite
     # of a class-form file into gen/test/<path under test/>, where every
     # `test "name" do` is a method, so that no stored block is ever run
     # through a base-class receiver (spikes/NOTES.md rule 88).
     #
-    # The rewrite keeps every line where it was (plan decision 18):
+    # The rewrite keeps every line where it was, so a failure's line is the source's:
     # `require "test_helper"` becomes an empty line; `test "shows it" do`
     # becomes `def test_shows_it; begin`; the n-th `setup do` of
     # ArticlesControllerTest becomes `def setup_articles_controller_test_<n>;
@@ -106,10 +106,10 @@ module Cybertrain
     # each of those methods, and of a `def setup` / `def teardown` /
     # `def test_x` the class writes itself, becomes `end; nil; end`: the
     # body sits in a `begin` (its rescue and ensure clauses too), so the
-    # method answers nil on every path (pre-flight ruling R8: one return
+    # method answers nil on every path (one return
     # type per method name across the program, rule 34); `return <value>`
     # in one is refused. Each `require_relative` is rebased for the copy's
-    # directory (plan decision 20).
+    # directory.
     #
     # Only the lines at the class body's own indentation are read: a nested
     # helper class, a helper's body and every heredoc, string and comment
@@ -177,7 +177,7 @@ module Cybertrain
 
       # test_ plus the name with every ASCII character outside
       # [A-Za-z0-9_] turned into "_" and every other character into
-      # `_u<hex>_` (spec 5.2: "shows an article" -> test_shows_an_article,
+      # `_u<hex>_` ("shows an article" -> test_shows_an_article,
       # "日本" -> test__u65e5__u672c_): Test::Args.method_for, the rule
       # `cybertrain test -n` matches with.
       def self.method_name(name)
@@ -194,7 +194,7 @@ module Cybertrain
       end
 
       # The copy of path (file_text) given the class-form class names of
-      # every scanned file and the paths gen copies (plan decision 20).
+      # every scanned file and the paths gen copies.
       def self.rewrite_in(file_text, path, forms, copied)
         view = CodeView.new(file_text)
         check_classes(path, view, forms, Array.new(0) { "" }, Array.new(0) { "" })
@@ -1229,7 +1229,7 @@ module Cybertrain
       end
 
       # `require_relative "<target>"...` (s from the keyword on, no
-      # comment) with the target rebased for the copy (plan decision 20).
+      # comment) with the target rebased for the copy.
       def self.rebased_require(s, path, number, copied)
         k = 16
         k += 1 while k < s.size && s[k] == " "

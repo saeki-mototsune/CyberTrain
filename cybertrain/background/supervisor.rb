@@ -1,4 +1,4 @@
-# Cybertrain::Background's feed supervisor (spec section 9): one thread
+# Cybertrain::Background's feed supervisor (docs/design.md D56): one thread
 # per process that runs feeds, started by Background.start_all /
 # start_only when a service with feeds (cybertrain/websocket.rb) started,
 # and stopped first by Background.stop_all, so a feed that is being
@@ -263,7 +263,7 @@ module Cybertrain
 
     # A dead feed: its first sighting schedules the restart (or gives up),
     # a later one past the due time restarts it. True when the process
-    # gives up. The give-up is reported too (spec section 13.2), with no
+    # gives up. The give-up is reported too (docs/design.md D88), with no
     # exception object: its class is named
     # "Cybertrain::Background::FeedFailed" (a name only, never raised), its
     # message is the FATAL line's, and its `where` `feed:<name>` is given,

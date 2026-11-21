@@ -1,6 +1,6 @@
 # Cybertrain::Dev::StateFile -- the one file through which `cybertrain
 # server` tells the child it supervises about the background Spinel build
-# (docs/superpowers/specs/2026-11-12-cruby-preview-design.md section 6).
+# (docs/design.md D87).
 # Three header lines, an empty line, then free text to the end of the file:
 #
 #   generation 12
@@ -21,7 +21,7 @@
 # It requires nothing outside Ruby's standard library: the supervisor (the
 # CLI gem, under CRuby) loads it from the application's framework, put
 # ahead of the gem on its load path, and the gem ships none of
-# cybertrain/dev/*.rb (plan P21).
+# cybertrain/dev/*.rb (cybertrain/cli/dev_server.rb's header comment).
 module Cybertrain
   module Dev
     # One reading of the state file.

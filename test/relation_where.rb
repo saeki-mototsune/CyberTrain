@@ -2,7 +2,7 @@ require "cybertrain/test"
 require "cybertrain/db"
 require "cybertrain/model"
 
-# Task 7 of phase 2: the fuller query API on Relation and the model class --
+# The fuller query API on Relation and the model class (docs/design.md D43) --
 # where with a SQL string or an Integer Range, where.not, where_between, or,
 # order with a Hash, distinct, none, ids, update_all, destroy_all,
 # find_each, find_by!, find_or_create_by, find_or_initialize_by,
@@ -336,8 +336,8 @@ test "where.not negates equality, nil, arrays and ranges" do
   assert_equal ["ten", "kindless"], names_of(Event.where.not(views: 1..5).order("id").to_a)
   # Two keys: NOT (a AND b), as Rails 6.1+.
   assert_equal 3, Event.where.not(kind: "a", views: 1).count
-  # where.not(id: []) matches every row, the complement of where(id: [])
-  # (Review Focus 2).
+  # where.not(id: []) matches every row, the complement of where(id: [])'s
+  # 1 = 0.
   assert_equal 4, Event.where.not(id: []).count
   assert_equal 0, Event.where(id: []).count
   assert_equal "SELECT * FROM `events` WHERE NOT (1 = 0)", Event.where.not(id: []).to_sql

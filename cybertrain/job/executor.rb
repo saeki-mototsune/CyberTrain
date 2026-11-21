@@ -129,7 +129,7 @@ module Cybertrain
         in_flight_remove(run.run_id, run.run_attempts)
       end
 
-      # The log Scope of one attempt (spec section 12.3): the tag
+      # The log Scope of one attempt (docs/design.md D86): the tag
       # `"<kind> <id>"`, then the id of the request that enqueued it when
       # it was enqueued in one and {Config#log_tags} includes :request_id;
       # `where` is the kind; the context holds `job.id`, `job.attempt` and
@@ -269,8 +269,7 @@ module Cybertrain
       # Each run starts at the default locale, as a controller action does:
       # a job thread is long-lived, so a locale one job set (`I18n.locale =
       # user.locale`) would otherwise stay for the next job on the thread.
-      # Either arm reports the failed attempt (spec section 13.2,
-      # docs/design.md D88):
+      # Either arm reports the failed attempt (docs/design.md D88):
       # `where` the kind, the context the job Scope's.
       def self.run_handler(handler, run)
         I18n.locale = nil
