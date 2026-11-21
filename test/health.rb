@@ -13,26 +13,17 @@ require "cybertrain"
 require "cybertrain/application"
 require "cybertrain/test"
 require "cybertrain/test/client"
+require_relative "support/file_tree"
 
 ROOT = "tmp/health_test"
 
-def remove_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| remove_tree("#{path}/#{child}") }
-    Dir.rmdir(path)
-  elsif File.exist?(path)
-    File.delete(path)
-  end
-  nil
-end
-
-remove_tree(ROOT)
+FileTree.remove(ROOT)
 Dir.mkdir("tmp") unless Dir.exist?("tmp")
 Dir.mkdir(ROOT)
 Dir.mkdir("#{ROOT}/public")
 # A static file at the health path's name: the check answers first.
 File.write("#{ROOT}/public/up", "static file\n")
-at_exit { remove_tree(ROOT) }
+at_exit { FileTree.remove(ROOT) }
 
 ENV.delete("CYBERTRAIN_HEALTH_PATH")
 ENV["CYBERTRAIN_ENV"] = "test"

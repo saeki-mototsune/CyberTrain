@@ -3,7 +3,7 @@ require "cybertrain/config"
 require "cybertrain/http/parser"
 
 module Cybertrain
-  # Config#force_ssl (spec C-11, plan decision 21, Rails'
+  # Config#force_ssl (docs/design.md D61; Rails'
   # ActionDispatch::SSL). The server speaks plain HTTP behind a
   # TLS-terminating proxy, so a request is https when it carries
   # `X-Forwarded-Proto: https`; the header is read whatever

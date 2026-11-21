@@ -156,11 +156,6 @@ module Cybertrain
     # process. A module-level ivar, not a class variable (NOTES rules 18
     # and 64).
     @serial_lock = Mutex.new
-    # How many verifications are inside the lock now, and the most there
-    # have ever been (always 1 once one has run: test/password.rb checks
-    # it from several threads).
-    @serial_active = 0
-    @serial_peak = 0
 
     # {verify?}, one call at a time across the process. A hash takes about
     # 0.2 s of CPU (compiled, 100,000 iterations); a burst of sign-in
@@ -179,25 +174,9 @@ module Cybertrain
     def self.verify_serialized(password, digest)
       ok = false
       @serial_lock.synchronize do
-        ok = Password.verify_locked(password.to_s, digest)
+        ok = Password.verify?(password.to_s, digest)
       end
       ok
-    end
-
-    # The body of verify_serialized, under the lock (a plain method: no
-    # rescue or ivar arithmetic inside the synchronize block).
-    def self.verify_locked(password, digest)
-      @serial_active = @serial_active + 1
-      @serial_peak = @serial_active if @serial_active > @serial_peak
-      ok = Password.verify?(password, digest)
-      @serial_active = @serial_active - 1
-      ok
-    end
-
-    # The most verifications {verify_serialized} has had in flight at once
-    # in this process (0 before the first; 1 afterwards, by construction).
-    def self.serialized_peak
-      @serial_peak
     end
 
     # The Mutex verify_serialized takes, for test/password.rb to hold.
@@ -346,17 +325,9 @@ module Cybertrain
     # no incremental digest. Written with `while` loops: each back-edge is a
     # safepoint, so the scheduler can preempt a hash in progress.
     def self.pbkdf2_sha256(password, salt, iterations)
-      key = password.bytesize > Crypto::BLOCK_SIZE ? Digest::SHA256.digest(password) : password
-      ipad = ("6" * Crypto::BLOCK_SIZE).b
-      opad = ("\\" * Crypto::BLOCK_SIZE).b
-      n = key.bytesize
-      i = 0
-      while i < n
-        b = key.getbyte(i)
-        ipad.setbyte(i, b ^ 0x36)
-        opad.setbyte(i, b ^ 0x5c)
-        i += 1
-      end
+      key = Crypto.hmac_key(password)
+      ipad = Crypto.hmac_pad(key, 0x36)
+      opad = Crypto.hmac_pad(key, 0x5c)
       # U_1 = PRF(password, salt || INT_32_BE(1))
       u = Digest::SHA256.digest(opad + Digest::SHA256.digest(ipad + salt.b + "\x00\x00\x00\x01".b))
       out = u.dup

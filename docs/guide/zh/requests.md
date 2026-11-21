@@ -1,5 +1,5 @@
 ---
-source_sha256: 8919ff462caf7ac2d1996cfa666cc4119d5c76c2641e57c1aa075e6dd88c56ff
+source_sha256: a8daf8137bdd9b6bb50a405ab126b696ae02cbddf3e3d25448e6bd2dbe219f15
 ---
 # 请求
 
@@ -113,9 +113,9 @@ end
 
 写了 `include AdminGate` 的控制器会得到 `included` 块所声明的内容（`before_action`、`skip_before_action`、`after_action`、`helper_method`、`rate_limit`、`rescue_from`、`layout`），位置就在 `include` 处，顺序与书写一致，并且在它的动作中可以使用 `self.class.per_page`。concern 可以包含 concern：gen 以深度优先展开它们，每个只展开一次，并点名拒绝循环（`concern cycle: A includes B includes A`）。`include A, B` 与 Ruby 一样先包含 B，所以 B 的 `included` 块和回调排在 A 之前。`around_action` 会被拒绝（没有 around 回调）。concern 方法中的 `@x =` 赋值属于控制器的视图变量。
 
-Spinel 会编译从不运行的 `included` 和 `class_methods` 块，所以由 gen 自己来展开：它把每个 concern 写到 `gen/concerns/<app/ 下的路径>`，并把这两个块清空（应用的文件加载这些副本），`gen/concerns.rb` 重新打开每个包含它的类，写入插入的声明以及每个 `class_methods` 方法的转发方法。由此产生两条规则。`class_methods` 的方法不能与 concern、包含它的类或其祖先的实例方法同名（Spinel 会把两者都定义为实例方法，spikes/NOTES.md 规则 93）；gen 会拒绝它并指出两个位置（实例方法所在的 `文件:行`）。另外，`include` 一个不是 concern 的模块（`include Comparable`，或在 `app/*/concerns` 下没有对应文件的名字）会原样留给 Ruby，所以 concern 名字拼错时，是应用加载时的 `NameError`，而不是 gen 的提示。gen 像 Ruby 一样查找名字，先查类自己所在的模块，所以 `module Admin` 里的 `include Gate` 会引入 `Admin::Gate`。一个名字如果找不到任何 concern，但最后一段与某个 concern 的名字相同（只有 `Admin::Gate` 时写 `include Gate`），gen 会停止：Ruby 会 include 别的模块或抛出异常，而这个 concern 的 `included` 块就会丢失。
+Spinel 会编译从不运行的 `included` 和 `class_methods` 块，所以由 gen 自己来展开：它把每个 concern 写到 `gen/concerns/<app/ 下的路径>`，并把这两个块清空（应用的文件加载这些副本），`gen/concerns.rb` 重新打开每个包含它的类，写入插入的声明以及每个 `class_methods` 方法的转发方法。`class_methods` 的方法可以与 concern、包含它的类或其祖先的实例方法同名：转发方法是类方法，而 gen 写出的副本不会为它定义实例方法。`include` 一个不是 concern 的模块（`include Comparable`，或在 `app/*/concerns` 下没有对应文件的名字）会原样留给 Ruby，所以 concern 名字拼错时，是应用加载时的 `NameError`，而不是 gen 的提示。gen 像 Ruby 一样查找名字，先查类自己所在的模块，所以 `module Admin` 里的 `include Gate` 会引入 `Admin::Gate`。一个名字如果找不到任何 concern，但最后一段与某个 concern 的名字相同（只有 `Admin::Gate` 时写 `include Gate`），gen 会停止：Ruby 会 include 别的模块或抛出异常，而这个 concern 的 `included` 块就会丢失。
 
-模型的 concern 放在 `app/models/concerns/`，工作方式相同：它们的 `included` 块可以包含模型的任何类级声明（`validates`、`validate`、`scope`、`belongs_to`、`has_many`、`has_one`、`encrypts`、回调、`normalizes`），视同在 `include` 处写在模型中。concern 的回调在模型自己的同类回调之后运行，模型 concern 的 `included` 块中的 `include` 会把那个 concern 引入。模型 concern 的 `class_methods` 方法名不能是该模型的 scope，也不能是每个模型都有的类方法（与 `scope :recent` 并列的 `recent`，或 `where`）；gen 会拒绝。
+模型的 concern 放在 `app/models/concerns/`，工作方式相同：它们的 `included` 块可以包含模型的任何类级声明（`validates`、`validate`、`scope`、`belongs_to`、`has_many`、`has_one`、`encrypts`、回调），视同在 `include` 处写在模型中。concern 的回调在模型自己的同类回调之后运行，模型 concern 的 `included` 块中的 `include` 会把那个 concern 引入。模型 concern 的 `class_methods` 方法名不能是该模型的 scope，也不能是每个模型都有的类方法（与 `scope :recent` 并列的 `recent`，或 `where`）；gen 会拒绝。
 
 在控制器或 concern 的 `included` 块中写 `helper_method :current_user, :admin?`，就可以在该控制器的模板以及它们渲染的组件和局部模板中，带参数调用这些控制器方法。gen 会拒绝以下名称：框架辅助方法的名称、以 `_path` 或 `_url` 结尾的名称、由 `app/helpers` 中的模块定义的名称、在控制器及其父类或 concern 中没有 `def` 的名称，以及模板无法传入其参数（`*rest`、`**opts`、`...`）的名称。
 
@@ -210,7 +210,7 @@ def export
 end
 ```
 
-`c.log_tags` 选择每一行显示什么；作业的行和错误报告带有把它加入队列的请求的 ID（[请求 ID](background-and-operations.md#request-ids)）。
+`c.log_tags` 选择每一行显示什么；作业的行和错误报告带有把它加入队列的请求的 ID（[请求 ID](logs-and-errors.md#request-ids)）。
 
 ## Content Security Policy、`force_ssl` 与主机
 
@@ -265,35 +265,18 @@ request.header_params("prefer").key?("respond-async")   # => true
 
 ## 查询字符串与请求体
 
-`Query.parse`、`Query.value_of`、`Query.decode` 以及 `request.form_value` / `query_value` 会抛出 `Cybertrain::QueryMalformed`（`Cybertrain::QueryInvalid` 之下的一个 `StandardError`，而不是 `ArgumentError`），以 400 响应，情形如下：
+请求的参数在动作运行之前解码，`Query.parse` 以同样的方式解码文本。两者都会抛出 `Cybertrain::QueryInvalid`（一个 `StandardError`，而不是 `ArgumentError`），以 400 响应，情形如下：
 
 - 格式错误的百分号转义，在两种运行时上都是如此；
 - 无效的 UTF-8 字节序列，无论是原始字节（不管 String 带什么编码标记）还是百分号编码的（Rails 同样会对参数编码无效的请求返回 400）；
 - 只有加上转义才能补全的原始字节（`a=\xC3%A9`）。
 
-`Cookies.parse` 则会原样保留这样的值。带有无效序列的路径（原始的，或某个路径段经百分号解码后出现的）同样返回 400（`request.path_segments`）；路径中格式错误的转义保持原样，因匹配不到而返回 404。请求参数最多嵌套 32 层、4096 对，超过则返回 400。升级说明：原先在这些调用外面 rescue `ArgumentError` 的应用代码，应改为 rescue `Cybertrain::QueryInvalid`。
+`Cookies.parse` 则会原样保留这样的值。带有无效序列的路径（原始的，或某个路径段经百分号解码后出现的）同样返回 400；路径中格式错误的转义保持原样，因匹配不到而返回 404。请求参数最多嵌套 32 层、4096 对，超过则返回 400。
 
 请求本身不保存参数树（路由器构建 `params`，中间件只读取一个键）；需要完整参数树的应用自己解析，`Query.parse(request.utf8_query_string)`，并自行管理结果。
 
 Rack 对 gzip 压缩的请求体保持原样。这里，以 `Content-Encoding: gzip` 发送的请求体（超过几 KB 的 SDK 或 API 客户端会这样做）通过 `request.decoded_body` 获取，它通过系统的 zlib 解压一次，输出有上限：默认 10 MiB，需要更多的端点传入自己的上限，`request.decoded_body(limit)`。损坏的请求体或 gzip/identity 以外的编码会引发 `Cybertrain::BodyUndecodable`，解压后会超过上限的请求体会引发 `Cybertrain::BodyTooLarge`，两者都是 `QueryInvalid`，以 400 响应。`request.body` 仍然是发送时的原始字节。
 
-## 升级为 0.4 编写的应用
+## 升级
 
-为 0.4 编写的应用需要注意的变化（完整列表见[设计文档](../superpowers/specs/2026-11-10-phase4-web-layer-design.md)第 14 节）：
-
-- 每个会话都会结束一次：加密的 cookie 不读取旧的签名 cookie，所以用户需要重新登录。调用 `Session.load` 或 `Session.dump` 的代码要传入派生的密钥 `Crypto.derive_key(secret, SessionStore::SESSION_KEY_LABEL)`；传入原始密钥会抛出 `Encryptor::Error`。
-- 每个应用都链接 OpenSSL（[安装](install.md#requirements)）；以前由 `cybertrain new` 写出的 Dockerfile 需要在构建阶段加入 `libssl-dev`，在运行阶段加入 `libssl3t64`。
-- 在接受格式的路由中，动态段不再捕获 `.`：含点号的 id 需要在其路由上写 `format: false`。
-- 手写的 `url_resolver` lambda 接受三个参数 `->(name, args, options)`；传入 `Gen::Routes.url_resolver` 的应用只需运行 `spin run gen`。
-- `params.permit` 返回 `Hash{String => Object}`：把值当作 String 使用之前，先对它调用 `Cast.str` 或 `.to_s`。
-- `rate_limit` 在缓存中计数：`store: :memory` 保留原来的按进程计数，同一控制器中的两个限制需要各自的 `name:`，返回 nil 或 `""` 的 `by:` 方法会抛出异常，什么都不渲染的 `with:` 方法之后仍返回 429。
-- 数字辅助方法对不是数字的值，以及超出 0 到 100 的精度，会抛出异常（nil 在模板中仍渲染为 `""`）。
-- 控制器或模型中的 `include A, B` 与 Ruby 一样先包含 B；`include` 一个不是 concern 的模块会留给 Ruby。
-- 所有 ETag 变化一次（现在包含请求的格式和构建摘要），由 `Accept` 决定的响应会发送 `Vary: Accept`，html 回退适用于任何列出 `text/html` 或 `*/*` 的 `Accept`。可能回退到 html 的请求（`application/json, text/html`）有自己的 ETag，与只请求该格式的请求不同；`Accept` 中的 `text/html;q=0` 不会得到 html 回退（只有 html 的动作响应 406），旁边有 `*/*` 时也一样；`If-None-Match: *` 对只用 `last_modified:` 验证的响应也会得到 304。
-- `permit` 和 `expect` 对不是 Array 的过滤器抛出 `ArgumentError`；`layout` 指向不存在的布局会抛出 `MissingTemplate`（默认的 `application` 布局仍是可选的）；jar cookie 超过 4096 字节会抛出 `Session::CookieOverflow`。
-- `public/style.css` 继续可用；把它移到 `app/assets/stylesheets/` 是可选的（[资源](assets.md#moving-publicstylecss)）。
-- 验证消息来自捆绑的词典（[国际化](i18n.md#models-and-validation-messages)），英语文本相同，只有三处不同：`:base` 上的消息不再以 "Base" 开头，以 `_id` 结尾的属性名不带 "id"（"Article can't be blank"，而不是 "Article id can't be blank"），长度上限为 1 时显示 "1 character"。比较这些消息的测试会改变。
-- 不带 `format:` 或带格式名的 `time_tag` 通过 `I18n.l` 格式化（在英语页面中与以前的英语文本相同）。
-- gen 写出 `gen/locales.rb`（没有 `config/locales/` 时为空）并加载 `app/mailers/**/*.rb`；`cybertrain new` 写出 `config/locales/en.yml`，较早的应用也可以添加它。
-- `allow_unauthenticated_access` 现在是框架的方法；0.4 的生成器写进 `ApplicationController` 的那个仍然有效并优先。再次运行 `cybertrain generate authentication` 会加入密码重置、锁定、保持登录、账户页面和管理员用户，并为 0.4 写的文件打印差异（[从 0.4 升级](authentication.md#upgrading-from-04)）。
-- 应用返回的每个响应都带 `X-Request-Id`（服务器对无法读取的请求返回的 400 和 413 除外），代理的 `X-Request-Id` 只有在代理受信任时才会采用；每一行日志的形状都变了（[从 0.4 升级日志与错误报告](background-and-operations.md#upgrading-logs-and-error-reports-from-04)）。
+某个版本在路由、控制器以及 Web 层其余部分的变化，按版本列在[升级](upgrading.md#notes-by-version)中。

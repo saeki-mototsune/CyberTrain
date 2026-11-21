@@ -618,8 +618,8 @@ test "address classification" do
   assert_equal "not an IP address", reason_of("1:2:3:4:5:6:7:8:9")
   assert_equal "not an IP address", reason_of("1::2::3")
   assert_equal "not an IP address", reason_of("")
-  assert_equal [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 10, 0, 0, 1], Cybertrain::Net::Address.parse_ipv6("::ffff:10.0.0.1")
-  assert_equal [32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], Cybertrain::Net::Address.parse_ipv6("2001:db8::1")
+  assert_equal [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 10, 0, 0, 1], Cybertrain::IpAddress.parse_ipv6("::ffff:10.0.0.1")
+  assert_equal [32, 1, 13, 184, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1], Cybertrain::IpAddress.parse_ipv6("2001:db8::1")
 end
 
 # ---- what the client refuses to send --------------------------------------

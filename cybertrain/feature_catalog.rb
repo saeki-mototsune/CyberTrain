@@ -1,6 +1,5 @@
 # Cybertrain::FeatureCatalog -- what each optional subsystem's require line
-# brings, as data (docs/superpowers/specs/2026-11-13-optional-subsystems-design.md,
-# sections 3 and 5): its view helpers, its roles and commands, and what the
+# brings, as data (docs/design.md D85): its view helpers, its roles and commands, and what the
 # line loads besides. One table for the two places that tell an
 # application which line it is missing: `spin run gen`, which refuses a
 # view calling a helper of a subsystem bin/NAME.rb does not require

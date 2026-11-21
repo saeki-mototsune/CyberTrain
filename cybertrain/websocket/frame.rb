@@ -154,6 +154,22 @@ module Cybertrain
           fin
         end
 
+        # Raises TooLargeError when a data frame with `length` payload bytes
+        # would take the message past max_message: asked with the frame's
+        # header, before its payload is read. Control frames always fit.
+        # @api private
+        # @param opcode [Integer]
+        # @param length [Integer]
+        # @return [nil]
+        def check_room(opcode, length)
+          return nil if opcode >= 8
+
+          before = opcode == OP_CONTINUATION ? @buffer.bytesize : 0
+          raise TooLargeError, "message larger than #{@max_message} bytes" if before + length > @max_message
+
+          nil
+        end
+
         # @return [Boolean] whether a fragmented message is in progress
         def assembling?
           @active

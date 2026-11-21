@@ -54,7 +54,6 @@ module Cybertrain
       env["flash"] = Template::Helpers.flash_messages(flash)
       env["params"] = params
       env["__template_dir"] = dir
-      env["__controller_path"] = dir
       env
     end
 
@@ -192,16 +191,7 @@ module Cybertrain
         media = parts[0].to_s.strip.downcase
         next unless media == "text/html" || media == "*/*"
 
-        refused = false
-        parts.each_with_index do |param, i|
-          next if i == 0
-
-          pair = param.split("=", 2)
-          next unless pair.size == 2 && pair[0].to_s.strip.downcase == "q"
-
-          refused = Request.zero_quality?(pair[1].to_s.strip)
-        end
-        state = refused ? 2 : 1
+        state = Request.entry_quality(parts) == 0 ? 2 : 1
         if media == "text/html"
           html = state if html == 0
         elsif any == 0
@@ -242,8 +232,6 @@ module Cybertrain
       case value
       when SafeString then return value.to_s
       when String then nil
-      # Time before Array (spikes/NOTES.md rule 8).
-      when Time then nil
       when Array
         out = +""
         i = 0

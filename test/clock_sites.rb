@@ -13,7 +13,7 @@ require_relative "fixtures/gen_app/app/jobs/digest_job"
 require_relative "fixtures/gen_app/app/jobs/welcome_job"
 require_relative "fixtures/gen_app/gen/jobs"
 
-# Spec section 2.3 and acceptance 1: the framework's times follow
+# docs/design.md D81: the framework's times follow
 # Cybertrain::Clock, so travel_to / travel / freeze_time move them all: a
 # model's timestamps, a cache entry's expiry, a job's run_at and the
 # emitted perform_in, a rate-limit window (memory store, through a
@@ -21,7 +21,7 @@ require_relative "fixtures/gen_app/gen/jobs"
 # expiry. Waits stay
 # on the monotonic clock, so a stream read and an HTTP receiver wait end
 # under freeze_time. (The idle limit lives in the generated Authentication
-# concern, not here: preflight ruling R4.) One SQLite file; it links
+# concern, not here.) One SQLite file; it links
 # SQLite through FFI, so the snapshot comes from the compiled binary
 # (spikes/NOTES.md rule 23).
 

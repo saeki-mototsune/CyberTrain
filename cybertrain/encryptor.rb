@@ -1,6 +1,6 @@
 # Cybertrain::Encryptor: AES-256-GCM, for column encryption (`encrypts
-# :api_key` in a model, spec section 10), the session cookie and
-# `cookies.encrypted` (spec section 5.1).
+# :api_key` in a model, docs/design.md D49), the session cookie and
+# `cookies.encrypted` (docs/design.md D61).
 #
 # Loaded by every program: `require "cybertrain"` requires it, because the
 # session cookie is encrypted. It requires Spinel's openssl package, which
@@ -230,7 +230,7 @@ module Cybertrain
     # built on first use and again only when they change.
     # @return [Encryptor]
     # @raise [Encryptor::Error] when the key is unset or not 64 hex
-    #   characters (boot reports this first: {#encryption_error})
+    #   characters (boot reports this first)
     # @api public
     def encryptor
       Encryptor.for_keys(@encryption_key, @encryption_keys_previous)

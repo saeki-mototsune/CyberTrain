@@ -1,5 +1,5 @@
 ---
-source_sha256: a4339f594b9c9de55b09807da627307deb782afc97659df37c44b27bbc402157
+source_sha256: 6a1655f18b429bd1cfd676a69d23b8a7edf43720044e4bc6ff0b24537c141f17
 ---
 # 认证
 
@@ -27,7 +27,7 @@ cybertrain db migrate
 | `app/views/...` | 各个页面（每段文本都经过 `t()`）以及 `sessions/_nav` 局部模板 |
 | `test/fixtures/users.yml`、`test/support/session_test_helper.rb`、`test/models/`、`test/controllers/`、`test/integration/` | 夹具用户、`sign_in_as`，以及每个部分的测试（[测试](#testing)） |
 
-以及各进行一次的修改：在 `ApplicationController` 中加入 `include Authentication`、路由、作业页面那一行（[管理员用户](#admin-users-and-the-jobs-page)）、布局中的 nav 局部模板、`bin/<app>.rb` 中的用户命令、`config/app.rb` 中的 `base_url` 设置（[邮件中的链接](#links-in-mails)），以及在 `bin/<app>.rb` 和 `bin/db.rb` 中加入代码用到的子系统的行，除非 `require "cybertrain"` 已经加载了全部：`cybertrain/jobs`、`cybertrain/mailer`、`cybertrain/mailer/later` 和 `cybertrain/rate_limit`（[子系统](how-it-works.md#subsystems)）。用相同的选项再次运行不会改变任何东西：已经做过的修改会被找到并跳过，已经与它要写的内容相同的文件保持不变。它会写得不同的文件（你编辑过的，或者旧版生成器或其他选项写的）在没有 `--force` 时绝不会被覆盖，而是打印出它的差异（[从 0.4 升级](#upgrading-from-04)、[之后再开启确认](#turning-on-confirmation-later)）。
+以及各进行一次的修改：在 `ApplicationController` 中加入 `include Authentication`、路由、作业页面那一行（[管理员用户](#admin-users-and-the-jobs-page)）、布局中的 nav 局部模板、`bin/<app>.rb` 中的用户命令、`config/app.rb` 中的 `base_url` 设置（[邮件中的链接](#links-in-mails)），以及在 `bin/<app>.rb` 和 `bin/db.rb` 中加入代码用到的子系统的行，除非 `require "cybertrain"` 已经加载了全部：`cybertrain/jobs`、`cybertrain/mailer`、`cybertrain/mailer/later` 和 `cybertrain/rate_limit`（[子系统](how-it-works.md#subsystems)）。它还会在 `test/test_helper.rb` 中 include `SessionTestHelper`，在已有的脚手架测试和附件测试开头登录 `users(:one)`（[测试](#testing)），并取消 `cybertrain new` 在 `config/deploy.yml` 中留下的 worker 角色的注释，因为邮件由作业线程发送。用相同的选项再次运行不会改变任何东西：已经做过的修改会被找到并跳过，已经与它要写的内容相同的文件保持不变。它会写得不同的文件（你编辑过的，或者旧版生成器或其他选项写的）在没有 `--force` 时绝不会被覆盖，而是打印出它的差异（[再次运行生成器](#running-the-generator-again)、[之后再开启确认](#turning-on-confirmation-later)）。
 
 生成的页面上的文本在框架的英语和日语词典中，使用各自的惰性查找键（`sessions.new.title`、`passwords.create.sent`）；应用可以在 `config/locales/` 中覆盖它们或添加一种语言（[国际化](i18n.md#the-bundled-dictionaries)）。
 
@@ -61,7 +61,7 @@ class ArticlesController < ApplicationController
 
 ## 开放注册，或仅限邀请
 
-默认情况下，生成器写出 `RegistrationsController`（`/sign_up`），它创建用户并让其登录。Rails 的生成器没有注册页面，把第一个用户留给控制台；CyberTrain 没有 Ruby 控制台，所以写出了这个页面。注册和登录一样，按客户端地址限制为每三分钟十次：每次注册都要计算一次密码哈希，可能发送一封带链接的邮件，而它的 "has already been taken" 会说出某个地址是否已注册。
+默认情况下，生成器写出 `RegistrationsController`（`/sign_up`），它创建用户并让其登录。Rails 的生成器没有注册页面，把第一个用户留给 `rails console`；CyberTrain 的控制台不是 Ruby 提示符（[控制台](background-and-operations.md#the-console)），所以生成器写出了这个页面。注册和登录一样，按客户端地址限制为每三分钟十次：每次注册都要计算一次密码哈希，可能发送一封带链接的邮件，而它的 "has already been taken" 会说出某个地址是否已注册。
 
 生成的代码保存的每个地址，无论来自注册页面、`/setup`、账户页面还是用户命令，都必须是一个地址：`User.email_address_format?` 要求恰好一个两边都有文字的 `@`，并且没有逗号、空白、尖括号或控制字符。邮件发送器把 `ann@example.com,eve@evil.example` 读作两个收件人，所以没有这项检查，一个账户就可能拥有两个邮箱，重置链接会发给两者，而在 `--confirmable` 下任一邮箱都能完成确认。地址还必须通过邮件发送器自己的检查（`Cybertrain::Mailer.address_problem`）：只能是 ASCII（因此也不能有 Unicode 空白或控制字符），不含 `( ) [ ] ; : \ "` 中的任何一个，本地部分最多 64 字节，整体最多 254 字节。邮件发送器拒绝的地址即使保存下来也永远收不到邮件，所以在输入时就被拒绝。邮件标准允许的一些地址也会被拒绝（带空格或逗号的加引号本地部分、含非 ASCII 字符的地址）；这个方法由应用自行修改。检查出现之前保存的地址不会再次检查，所以该账户仍然可以重置密码和登录。
 
@@ -202,13 +202,13 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 | `test/integration/lockout_test.rb` | 锁定和它的一小时 |
 | `test/integration/admin_test.rb` | `require_admin`、`user admin` |
 
-时间用 `travel_to` 和 `travel` 推进（不会把任何行往回改时间），邮件用 `assert_emails` 和 `perform_enqueued_jobs` 从 `Cybertrain::Mailer.deliveries` 中读取。在认证之后生成的脚手架会在其控制器测试开头登录 `users(:one)`；在认证之前生成的不会，请在它的 `setup` 中加上 `sign_in_as users(:one)`。在一个由早先的生成器写过测试的应用中再次运行（`test/authentication.rb`、`admin.rb`、`remember_me.rb`、`lockout.rb`、`passwords.rb`、`accounts.rb`、`confirmations.rb`、`test/support/app_test.rb`、`test/support/authentication_helpers.rb`），生成器会指出每个文件以及替代它的文件；`--force` 会删除它们。
+时间用 `travel_to` 和 `travel` 推进（不会把任何行往回改时间），邮件用 `assert_emails` 和 `perform_enqueued_jobs` 从 `Cybertrain::Mailer.deliveries` 中读取。在认证之后生成的脚手架会在其控制器测试开头登录 `users(:one)`；对于在认证之前生成的，生成器会把 `sign_in_as users(:one)` 插入该测试的 `setup`（`generate attachment` 的集成测试的 `setup` 也一样）；你改写过的 `setup` 保持不变，请自己在那里加上这一行。在一个由早先的生成器写过测试的应用中再次运行（`test/authentication.rb`、`admin.rb`、`remember_me.rb`、`lockout.rb`、`passwords.rb`、`accounts.rb`、`confirmations.rb`、`test/support/app_test.rb`、`test/support/authentication_helpers.rb`），生成器会指出每个文件以及替代它的文件；`--force` 会删除它们。
 
 本仓库的 `script/auth-e2e signup invite confirmable upgrade04` 用生成器构建应用，并端到端地驱动它们。
 
-## 从 0.4 升级
+## 再次运行生成器
 
-在 0.4 生成的应用中再次运行生成器。它写出缺少的文件、一个补充现有迁移所缺列的迁移，以及各项修改；对于它本应整体写出、但已存在且内容不同的文件，它不做改动，而是打印差异：
+在较早版本生成的应用中再次运行生成器。它写出缺少的文件、一个补充现有迁移所缺列的迁移，以及各项修改；对于它本应整体写出、但已存在且内容不同的文件，它不做改动，而是打印差异。在 0.4 生成的应用中：
 
 ```text 输出 — cybertrain generate authentication（节选）
 exist db/migrate/20260925120000_create_users.rb
@@ -232,14 +232,11 @@ manual  app/controllers/application_controller.rb: apply this diff by hand, or r
 +  include Authentication
 ```
 
-[test/fixtures/auth_04_app.upgrade.diff](../../test/fixtures/auth_04_app.upgrade.diff) 是针对 0.4 生成的开放注册应用的完整输出。
-
 <!-- list: points -->
 - 保存输出，在应用目录中用 `patch -p1` 应用（patch 会跳过不属于差异的行），或者在你修改过文件的地方手工应用每个差异。在应用这些差异之前，应用可能无法构建：新文件会调用差异所添加的内容。
-- `--force` 则用新文件覆盖旧文件，适用于你从未编辑过的文件；`ApplicationController` 中 0.4 的代码块只有在与 0.4 所写完全相同时才会被替换。
+- `--force` 则用新文件覆盖旧文件，适用于你从未编辑过的文件。
 - 新迁移只添加缺少的列；运行 `cybertrain db migrate`。使用 `--confirmable` 时，它还把已有用户视为（自创建起）已确认，否则他们都无法登录。
-- 使用 `--confirmable` 时，sessions 和 registrations 控制器的差异带有一行 `IMPORTANT:`：在应用它们之前，未确认的账户不会被告知为何无法登录，注册也不会收到链接邮件。在 0.4 的应用中关注点是新文件，连同确认检查一起写出，所以即使这些差异从未应用，它仍然不会为未确认的账户开始会话（并记录 `WARN [<request id>] no session started: user <id> has not confirmed its address`）。
-- 升级时每个会话都会结束一次（cookie 现在是加密的），[升级 0.4 的应用](requests.md#upgrading-an-application-from-04) 的其余部分也同样适用。
+- 某个版本的生成器有什么变化，以及该版本对应用还有什么要求，按版本列在[升级](upgrading.md#notes-by-version)中。
 
 ### 之后再开启确认
 

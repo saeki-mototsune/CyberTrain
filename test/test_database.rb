@@ -4,8 +4,8 @@ require "cybertrain"
 require "cybertrain/test_help"
 require "cybertrain/db/sqlite_ddl"
 
-# Steps 1 and 2 of a bundled test (spec sections 5.3, 6 and 7, plan
-# decision D8): Test::Database.clear! empties the application's tables, the
+# Steps 1 and 2 of a bundled test (docs/design.md D82 and D83):
+# Test::Database.clear! empties the application's tables, the
 # framework's and sqlite_sequence; load_fixtures! runs the generated
 # inserts of test/fixtures/gen_app/gen/test/data.rb (from its
 # test/fixtures/posts.yml and comments.yml) with foreign keys off and the

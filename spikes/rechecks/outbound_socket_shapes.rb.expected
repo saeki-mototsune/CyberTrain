@@ -1,0 +1,9 @@
+unresolvable name: SocketError
+entry[3]: 127.0.0.1
+destructured: 127.0.0.1
+IPSocket.getaddress: 127.0.0.1
+Addrinfo.tcp: 127.0.0.1
+SO_ERROR after a refused connect: true
+second connect_nonblock: Errno::ECONNREFUSED
+TCPSocket.new, refused: Errno::ECONNREFUSED
+Errno constant: true

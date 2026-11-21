@@ -7,8 +7,8 @@
 # The password is hashed by Cybertrain::Password (PBKDF2-HMAC-SHA256) into
 # password_digest; the plain text lives only in @password until the
 # record is saved. `password=` and `authenticate` are what Rails'
-# `has_secure_password` would define (Spinel cannot define methods at
-# run time, so they are written out).
+# `has_secure_password` would define (CyberTrain has no such macro:
+# they are written out here).
 class User
   MIN_PASSWORD_LENGTH = 8
 

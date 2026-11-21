@@ -1,5 +1,5 @@
 ---
-source_sha256: 8919ff462caf7ac2d1996cfa666cc4119d5c76c2641e57c1aa075e6dd88c56ff
+source_sha256: a8daf8137bdd9b6bb50a405ab126b696ae02cbddf3e3d25448e6bd2dbe219f15
 ---
 # Requêtes
 
@@ -113,9 +113,9 @@ end
 
 Un contrôleur qui écrit `include AdminGate` reçoit ce que déclare le bloc `included` (`before_action`, `skip_before_action`, `after_action`, `helper_method`, `rate_limit`, `rescue_from`, `layout`), à la place de l’`include` et dans l’ordre écrit, et `self.class.per_page` fonctionne dans ses actions. Les concerns peuvent inclure des concerns&nbsp;: gen les développe en profondeur d’abord, chacun une fois, et refuse un cycle en le nommant (`concern cycle: A includes B includes A`). `include A, B` inclut B d’abord, comme Ruby, donc le bloc `included` et les callbacks de B passent avant ceux de A. `around_action` est refusé (il n’y a pas de callbacks around). Les affectations `@x =` dans les méthodes d’un concern sont des variables de vue du contrôleur.
 
-Spinel compile les blocs `included` et `class_methods`, qui ne s’exécutent jamais, donc gen les développe lui-même&nbsp;: il écrit chaque concern dans `gen/concerns/<chemin sous app/>` avec ces deux blocs vidés (les fichiers de l’application chargent ces copies), et `gen/concerns.rb` rouvre chaque classe qui l’inclut avec les déclarations insérées et un renvoi par méthode de `class_methods`. Deux règles en découlent. Une méthode de `class_methods` ne peut pas porter le nom d’une méthode d’instance du concern, d’une classe qui l’inclut ou de ses ancêtres (Spinel définirait les deux comme méthodes d’instance, spikes/NOTES.md règle 93)&nbsp;; gen la refuse en nommant les deux endroits (`fichier:ligne` de la méthode d’instance). Et un `include` d’un module qui n’est pas un concern (`include Comparable`, un nom sans fichier sous `app/*/concerns`) est laissé tel quel à Ruby, si bien qu’un nom de concern mal orthographié est une `NameError` au chargement de l’application, pas un message de gen. gen cherche un nom comme Ruby, d’abord dans les modules de la classe elle-même&nbsp;: `include Gate` dans `module Admin` inclut donc `Admin::Gate`. Un nom qui n’atteint aucun concern mais se termine par le nom d’un concern (`include Gate` quand seul `Admin::Gate` existe) arrête gen&nbsp;: Ruby inclurait un autre module ou lèverait une erreur, et le bloc `included` du concern serait perdu.
+Spinel compile les blocs `included` et `class_methods`, qui ne s’exécutent jamais, donc gen les développe lui-même&nbsp;: il écrit chaque concern dans `gen/concerns/<chemin sous app/>` avec ces deux blocs vidés (les fichiers de l’application chargent ces copies), et `gen/concerns.rb` rouvre chaque classe qui l’inclut avec les déclarations insérées et un renvoi par méthode de `class_methods`. Une telle méthode peut porter le nom d’une méthode d’instance du concern, d’une classe qui l’inclut ou de ses ancêtres&nbsp;: le renvoi est une méthode de classe, et la copie qu’écrit gen ne définit aucune méthode d’instance pour elle. Un `include` d’un module qui n’est pas un concern (`include Comparable`, un nom sans fichier sous `app/*/concerns`) est laissé tel quel à Ruby, si bien qu’un nom de concern mal orthographié est une `NameError` au chargement de l’application, pas un message de gen. gen cherche un nom comme Ruby, d’abord dans les modules de la classe elle-même&nbsp;: `include Gate` dans `module Admin` inclut donc `Admin::Gate`. Un nom qui n’atteint aucun concern mais se termine par le nom d’un concern (`include Gate` quand seul `Admin::Gate` existe) arrête gen&nbsp;: Ruby inclurait un autre module ou lèverait une erreur, et le bloc `included` du concern serait perdu.
 
-Les concerns de modèle vivent dans `app/models/concerns/` et fonctionnent de la même façon&nbsp;: leur bloc `included` peut contenir toutes les déclarations de niveau classe du modèle (`validates`, `validate`, `scope`, `belongs_to`, `has_many`, `has_one`, `encrypts`, callbacks, `normalizes`), traitées comme écrites dans le modèle à l’`include`. Les callbacks d’un concern s’exécutent après ceux du modèle du même type, et un `include` dans le bloc `included` d’un concern de modèle fait entrer ce concern. Le nom d’une méthode de `class_methods` d’un concern de modèle ne peut être ni un scope du modèle ni une méthode de classe que tout modèle a (`recent` à côté de `scope :recent`, `where`)&nbsp;; gen la refuse.
+Les concerns de modèle vivent dans `app/models/concerns/` et fonctionnent de la même façon&nbsp;: leur bloc `included` peut contenir toutes les déclarations de niveau classe du modèle (`validates`, `validate`, `scope`, `belongs_to`, `has_many`, `has_one`, `encrypts`, callbacks), traitées comme écrites dans le modèle à l’`include`. Les callbacks d’un concern s’exécutent après ceux du modèle du même type, et un `include` dans le bloc `included` d’un concern de modèle fait entrer ce concern. Le nom d’une méthode de `class_methods` d’un concern de modèle ne peut être ni un scope du modèle ni une méthode de classe que tout modèle a (`recent` à côté de `scope :recent`, `where`)&nbsp;; gen la refuse.
 
 `helper_method :current_user, :admin?` dans un contrôleur, ou dans le bloc `included` d’un concern, rend ces méthodes du contrôleur appelables depuis les templates de ce contrôleur, et depuis les composants et partiels qu’ils rendent, avec leurs arguments. gen refuse un nom qui est un helper du framework, finit par `_path` ou `_url`, est défini par un module de `app/helpers`, n’a pas de `def` dans le contrôleur, ses parents ou ses concerns, ou dont un template ne peut pas passer les paramètres (`*rest`, `**opts`, `...`).
 
@@ -258,7 +258,7 @@ end
 
 `c.log_tags` choisit ce que montre chaque ligne, et les lignes et les rapports
 d’erreur d’un job portent l’identifiant de la requête qui l’a mis en file
-([Identifiants de requête](background-and-operations.md#request-ids)).
+([Identifiants de requête](logs-and-errors.md#request-ids)).
 
 ## Content Security Policy, `force_ssl` et hôtes
 
@@ -328,35 +328,19 @@ paramètre&nbsp;: vérifiez le schéma, puis lisez l’identifiant dans
 
 ## Chaînes de requête et corps
 
-`Query.parse`, `Query.value_of`, `Query.decode` et `request.form_value` / `query_value` lèvent `Cybertrain::QueryMalformed` (une `StandardError` sous `Cybertrain::QueryInvalid`, pas une `ArgumentError`), à laquelle il est répondu 400, sur&nbsp;:
+Les paramètres d’une requête sont décodés avant que son action s’exécute, et `Query.parse` décode un texte de la même façon. Les deux lèvent `Cybertrain::QueryInvalid` (une `StandardError`, pas une `ArgumentError`), à laquelle il est répondu 400, sur&nbsp;:
 
 - un échappement pourcent mal formé, sur les deux runtimes&nbsp;;
 - une séquence d’octets UTF-8 invalide, brute (quel que soit le tag de la String) ou encodée en pourcent (Rails répond de même 400 pour un encodage de paramètre invalide)&nbsp;;
 - un octet brut que seul un échappement compléterait (`a=\xC3%A9`).
 
-`Cookies.parse` garde plutôt une telle valeur brute. Un chemin avec une séquence invalide (brute, ou décodée depuis le pourcent dans un segment) donne aussi une 400 (`request.path_segments`)&nbsp;; un échappement mal formé dans un chemin reste littéral, une 404 faute de correspondance. Les paramètres de requête s’imbriquent sur 32 niveaux et 4096 paires au plus, et donnent une 400 au-delà. Note de mise à niveau&nbsp;: le code d’application qui faisait `rescue ArgumentError` autour de ces appels doit plutôt faire `rescue Cybertrain::QueryInvalid`.
+`Cookies.parse` garde plutôt une telle valeur brute. Un chemin avec une séquence invalide (brute, ou décodée depuis le pourcent dans un segment) donne aussi une 400&nbsp;; un échappement mal formé dans un chemin reste littéral, une 404 faute de correspondance. Les paramètres de requête s’imbriquent sur 32 niveaux et 4096 paires au plus, et donnent une 400 au-delà.
 
 La requête ne garde pas d’arbre de paramètres à elle (le Router construit `params`, le middleware lit une seule clé)&nbsp;; une application qui veut l’arbre entier l’analyse elle-même, `Query.parse(request.utf8_query_string)`, et possède le résultat.
 
 Rack laisse un corps de requête gzip tel quel. Ici, un corps envoyé avec `Content-Encoding: gzip` (un SDK ou un client d’API au-delà de quelques kilo-octets) est `request.decoded_body`, décompressé une fois via la zlib du système sous un plafond de taille de sortie&nbsp;: 10&nbsp;Mio par défaut, et un point d’accès qui attend davantage passe le sien, `request.decoded_body(limit)`. Un corps corrompu ou un encodage autre que gzip/identity donne `Cybertrain::BodyUndecodable`, un corps qui dépasserait la limite une fois décompressé `Cybertrain::BodyTooLarge`, deux `QueryInvalid` auxquelles il est répondu 400. `request.body` reste les octets tels qu’envoyés.
 
-## Mettre à jour une application écrite pour 0.4
+## Mise à jour
 
-Ce qui change pour une application écrite pour 0.4 (la liste complète est la section 14 de [la conception](../superpowers/specs/2026-11-10-phase4-web-layer-design.md))&nbsp;:
-
-- Chaque session prend fin une fois&nbsp;: le cookie chiffré ne lit pas l’ancien cookie signé, donc les utilisateurs se reconnectent. Le code qui appelle `Session.load` ou `Session.dump` passe la clé dérivée, `Crypto.derive_key(secret, SessionStore::SESSION_KEY_LABEL)`&nbsp;; le secret brut lève `Encryptor::Error`.
-- Chaque application est liée à OpenSSL ([Installation](install.md#requirements))&nbsp;; un Dockerfile écrit auparavant par `cybertrain new` a besoin de `libssl-dev` dans son étape de build et de `libssl3t64` dans son étape d’exécution.
-- Un segment dynamique ne capture plus de `.` dans une route qui prend un format&nbsp;: un identifiant contenant des points a besoin de `format: false` sur sa route.
-- Une lambda `url_resolver` écrite à la main prend trois arguments, `->(name, args, options)`&nbsp;; une application qui passe `Gen::Routes.url_resolver` n’a besoin que de `spin run gen`.
-- `params.permit` renvoie `Hash{String => Object}`&nbsp;: appelez `Cast.str` ou `.to_s` sur une valeur avant de l’utiliser comme String.
-- `rate_limit` compte dans le cache&nbsp;: `store: :memory` garde l’ancien compteur par processus, deux limites dans un même contrôleur ont besoin de leur propre `name:`, une méthode `by:` qui répond nil ou `""` lève une erreur, et une méthode `with:` qui ne rend rien est suivie de la 429.
-- Les helpers numériques lèvent une erreur pour une valeur qui n’est pas un nombre (nil donne `""` dans un template, comme avant), et pour une précision hors de 0 à 100.
-- `include A, B` dans un contrôleur ou un modèle inclut B d’abord, comme Ruby&nbsp;; l’`include` d’un module qui n’est pas un concern est laissé à Ruby.
-- Tous les ETag changent une fois (ils portent désormais le format de la requête et une empreinte du build), une réponse négociée par `Accept` envoie `Vary: Accept`, et le repli html couvre tout `Accept` qui liste `text/html` ou `*/*`. Une requête qui peut se replier sur html (`application/json, text/html`) a son propre ETag, distinct de celui d’une requête pour ce seul format&nbsp;; `text/html;q=0` dans `Accept` ne reçoit pas le repli html (406 quand l’action n’a que du html), même à côté de `*/*`&nbsp;; et `If-None-Match: *` reçoit une 304 d’une réponse validée par `last_modified:` seul.
-- `permit` et `expect` lèvent `ArgumentError` pour un filtre qui n’est pas un Array&nbsp;; un `layout` qui nomme un layout absent lève `MissingTemplate` (le layout `application` par défaut reste facultatif)&nbsp;; un cookie du jar de plus de 4096 octets lève `Session::CookieOverflow`.
-- `public/style.css` continue de fonctionner&nbsp;; le déplacer dans `app/assets/stylesheets/` est facultatif ([Assets](assets.md#moving-publicstylecss)).
-- Les messages de validation viennent du dictionnaire fourni ([Internationalisation](i18n.md#models-and-validation-messages)), avec le même texte anglais sauf en trois points&nbsp;: un message sur `:base` n’est plus préfixé par "Base", un attribut qui se termine par `_id` est nommé sans "id" ("Article can't be blank", et non "Article id can't be blank"), et une limite de longueur de 1 donne "1 character". Les tests qui comparent ces messages changent.
-- `time_tag` sans `format:`, ou avec un nom de format, formate par `I18n.l` (le même texte anglais qu’avant dans une page en anglais).
-- gen écrit `gen/locales.rb` (vide sans `config/locales/`) et charge `app/mailers/**/*.rb`&nbsp;; `cybertrain new` écrit `config/locales/en.yml`, qu’une application plus ancienne peut ajouter.
-- `allow_unauthenticated_access` est désormais une méthode du framework&nbsp;; celle que le générateur de 0.4 a écrite dans `ApplicationController` fonctionne toujours et l’emporte. Relancer `cybertrain generate authentication` ajoute la réinitialisation du mot de passe, le verrouillage, «&nbsp;rester connecté&nbsp;», la page de compte et les administrateurs, et affiche des diffs pour les fichiers que 0.4 a écrits ([Mettre à jour depuis 0.4](authentication.md#upgrading-from-04)).
-- Chaque réponse de l’application porte `X-Request-Id` (pas les 400 et 413 du serveur pour une requête qu’il ne peut pas lire), et le `X-Request-Id` d’un proxy n’est utilisé que si le proxy est de confiance&nbsp;; chaque ligne de journal change de forme ([Mettre à jour les journaux et les rapports d’erreur depuis 0.4](background-and-operations.md#upgrading-logs-and-error-reports-from-04)).
+Ce qu’une version change dans le routage, les contrôleurs et le reste de la couche web
+figure par version dans [Mise à jour](upgrading.md#notes-by-version).

@@ -3,7 +3,7 @@ require "cybertrain/test"
 require "cybertrain/controller"
 require "cybertrain/flash"
 
-# Application helpers (spec 3.1): a helper module and the ApplicationHelpers
+# Application helpers (docs/design.md D38): a helper module and the ApplicationHelpers
 # class hand-written in the shape gen/helpers.rb emits, installed as
 # Views.helpers_builder; controllers then render through it.
 #

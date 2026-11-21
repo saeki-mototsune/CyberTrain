@@ -71,17 +71,6 @@ module Cybertrain
       end
     end
 
-    # ` name="value"`, escaped. Tag builders append what this returns: a
-    # method that appends to a String it was given (`buf << ...` on a
-    # parameter) makes Spinel run the GC write barrier on the caller's
-    # stack slot, which later crashes a minor collection. Where the name is
-    # a literal, the builders write `buf << " name=\"" << Html.escape(v) <<
-    # "\""` instead: the literals are static and Html.escape returns its
-    # argument when nothing needs escaping, so that allocates nothing.
-    def self.html_attr(name, value)
-      " #{name}=\"#{Html.escape(value)}\"" # one String, sized up front
-    end
-
     # ` name="value"` for any value: a SafeString as is (it is HTML
     # already, as in Rails' tag_option), anything else as text, escaped.
     def self.text_attr(name, value)
@@ -121,8 +110,8 @@ module Cybertrain
       case value
       when nil, false then ""
       when true then " #{name}=\"#{name}\""
-      # Time before Hash: a Time in a polymorphic slot can match a
-      # collection class (spikes/NOTES.md rule 8).
+      # Time before Hash, the order spikes/NOTES.md rule 8 asks for (seen
+      # on Spinel 2026.09.12; status 8 has its probe on the pinned build).
       when Time then " #{name}=\"#{FormBuilder.html_text(value)}\""
       when Hash
         unless name == "data" || name == "aria"
@@ -152,7 +141,6 @@ module Cybertrain
       out = Array.new(0) { "" }
       case v
       when nil then nil
-      when Time then out << FormBuilder.value_text(v)
       when Array
         i = 0
         while i < v.size
@@ -176,7 +164,6 @@ module Cybertrain
     # One choice: a value (its own text) or a [text, value] pair.
     def self.choice_option(el, selected, disabled)
       case el
-      when Time then FormBuilder.option_tag(el, el, selected, disabled)
       when Array
         n = el.size
         text = n > 0 ? el[0] : nil
@@ -188,7 +175,6 @@ module Cybertrain
 
     def self.group_choices?(v)
       case v
-      when Time then false
       when Array then true
       else false
       end
@@ -230,7 +216,6 @@ module Cybertrain
           el = choices[i]
           group = false
           case el
-          when Time then nil
           when Array
             if el.size == 2 && FormBuilder.group_choices?(el[1])
               group = true
@@ -302,7 +287,6 @@ module Cybertrain
     def self.collection_options(records, value_sym, text_sym, selected, disabled, helper)
       out = +""
       case records
-      when Time then nil
       when Array
         i = 0
         while i < records.size

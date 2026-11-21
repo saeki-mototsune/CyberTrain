@@ -57,7 +57,6 @@ ok   SqliteDDL.statements for :add_column
 ok   SqliteDDL.statements for :remove_column
 ok   SqliteDDL.statements for :rename_column
 ok   SqliteDDL.statements for :add_index
-ok   SqliteDDL.statements for :remove_index
 ok   SqliteDDL.statements for :add_reference adds the column and its index
 ok   SqliteDDL.statements for :add_foreign_key raises IrreversibleMigration
 == 20260101000000 CreatePosts: migrating
@@ -110,4 +109,4 @@ done
 == 20260101000100 CreateComments: migrating
 done
 ok   an applied version with no file is never pending or run, and status lists it as applied (no file)
-26 tests, 90 assertions, 0 failures
+25 tests, 89 assertions, 0 failures

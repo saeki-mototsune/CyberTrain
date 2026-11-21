@@ -1,3 +1,4 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/concern_scan"
 require "cybertrain/generator/model_scan"
@@ -103,7 +104,7 @@ module Cybertrain
 
       # "app/models/post" for root/app/models/post.rb, sorted.
       def self.rb_files(root, dir)
-        ControllerScan.ruby_files("#{root}/#{dir}").map { |path| relative(root, path) }
+        SourceText.ruby_files("#{root}/#{dir}").map { |path| relative(root, path) }
       end
 
       def self.relative(root, path)

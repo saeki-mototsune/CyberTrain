@@ -24,4 +24,8 @@ class ApplicationController < Cybertrain::Controller
   def not_found
     render plain: "not found: #{rescued_exception.message}", status: :not_found
   end
+
+  # AdminGate's class_methods, which GatedController includes, has a
+  # parent_limit too.
+  def parent_limit = 3
 end

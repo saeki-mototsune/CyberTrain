@@ -18,20 +18,20 @@
 <meta property="og:locale:alternate" content="zh_CN">
 <meta property="og:locale:alternate" content="fr_FR">
 <meta property="og:site_name" content="CyberTrain">
-<meta property="og:url" content="https://saeki-mototsune.github.io/CyberTrain/ru/deploy.html">
-<meta property="og:image" content="https://saeki-mototsune.github.io/CyberTrain/assets/og/ru/deploy.png">
+<meta property="og:url" content="https://www.cybertrain.dev/ru/deploy.html">
+<meta property="og:image" content="https://www.cybertrain.dev/assets/og/ru/deploy.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="Развёртывание приложения CyberTrain">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="canonical" href="https://saeki-mototsune.github.io/CyberTrain/ru/deploy.html">
-<link rel="alternate" hreflang="en" href="https://saeki-mototsune.github.io/CyberTrain/deploy.html">
-<link rel="alternate" hreflang="ja" href="https://saeki-mototsune.github.io/CyberTrain/ja/deploy.html">
-<link rel="alternate" hreflang="zh-Hans" href="https://saeki-mototsune.github.io/CyberTrain/zh/deploy.html">
-<link rel="alternate" hreflang="ru" href="https://saeki-mototsune.github.io/CyberTrain/ru/deploy.html">
-<link rel="alternate" hreflang="fr" href="https://saeki-mototsune.github.io/CyberTrain/fr/deploy.html">
-<link rel="alternate" hreflang="x-default" href="https://saeki-mototsune.github.io/CyberTrain/deploy.html">
+<link rel="canonical" href="https://www.cybertrain.dev/ru/deploy.html">
+<link rel="alternate" hreflang="en" href="https://www.cybertrain.dev/deploy.html">
+<link rel="alternate" hreflang="ja" href="https://www.cybertrain.dev/ja/deploy.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://www.cybertrain.dev/zh/deploy.html">
+<link rel="alternate" hreflang="ru" href="https://www.cybertrain.dev/ru/deploy.html">
+<link rel="alternate" hreflang="fr" href="https://www.cybertrain.dev/fr/deploy.html">
+<link rel="alternate" hreflang="x-default" href="https://www.cybertrain.dev/deploy.html">
 <script src="../assets/site.js" defer></script>
 
 <title>Развёртывание в продакшене · CyberTrain</title>
@@ -118,9 +118,9 @@
 <span class="ln">                                       └─ storage/production.sqlite3</span></code></pre>
 </figure>
     <ul class="points">
-      <li><strong>Он связан с системными SQLite и libc,</strong> поэтому собирайте его на той же ОС и том же процессоре, что и машина, на которой он работает. Сборка внутри образа Docker, как в конфигурации Kamal, решает это сама.</li>
+      <li><strong>Он связан с системными SQLite, zlib, OpenSSL и libc,</strong> поэтому собирайте его на той же ОС и том же процессоре, что и машина, на которой он работает. Сборка внутри образа Docker, как в конфигурации Kamal, решает это сама.</li>
       <li><strong>Он говорит только на обычном HTTP/1.1.</strong> TLS и HTTP/2&nbsp;&mdash; задача обратного прокси. В продакшене cookie сессии имеет атрибут <code>Secure</code>, поэтому сайт должен отдаваться по HTTPS, иначе формы падают с <code>Invalid authenticity token</code>.</li>
-      <li><strong>База данных&nbsp;&mdash; один файл SQLite.</strong> Запускайте один процесс на одном сервере и храните файл там, где он переживает развёртывание.</li>
+      <li><strong>База данных&nbsp;&mdash; один файл SQLite.</strong> Запускайте приложение на одном сервере и храните файл там, где он переживает развёртывание. Несколько процессов на этом сервере могут работать с ним вместе: <code>worker</code> для заданий или, в Linux, дополнительные серверные процессы на том же порту.</li>
       <li><strong>По умолчанию он в режиме продакшена</strong> и не запускается без <code>CYBERTRAIN_SECRET_KEY_BASE</code>. <code>./blog migrate</code> применяет встроенные в него миграции.</li>
     </ul>
   </section>
@@ -137,11 +137,11 @@
         <tr><td data-label="">Статические файлы</td><td data-label="Kamal">Приложение отдаёт <code>public/</code></td><td data-label="systemd и Caddy">Caddy сам отдаёт <code>dist/public/</code></td></tr>
         <tr><td data-label="">Развёртывание</td><td data-label="Kamal">Новый контейнер получает трафик после проверки работоспособности: ни одно соединение не отклоняется</td><td data-label="systemd и Caddy">Перезапуск: несколько секунд Caddy отдаёт 500.html</td></tr>
         <tr><td data-label="">Откат</td><td data-label="Kamal"><code>kamal rollback VERSION</code></td><td data-label="systemd и Caddy">Направить <code>current</code> на предыдущий выпуск и перезапустить</td></tr>
-        <tr><td data-label="">Серверу нужно</td><td data-label="Kamal">SSH и Docker (его ставит <code>kamal setup</code>), а также реестр образов</td><td data-label="systemd и Caddy">Ruby, набор инструментов C, заголовки SQLite, CLI <code>cybertrain</code> и Spinel</td></tr>
+        <tr><td data-label="">Серверу нужно</td><td data-label="Kamal">SSH и Docker (его ставит <code>kamal setup</code>), а также реестр образов</td><td data-label="systemd и Caddy">Ruby, набор инструментов C, заголовки SQLite, zlib и OpenSSL, CLI <code>cybertrain</code> и Spinel</td></tr>
       </tbody>
     </table>
     </div>
-    <p class="note">В любом случае приложение&nbsp;&mdash; это один процесс и его файл SQLite на одном сервере.</p>
+    <p class="note">В любом случае приложение и его файл SQLite находятся на одном сервере.</p>
   </section>
 
   <section class="step" id="kamal" aria-labelledby="h-kamal">
@@ -164,7 +164,7 @@
     <ul class="points">
       <li>Каждое развёртывание собирает образ (после первого раза Spinel остаётся в кеше слоёв Docker), публикует его и запускает контейнер, который выполняет <code>./blog migrate</code>, а затем <code>exec ./blog</code> на <code>0.0.0.0:3000</code>.</li>
       <li>kamal-proxy ждёт, пока <code>/up.html</code> не ответит 200, переключает трафик на новый контейнер и останавливает старый, который по <code>SIGTERM</code> завершает обрабатываемые запросы.</li>
-      <li>База данных лежит на томе <code>blog_storage</code>, смонтированном в <code>/app/storage</code>, поэтому переживает каждое развёртывание.</li>
+      <li>База данных и загруженные файлы лежат на томе <code>blog_storage</code>, смонтированном в <code>/app/storage</code>, поэтому переживают каждое развёртывание.</li>
       <li>Укажите в <code>builder.arch</code> процессор сервера. Spinel компилируется внутри образа, поэтому сборка для другой архитектуры под эмуляцией медленная; вместо неё собирайте на сервере через <code>builder.remote</code>.</li>
     </ul>
     <p class="note">Пошаговое руководство, включая резервное копирование тома,&nbsp;&mdash; <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><code>docs/deploy-kamal.md</code></a>. В <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><code>examples/blog</code></a> та же конфигурация, и CI собирает и проверяет его образ.</p>
@@ -210,7 +210,7 @@
     <table class="env">
       <thead><tr><th scope="col">Переменная</th><th scope="col">В продакшене</th></tr></thead>
       <tbody>
-        <tr><td data-label="Переменная"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="В продакшене">Обязательна. Подписывает cookie сессии; её смена разлогинивает всех. Создайте один раз командой <code>openssl rand -hex 32</code></td></tr>
+        <tr><td data-label="Переменная"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="В продакшене">Обязательна. Шифрует cookie сессии; её смена разлогинивает всех. Создайте один раз командой <code>openssl rand -hex 32</code> (или <code>cybertrain secret</code>)</td></tr>
         <tr><td data-label="Переменная"><code>CYBERTRAIN_DATABASE</code></td><td data-label="В продакшене">Файл SQLite; по умолчанию <code>storage/production.sqlite3</code> в рабочем каталоге. Держите его вне выпуска</td></tr>
         <tr><td data-label="Переменная"><code>CYBERTRAIN_HOST</code></td><td data-label="В продакшене">По умолчанию <code>127.0.0.1</code>, что верно за прокси на той же машине; в контейнере <code>0.0.0.0</code></td></tr>
         <tr><td data-label="Переменная"><code>PORT</code></td><td data-label="В продакшене">По умолчанию <code>3000</code>; туда пересылает прокси</td></tr>
@@ -218,7 +218,7 @@
       </tbody>
     </table>
     </div>
-    <p class="note">Шаг учебника <a href="tutorial.html#ship">Сборка для развёртывания</a> перечисляет все переменные и соответствующие им атрибуты <code>config/app.rb</code>.</p>
+    <p class="note">Все переменные и соответствующие им атрибуты <code>config/app.rb</code>: <a href="guide/configuration.html#configuration-and-environment-variables">Конфигурация</a>.</p>
   </section>
 
   <section class="step" id="operate" aria-labelledby="h-operate">
@@ -229,6 +229,7 @@
       <li><strong>Делайте резервные копии через <code>.backup</code> SQLite,</strong> а не копированием файла: так получается согласованная копия, даже пока приложение пишет.</li>
       <li><strong>Откат через миграцию</strong> означает откат и базы данных: перед переключением выполните <code>db rollback</code> из более нового выпуска.</li>
       <li><strong>Остановка аккуратная:</strong> по <code>SIGTERM</code> сервер перестаёт принимать соединения, завершает обрабатываемые запросы и выходит, не позже чем через 10 секунд.</li>
+      <li><strong>Один бинарник, несколько ролей.</strong> Если подключена подсистема заданий, <code>./blog worker</code> выполняет задания и задачи по расписанию без HTTP; если подключена подсистема фидов, <code>./blog feeds</code> ведёт подписки WebSocket. <code>GET /up</code> отвечает 503, когда база данных, воркер или фид не в порядке. <a href="guide/background-and-operations.html#process-roles">Роли процессов</a>.</li>
     </ul>
   </section>
 

@@ -104,7 +104,7 @@ module Cybertrain
           when Hash
             parsed.each { |k, v| flash.set_now(k.to_s, v.to_s) }
           end
-        rescue JSON::NestingError, JSON::ParserError, StandardError
+        rescue StandardError
         end
         session.clear_flash!
       end

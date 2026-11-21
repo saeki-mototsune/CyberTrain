@@ -217,7 +217,6 @@ module Cybertrain
       # sqlite3_column_type results.
       ffi_const :INTEGER, 1
       ffi_const :FLOAT, 2
-      ffi_const :TEXT, 3
       ffi_const :BLOB, 4
       ffi_const :NULL_TYPE, 5
 

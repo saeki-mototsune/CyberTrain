@@ -225,7 +225,6 @@ end
 
 test "close marks the connection closed" do
   conn = DB::Connection.new(":memory:")
-  assert_equal ":memory:", conn.path
   refute conn.closed?
   conn.close
   assert conn.closed?

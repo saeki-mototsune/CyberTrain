@@ -11,6 +11,7 @@
 # program that renders through it: cybertrain/controller.rb requires this
 # file, so this file does not require the controller back.
 require "cybertrain/assets"
+require "cybertrain/cast"
 require "cybertrain/html"
 require "cybertrain/http/header_name"
 require "cybertrain/http/query"
@@ -43,7 +44,7 @@ module Cybertrain
       # The keywords turbo_frame_tag and time_tag take.
       TURBO_FRAME_KEYWORDS = %w[src loading target class data]
       TIME_TAG_KEYWORDS = %w[format zone class id title data]
-      # The keywords of the asset tag helpers (spec 7.2).
+      # The keywords of the asset tag helpers (docs/design.md D63).
       STYLESHEET_KEYWORDS = %w[media nonce]
       JAVASCRIPT_INCLUDE_KEYWORDS = %w[nonce]
       IMAGE_TAG_KEYWORDS = %w[alt size class]
@@ -71,10 +72,9 @@ module Cybertrain
         # (unit tests) keeps answering "" and empty values.
         @outside_request = false
         # The options of a url_for or route call that has none (link_to's
-        # href, a form's action): a template's keywords Hash, typed empty
-        # (rule 9). Never mutated.
-        @no_url_options = { "" => [nil, 0, 0.0, "", true][0] }
-        @no_url_options.delete("")
+        # href, a form's action): a template's keywords Hash, typed empty.
+        # Never mutated.
+        @no_url_options = Cast.empty_hash
       end
 
       # Marks these helpers as rendering with no request (Views.render_partial).
@@ -196,7 +196,7 @@ module Cybertrain
             component = @components[depth - 1]
             return component.call_view_method(name.to_sym) if component.view_method?(name)
           end
-          # The controller's helper methods (`helper_method :x`, spec 4.3),
+          # The controller's helper methods (`helper_method :x`),
           # in its templates and the components they render. Outside a
           # request there is no controller, so the name is undefined.
           controller = @controller
@@ -234,7 +234,7 @@ module Cybertrain
       end
 
       # The three checks as class methods too: a controller's generated
-      # call_helper_method (helper_method, spec 4.3) runs them outside
+      # call_helper_method (helper_method) runs them outside
       # these helpers.
       def self.helper_arity!(name, args, min, max)
         n = args.size
@@ -258,7 +258,7 @@ module Cybertrain
           i += 1
         end
         kwargs.each_key do |key|
-          raise ArgumentError, "unknown keyword '#{key}' for '#{name}' (known: #{known.join(", ")})" unless Helpers.name_in?(known, key)
+          raise ArgumentError, "unknown keyword '#{key}' for '#{name}' (known: #{known.join(", ")})" unless known.include?(key)
         end
         nil
       end
@@ -291,10 +291,7 @@ module Cybertrain
       # the template's turbo_stream builder renders for `partial:`.
       # @return [SafeString]
       def partial_html(name, locals, interp, env)
-        engine = Views.engine
-        raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
-
-        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
         names = Array.new(0) { "" }
         locals.each_key { |key| names << key }
         render_partial_scope(template, locals, names, interp, env)
@@ -368,31 +365,16 @@ module Cybertrain
         i = 0
         while i < locals.size
           name = locals[i]
-          raise ArgumentError, "missing local '#{name}' for #{template.name}" unless Helpers.name_in?(given, name)
+          raise ArgumentError, "missing local '#{name}' for #{template.name}" unless given.include?(name)
           i += 1
         end
         i = 0
         while i < given.size
           name = given[i]
-          raise ArgumentError, "unknown local '#{name}' for #{template.name}" unless Helpers.name_in?(locals, name)
+          raise ArgumentError, "unknown local '#{name}' for #{template.name}" unless locals.include?(name)
           i += 1
         end
         nil
-      end
-
-      # Array#include? with String arguments mis-dispatches once the whole
-      # framework (SafeString's to_str) is in the program (spikes/NOTES.md
-      # rules 14 and 29); compare explicitly.
-      # A while loop: `each` with a `return` in the block costs a setjmp and
-      # a Proc per call under Spinel, and this runs for every partial.
-      def self.name_in?(names, name)
-        i = 0
-        n = names.size
-        while i < n
-          return true if names[i] == name
-          i += 1
-        end
-        false
       end
 
       # The current flash messages as a Hash ("notice" => "Saved"), so that
@@ -422,8 +404,7 @@ module Cybertrain
       # `class: "c"` from Ruby comes with Symbol keys; the template-facing
       # helpers look keywords up by String (typed Hash, rule 71).
       def string_keys_of(attrs)
-        out = { "" => [nil, 0, 0.0, "", true][0] }
-        out.delete("")
+        out = Cast.empty_hash
         attrs.each_key { |key| out[Key.string_of(key)] = attrs[key] }
         out
       end
@@ -548,7 +529,9 @@ module Cybertrain
       # _method for verbs HTML forms cannot send, then the CSRF token for
       # anything but GET (omitted without a session to take it from). Tag
       # builders append what these return rather than passing their buffer
-      # down (see FormBuilder.html_attr).
+      # down: a method that appends to a String it was given (`buf << ...`
+      # on a parameter) makes Spinel run the GC write barrier on the
+      # caller's stack slot, which later crashes a minor collection.
       # Interpolations, not a `+""` buffer (see button_to).
       def hidden_fields(verb)
         return "" if verb == "get"
@@ -923,7 +906,6 @@ module Cybertrain
         items = arg(args, 0, "safe_join")
         sep = args.size > 1 ? args[1] : ""
         case items
-        when Time then nil
         when Array then return Html.safe_join(items, sep)
         end
         raise ArgumentError, "safe_join expects an Array, got #{FormBuilder.value_text(items)}"
@@ -972,8 +954,6 @@ module Cybertrain
         else
           first = args[0]
           case first
-          # Time before Array (spikes/NOTES.md rule 8).
-          when Time then nil
           when Array, Cybertrain::Model
             helper_arity!("render", args, 1, 1)
             helper_no_keywords!("render", kwargs)
@@ -981,10 +961,7 @@ module Cybertrain
           end
           name = text_arg(args, 0, "render")
         end
-        engine = Views.engine
-        raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
-
-        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
         names = []
         locals.each_key { |key| names << key if !(args.empty? && (key == "partial" || key == "locals")) }
         render_partial_scope(template, locals, names, interp, env)
@@ -994,7 +971,6 @@ module Cybertrain
       def render_collection(name, kwargs, locals, interp, env)
         items = kwargs["collection"]
         case items
-        when Time then nil
         when Array
           return SafeString.of("") if items.empty?
 
@@ -1003,8 +979,7 @@ module Cybertrain
           as_name = FormBuilder.value_text(kwargs["as"]) if kwargs.key?("as")
           spacer = ""
           if kwargs.key?("spacer_template")
-            no_locals = { "" => [nil, 0, 0.0, "", true][0] }
-            no_locals.delete("")
+            no_locals = Cast.empty_hash
             spacer = partial_html(FormBuilder.value_text(kwargs["spacer_template"]), no_locals, interp, env).to_s
           end
           return render_items(name, as_name, items, locals, spacer, interp, env)
@@ -1017,8 +992,7 @@ module Cybertrain
       # `render @comment`.
       def render_records(value, interp, env)
         out = +""
-        no_locals = { "" => [nil, 0, 0.0, "", true][0] }
-        no_locals.delete("")
+        no_locals = Cast.empty_hash
         case value
         when Cybertrain::Model
           key = record_partial_local(value)
@@ -1030,7 +1004,6 @@ module Cybertrain
           while i < value.size
             record = value[i]
             case record
-            when Time then record_expected!(record)
             when Cybertrain::Model
               key = record_partial_local(record)
               # One item at a time: the records may be of different models.
@@ -1084,16 +1057,15 @@ module Cybertrain
       # (index; none when it is -1) unless the partial's strict locals leave
       # it out.
       def render_item(name, as_name, item, index, locals, interp, env)
-        engine = Views.engine
-        raise ArgumentError, "no views configured (Cybertrain::Views.configure)" if engine.nil?
-
-        template = engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
         counter = "#{as_name}_counter"
+        # Cast.empty_hash written out: this runs once per item, and the call
+        # measured about 5% slower over a 200-item collection.
         scoped = { "" => [nil, 0, 0.0, "", true][0] }
         scoped.delete("")
         locals.each_key { |key| scoped[key] = locals[key] }
         scoped[as_name] = item
-        scoped[counter] = index if index >= 0 && (!template.strict_locals? || Helpers.name_in?(template.locals, counter))
+        scoped[counter] = index if index >= 0 && (!template.strict_locals? || template.locals.include?(counter))
         names = Array.new(0) { "" }
         scoped.each_key { |key| names << key }
         render_partial_scope(template, scoped, names, interp, env)
@@ -1133,8 +1105,7 @@ module Cybertrain
       # content.
       def render_component_helper(kwargs, block, interp, env)
         name = FormBuilder.value_text(kwargs["component"])
-        attrs = { "" => [nil, 0, 0.0, "", true][0] }
-        attrs.delete("")
+        attrs = Cast.empty_hash
         kwargs.each_key { |key| attrs[key] = kwargs[key] unless key == "component" }
         built = Views.component_builder.call(name, attrs)
         content = block.nil? ? "" : interp.capture(block, env)
@@ -1161,11 +1132,11 @@ module Cybertrain
         ""
       end
 
-      # --- i18n (spec 8) ------------------------------------------------------
+      # --- i18n (docs/design.md D79) -----------------------------------------
 
       # t(key, **options), as Rails' view helper: I18n.t, with a key
       # starting with "." looked up under the rendering template's name
-      # (lazy lookup, plan decision D8: "posts/_form.html.erb" ->
+      # (lazy lookup: "posts/_form.html.erb" ->
       # "posts.form.title"). A key ending in `_html` or `.html` answers
       # its text as HTML, every interpolated value escaped (a SafeString
       # value as it is); any other text is escaped. A missing key answers
@@ -1217,10 +1188,18 @@ module Cybertrain
         I18n.l(args[0], options)
       end
 
-      # A template's keywords as I18n's options (Symbol keys).
-      def self.symbol_options(kwargs)
+      # A fresh empty Hash typed Symbol => any value (I18n's options), seeded
+      # with a value of every scalar type (spikes/NOTES.md rule 9), as
+      # Cast.empty_hash is for String keys.
+      def self.empty_options
         options = { default: [nil, 0, 0.0, "", true][0] }
         options.delete(:default)
+        options
+      end
+
+      # A template's keywords as I18n's options (Symbol keys).
+      def self.symbol_options(kwargs)
+        options = Helpers.empty_options
         kwargs.each { |name, value| options[name.to_sym] = value }
         options
       end
@@ -1232,8 +1211,7 @@ module Cybertrain
       # @param options [Hash{Symbol => Object}]
       # @return [Hash{Symbol => Object}]
       def self.escaped_interpolations(options)
-        out = { default: [nil, 0, 0.0, "", true][0] }
-        out.delete(:default)
+        out = Helpers.empty_options
         options.each do |name, value|
           if name == :default || name == :locale || (name == :count && value.is_a?(Integer))
             out[name] = value
@@ -1247,7 +1225,7 @@ module Cybertrain
         out
       end
 
-      # The lazy-lookup scope of a template name (D8, Rails' virtual path):
+      # The lazy-lookup scope of a template name (Rails' virtual path):
       # "posts/index.html.erb" -> "posts.index", "posts/_form.html.erb" ->
       # "posts.form", "__components/card_component.html.erb" ->
       # "card_component", "admin/posts/show" -> "admin.posts.show".
@@ -1291,7 +1269,7 @@ module Cybertrain
         end
         return "#{n} #{word}" if n == 1
         return "#{n} #{text_arg(args, 2, "pluralize")}" if args.size > 2
-        # The English inflector only in English (D11); Rails has no rules
+        # The English inflector only in English; Rails has no rules
         # for other languages either, so the word stays as it is.
         return "#{n} #{word}" unless I18n.base_language(I18n.locale.name) == "en"
 
@@ -1312,8 +1290,8 @@ module Cybertrain
 
       # The number helpers are Cybertrain::NumberHelper's, with Rails'
       # keywords: 1234567 -> "1,234,567"; 1234.5 -> "1,234.5". A keyword not
-      # given is the current locale's setting, as Rails' helpers read it
-      # (D11): number.<namespace>.format.<name>, else number.format.<name>
+      # given is the current locale's setting, as Rails' helpers read it:
+      # number.<namespace>.format.<name>, else number.format.<name>
       # (number_to_currency 1234 in ja is "1,234" and the yen sign); the
       # human units and formats are number.human.decimal_units /
       # storage_units.
@@ -1523,7 +1501,7 @@ module Cybertrain
       # `Tue, 10 Nov 2026 12:00:00 +0000` for a Time, `2026-11-10` for a
       # Date). class:, id:, title: and data: are attributes.
       #
-      # A Time is rendered in Time.zone (spec section 4): the datetime is
+      # A Time is rendered in Time.zone (docs/design.md D81): the datetime is
       # ISO 8601 at the zone's offset (`2026-11-12T05:00:00+09:00`, `Z`
       # only when the zone is UTC) and the text's fields, `%z` and `%Z` are
       # the zone's. `zone: "America/New_York"` renders this one call in
@@ -1719,8 +1697,7 @@ module Cybertrain
         helper_arity!("javascript_tag", args, 0, block.nil? ? 1 : 0)
         helper_keywords!("javascript_tag", kwargs, ["nonce", "id", "type", "data"], 0)
         content = block.nil? ? (args.empty? ? "" : text_arg(args, 0, "javascript_tag")) : interp.capture(block, env)
-        attrs = { "" => [nil, 0, 0.0, "", true][0] }
-        attrs.delete("")
+        attrs = Cast.empty_hash
         kwargs.each_key { |key| attrs[key] = kwargs[key] unless key == "nonce" }
         if kwargs["nonce"] == true
           nonce = content_security_policy_nonce
@@ -1729,7 +1706,7 @@ module Cybertrain
         Html.build_tag("script", attrs, content, true)
       end
 
-      # --- assets (spec 7.2, 7.3) -------------------------------------------
+      # --- assets (docs/design.md D63) ---------------------------------------
 
       # asset_path("logo.svg") -> "/assets/logo-1a2b3c4d.svg" (Assets.path:
       # an unknown name raises in development and test). A URL or a path
@@ -1866,7 +1843,7 @@ module Cybertrain
 
       # javascript_importmap_tags("application"): the import map, a
       # modulepreload link per preloaded pin and the entry point's import,
-      # each with this request's nonce when a policy applies (spec C-5).
+      # each with this request's nonce when a policy applies.
       def javascript_importmap_tags(entry)
         request_bound!("javascript_importmap_tags")
         nonce = nonce_attr(true)
@@ -1951,7 +1928,7 @@ module Cybertrain
       # text.downcase, without the copy for an already lowercase method:.
       def lower_text(v)
         case v
-        when Symbol then HeaderName.lower(v.name) # name: one String per Symbol (NOTES rule 123)
+        when Symbol then HeaderName.lower(v.name) # name: one String per Symbol (NOTES rule 125)
         else HeaderName.lower(FormBuilder.value_text(v))
         end
       end

@@ -1,4 +1,4 @@
-# Cybertrain::RequestId (spec section 12.2, plan D6 and D8): every
+# Cybertrain::RequestId (docs/design.md D86): every
 # request's id, generated or taken from a trusted proxy, echoed in
 # X-Request-Id (error answers included), read as request.request_id and
 # carried by every line logged while the request runs; c.log_tags orders
@@ -6,8 +6,8 @@
 #
 # The core alone (`require "cybertrain/core"`): the request id is core.
 # A booted Application links SQLite through FFI, so this program runs
-# compiled only (spikes/NOTES.md rule 23). No regexp beyond the trivial
-# (pre-flight ruling G5): the UUID's shape is read byte by byte
+# compiled only (spikes/NOTES.md rule 23). No regexp beyond the trivial:
+# the UUID's shape is read byte by byte
 # (LogCapture.uuid?).
 require "stringio"
 require "cybertrain/core"
@@ -126,7 +126,7 @@ def last_response
 end
 
 # GETs `path` from a fresh app over `config`, built inside capture_log so
-# its RequestLogger writes into the capture (pre-flight ruling B5); answers
+# its RequestLogger writes into the capture; answers
 # what was logged, the time dropped from each line.
 def logged_lines(config, path)
   log = capture_log { $last = Cybertrain::Test::Client.new(app_for(config)).get(path) }
@@ -136,8 +136,8 @@ def logged_lines(config, path)
 end
 
 # Runs the block with Request.trusted_proxy on, and off again after it,
-# also when it raises (pre-flight ruling G4: the restore in a plain
-# method's ensure).
+# also when it raises (the restore in a plain method's ensure,
+# spikes/NOTES.md rules 32 and 45).
 module TrustedProxy
   def self.during
     Cybertrain::Request.trusted_proxy = true
@@ -386,7 +386,7 @@ test "a controller run without a RequestId writes nothing to the shared empty Sc
   assert_equal "", Cybertrain::Logger::NO_SCOPE.scope_where
 end
 
-# ---- What a request reports (Task 9; spec section 13.2, plan D7) -----------
+# ---- What a request reports (docs/design.md D88) ---------------------------
 #
 # The request path's automatic reports on the core alone: a 500 is
 # reported once, by RequestId here (no ErrorPages in the test
@@ -548,7 +548,7 @@ test "a reset link's token and the query never reach a report" do
 end
 
 # Runs the block with the cookie c=v7 in report_client's jar, removed
-# again after it, also when it raises (pre-flight ruling G4).
+# again after it, also when it raises (a plain method's ensure).
 module ReportCookie
   def self.during
     REPORT_CLIENT.cookies["c"] = "v7"

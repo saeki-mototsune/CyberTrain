@@ -3,7 +3,7 @@ require "cybertrain/test"
 require "cybertrain/test/views"
 require "cybertrain/controller"
 
-# Rendering outside a request (spec 2.5): Views.render_partial and
+# Rendering outside a request (docs/design.md D38): Views.render_partial and
 # Views.render_component build the helpers with no controller; path helpers
 # work, the request-bound helpers raise Views::OutsideRequest.
 #

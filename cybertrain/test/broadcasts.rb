@@ -1,4 +1,4 @@
-# Broadcast assertions and assert_turbo_stream (spec section 9.3).
+# Broadcast assertions and assert_turbo_stream (docs/design.md D84).
 #
 # A broadcast is a row of `cybertrain_messages` (Cybertrain::Stream), so
 # the assertions read the table: no poller, hub or socket is needed, and
@@ -25,8 +25,8 @@
 #   for byte first, so the reader's offsets stay those of the HTML as
 #   written.
 #
-# The checks follow the assertions' pattern (cybertrain/test/assertions.rb,
-# pre-flight R17): one `Test.check_*` each, shared by every caller.
+# The checks follow the assertions' pattern (cybertrain/test/assertions.rb):
+# one `Test.check_*` each, shared by every caller.
 require "cybertrain/test"
 require "cybertrain/cast"
 require "cybertrain/db"

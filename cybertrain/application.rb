@@ -1,10 +1,7 @@
 require "cybertrain/app_name"
-require "cybertrain/assets"
 require "cybertrain/config"
 require "cybertrain/cast"
-require "cybertrain/version"
 require "cybertrain/logger"
-require "cybertrain/middleware"
 require "cybertrain/router"
 require "cybertrain/middleware/request_id"
 require "cybertrain/middleware/request_logger"
@@ -17,7 +14,6 @@ require "cybertrain/middleware/host_authorization"
 require "cybertrain/middleware/health_check"
 require "cybertrain/middleware/ssl_redirect"
 require "cybertrain/middleware/content_security_policy_header"
-require "cybertrain/context_handler"
 require "cybertrain/i18n"
 require "cybertrain/http/server"
 require "cybertrain/db"
@@ -26,7 +22,6 @@ require "cybertrain/feature_catalog"
 require "cybertrain/error_reporter"
 require "cybertrain/views"
 require "cybertrain/runtime"
-require "cybertrain/dev"
 
 module Cybertrain
   # The booted application: config, database, views and the middleware
@@ -136,8 +131,9 @@ module Cybertrain
         apply_boot_settings
         completed = true
       ensure
-        # A flag and an ensure, not a rescue: a rescue clause does not see
-        # every exception class under Spinel (NOTES rules 33, 61).
+        # A flag and an ensure, not a rescue: the boot is abandoned whatever
+        # was raised, a class outside StandardError included, and the
+        # exception goes on as it was.
         abandon_boot(before) unless completed
       end
       @booted = true
@@ -338,16 +334,6 @@ module Cybertrain
     # @api public
     def self.request_stop_roles
       Roles.request_stop
-    end
-
-    def self.reset_roles_stop
-      Roles.reset_stop
-    end
-
-    # Waits for a stop, or for a loaded subsystem failing for good
-    # (Roles.wait_stop).
-    def self.wait_roles_stop
-      Roles.wait_stop
     end
 
     # "" when name works as the development build target, else the

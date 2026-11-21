@@ -1,11 +1,11 @@
-# The assertions of spec section 10 and Minitest's failure text: each one
+# The assertions (docs/design.md D84) and Minitest's failure text: each one
 # passing and failing once, the failure caught with
 # `assert_raises("AssertionFailed") { ... }` and its message compared.
 # CRuby-runnable: it requires the harness alone.
 #
 # Each block names its locals apart from every other block's (rule 63), and
 # each failure is caught inline rather than through a yielding helper
-# (rule 90, pre-flight N29).
+# (rule 90).
 require "cybertrain/test"
 
 class NotFound < StandardError
@@ -79,7 +79,7 @@ test "assert_difference and assert_no_difference" do
                assert_raises("AssertionFailed") { assert_no_difference(-> { count[0] }) { count[0] += 1 } }
 end
 
-# Rails' order (pre-flight R14): the value before against from:, then
+# Rails' order: the value before against from:, then
 # "changed at all", then the value after against to:.
 test "assert_changes" do
   title = ["a"]

@@ -218,7 +218,6 @@ test "log_level from CYBERTRAIN_LOG_LEVEL" do
   ENV["CYBERTRAIN_LOG_LEVEL"] = "debug"
   debug = Cybertrain::Config.new
   assert_equal :debug, debug.log_level
-  refute debug.log_level_given?
   assert_equal "", debug.log_error
   ENV["CYBERTRAIN_LOG_LEVEL"] = "none"
   assert_equal :none, Cybertrain::Config.new.log_level
@@ -234,7 +233,6 @@ test "log_level from CYBERTRAIN_LOG_LEVEL" do
   ENV["CYBERTRAIN_LOG_LEVEL"] = "verbose"
   verbose = Cybertrain::Config.new
   assert_equal :verbose, verbose.log_level
-  refute verbose.log_level_given?
   assert_equal "log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)", verbose.log_error
   assert_equal "log_level must be :debug, :info, :warn, :error, :fatal or :none (got :verbose)", verbose.validation_error
   ENV.delete("CYBERTRAIN_LOG_LEVEL")
@@ -253,7 +251,6 @@ test "log_format from CYBERTRAIN_LOG_FORMAT" do
   assert_equal :json, Cybertrain::Config.new.log_format
   # Not counted as given: cybertrain test keeps its text lines.
   exported = Cybertrain::Config.new
-  refute exported.log_format_given?
   exported.log_format_unless_given(:text)
   assert_equal :text, exported.log_format
   ENV["CYBERTRAIN_LOG_FORMAT"] = "xml"
@@ -264,7 +261,6 @@ test "log_format from CYBERTRAIN_LOG_FORMAT" do
   ENV.delete("CYBERTRAIN_LOG_FORMAT")
   assigned = Cybertrain::Config.new
   assigned.log_format = :json
-  assert assigned.log_format_given?
   assigned.log_format_unless_given(:text)
   assert_equal :json, assigned.log_format
   assert_equal "", assigned.validation_error
@@ -338,7 +334,6 @@ test "cybertrain test's default empties an exported DSN, not an assigned one" do
   clear_reporting_env
   ENV["CYBERTRAIN_SENTRY_DSN"] = "https://k@sentry.example/1"
   exported = Cybertrain::Config.new
-  refute exported.sentry_dsn_given?
   exported.sentry_dsn_unless_given("")
   assert_equal "", exported.sentry_dsn
   # Emptied, a DSN boot would refuse does not stop the tests either.
@@ -349,7 +344,6 @@ test "cybertrain test's default empties an exported DSN, not an assigned one" do
   assert_equal "", refused.reporting_error
   assigned = Cybertrain::Config.new
   assigned.sentry_dsn = "http://k@127.0.0.1:9000/7"
-  assert assigned.sentry_dsn_given?
   assigned.sentry_dsn_unless_given("")
   assert_equal "http://k@127.0.0.1:9000/7", assigned.sentry_dsn
   clear_reporting_env

@@ -2,7 +2,7 @@
 # sender; it requires nothing.
 module Cybertrain
   # The DSN that turns the Sentry sender on (`CYBERTRAIN_SENTRY_DSN`,
-  # {Config#sentry_dsn}; spec section 13.4), read by a byte scan (no
+  # {Config#sentry_dsn}), read by a byte scan (no
   # regexp). The accepted form is
   #
   #   http[s]://<public key>[:<secret>]@<host>[:<port>][/<path>]/<project id>

@@ -1,11 +1,11 @@
 ---
-source_sha256: 56fd42be62c881b2651d4f07b3a1416a772e668460ec68fc56b620e7a78810bb
+source_sha256: 6e4f1fb3feea6c05454ba214e8d64b5662955142a0167ff12c120a2e654c9ca7
 ---
 # 外向きの HTTP、WebSocket フィード、メール
 
 ## 外向きの HTTP
 
-別のサーバー（Webhook、Slack の Incoming Webhook、サードパーティの API）を呼び出すアプリケーションは `Cybertrain::HttpClient` を使います。`require "cybertrain"` は、[Sentry の送信側](background-and-operations.md#error-reporting)を通じて、これと TLS の層を読み込みます。`cybertrain/core` のアプリケーションは、使う場所で require し、https の URL があれば TLS の層も require してください：
+別のサーバー（Webhook、Slack の Incoming Webhook、サードパーティの API）を呼び出すアプリケーションは `Cybertrain::HttpClient` を使います。`require "cybertrain"` は、[Sentry の送信側](logs-and-errors.md#error-reporting)を通じて、これと TLS の層を読み込みます。`cybertrain/core` のアプリケーションは、使う場所で require し、https の URL があれば TLS の層も require してください：
 
 ```ruby
 require "json"
@@ -73,7 +73,7 @@ Cybertrain.logger.info("#{res.bytes_written} bytes") if res.success?
 
 ### gzip
 
-gzip のサポートが読み込まれていれば、クライアントは gzip の本文を求め、展開します。`require "cybertrain"` がそれを読み込むので、アプリケーションではどのリクエストも `Accept-Encoding: gzip` を送り（自分で `Accept-Encoding` ヘッダーを送った場合を除く）、`Content-Encoding: gzip` の本文は展開されて返ります。`cybertrain/http_client` だけを require するプログラムは `require "cybertrain/http/gzip_ffi"` を足します（zlib をリンクします）。それがなければ、gzip のレスポンスはそのファイルを挙げる `BadResponseError` になります。保持する本文は、通信路の上でも展開後も `max_body` で制限されます（超えれば `TooLargeError`）。ストリーミングの本文は 1 回に最大 64 KiB ずつ展開され、圧縮していないストリーミングの本文と同じく全体の上限はありません。`Response` のヘッダーは受け取ったままです。`body` は展開したテキストでも、`Content-Encoding: gzip` と通信路の `Content-Length` は残ります。ほかの `Content-Encoding`（`br`、`deflate`）は `BadResponseError` で、途中で切れた gzip や壊れた gzip の本文もそうです。
+gzip のサポートが読み込まれていれば、クライアントは gzip の本文を求め、展開します。`require "cybertrain/core"` がそれを読み込むので（サーバーは gzip のリクエスト本文をこれで展開します）、アプリケーションではどのリクエストも `Accept-Encoding: gzip` を送り（自分で `Accept-Encoding` ヘッダーを送った場合を除く）、`Content-Encoding: gzip` の本文は展開されて返ります。`cybertrain/http_client` だけを require するプログラムは `require "cybertrain/http/gzip_ffi"` を足します（zlib をリンクします）。それがなければ、gzip のレスポンスはそのファイルを挙げる `BadResponseError` になります。保持する本文は、通信路の上でも展開後も `max_body` で制限されます（超えれば `TooLargeError`）。ストリーミングの本文は 1 回に最大 64 KiB ずつ展開され、圧縮していないストリーミングの本文と同じく全体の上限はありません。`Response` のヘッダーは受け取ったままです。`body` は展開したテキストでも、`Content-Encoding: gzip` と通信路の `Content-Length` は残ります。ほかの `Content-Encoding`（`br`、`deflate`）は `BadResponseError` で、途中で切れた gzip や壊れた gzip の本文もそうです。
 
 ### Server-Sent Events
 
@@ -96,7 +96,7 @@ parser.finish { |event| Answer.append(event.event_data) }   # ストリームが
 
 ## WebSocket フィードを購読する
 
-サーバーの動作中に外部のフィード（市場のティック、デバイスのテレメトリー、イベントストリーム）を受信するアプリケーションは、`Cybertrain::WebSocket.subscribe` でそれを購読します。HTTP クライアントと同じく `require "cybertrain"` には含まれていません。購読を書く場所で require し、`wss://` には TLS の層も require してください。これはフィードのサブシステム（`feeds` ロール、フィードのヘルスチェック）を読み込むので、`cybertrain/core` のアプリケーションにほかの行は要りません：
+サーバーの動作中に外部のフィード（市場のティック、デバイスのテレメトリー、イベントストリーム）を受信するアプリケーションは、`Cybertrain::WebSocket.subscribe` でそれを購読します。`require "cybertrain"` はこれを読み込みません（読み込むのはフィードのサブシステムと HTTP クライアントで、`cybertrain/websocket` は含まれません）。購読を書く場所で require し、`wss://` には TLS の層も require してください。これはフィードのサブシステム（`feeds` ロール、フィードのヘルスチェック）を読み込むので、`cybertrain/core` のアプリケーションにほかの行は要りません：
 
 ```ruby
 # config/app.rb（または bin/<app>.rb が Cybertrain::Main.run の前に require するファイル）
@@ -111,7 +111,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
   .on_message { |conn, text| Cybertrain::DB.with { |c| c.execute("INSERT INTO trades(raw) VALUES (?)", [text]) } }
 ```
 
-`cybertrain/websocket` を require すると、フィードが `Cybertrain::Background` に登録されます。`Application#serve` がスケジューラーの後にこれを開始し、シャットダウン時に停止するので、呼び出すものは何もありません。購読ごとに 1 本のスレッドが付きます。スレッドは接続し、`on_open` を実行し（購読のメッセージはここで送ってください：再接続のたびに再び実行されます）、その後、各メッセージを `Connection`（`send_text`、`send_binary`、`close`、そして `:text` か `:binary` の `last_opcode`）とともに `on_message` に渡します。ブロックは引数を受け取り、`self` は使えません（Spinel には `instance_eval` がありません）。
+`cybertrain/websocket` を require すると、フィードが `Cybertrain::Background` に登録されます。`Application#serve` がスケジューラーの後にこれを開始し、シャットダウン時に停止するので、呼び出すものは何もありません。購読ごとに 1 本のスレッドが付きます。スレッドは接続し、`on_open` を実行し（購読のメッセージはここで送ってください：再接続のたびに再び実行されます）、その後、各メッセージを `Connection`（`send_text`、`send_binary`、`close`、そして `:text` か `:binary` の `last_opcode`）とともに `on_message` に渡します。ブロックは引数を受け取り、`self` を購読として使うことはできません。フィードは保存しておいたブロックを呼び出しますが、Spinel は保存したブロックの `instance_exec` を拒むためです（spikes/NOTES.md のルール 2）。
 
 - **いつ実行されるか。** フィードは、スケジューラーと同じく、バイナリが配信を行うときに始まります（[バックグラウンド処理](background-and-operations.md#background-work)）。`migrate`、`db ...`、`Main.command` のコマンドと `Cybertrain::Test::Client` では決して始まりません。`./<app> feeds [NAME...]` は、それらのすべて、または名前を挙げたものを専用のプロセスで動かします（[プロセスの役割](background-and-operations.md#process-roles)）。`CYBERTRAIN_WORKER=0`（`config.worker = false`）では、そのプロセスでは動きません（単に始まらないだけです。唯一の知らせはスケジューラーの「run elsewhere」の行で、`WebSocket.start!` を直接呼んだ場合は自分でログを出します）：複数のプロセスが配信する場合は、1 つを除いてすべてで無効にしてください。そうしないと、それぞれがフィード全体を受信します。`subscribe` はサーバーが始まる前に呼ぶ必要があります。動作中にフィードを追加したり削除したりすることはできません。名前は一意で（`ArgumentError`）、`on_message` のないフィードは、ポートをバインドする前に起動を失敗させます（`error: WebSocket subscription "trades" has no on_message`、終了コード 1）。
 - **オプション。** `headers:`（ハンドシェイクに追加するヘッダー）、`timeout:`（接続中の各待ちと各書き込みに 5 秒）、`max_message:`（1 MiB。それより大きいメッセージは 1009 で接続を閉じます）、`ping_interval:`（15）と `stale_after:`（45）、そして `allow_private:`（下記の `HttpClient` と同じ）。
@@ -138,7 +138,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
   | 無音 | WARN | `WebSocket "trades" silent for 45s; reconnecting` |
   | ブロックが例外を出した | ERROR | `WebSocket "trades" on_message failed: KeyError: ...`（または `on_open`） |
 
-  パスとクエリがログやエラーメッセージに出ることは決してありません：トークンを含んでいることが多いからです。最初の行以外はフィードのスレッドで出るので、`[feed:trades]` のタグが付きます。例外を投げたブロック、スレッドの終わり、`feeds` プロセスのあきらめは[報告](background-and-operations.md#error-reporting)もされます。
+  パスとクエリがログやエラーメッセージに出ることは決してありません：トークンを含んでいることが多いからです。最初の行以外はフィードのスレッドで出るので、`[feed:trades]` のタグが付きます。例外を投げたブロック、スレッドの終わり、`feeds` プロセスのあきらめは[報告](logs-and-errors.md#error-reporting)もされます。
 - **エラー。** すべて `Cybertrain::WebSocket::Error` で、メッセージにはホストとポートだけが含まれます。ハンドシェイクが済んだ後は、失われた接続やサーバーによるクローズは `ClosedError`（`close_code`、`close_reason`。リセットやクローズフレームなしの終了は 1006）です。タイムアウトした書き込みや TLS で失敗した書き込みは、引き続き `TimeoutError` や `TLSError` です。接続中は `RefusedError`、`TimeoutError`、`TLSError`、`BlockedAddressError`（公開されていないアドレスで、[外向きの HTTP](#outbound-http) とまったく同じくデフォルトで拒否され、同じ `allow_private:` と `http_allow_private` の設定を持ちます）、または `HandshakeError`（101 でない、`Sec-WebSocket-Accept` が誤っている、またはサーバーが拡張やサブプロトコルで応答した）です。`ProtocolError`（サーバーがフレーミングを壊した。クライアントは 1002 を送ります）と `TooLargeError` はいつでも起こりえます。
 - **ヘルス。** `Cybertrain::WebSocket.feed_status("trades")` は `Status` を返します：`connected?`、`last_message_at`（エポック秒。最初のメッセージの前は 0）、`reconnects`、`restarts`（監視スレッドによるもの）、`thread_alive?`。これらは 1 つのスナップショットとしてではなく順に読まれ、`connected?` は接続ができた時点、`on_open` の実行前に true になります。監視スレッドは各フィードの状態を `feed_status_interval` 秒（10）ごとにデータベースにも書き、それをこのプロセスやほかのプロセスの `GET /up` と `./<app> feeds status` が読みます：[フィードのヘルス](realtime.md#feed-health)。
 - **`on_message` は短く保つ。** スレッドは `wait_readable` か `sleep` で待つので、止まったフィードが待っている間 OS のワーカーを占有することはありません。占有するものは 2 つあります：各接続の試行はブロッキングする `getaddrinfo` でホスト名を解決します（[外向きの
@@ -192,7 +192,7 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""` |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`。`tls` または `none` |
 
-- **TLS のモード。** `starttls` は平文で接続し、サーバーが STARTTLS を提供することを求め（なければ `Mailer::TLSError`）、他に何かを話す前にアップグレードします。サーバーが STARTTLS の応答の後に送ってきたバイトは拒否されます。`tls` は最初のバイトから TLS を話します（ポート 465）。どちらも HTTP クライアントと同じく証明書を `host` に対して検証し（IP アドレスではなくホスト名を指定してください）、どちらにも `require "cybertrain/net/tls"`（`require "cybertrain"` が読み込みます）が必要です：それがないと、`deliver` は接続する前に、その旨を伝える `Mailer::TLSError` を出します。`none` は平文で、同じマシン上のリレーやテストサーバー向けです：ユーザーが設定されている場合、ホストがループバックアドレスに解決されない限り拒否し（接続する前に `Mailer::InsecureError`）、解決される場合はそのループバックアドレスにだけ接続します。
+- **TLS のモード。** `starttls` は平文で接続し、サーバーが STARTTLS を提供することを求め（なければ `Mailer::TLSError`）、他に何かを話す前にアップグレードします。サーバーが STARTTLS の応答の後に送ってきたバイトは拒否されます。`tls` は最初のバイトから TLS を話します（ポート 465）。どちらも HTTP クライアントと同じく証明書を `host` に対して検証し（IP アドレスではなくホスト名を指定してください）、どちらにも `require "cybertrain/net/tls"`（`require "cybertrain"` は読み込みますが、`cybertrain/core` と `cybertrain/mailer` は読み込みません）が必要です：それがないと、`deliver` は接続する前に、その旨を伝える `Mailer::TLSError` を出します。`none` は平文で、同じマシン上のリレーやテストサーバー向けです：ユーザーが設定されている場合、ホストがループバックアドレスに解決されない限り拒否し（接続する前に `Mailer::InsecureError`）、解決される場合はそのループバックアドレスにだけ接続します。
 - **パスワードがログに出たり表示されたりすることはない。** 起動バナー、`help`、ログ、どのエラーメッセージにも含まれず、送られるのは TLS 越しに（またはループバックへ）AUTH PLAIN コマンドの中だけです。パスワードを保持している `Mailer` や `Config` を `p` や `inspect` しないでください。
 - **すべての待ちに上限がある。** [外向きの HTTP](#outbound-http) と同じく：接続、TLS の各手順、各応答は最大 `timeout` 秒（デフォルトは 10）待ち、配信全体では最大 `deadline` 秒（デフォルトは 60）待ちます。それを超えると `Mailer::TimeoutError` です。名前解決は呼び出したスレッドをブロックします。
 - **やり取り：** 220 の挨拶、`EHLO`（名前は `helo:`。デフォルトは `localhost`）、`STARTTLS` と再度の `EHLO`、ユーザーが設定されていれば `AUTH PLAIN`（サーバーが PLAIN を提供する必要があります）、`MAIL FROM`、受信者ごとに 1 つの `RCPT TO`、`DATA`、`QUIT`。それ以外のコードの応答は `Mailer::RejectedError` で、その `smtp_code` はサーバーのもの（421、535、550 など）、メッセージには手順とサーバーのテキストが含まれます。戻り値は、メッセージに対するサーバーの応答です（`"250 2.0.0 Ok: queued

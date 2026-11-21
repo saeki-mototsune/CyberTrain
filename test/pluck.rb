@@ -2,7 +2,7 @@ require "cybertrain/test"
 require "cybertrain/db"
 require "cybertrain/model"
 
-# Task 9 of phase 2: Relation#pluck and #pick over two or more columns,
+# Relation#pluck and #pick over two or more columns (docs/design.md D44),
 # each cell cast by the column's type (column_type): an integer an
 # Integer, a float or decimal a Float, a boolean true/false, a datetime a
 # UTC Time, a date a Date, anything else the String stored; NULL is nil.

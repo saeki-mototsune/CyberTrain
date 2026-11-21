@@ -1,5 +1,5 @@
 ---
-source_sha256: 56fd42be62c881b2651d4f07b3a1416a772e668460ec68fc56b620e7a78810bb
+source_sha256: 6e4f1fb3feea6c05454ba214e8d64b5662955142a0167ff12c120a2e654c9ca7
 ---
 # HTTP sortant, flux WebSocket et e-mail
 
@@ -8,7 +8,7 @@ source_sha256: 56fd42be62c881b2651d4f07b3a1416a772e668460ec68fc56b620e7a78810bb
 Une application qui appelle un autre serveur (un webhook, un webhook entrant
 Slack, une API tierce) utilise `Cybertrain::HttpClient`. `require
 "cybertrain"` le charge, avec la couche TLS, à travers
-l’[envoyeur Sentry](background-and-operations.md#error-reporting)&nbsp;; une
+l’[envoyeur Sentry](logs-and-errors.md#error-reporting)&nbsp;; une
 application sur `cybertrain/core` le requiert là où il est utilisé, ainsi que la
 couche TLS dès qu’une URL est en https&nbsp;:
 
@@ -173,7 +173,8 @@ Cybertrain.logger.info("#{res.bytes_written} bytes") if res.success?
 ### gzip
 
 Le client demande et décompresse les corps gzip quand le support gzip est
-chargé&nbsp;: `require "cybertrain"` le charge, donc dans une application
+chargé&nbsp;: `require "cybertrain/core"` le charge (le serveur s’en sert pour
+décompresser les corps de requête gzip), donc dans une application
 chaque requête envoie `Accept-Encoding: gzip` (sauf si vous envoyez votre
 propre en-tête `Accept-Encoding`) et un corps `Content-Encoding: gzip`
 revient décompressé. Un programme qui ne requiert que
@@ -223,8 +224,9 @@ parser.finish { |event| Answer.append(event.event_data) }   # un dernier événe
 
 Une application qui écoute un flux extérieur (cotations de marché, télémétrie
 d’appareils, flux d’événements) pendant que le serveur tourne s’y abonne avec
-`Cybertrain::WebSocket.subscribe`. Comme le client HTTP, il n’est pas inclus
-dans `require "cybertrain"`&nbsp;; requérez-le là où l’abonnement est écrit,
+`Cybertrain::WebSocket.subscribe`. `require "cybertrain"` ne le charge pas
+(il charge le sous-système des feeds et le client HTTP, pas
+`cybertrain/websocket`)&nbsp;; requérez-le là où l’abonnement est écrit,
 ainsi que la couche TLS pour `wss://`. Il charge le sous-système des feeds (le
 rôle `feeds`, le contrôle de santé des feeds), donc une application sur
 `cybertrain/core` n’a besoin d’aucune autre ligne&nbsp;:
@@ -249,8 +251,9 @@ reçoit un thread. Celui-ci se connecte, exécute `on_open` (envoyez-y votre
 message d’abonnement&nbsp;: il s’exécute de nouveau après chaque reconnexion),
 puis passe chaque message à `on_message` avec la `Connection` (`send_text`,
 `send_binary`, `close`, et `last_opcode`, `:text` ou `:binary`). Les blocs
-reçoivent leurs arguments et ne peuvent pas utiliser `self` (Spinel n’a pas
-d’`instance_eval`).
+reçoivent leurs arguments et ne peuvent pas utiliser `self` comme abonnement&nbsp;:
+le flux appelle les blocs qu’il a conservés, et Spinel refuse
+l’`instance_exec` d’un bloc conservé (spikes/NOTES.md, règle 2).
 
 - **Quand ils s’exécutent.** Les flux démarrent quand le binaire sert, comme le
   scheduler ([Tâches de fond](background-and-operations.md#background-work))&nbsp;;
@@ -344,7 +347,7 @@ d’`instance_eval`).
   sauf la première sont journalisées sur le thread du flux et portent
   l’étiquette `[feed:trades]`&nbsp;; un bloc qui lève, la fin du thread et
   l’abandon du processus `feeds` sont aussi
-  [signalés](background-and-operations.md#error-reporting).
+  [signalés](logs-and-errors.md#error-reporting).
 - **Erreurs.** Toutes sont des `Cybertrain::WebSocket::Error`, avec seulement
   l’hôte et le port dans le message. Une fois la poignée de main faite, une
   connexion perdue ou une fermeture par le serveur est une `ClosedError`
@@ -452,7 +455,8 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   STARTTLS sont refusés. `tls` parle TLS dès le premier octet (port 465). Les
   deux vérifient le certificat par rapport à `host` comme le fait le client HTTP
   (donnez un nom d’hôte, pas une adresse IP), et les deux demandent
-  `require "cybertrain/net/tls"` (que `require "cybertrain"` charge)&nbsp;: sans
+  `require "cybertrain/net/tls"` (`require "cybertrain"` le charge,
+  `cybertrain/core` et `cybertrain/mailer` non)&nbsp;: sans
   lui, `deliver` lève
   `Mailer::TLSError` qui le signale, avant de se connecter. `none` est du texte
   en clair, pour un relais sur la même machine ou un serveur de test&nbsp;: avec

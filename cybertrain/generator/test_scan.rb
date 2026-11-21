@@ -1,7 +1,7 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/test_files"
 require "cybertrain/test/args"
 require "cybertrain/generator/inflector"
-require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/code_view"
 
 module Cybertrain
@@ -52,7 +52,7 @@ module Cybertrain
     # ("test/models/article_test.rb"), test_form (:class when the file
     # holds a class-form class, else :top_level), test_classes (its
     # class-form classes), test_lines (its top-level `test "<literal>"`
-    # calls, plan decision 10), test_helpers (its top-level defs and
+    # calls), test_helpers (its top-level defs and
     # constants) and copy_path ("gen/test/models/article_test.rb" for a
     # class-form file, the rewritten copy the bundle requires; "" for a
     # file the bundle requires as it is).
@@ -90,13 +90,13 @@ module Cybertrain
       end
     end
 
-    # The lexical scan of test/ (spec 5.2): which files are tests, which
+    # The lexical scan of test/ (docs/design.md D82): which files are tests, which
     # classes are Rails-shaped test classes ("class form"), and the rewrite
     # of a class-form file into gen/test/<path under test/>, where every
     # `test "name" do` is a method, so that no stored block is ever run
     # through a base-class receiver (spikes/NOTES.md rule 88).
     #
-    # The rewrite keeps every line where it was (plan decision 18):
+    # The rewrite keeps every line where it was, so a failure's line is the source's:
     # `require "test_helper"` becomes an empty line; `test "shows it" do`
     # becomes `def test_shows_it; begin`; the n-th `setup do` of
     # ArticlesControllerTest becomes `def setup_articles_controller_test_<n>;
@@ -106,10 +106,10 @@ module Cybertrain
     # each of those methods, and of a `def setup` / `def teardown` /
     # `def test_x` the class writes itself, becomes `end; nil; end`: the
     # body sits in a `begin` (its rescue and ensure clauses too), so the
-    # method answers nil on every path (pre-flight ruling R8: one return
+    # method answers nil on every path (one return
     # type per method name across the program, rule 34); `return <value>`
     # in one is refused. Each `require_relative` is rebased for the copy's
-    # directory (plan decision 20).
+    # directory.
     #
     # Only the lines at the class body's own indentation are read: a nested
     # helper class, a helper's body and every heredoc, string and comment
@@ -177,7 +177,7 @@ module Cybertrain
 
       # test_ plus the name with every ASCII character outside
       # [A-Za-z0-9_] turned into "_" and every other character into
-      # `_u<hex>_` (spec 5.2: "shows an article" -> test_shows_an_article,
+      # `_u<hex>_` ("shows an article" -> test_shows_an_article,
       # "日本" -> test__u65e5__u672c_): Test::Args.method_for, the rule
       # `cybertrain test -n` matches with.
       def self.method_name(name)
@@ -194,7 +194,7 @@ module Cybertrain
       end
 
       # The copy of path (file_text) given the class-form class names of
-      # every scanned file and the paths gen copies (plan decision 20).
+      # every scanned file and the paths gen copies.
       def self.rewrite_in(file_text, path, forms, copied)
         view = CodeView.new(file_text)
         check_classes(path, view, forms, Array.new(0) { "" }, Array.new(0) { "" })
@@ -236,7 +236,7 @@ module Cybertrain
         supers = Array.new(0) { "" }
         views.each do |view|
           view.codes.each_with_index do |code, i|
-            next unless view.code_start[i] && ControllerScan.indent_of(code).zero?
+            next unless view.code_start[i] && SourceText.indent_of(code).zero?
 
             head = class_head(code.strip)
             next if head[1].empty?
@@ -262,7 +262,7 @@ module Cybertrain
 
       def self.holds_form_class?(view, forms)
         view.codes.each_with_index do |code, i|
-          next unless view.code_start[i] && ControllerScan.indent_of(code).zero?
+          next unless view.code_start[i] && SourceText.indent_of(code).zero?
 
           head = class_head(code.strip)
           return true if !head[1].empty? && forms.include?(head[1])
@@ -282,7 +282,7 @@ module Cybertrain
           next unless view.code_start[i]
 
           s = code.strip
-          ind = ControllerScan.indent_of(code)
+          ind = SourceText.indent_of(code)
           # `module Admin; class UsersTest < ActiveSupport::TestCase`, and
           # Rails' `module ActiveSupport; class TestCase` reopening.
           pieces = s.split(";")
@@ -305,7 +305,7 @@ module Cybertrain
           # at the margin below it is inside it.
           if ind.zero? && s.start_with?("module ") && !one_line_class?(s)
             margin_module = i
-          elsif ind.zero? && ControllerScan.closing_end?(s)
+          elsif ind.zero? && SourceText.closing_end?(s)
             margin_module = -1
           end
           head = class_head(s)
@@ -352,7 +352,7 @@ module Cybertrain
         k = i - 1
         while k >= 0
           code = codes[k]
-          if starts[k] && !code.strip.empty? && ControllerScan.indent_of(code) < ind
+          if starts[k] && !code.strip.empty? && SourceText.indent_of(code) < ind
             s = code.strip
             return "" unless s.start_with?("module ")
 
@@ -409,7 +409,7 @@ module Cybertrain
         helpers = Array.new(0) { TestHelperInfo.new("", "", 0) }
         lines.each_with_index do |raw, i|
           code = codes[i]
-          next unless view.code_start[i] && ControllerScan.indent_of(code).zero?
+          next unless view.code_start[i] && SourceText.indent_of(code).zero?
 
           s = code.rstrip
           if s.start_with?("def ") && !s.start_with?("def self.")
@@ -459,7 +459,7 @@ module Cybertrain
           next unless view.code_start[i]
 
           code = codes[i]
-          ind = ControllerScan.indent_of(code)
+          ind = SourceText.indent_of(code)
           s = code.strip
           rs = raw[ind, s.size].to_s
           if s.start_with?("require ") || s.start_with?("require(")
@@ -547,7 +547,7 @@ module Cybertrain
           code = codes[i]
           s = code.strip
           head = class_head(s)
-          if starts[i] && ControllerScan.indent_of(code).zero? && !head[1].empty? && forms.include?(head[1])
+          if starts[i] && SourceText.indent_of(code).zero? && !head[1].empty? && forms.include?(head[1])
             if one_line_class?(s)
               yield i, i, head[0]
               i += 1
@@ -576,7 +576,7 @@ module Cybertrain
           j += 1
           line = code.strip
           next if line.empty?
-          return j if ControllerScan.indent_of(code) <= indent && ControllerScan.closing_end?(line)
+          return j if SourceText.indent_of(code) <= indent && SourceText.closing_end?(line)
         end
         -1
       end
@@ -630,7 +630,7 @@ module Cybertrain
         j = start + 1
         while j < last
           code = codes[j]
-          if !starts[j] || code.strip.empty? || ControllerScan.indent_of(code) != level
+          if !starts[j] || code.strip.empty? || SourceText.indent_of(code) != level
             j += 1
             next
           end
@@ -722,7 +722,7 @@ module Cybertrain
         while j < last
           code = codes[j]
           if starts[j] && !code.strip.empty?
-            ind = ControllerScan.indent_of(code)
+            ind = SourceText.indent_of(code)
             lead = code[0, ind].to_s
             tabs ||= !lead.index("\t").nil?
             spaces ||= !lead.index(" ").nil?
@@ -813,7 +813,7 @@ module Cybertrain
         until k.nil?
           before = k.zero? ? "" : code[k - 1].to_s
           after = code[k + 5].to_s
-          return true if !word_char?(before) && before != "." && before != ":" && !word_char?(after) && after != "?" && after != "!"
+          return true if !SourceText.word_char?(before) && before != "." && before != ":" && !SourceText.word_char?(after) && after != "?" && after != "!"
 
           k = code.index("super", k + 5)
         end
@@ -928,7 +928,7 @@ module Cybertrain
       def self.closing_line(codes, j, ind, last, path, what)
         stop = block_end(codes, j + 1, ind)
         e = stop - 1
-        unless stop > j + 1 && e < last && ControllerScan.indent_of(codes[e]) == ind
+        unless stop > j + 1 && e < last && SourceText.indent_of(codes[e]) == ind
           msg = "#{path}:#{j + 1}: #{what} has no `end` at its indentation"
           raise ArgumentError, msg
         end
@@ -953,7 +953,7 @@ module Cybertrain
           code = codes[j]
           s = code.strip
           unless s.empty?
-            ind = ControllerScan.indent_of(code)
+            ind = SourceText.indent_of(code)
             level = ind if level < 0
             refuse_block_jump(s, path, j + 1) if ind == level || (ind > level && jump_word?(s) && !inside_loop?(codes, from, j))
           end
@@ -967,7 +967,7 @@ module Cybertrain
       def self.jump_word?(s)
         ["next", "break", "redo"].any? do |word|
           after = s[word.size].to_s
-          s.start_with?(word) && !word_char?(after) && after != ":" && after != "?" && after != "!"
+          s.start_with?(word) && !SourceText.word_char?(after) && after != ":" && after != "?" && after != "!"
         end
       end
 
@@ -976,12 +976,12 @@ module Cybertrain
       # the body; branch lines (`else`, `when`, `rescue`) lead to the line
       # that opened them.
       def self.inside_loop?(codes, from, j)
-        limit = ControllerScan.indent_of(codes[j])
+        limit = SourceText.indent_of(codes[j])
         k = j - 1
         while k >= from
           code = codes[k]
           s = code.strip
-          ind = ControllerScan.indent_of(code)
+          ind = SourceText.indent_of(code)
           if !s.empty? && ind < limit
             if branch_line?(s)
               limit = ind + 1
@@ -1018,12 +1018,12 @@ module Cybertrain
         return true if t.end_with?("{")
         return false unless t.end_with?("do")
 
-        t.size == 2 || !word_char?(t[t.size - 3].to_s)
+        t.size == 2 || !SourceText.word_char?(t[t.size - 3].to_s)
       end
 
       def self.refuse_block_jump(s, path, number)
         ["next", "break", "redo"].each do |word|
-          next unless s.start_with?(word) && !word_char?(s[word.size].to_s)
+          next unless s.start_with?(word) && !SourceText.word_char?(s[word.size].to_s)
 
           msg = "#{path}:#{number}: `#{word}` in a test, setup or teardown body is not supported (the block is now a method); use `return`"
           raise ArgumentError, msg
@@ -1052,7 +1052,7 @@ module Cybertrain
 
       # An `end` line as `end; nil; end`, its indentation and trailer kept.
       def self.end_line(raw, code)
-        ind = ControllerScan.indent_of(code)
+        ind = SourceText.indent_of(code)
         "#{raw[0, ind]}end; nil; #{raw[ind, raw.size - ind]}"
       end
 
@@ -1096,7 +1096,7 @@ module Cybertrain
         until k.nil?
           before = k.zero? ? "" : code[k - 1].to_s
           after = code[k + 6].to_s
-          if !word_char?(before) && before != "." && before != ":" && !word_char?(after) && after != "?" && after != "!"
+          if !SourceText.word_char?(before) && before != "." && before != ":" && !SourceText.word_char?(after) && after != "?" && after != "!"
             rest = code[k + 6, code.size - k - 6].to_s.strip
             unless value_free?(rest)
               msg = "#{path}:#{number}: #{RETURN_REFUSED}"
@@ -1115,7 +1115,7 @@ module Cybertrain
         return false unless rest.start_with?("nil")
 
         nxt = rest[3].to_s
-        !word_char?(nxt)
+        !SourceText.word_char?(nxt)
       end
 
       # The index of the name's opening quote in `test "x" do` / `test("x")
@@ -1222,10 +1222,6 @@ module Cybertrain
         ch
       end
 
-      def self.word_char?(ch)
-        (ch >= "a" && ch <= "z") || (ch >= "A" && ch <= "Z") || (ch >= "0" && ch <= "9") || ch == "_"
-      end
-
       # `require "test_helper"` (the bundle requires the helper first); s
       # without a comment.
       def self.helper_require?(s)
@@ -1233,7 +1229,7 @@ module Cybertrain
       end
 
       # `require_relative "<target>"...` (s from the keyword on, no
-      # comment) with the target rebased for the copy (plan decision 20).
+      # comment) with the target rebased for the copy.
       def self.rebased_require(s, path, number, copied)
         k = 16
         k += 1 while k < s.size && s[k] == " "
@@ -1296,7 +1292,7 @@ module Cybertrain
       def self.def_name(s)
         out = +""
         s[4, s.size - 4].to_s.each_char do |ch|
-          break unless word_char?(ch) || ch == "?" || ch == "!"
+          break unless SourceText.word_char?(ch) || ch == "?" || ch == "!"
 
           out << ch
         end
@@ -1316,7 +1312,7 @@ module Cybertrain
       def self.constant_name(s)
         out = +""
         s.each_char do |ch|
-          break unless word_char?(ch)
+          break unless SourceText.word_char?(ch)
 
           out << ch
         end

@@ -141,13 +141,6 @@ module Cybertrain
         nil
       end
 
-      # The implicit "id" primary key is never in `columns`, so a foreign
-      # key's referenced table always has its own separate "id" column --
-      # `references` just reports the foreign keys this table declared.
-      def references
-        @foreign_keys
-      end
-
       # Package-internal writers used by TableDef and Definition while a
       # table is being built. Not part of the task's public Interfaces.
       #

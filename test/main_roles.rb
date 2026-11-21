@@ -4,6 +4,7 @@ require "cybertrain/test"
 require "cybertrain"
 require "cybertrain/websocket"
 require_relative "support/log_capture"
+require_relative "support/file_tree"
 
 # Requiring the framework must not create Cybertrain.config: one made then
 # keeps the environment of that moment (development), before the lines
@@ -33,18 +34,9 @@ ENV["CYBERTRAIN_DATABASE"] = "roles.sqlite3"
 ENV.delete("CYBERTRAIN_WORKER")
 ENV.delete("CYBERTRAIN_JOB_THREADS")
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 LOG = StringIO.new
@@ -53,16 +45,10 @@ Cybertrain.logger = Cybertrain::Logger.new(LOG)
 # What the job ran (a constant: NOTES rule 64).
 DONE = Array.new(0) { "" }
 
-def no_views
-  none = { "" => "" }
-  none.delete("")
-  none
-end
-
 def resolver = ->(name, args, options) { "/" }
 
 def run(argv)
-  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: no_views)
+  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: Cybertrain::Application.no_views)
 end
 
 # Through a method whose parameter the closure captures (NOTES rule 21).

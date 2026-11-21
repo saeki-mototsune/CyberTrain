@@ -18,13 +18,8 @@ ok   expect takes a spec of exactly one key
 ok   expect never returns an uploaded file
 ok   require(...).permit gains the nested and array forms
 ok   a list sent where a scalar is permitted is dropped, not coerced
-ok   merge! lets the other Params win on conflicts
-ok   merge! deep-merges nested Params, keeping receiver-only keys
-ok   merge! does not alias other's lists or nested params
-ok   merge! preserves inspect ordering: receiver order first, then other's new keys
 ok   a name can only be one kind at a time: last write wins, like Rack
 ok   to_h returns only scalars, empty? and inspect are deterministic
-ok   merge! copies Strings: the merged tree shares none with its source
 ok   set_upload stores a file; upload is nil when absent, upload? says which
 ok   the nullable upload return works in an if, the way a controller uses it
 ok   an empty file still counts as sent
@@ -33,11 +28,9 @@ ok   set_value, add_list_value and child! evict a file of the same name
 ok   set_upload_path nests like set_path and never appends
 ok   require succeeds for a form that sent only a file
 ok   permit never returns a file
-ok   merge! carries files across, evicting and nesting like the other kinds
-ok   merge! lets the other's list replace a file of the same name
 ok   uploads are inspected after scalars, lists and nested Params
 ok   a file's bytes survive the Params unchanged (NUL and high bytes)
 ok   int reads a bounded decimal and never raises
 ok   parse_int accepts an optional minus and at most 18 digits
 ok   page_number is 1-based and clamped to Params.max_page
-42 tests, 186 assertions, 0 failures
+35 tests, 156 assertions, 0 failures

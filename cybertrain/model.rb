@@ -84,7 +84,7 @@ module Cybertrain
     #   long (maximum is m characters)"`, `"is the wrong length (should be n
     #   characters)"`. A `nil` value is left to `presence`.
     # - `inclusion: { in: }` / `exclusion: { in: }`: an Array of Strings or
-    #   Integers, or a Range of Integers (Spinel builds no other Range);
+    #   Integers, or a Range of Integers (other ends raise ArgumentError);
     #   `"is not included in the list"` / `"is reserved"`.
     # - `format: { with: /re/, without: /re/ }`: the value as a String must
     #   match `with:` and must not match `without:`, else `"is invalid"`
@@ -145,7 +145,7 @@ module Cybertrain
     end
 
     # Written by gen/concerns.rb (`spin run gen`) around the `included`
-    # body of a model concern it splices into this class (spec 4.2):
+    # body of a model concern it splices into this class:
     # until {.model_concern_insert_done}, the rules its `validates` calls
     # declare go before the model's own call number `validators_index`
     # (the count of the model's `validates` calls above the `include`
@@ -189,10 +189,10 @@ module Cybertrain
     # @api public
     def self.validate(*args) = nil
 
-    # Encrypts columns at rest: `encrypts :api_key, :notes` (spec section
-    # 10). The generator reads the line as text: the generated load_row
-    # decrypts each column ({Crypto.decrypt}) and to_row encrypts it with a
-    # fresh nonce, so the record holds the text and the table the payload
+    # Encrypts columns at rest: `encrypts :api_key, :notes`. The generator
+    # reads the line as text: the generated load_row decrypts each column
+    # ({Crypto.decrypt}) and to_row encrypts it with a fresh nonce, so the
+    # record holds the text and the table the payload
     # (`"1:..."`, AES-256-GCM). Each must be a string or text column, named
     # with Symbols, no options (there is no deterministic encryption). The
     # application then needs `CYBERTRAIN_ENCRYPTION_KEY` (boot fails
@@ -486,7 +486,7 @@ module Cybertrain
     # Cybertrain::Model, so a stub here would be the method they call.
     def destroy_dependents = nil
     def reset_association_caches = nil
-    # Validations (spec section 9): the generated model answers uniqueness
+    # Validations (docs/design.md D48): the generated model answers uniqueness
     # with a query, if: / unless: through a `case` over the names the model
     # file gives, and `validate :method` lines by calling each method. A
     # hand-written model has no uniqueness conflicts, every condition true
@@ -512,7 +512,7 @@ module Cybertrain
       return e unless e.nil?
 
       # The dictionary key full_messages and the validators look names
-      # and messages up by ("post", "admin/post"; plan decision D9).
+      # and messages up by ("post", "admin/post").
       e = Errors.new(Inflector.underscore(model_name))
       @errors = e
       e
@@ -611,7 +611,7 @@ module Cybertrain
         # count (after_create) in one transaction too.
         begin
           Cybertrain::DB.transaction { |_c| create_with_callbacks }
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           # Rolled back: the record is new again.
           @persisted = false
           @id = 0
@@ -677,8 +677,7 @@ module Cybertrain
       # scale rounding, read off the values just written.
       row = to_row
       sets = Array.new(0) { "" }
-      binds = [nil, 0, 0.0, "", DB::Blob.new("")]
-      binds.clear
+      binds = Cast.empty_binds
       names.each do |name|
         sets << "#{Relation.quote_ident(name)} = ?"
         binds << row[name]
@@ -711,7 +710,7 @@ module Cybertrain
         else
           Cybertrain::DB.transaction { |_c| destroy_with_callbacks }
         end
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      rescue StandardError => e
         @persisted = true
         raise e
       end

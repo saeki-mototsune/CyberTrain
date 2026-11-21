@@ -6,7 +6,7 @@ require "cybertrain/cookie_jar"
 require "cybertrain/test/client"
 require "base64"
 
-# Controller#cookies (spec section 5, C-7): plain, permanent, signed and
+# Controller#cookies (docs/design.md D61): plain, permanent, signed and
 # encrypted cookies through SessionStore, a controller and Test::Client, as
 # a browser would carry them from one request to the next. cybertrain/
 # controller links SQLite through FFI and the jar's encrypted view needs

@@ -3,7 +3,7 @@ require "cybertrain/generator/locale_yaml"
 module Cybertrain
   module Gen
     # The application's dictionaries: every config/locales/**/*.yml read
-    # with LocaleYaml, merged across files (plan decision D4). Files are read
+    # with LocaleYaml, merged across files (docs/design.md D79). Files are read
     # sorted by their path, and a later file's key replaces an earlier
     # one's (a text or a list alike, kept at the earlier one's place); a key
     # that is a mapping in one file and a value in another is refused,
@@ -22,7 +22,7 @@ module Cybertrain
       # given), which name themselves relative to root in entries and
       # refusals.
       def self.merge_files(root, files)
-        out = Array.new(0) { LocaleEntry.new("", "", Array.new(0) { "" }, false, "", 0) }
+        out = LocaleYaml.no_locale_entries
         at = { "" => 0 }
         at.delete("")
         mapping_at = { "" => "" }

@@ -1,4 +1,4 @@
-# Phase 5a spike, item 5 (spec section 16): what `e.backtrace` answers in a
+# Phase 5a spike, item 5: what `e.backtrace` answers in a
 # release build, a `-g` build and a `--debug` build, and what a debug build
 # costs. A record, not a test.
 #

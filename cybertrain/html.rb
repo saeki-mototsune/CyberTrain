@@ -254,7 +254,6 @@ module Cybertrain
         if !nested && attr_name == "class"
           # class: { active: on } / ["btn", { big: x }]: Rails' class_names.
           case value
-          when Time then nil
           when Array, Hash
             nested = true
             list = []
@@ -279,9 +278,6 @@ module Cybertrain
       when nil then return ""
       when true then return nested ? " #{attr_name}=\"true\"" : " #{attr_name}"
       when false then return nested ? " #{attr_name}=\"false\"" : ""
-      # Time before Array: a Time in a polymorphic slot matches Array
-      # (spikes/NOTES.md rule 8).
-      when Time then return " #{attr_name}=\"#{escape(value.to_s)}\""
       when Array
         words = Array.new(0) { "" }
         value.each do |item|
@@ -400,7 +396,6 @@ module Cybertrain
       values.each do |value|
         case value
         when nil, false, true then nil
-        when Time then add_words(words, value.to_s)
         when Array then add_class_words(words, value)
         when Hash
           value.each_key do |key|

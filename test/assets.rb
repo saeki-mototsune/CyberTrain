@@ -1,6 +1,6 @@
-# The asset helpers (spec sections 7.2 and 7.3): asset_path,
+# The asset helpers (docs/design.md D63): asset_path,
 # stylesheet_link_tag, javascript_include_tag, image_tag and
-# javascript_importmap_tags (with this request's CSP nonce, spec C-5), an
+# javascript_importmap_tags (with this request's CSP nonce), an
 # unknown name in test and in production, and the immutable caching of
 # digested files under /assets (7.4) through a booted Application, which
 # reads public/assets/.manifest at boot. The asset table is a hand-written

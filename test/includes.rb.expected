@@ -6,7 +6,7 @@ ok   a chain method on a preloaded association drops the preload and queries
 ok   Comment.includes(:post) fills each comment's parent; a missing post answers nil without a query
 ok   includes of an unknown association raises ArgumentError
 ok   includes with no names, or a name twice, changes nothing
-ok   an empty result runs only its own statement (Review Focus 4)
+ok   an empty result runs only its own statement
 ok   includes leaves the other readers alone
 ok   read_association(:comments) on a preloaded post answers the Array without a statement
 ok   reload drops the preloaded comments

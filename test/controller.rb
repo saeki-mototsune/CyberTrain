@@ -264,7 +264,7 @@ def secure(klass, action)
   c
 end
 
-# allow_unauthenticated_access (plan D14): the Controller class method the
+# allow_unauthenticated_access: the Controller class method the
 # generated controllers call in their class bodies. It is
 # skip_before_action(:require_authentication, only:, except:), so a base
 # class requiring sign-in keeps it for every action the call does not open.
@@ -780,7 +780,7 @@ test "local_path? and safe_redirect_path accept only an ordinary local path" do
   assert_equal "/home", controller.safe_redirect_path(nil, "/home")
 end
 
-# The per-request locale (plan R4, Task 4): a before_action or an action
+# The per-request locale (docs/design.md D79): a before_action or an action
 # sets I18n.locale on the connection's thread; the next request on that
 # thread (a keep-alive connection) starts at the default locale again.
 class LocaleController < Cybertrain::Controller

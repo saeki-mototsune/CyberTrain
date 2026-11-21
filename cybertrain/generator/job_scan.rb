@@ -1,25 +1,25 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/model_scan"
 
 module Cybertrain
   module Gen
-    # One `retry_on` / `discard_on` line of a job class (spec section 3).
+    # One `retry_on` / `discard_on` line of a job class (docs/design.md D51).
     # policy_kind is "retry" or "discard"; exception_class the class the
     # generated `rescue` arm names, in full (`Stuck` written inside
     # `NestedJob` is "NestedJob::Stuck"); wait_base the seconds of `wait:`
     # (3 when not given, Rails' default), or 0 with polynomial true for
     # `wait: :polynomially_longer`; attempts the `attempts:` (5 when not
-    # given); a discard line has 0, false, 0. line places error messages.
+    # given); a discard line has 0, false, 0.
     class PolicyInfo
-      attr_reader :policy_kind, :exception_class, :wait_base, :polynomial, :attempts, :line
+      attr_reader :policy_kind, :exception_class, :wait_base, :polynomial, :attempts
 
-      def initialize(policy_kind, exception_class, wait_base, polynomial, attempts, line)
+      def initialize(policy_kind, exception_class, wait_base, polynomial, attempts)
         @policy_kind = policy_kind
         @exception_class = exception_class
         @wait_base = wait_base
         @polynomial = polynomial
         @attempts = attempts
-        @line = line
       end
     end
 
@@ -28,15 +28,15 @@ module Cybertrain
     # another job class: `LeafJob < MidJob`), its policies in declaration
     # order (retry and discard interleaved), its `limits_concurrency`
     # (`to:`, 0 without the line; `key:`, "" without one), whether it
-    # defines `perform` and `retries_exhausted`, and the keyword ("module"
+    # defines `perform`, and the keyword ("module"
     # or "class") of each enclosing name segment, outermost first
     # (["module"] for Admin::ReportJob), which the emitter reopens.
     class JobInfo
       attr_reader :file, :class_name, :superclass_name, :policies, :concurrency_to, :concurrency_key,
-                  :has_perform, :has_exhausted_hook, :scope_keywords
+                  :has_perform, :scope_keywords
 
       def initialize(file, class_name, superclass_name, policies, concurrency_to, concurrency_key, has_perform,
-                     has_exhausted_hook, scope_keywords)
+                     scope_keywords)
         @file = file
         @class_name = class_name
         @superclass_name = superclass_name
@@ -44,7 +44,6 @@ module Cybertrain
         @concurrency_to = concurrency_to
         @concurrency_key = concurrency_key
         @has_perform = has_perform
-        @has_exhausted_hook = has_exhausted_hook
         @scope_keywords = scope_keywords
       end
     end
@@ -68,13 +67,13 @@ module Cybertrain
       end
     end
 
-    # Reads app/jobs/**/*.rb as text (spec section 2.2), as ComponentScan
+    # Reads app/jobs/**/*.rb as text (docs/design.md D51), as ComponentScan
     # reads app/components: every class that descends from
     # Cybertrain::Job::Base (directly, through ApplicationJob, or through
     # another job class: `LeafJob < MidJob`), wherever it sits in a file
     # (several per file, nested in a module or a class), with one
     # `retry_on` / `discard_on` / `limits_concurrency` macro per line with
-    # literal values, and the `def perform` / `def retries_exhausted`
+    # literal values, and the `def perform`
     # lines. A class that descends from none of these is skipped (a helper
     # may live there). A job inherits its ancestors' policies (its own
     # arms first, then each ancestor's outward) and the nearest limit; a
@@ -223,7 +222,7 @@ module Cybertrain
 
       # A JobInfo with nothing in it (class_name ""): a typed placeholder.
       def self.empty_info
-        JobInfo.new("", "", "", Array.new(0) { PolicyInfo.new("", "", 0, false, 0, 0) }, 0, "", false, false, Array.new(0) { "" })
+        JobInfo.new("", "", "", Array.new(0) { PolicyInfo.new("", "", 0, false, 0) }, 0, "", false, Array.new(0) { "" })
       end
 
       # Every job class under dir (app/jobs), in load order:
@@ -231,14 +230,14 @@ module Cybertrain
       # file's classes in line order.
       def self.scan_dir(dir)
         infos = Array.new(0) { empty_info }
-        jobs = ControllerScan.ruby_files(dir)
+        jobs = SourceText.ruby_files(dir)
         return infos if jobs.empty?
 
         app = File.dirname(dir)
         base_file = "#{dir}/application_job.rb"
-        models = ControllerScan.ruby_files("#{app}/models")
+        models = SourceText.ruby_files("#{app}/models")
         defined = Array.new(0) { empty_class }
-        ControllerScan.ruby_files(app).each do |path|
+        SourceText.ruby_files(app).each do |path|
           class_definitions(path, File.read(path)).each { |d| defined << d }
         end
         ordered = Array.new(0) { "" }
@@ -391,12 +390,11 @@ module Cybertrain
         class_indent = d.defined_indent
         skip_indent = -1
         def_indent = -1
-        policies = Array.new(0) { PolicyInfo.new("", "", 0, false, 0, 0) }
+        policies = Array.new(0) { PolicyInfo.new("", "", 0, false, 0) }
         concurrency_to = 0
         concurrency_key = ""
         concurrency_line = 0
         has_perform = false
-        has_hook = false
         lineno = d.defined_line
         while !d.defined_one_line && lineno < lines.size
           raw = lines[lineno]
@@ -404,19 +402,19 @@ module Cybertrain
           line = raw.strip
           next if line == "" || line.start_with?("#")
 
-          indent = ModelScan.indent_of(raw)
+          indent = SourceText.indent_of(raw)
           if skip_indent >= 0
-            skip_indent = -1 if indent == skip_indent && ModelScan.closing_end?(line)
+            skip_indent = -1 if indent == skip_indent && SourceText.closing_end?(line)
             next
           end
-          break if indent <= class_indent && ModelScan.closing_end?(line)
+          break if indent <= class_indent && SourceText.closing_end?(line)
 
           if def_indent >= 0
-            def_indent = -1 if indent == def_indent && ModelScan.closing_end?(line)
+            def_indent = -1 if indent == def_indent && SourceText.closing_end?(line)
             next
           end
-          if ModelScan.opens_block?(line)
-            skip_indent = indent unless ModelScan.one_line_block?(line)
+          if SourceText.opens_block?(line)
+            skip_indent = indent unless SourceText.one_line_block?(line)
             next
           end
           macro = macro_name(line)
@@ -445,11 +443,10 @@ module Cybertrain
             reserved_class_method!(file, line, lineno)
             name = ModelScan.def_name(line)
             has_perform = true if name == "perform"
-            has_hook = true if name == "retries_exhausted"
           end
           def_indent = indent if ModelScan.def_opens_body?(line)
         end
-        JobInfo.new(file, class_name, parent, policies, concurrency_to, concurrency_key, has_perform, has_hook, d.defined_scopes)
+        JobInfo.new(file, class_name, parent, policies, concurrency_to, concurrency_key, has_perform, d.defined_scopes)
       end
 
       # "retry_on", "discard_on" or "limits_concurrency" when the line calls
@@ -507,7 +504,7 @@ module Cybertrain
         values = Array.new(0) { "" }
         klass = macro_options(file, line, lineno, macro, names, values)
         resolved = resolve_class(file, lineno, klass, class_name, defined, models, base_file)
-        return PolicyInfo.new("discard", resolved, 0, false, 0, lineno) if macro == "discard_on" && names.empty?
+        return PolicyInfo.new("discard", resolved, 0, false, 0) if macro == "discard_on" && names.empty?
         raise Error, shape(file, line, lineno) if macro == "discard_on"
 
         wait = 3
@@ -526,7 +523,7 @@ module Cybertrain
             raise Error, shape(file, line, lineno)
           end
         end
-        PolicyInfo.new("retry", resolved, wait, polynomial, attempts, lineno)
+        PolicyInfo.new("retry", resolved, wait, polynomial, attempts)
       end
 
       # Reads `macro Klass, name: value, ...` (or `macro(...)`;
@@ -593,7 +590,7 @@ module Cybertrain
       def self.constant_path_at(text)
         out = +""
         text.each_char do |ch|
-          break unless ModelScan.word_char?(ch) || ch == ":"
+          break unless SourceText.word_char?(ch) || ch == ":"
 
           out << ch
         end
@@ -663,14 +660,14 @@ module Cybertrain
           line = raw.strip
           next if line == "" || line.start_with?("#")
 
-          indent = ModelScan.indent_of(raw)
-          if !indents.empty? && indent <= indents.last && ModelScan.closing_end?(line)
+          indent = SourceText.indent_of(raw)
+          if !indents.empty? && indent <= indents.last && SourceText.closing_end?(line)
             names.pop
             keywords.pop
             indents.pop
             next
           end
-          one_line = ModelScan.one_line_block?(line)
+          one_line = SourceText.one_line_block?(line)
           if line.start_with?("class <<") || line.start_with?("class<<")
             unless one_line
               names << "<<"

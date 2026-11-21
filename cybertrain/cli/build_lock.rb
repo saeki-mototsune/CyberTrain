@@ -35,7 +35,7 @@ module Cybertrain
       BUSY_TRIES = 3
       BUSY_WAIT = 0.05
 
-      attr_reader :lock_path, :owner_pid
+      attr_reader :lock_path
 
       # The lock of the application in root, taken on behalf of pid (the PID
       # written into the file; the flock belongs to this process).

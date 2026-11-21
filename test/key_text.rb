@@ -1,5 +1,5 @@
 # Regression: under Spinel, Symbol#to_s answers a new frozen String at
-# every call and a frozen heap String is never freed (NOTES rule 123), so
+# every call and a frozen heap String is never freed (NOTES rule 125), so
 # every `key.to_s` of a Symbol key on a request path leaked about 110
 # bytes: examples/blog's server grew by 1 to 4 KB per request, without
 # bound, and its throughput fell with it. The framework names a key with

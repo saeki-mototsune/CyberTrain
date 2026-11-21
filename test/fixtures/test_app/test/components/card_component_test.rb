@@ -1,6 +1,6 @@
 require "test_helper"
 
-# render_inline and assert_select (spec section 9.1): a component, then a
+# render_inline and assert_select: a component, then a
 # partial outside any request.
 class CardComponentTest < ViewComponent::TestCase
   test "renders the title" do

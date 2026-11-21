@@ -1,0 +1,3 @@
+Pkg::Mine < ArgumentError < StandardError < Exception < Object < BasicObject
+RuntimeError < StandardError < Exception < Object < BasicObject
+ArgumentError < StandardError < Exception < Object < BasicObject

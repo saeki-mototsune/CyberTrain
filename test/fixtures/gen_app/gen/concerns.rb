@@ -9,6 +9,20 @@
 
 module AdminGate
   def self.per_page = 50
+
+  # Each of these is also the name of an instance method a
+  # GatedController has: AdminGate's own (below), GatedController's,
+  # ApplicationController's, Stamped's (ApplicationController's concern)
+  # and Auditing's (GatedController's other concern).
+  def self.gate_limit = 51
+  def self.class_limit = 52
+  def self.parent_limit = 53
+  def self.stamp_limit = 54
+  def self.audit_limit = 55
+end
+
+module Visible
+  def self.summary = "posts"
 end
 
 class ApplicationController
@@ -20,6 +34,11 @@ end
 
 class GatedController
   def self.per_page(...) = AdminGate.per_page(...)
+  def self.gate_limit(...) = AdminGate.gate_limit(...)
+  def self.class_limit(...) = AdminGate.class_limit(...)
+  def self.parent_limit(...) = AdminGate.parent_limit(...)
+  def self.stamp_limit(...) = AdminGate.stamp_limit(...)
+  def self.audit_limit(...) = AdminGate.audit_limit(...)
 
   # AdminGate (include AdminGate at app/controllers/gated_controller.rb:5)
   concern_insert_at(1, 0)
@@ -35,6 +54,8 @@ class GatedController
 end
 
 class Post
+  def self.summary(...) = Visible.summary(...)
+
   # Visible (include Visible at app/models/post.rb:4)
   model_concern_insert_at(1)
   validates :body, length: { maximum: 10000 }

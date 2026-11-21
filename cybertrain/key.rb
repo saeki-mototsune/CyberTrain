@@ -6,7 +6,7 @@
 # and a frozen heap String is immortal there (the collector pins it, as it
 # pins a literal): every `sym.to_s` on a request path kept about 110 bytes
 # for the life of the process, which is what made examples/blog's server
-# grow by about 1 to 4 KB per request (NOTES rule 123). `Symbol#name`
+# grow by about 1 to 4 KB per request (NOTES rule 125). `Symbol#name`
 # answers one frozen String per Symbol, made at its first call and the same
 # object afterwards, under CRuby as under Spinel.
 #

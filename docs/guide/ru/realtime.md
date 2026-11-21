@@ -1,5 +1,5 @@
 ---
-source_sha256: 4d2f34b5565d3b155fb42b317bb2b8548de7e76aeab9e9f2f11e8cf44f6bd971
+source_sha256: 0ac92df8f2d3d6ae1a67b27813f027a53e1ada3527cc73bb34c9baad2db17ab7
 ---
 # Реальное время: потоки в браузер
 
@@ -38,18 +38,22 @@ source_sha256: 4d2f34b5565d3b155fb42b317bb2b8548de7e76aeab9e9f2f11e8cf44f6bd971
 
 [Turbo](https://turbo.hotwired.dev) обновляет страницу по элементам
 `<turbo-stream action="append" target="comments">`, как это делают
-приложения на Rails 8. Подключите Turbo в макете (конвейера ресурсов нет:
-CDN или копия в `public/`) и подпишите страницу с помощью
+приложения на Rails 8. Подключите Turbo через import map: раскомментируйте
+pin `@hotwired/turbo` в `config/importmap.rb` и `import "@hotwired/turbo"` в
+`app/javascript/application.js` — обе строки записал `cybertrain new`
+([Import map](assets.md#the-import-map)) — и подпишите страницу с помощью
 `turbo_stream_from`. Широковещательным рассылкам, конечной точке потоков
 и хелперам потоков нужна строка `require "cybertrain/streams"` в
 `bin/<app>.rb` и `bin/db.rb`; без неё `spin run gen` остановится на первом
 `turbo_stream_from` и назовёт строку ([Подсистемы](how-it-works.md#subsystems)):
 
-```erb app/views/layouts/application.html.erb (фрагмент)
-<head>
-  <%= csrf_meta_tags %>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8/dist/turbo.es2017-esm.js"></script>
-</head>
+```ruby config/importmap.rb
+pin "application"
+pin "@hotwired/turbo", to: "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js"
+```
+
+```javascript app/javascript/application.js
+import "@hotwired/turbo"
 ```
 
 ```erb app/views/articles/show.html.erb (фрагмент)
@@ -103,22 +107,29 @@ Scaffold уже отвечает так, как ожидает Turbo: редир
 
 ### Ответ на форму через Turbo Stream
 
-Форма, которую отправляет Turbo, принимает `text/vnd.turbo-stream.html`.
-Чтобы ответить потоком вместо редиректа, отрисуйте элемент сами; их строит
-`Cybertrain::Turbo` (`replace`, `update`, `append`, `prepend`, `before`,
-`after`, `remove`, `refresh`):
+Форма, которую отправляет Turbo, принимает `text/vnd.turbo-stream.html`,
+поэтому формат запроса — `:turbo_stream`. Чтобы ответить потоком вместо
+редиректа, перечислите этот формат, как в Rails
+([Форматы и `respond_to`](requests.md#formats-and-respond_to)):
 
 ```ruby
 def destroy
   @comment = Comment.where(article_id: @article.id).find(params[:id])
   @comment.destroy
-  if request.header("accept").to_s.include?("text/vnd.turbo-stream.html")
-    render html: Cybertrain::Turbo.remove(@comment), content_type: "text/vnd.turbo-stream.html"
-  else
-    redirect_to article_path(@article), status: :see_other
+  respond_to do |format|
+    format.turbo_stream { render turbo_stream: turbo_stream.remove(@comment) }
+    format.html { redirect_to article_path(@article), status: :see_other }
   end
 end
 ```
+
+`turbo_stream` строит `replace`, `update`, `append`, `prepend`, `before` и
+`after` (цель и одно из двух: `partial:` с `locals:` или `html:`), а также
+`remove`. `format.turbo_stream` без блока отрисовывает
+`<action>.turbo_stream.erb` без макета, и там тот же построитель доступен
+как хелпер (`<%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>`, из `create.turbo_stream.erb` в examples/blog). Вне
+контроллера и шаблона элементы строит `Cybertrain::Turbo`: те же семь и
+`refresh`.
 
 ### Рассылка из задачи, периодической задачи или фида
 
@@ -226,7 +237,10 @@ Turbo.
 
 Действие может держать открытым собственный ответ, как это делает
 `ActionController::Live` в Rails: `stream` выполняет блок после действия, в
-потоке соединения, и передаёт ему сокет как `Cybertrain::Sink`.
+потоке соединения, и передаёт ему сокет как `Cybertrain::Sink`. `stream` и `Sink`
+входят в ядро; `Cybertrain::SSE`, который использует пример, приходит с
+`require "cybertrain/streams"`, а приложение без этой строки подключает
+`cybertrain/http/sse` само.
 
 ```ruby app/controllers/reports_controller.rb (фрагмент)
 def progress
@@ -253,7 +267,8 @@ end
 `secret_key_base` только для потоков (как `turbo/signed_stream_verifier_key`
 в Rails), поэтому токен никогда не подходит как cookie сессии; точка входа проверяет подпись и не читает ни сессию, ни базу данных. Это
 модель Turbo: тот, кто мог отрисовать страницу, мог читать её потоки. Токены
-не истекают; смена `secret_key_base` делает недействительными все, и
+не истекают; смена `secret_key_base` (`CYBERTRAIN_SECRET_KEY_BASE`) делает
+недействительными все токены, а с ними и все сессии, и
 страница, открытая через такой деплой, перестаёт получать обновления
 (`EventSource` считает 403 окончательным), пока её не перезагрузят.
 
@@ -262,8 +277,6 @@ end
   пользователя, `turbo_stream_from @user` (`"users:7"`), отрисованный только
   на страницах этого пользователя. Любой, кто заполучит токен, может читать
   этот поток, пока секрет не меняется.
-- Токены не истекают. Смена `CYBERTRAIN_SECRET_KEY_BASE` делает
-  недействительными все токены (и все сессии).
 - Токен передаётся в URL, поэтому журнал доступа обратного прокси его
   записывает. Собственный журнал запросов фреймворка пишет его как
   `[FILTERED]`; выключите журналирование прокси для `/cybertrain/stream` или

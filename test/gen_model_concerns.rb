@@ -6,8 +6,9 @@ require "cybertrain/controller"
 require "cybertrain/model"
 require "cybertrain/job"
 require "cybertrain/generator"
+require_relative "support/schema_tables"
 require_relative "fixtures/gen_app/config/routes"
-# Model concerns (spec 4.2, plan decision 9), on the fixture app loaded
+# Model concerns (docs/design.md D60), on the fixture app loaded
 # through its checked-in gen/app.rb: gen/concerns/models/concerns/visible.rb
 # (app/models/concerns/visible.rb with its `included` block blanked) before
 # the models, then gen/concerns.rb, which splices Visible's `included` body
@@ -18,35 +19,10 @@ require_relative "fixtures/gen_app/gen/app"
 
 FIXTURE = "test/fixtures/gen_app"
 
-def sql_type(column)
-  case column.type
-  when :integer, :boolean then "INTEGER"
-  when :float then "REAL"
-  when :decimal then "DECIMAL"
-  else "TEXT"
-  end
-end
-
-def create_tables_sql(definition)
-  sql = +""
-  definition.tables.each do |table|
-    parts = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
-    table.columns.each do |c|
-      part = +"\"#{c.name}\" #{sql_type(c)}"
-      part << " NOT NULL" unless c.null
-      default = c.default
-      part << " DEFAULT #{default}" unless default.nil?
-      parts << part
-    end
-    sql << "CREATE TABLE \"#{table.name}\" (#{parts.join(", ")});"
-  end
-  sql
-end
-
 require_relative "fixtures/gen_app/db/schema"
 Cybertrain.config.encryption_key = "8f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
 Cybertrain::DB.connect(":memory:", size: 1)
-Cybertrain::DB.with { |c| c.exec_script(create_tables_sql(Cybertrain::Schema.current)) }
+Cybertrain::DB.with { |c| c.exec_script(SchemaTables.create_sql(Cybertrain::Schema.current)) }
 
 def reset_tables
   Cybertrain::DB.with { |c| c.exec_script("DELETE FROM comments; DELETE FROM posts;") }
@@ -89,7 +65,8 @@ test "validates from a model concern runs at the include's position" do
   assert_equal ["price:numericality", "title:presence", "body:length", "title:uniqueness", "title:length",
                 "views:numericality"], rules
   generated = File.read("#{FIXTURE}/gen/concerns.rb")
-  assert_includes generated, "class Post\n  # Visible (include Visible at app/models/post.rb:4)\n  model_concern_insert_at(1)\n" \
+  assert_includes generated, "class Post\n  def self.summary(...) = Visible.summary(...)\n\n" \
+                             "  # Visible (include Visible at app/models/post.rb:4)\n  model_concern_insert_at(1)\n" \
                              "  validates :body, length: { maximum: 10000 }\n  scope :visible, -> { where(hidden: 0) }\n" \
                              "  before_save { |r| r.body = \"\#{r.body}>visible\" if r.title == \"callback order\" }\n" \
                              "  model_concern_insert_done\nend\n"
@@ -126,7 +103,8 @@ test "a model concern included twice is expanded once" do
   assert_equal ["visible?"], info.view_methods
   out = Cybertrain::Gen::ConcernsEmitter.emit_models([info], model_concerns)
   assert_equal 1, occurrences(out, "scope :visible")
-  assert_includes out, "class Note\n  # Visible (include Visible at app/models/note.rb:2)\n  model_concern_insert_at(0)\n"
+  assert_includes out, "class Note\n  def self.summary(...) = Visible.summary(...)\n\n" \
+                       "  # Visible (include Visible at app/models/note.rb:2)\n  model_concern_insert_at(0)\n"
 end
 
 test "an include of a module that is not a concern is left to Ruby" do
@@ -177,7 +155,7 @@ TMP_SOURCES = {
   "looped.rb" => "module Looped\n  extend ActiveSupport::Concern\n\n  included do\n    include Looped\n  end\nend\n",
   "paged.rb" => "module Paged\n  extend ActiveSupport::Concern\n\n  class_methods do\n    def recent = 1\n    def where = 2\n    def per_page = 3\n  end\nend\n"
 }
-Cybertrain::Gen::Runner.make_dirs("#{TMP_APP}/app/models/concerns")
+Cybertrain::Gen::SourceText.make_dirs("#{TMP_APP}/app/models/concerns")
 TMP_SOURCES.each { |name, source| File.write("#{TMP_APP}/app/models/concerns/#{name}", source) }
 at_exit do
   TMP_SOURCES.keys.each { |name| File.delete("#{TMP_APP}/app/models/concerns/#{name}") }
@@ -201,7 +179,6 @@ test "associations, encrypts, uniqueness and validate from a concern join the mo
   assert_equal ["slug_sane"], info.custom_validations.map { |v| v.name }
   assert_equal "create", info.custom_validations[0].on
   assert_equal ["slug_sane"], info.defined_methods
-  assert_equal ["app/models/concerns/tracked.rb:12"], info.defined_places
 end
 
 test "an include in a concern's included body brings that concern in after it; a cycle is refused" do
@@ -221,8 +198,7 @@ test "an include in a concern's included body brings that concern in after it; a
   assert_equal "concern cycle: Looped includes Looped", msg
 end
 
-test "a model concern's class_methods name may not be a scope, a model class method or an instance method" do
-  rule = "Spinel compiles a def inside class_methods as an instance method too (spikes/NOTES.md rule 93), so rename one"
+test "a model concern's class_methods name may not be a scope or a model class method; an instance method's is fine" do
   scoped = Cybertrain::Gen::ModelScan.scan_source("app/models/doc.rb", "class Doc\n  include Paged\n  scope :recent, -> { order(id: :desc) }\nend\n", tmp_concerns)
   msg = assert_raises("ArgumentError") { Cybertrain::Gen::ConcernsEmitter.emit_models([scoped], tmp_concerns) }
   assert_equal "app/models/concerns/paged.rb:5: class_methods def recent: Doc, which includes Paged, has scope :recent " \
@@ -234,18 +210,23 @@ test "a model concern's class_methods name may not be a scope, a model class met
                "(Cybertrain::Model, Cybertrain::Relation); a forwarder would replace it in Doc, so rename it", msg
   info = Cybertrain::Gen::ModelScan.scan_source("app/models/doc.rb", "class Doc\n  include Tracked\n\n  def recent = 0\nend\n", tmp_concerns)
   paged = Cybertrain::Gen::ConcernScan.find(tmp_concerns, "Paged")
-  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ConcernsEmitter.check_model_class_method(info, paged, "recent", 5) }
-  assert_equal "app/models/concerns/paged.rb:5: class_methods def recent: Doc, which includes Paged, or one of its concerns " \
-               "also defines an instance method recent (app/models/doc.rb:4); #{rule}", msg
-  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ConcernsEmitter.check_model_class_method(info, paged, "slug_sane", 5) }
-  assert_equal "app/models/concerns/paged.rb:5: class_methods def slug_sane: Doc, which includes Paged, or one of its concerns " \
-               "also defines an instance method slug_sane (app/models/concerns/tracked.rb:12); #{rule}", msg
+  # Doc#recent, and slug_sane, an instance method of its concern Tracked.
+  assert_includes info.defined_methods, "recent"
+  assert_includes info.defined_methods, "slug_sane"
+  assert_nil Cybertrain::Gen::ConcernsEmitter.check_model_class_method(info, paged, "recent", 5)
+  assert_nil Cybertrain::Gen::ConcernsEmitter.check_model_class_method(info, paged, "slug_sane", 5)
   assert_nil Cybertrain::Gen::ConcernsEmitter.check_model_class_method(info, paged, "per_page", 7)
+  # Compiled, on the fixture: Visible's class_methods has summary, which
+  # Post defines as an instance method.
+  assert_equal "posts", Post.summary
+  assert_equal "posts", Visible.summary
+  assert_equal "Sho", Post.new(title: "Shown").summary
+  assert_includes File.read("#{FIXTURE}/gen/concerns.rb"), "class Post\n  def self.summary(...) = Visible.summary(...)\n"
 end
 
 test "a model concern named relative to its module is resolved as Ruby resolves it; an unreached one is refused" do
   root = Dir.mktmpdir("cybertrain-model-concerns-nested")
-  Cybertrain::Gen::Runner.make_dirs("#{root}/app/models/concerns/shop")
+  Cybertrain::Gen::SourceText.make_dirs("#{root}/app/models/concerns/shop")
   File.write("#{root}/app/models/concerns/shop/priced.rb",
              "module Shop\n  module Priced\n    extend ActiveSupport::Concern\n\n    included do\n      scope :cheap, -> { where(price: 1) }\n    end\n  end\nend\n")
   File.write("#{root}/app/models/concerns/shop/bundle.rb",

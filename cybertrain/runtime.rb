@@ -45,15 +45,8 @@ module Cybertrain
     @applied = 0
     @role = ""
 
-    # The defaults Runtime.reset! restores: what each module holds before
-    # any boot. They repeat the modules' own literals, and test/runtime.rb
-    # compares the two, so a default changed in one place fails there.
-    DEFAULT_LAYOUT = "layouts/application"
-    DEFAULT_MAX_UPLOAD_BYTES = 5_242_880
-    DEFAULT_MAX_PARTS = 128
-    DEFAULT_UPLOAD_ROOT = "storage/uploads"
-    DEFAULT_MAX_PAGE = 10_000
-    DEFAULT_PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=()"
+    # The locale Runtime.reset! restores. The other defaults it restores
+    # are constants of the modules that hold the settings.
     DEFAULT_LOCALE = :en
 
     # Installs every process-shared setting from `config`, in the order
@@ -95,7 +88,7 @@ module Cybertrain
 
     # Installs the log level on Cybertrain.logger (`:none` as `:error`: no
     # request log, errors still printed) and the line format
-    # (Logger.json_lines). {.apply} calls it, and so do a registered command
+    # (Logger.json_lines). `Runtime.apply` calls it, and so do a registered command
     # (`Main.command`), `jobs` and `console`, which run without
     # Application#boot, so their lines follow `log_level` and `log_format`
     # too. An unknown level or format is refused as boot refuses it:
@@ -114,7 +107,7 @@ module Cybertrain
     end
 
     # Installs `config.time_zone` as `Time.zone` ({Clock.zone}), the one
-    # setting a process that does not boot needs too: {.apply} calls it,
+    # setting a process that does not boot needs too: `Runtime.apply` calls it,
     # and so do a registered command (`Main.command`), `jobs` and
     # `console`, which run without Application#boot. An unknown name is
     # refused as boot refuses it: the zone is left as it was and the answer
@@ -131,7 +124,7 @@ module Cybertrain
       ""
     end
 
-    # Puts every setting {.apply} and Application.configure_views write back
+    # Puts every setting `Runtime.apply` and Application.configure_views write back
     # to its default, as in a process that has not booted: for a test that
     # boots Applications with different configs and wants each case to
     # start from the same state. It leaves the configuration
@@ -143,13 +136,13 @@ module Cybertrain
       Views.reset!
       Assets.forget_kept
       Assets.raise_on_unknown = true
-      Multipart.configure(DEFAULT_MAX_UPLOAD_BYTES, DEFAULT_MAX_PARTS)
-      BlobStore.root = DEFAULT_UPLOAD_ROOT
-      Params.max_page = DEFAULT_MAX_PAGE
+      Multipart.configure(Multipart::DEFAULT_MAX_UPLOAD_BYTES, Multipart::DEFAULT_MAX_PARTS)
+      BlobStore.root = BlobStore::DEFAULT_ROOT
+      Params.max_page = Params::DEFAULT_MAX_PAGE
       Request.trusted_proxy = false
       Request.trusted_proxies = Array.new(0) { "" }
       ParameterFilter.names = ParameterFilter::DEFAULT_NAMES
-      Response.default_permissions_policy = DEFAULT_PERMISSIONS_POLICY
+      Response.default_permissions_policy = Response::DEFAULT_PERMISSIONS_POLICY
       Cybertrain.logger.level = :info
       Logger.json_lines = false
       I18n.default_locale = DEFAULT_LOCALE
@@ -161,7 +154,7 @@ module Cybertrain
       nil
     end
 
-    # How many times {.apply} has run in this process: 0 until the first
+    # How many times `Runtime.apply` has run in this process: 0 until the first
     # boot. A second boot of the same Application counts again.
     # @return [Integer]
     # @api public
@@ -170,7 +163,7 @@ module Cybertrain
     end
 
     # The settings as one line, for a test to compare two states (and for a
-    # bug report): every value {.apply} and Application.configure_views
+    # bug report): every value `Runtime.apply` and Application.configure_views
     # write, in a fixed order, except I18n's four, which I18n answers
     # itself (I18n.default_locale, I18n.available_locales).
     # @return [String]

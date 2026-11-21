@@ -1,11 +1,11 @@
 ---
-source_sha256: 56fd42be62c881b2651d4f07b3a1416a772e668460ec68fc56b620e7a78810bb
+source_sha256: 6e4f1fb3feea6c05454ba214e8d64b5662955142a0167ff12c120a2e654c9ca7
 ---
 # 出站 HTTP、WebSocket 订阅与电子邮件
 
 ## 出站 HTTP
 
-调用其他服务器（webhook、Slack 传入 webhook、第三方 API）的应用使用 `Cybertrain::HttpClient`。`require "cybertrain"` 通过 [Sentry 发送器](background-and-operations.md#error-reporting)加载它和 TLS 层；基于 `cybertrain/core` 的应用请在使用它的地方 require 它，如果有任何 URL 是 https，还要 require TLS 层：
+调用其他服务器（webhook、Slack 传入 webhook、第三方 API）的应用使用 `Cybertrain::HttpClient`。`require "cybertrain"` 通过 [Sentry 发送器](logs-and-errors.md#error-reporting)加载它和 TLS 层；基于 `cybertrain/core` 的应用请在使用它的地方 require 它，如果有任何 URL 是 https，还要 require TLS 层：
 
 ```ruby
 require "json"
@@ -73,7 +73,7 @@ Cybertrain.logger.info("#{res.bytes_written} bytes") if res.success?
 
 ### gzip
 
-加载了 gzip 支持时，客户端会请求并解压 gzip 响应体：`require "cybertrain"` 会加载它，所以在应用中每个请求都会发送 `Accept-Encoding: gzip`（除非你自己发送了 `Accept-Encoding` 头），而 `Content-Encoding: gzip` 的响应体会以解压后的形式返回。只 require 了 `cybertrain/http_client` 的程序要加上 `require "cybertrain/http/gzip_ffi"`（它会链接 zlib）；没有它时，gzip 响应是一个指明该文件的 `BadResponseError`。保留的响应体在传输时和解压后都受 `max_body` 限制（超出则 `TooLargeError`）；流式响应体逐段解压，每段最多 64 KiB，与未压缩的流式响应体一样没有总上限。`Response` 的头就是收到的头：`body` 是解压后的文本，而 `Content-Encoding: gzip` 和传输时的 `Content-Length` 仍然保留。其他任何 `Content-Encoding`（`br`、`deflate`）都是 `BadResponseError`；被截断或损坏的 gzip 响应体也是。
+加载了 gzip 支持时，客户端会请求并解压 gzip 响应体：`require "cybertrain/core"` 会加载它（服务器用它解压 gzip 请求体），所以在应用中每个请求都会发送 `Accept-Encoding: gzip`（除非你自己发送了 `Accept-Encoding` 头），而 `Content-Encoding: gzip` 的响应体会以解压后的形式返回。只 require 了 `cybertrain/http_client` 的程序要加上 `require "cybertrain/http/gzip_ffi"`（它会链接 zlib）；没有它时，gzip 响应是一个指明该文件的 `BadResponseError`。保留的响应体在传输时和解压后都受 `max_body` 限制（超出则 `TooLargeError`）；流式响应体逐段解压，每段最多 64 KiB，与未压缩的流式响应体一样没有总上限。`Response` 的头就是收到的头：`body` 是解压后的文本，而 `Content-Encoding: gzip` 和传输时的 `Content-Length` 仍然保留。其他任何 `Content-Encoding`（`br`、`deflate`）都是 `BadResponseError`；被截断或损坏的 gzip 响应体也是。
 
 ### Server-Sent Events
 
@@ -96,7 +96,7 @@ parser.finish { |event| Answer.append(event.event_data) }   # 流没有以空行
 
 ## 订阅 WebSocket 数据流
 
-在服务器运行期间监听外部数据流（行情报价、设备遥测、事件流）的应用，用 `Cybertrain::WebSocket.subscribe` 订阅它。与 HTTP 客户端一样，它不在 `require "cybertrain"` 之中；请在编写订阅的地方 require 它，使用 `wss://` 时还要 require TLS 层。它会加载 feed 子系统（`feeds` 角色、feed 健康检查），所以使用 `cybertrain/core` 的应用不需要别的行：
+在服务器运行期间监听外部数据流（行情报价、设备遥测、事件流）的应用，用 `Cybertrain::WebSocket.subscribe` 订阅它。`require "cybertrain"` 不会加载它（它加载的是 feed 子系统和 HTTP 客户端，不包括 `cybertrain/websocket`）；请在编写订阅的地方 require 它，使用 `wss://` 时还要 require TLS 层。它会加载 feed 子系统（`feeds` 角色、feed 健康检查），所以使用 `cybertrain/core` 的应用不需要别的行：
 
 ```ruby
 # config/app.rb（或 bin/<app>.rb 在 Cybertrain::Main.run 之前 require 的某个文件）
@@ -111,7 +111,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
   .on_message { |conn, text| Cybertrain::DB.with { |c| c.execute("INSERT INTO trades(raw) VALUES (?)", [text]) } }
 ```
 
-require `cybertrain/websocket` 会把这些订阅注册到 `Cybertrain::Background`，`Application#serve` 在调度器之后启动它，并在关闭时停止它，所以无需调用任何东西。每个订阅有一个线程。它会建立连接，运行 `on_open`（在那里发送你的订阅消息：每次重连之后它都会再次运行），然后把每条消息连同 `Connection`（`send_text`、`send_binary`、`close`，以及 `last_opcode`，值为 `:text` 或 `:binary`）交给 `on_message`。这些块接收参数，不能使用 `self`（Spinel 没有 `instance_eval`）。
+require `cybertrain/websocket` 会把这些订阅注册到 `Cybertrain::Background`，`Application#serve` 在调度器之后启动它，并在关闭时停止它，所以无需调用任何东西。每个订阅有一个线程。它会建立连接，运行 `on_open`（在那里发送你的订阅消息：每次重连之后它都会再次运行），然后把每条消息连同 `Connection`（`send_text`、`send_binary`、`close`，以及 `last_opcode`，值为 `:text` 或 `:binary`）交给 `on_message`。这些块接收参数，不能把 `self` 当作订阅来用：订阅调用的是它保存下来的块，而 Spinel 拒绝对保存下来的块做 `instance_exec`（spikes/NOTES.md 规则 2）。
 
 - **运行时机。** 与调度器一样，订阅在二进制文件提供服务时启动（[后台任务](background-and-operations.md#background-work)）；`migrate`、`db ...`、`Main.command` 命令和 `Cybertrain::Test::Client` 从不启动它们。`./<app> feeds [NAME...]` 在单独的进程中运行它们，全部或指定名称的订阅（[进程角色](background-and-operations.md#process-roles)）。在 `CYBERTRAIN_WORKER=0`（`config.worker = false`）时，它们不会在该进程中运行（只是不启动；唯一的提示是调度器的 “run elsewhere” 那一行，直接调用的 `WebSocket.start!` 则会记录自己的提示）：当多个进程提供服务时，请在除一个之外的所有进程中关闭它，否则每个进程都会接收完整的数据流。`subscribe` 必须在服务器启动之前调用；服务器运行期间无法添加或移除订阅。名称必须唯一（否则引发 `ArgumentError`），没有 `on_message` 的订阅会在绑定端口之前让启动失败（`error: WebSocket subscription "trades" has no on_message`，退出码 1）。
 - **选项。** `headers:`（额外的握手请求头）、`timeout:`（连接时每次等待以及每次写入 5 秒）、`max_message:`（1 MiB；更大的消息会以 1009 关闭连接）、`ping_interval:`（15）和 `stale_after:`（45），以及 `allow_private:`（与下文的 `HttpClient` 相同）。
@@ -138,7 +138,7 @@ require `cybertrain/websocket` 会把这些订阅注册到 `Cybertrain::Backgrou
   | 静默 | WARN | `WebSocket "trades" silent for 45s; reconnecting` |
   | 块抛出了异常 | ERROR | `WebSocket "trades" on_message failed: KeyError: ...`（或 `on_open`） |
 
-  路径和查询字符串从不会被记录，也不会放进错误消息：它们往往带有令牌。除第一行外，每一行都在数据流的线程上记录，带有标签 `[feed:trades]`；抛出异常的块、线程的结束以及 `feeds` 进程的放弃也会被[报告](background-and-operations.md#error-reporting)。
+  路径和查询字符串从不会被记录，也不会放进错误消息：它们往往带有令牌。除第一行外，每一行都在数据流的线程上记录，带有标签 `[feed:trades]`；抛出异常的块、线程的结束以及 `feeds` 进程的放弃也会被[报告](logs-and-errors.md#error-reporting)。
 - **错误。** 所有错误都是 `Cybertrain::WebSocket::Error`，消息中只有主机和端口。握手完成后，连接丢失或被服务器关闭是 `ClosedError`（`close_code`、`close_reason`；被重置或没有关闭帧就结束的情况为 1006）；超时或在 TLS 中失败的写入仍然是 `TimeoutError` 或 `TLSError`。在连接期间，错误为 `RefusedError`、`TimeoutError`、`TLSError`、`BlockedAddressError`（非公网地址，默认被拒绝，与[出站 HTTP](#outbound-http) 中完全相同，使用同样的 `allow_private:` 和 `http_allow_private` 设置）或 `HandshakeError`（不是 101、`Sec-WebSocket-Accept` 不正确，或者服务器以扩展或子协议作答）。`ProtocolError`（服务器破坏了帧格式；客户端会发送 1002）和 `TooLargeError` 随时可能出现。
 - **健康状况。** `Cybertrain::WebSocket.feed_status("trades")` 返回一个 `Status`：`connected?`、`last_message_at`（纪元秒数，收到第一条消息之前为 0）、`reconnects`、`restarts`（由监督线程重启的次数）和 `thread_alive?`，它们是依次读取的，而不是作为一个快照；`connected?` 在连接建立时就变为 true，早于 `on_open` 运行。监督线程还会每隔 `feed_status_interval` 秒（10）把每个数据流的状态写入数据库，本进程或任何其他进程中的 `GET /up` 和 `./<app> feeds status` 会读取它：[数据订阅的健康状况](realtime.md#feed-health)。
 - **让 `on_message` 保持简短。** 线程用 `wait_readable` 或 `sleep` 等待，所以停滞的数据流在等待期间不会占用操作系统工作线程。有两件事会占用：每次连接尝试都用阻塞的 `getaddrinfo` 解析主机名（参见[出站
@@ -192,7 +192,7 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""` |
 | `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`；`tls` 或 `none` |
 
-- **TLS 模式。** `starttls` 以明文连接，要求服务器提供 STARTTLS（否则为 `Mailer::TLSError`），并在说任何其他内容之前升级连接；服务器在其 STARTTLS 应答之后发送的字节会被拒绝。`tls` 从第一个字节起就使用 TLS（端口 465）。两者都像 HTTP 客户端一样根据 `host` 检查证书（请给出主机名，而不是 IP 地址），并且都需要 `require "cybertrain/net/tls"`（`require "cybertrain"` 会加载它）：没有它时，`deliver` 会在连接之前抛出 `Mailer::TLSError` 并说明这一点。`none` 是明文，用于同一台机器上的中继或测试服务器：配置了用户时它会拒绝（在连接之前引发 `Mailer::InsecureError`），除非主机解析为环回地址，此时它只拨号该主机的环回地址。
+- **TLS 模式。** `starttls` 以明文连接，要求服务器提供 STARTTLS（否则为 `Mailer::TLSError`），并在说任何其他内容之前升级连接；服务器在其 STARTTLS 应答之后发送的字节会被拒绝。`tls` 从第一个字节起就使用 TLS（端口 465）。两者都像 HTTP 客户端一样根据 `host` 检查证书（请给出主机名，而不是 IP 地址），并且都需要 `require "cybertrain/net/tls"`（`require "cybertrain"` 会加载它，`cybertrain/core` 和 `cybertrain/mailer` 不会）：没有它时，`deliver` 会在连接之前抛出 `Mailer::TLSError` 并说明这一点。`none` 是明文，用于同一台机器上的中继或测试服务器：配置了用户时它会拒绝（在连接之前引发 `Mailer::InsecureError`），除非主机解析为环回地址，此时它只拨号该主机的环回地址。
 - **密码从不会被记录或显示。** 它不在启动横幅、`help`、日志或任何错误消息中；它只在 AUTH PLAIN 命令中通过 TLS 发送（或发往环回地址）。不要对持有密码的 `Mailer` 或 `Config` 使用 `p` 或 `inspect`。
 - **每次等待都有上限**，与[出站 HTTP](#outbound-http) 中一样：连接、TLS 的每一步以及每个应答最多等待 `timeout` 秒（默认 10 秒），整个投递最多 `deadline` 秒（默认 60 秒），否则为 `Mailer::TimeoutError`。域名解析会阻塞调用它的线程。
 - **对话过程**：220 问候、`EHLO`（名称为 `helo:`，默认 `localhost`）、`STARTTLS` 和再次 `EHLO`、设置了用户时的 `AUTH PLAIN`（服务器必须提供 PLAIN）、`MAIL FROM`、每个收件人一条 `RCPT TO`、`DATA`、`QUIT`。代码不符合预期的应答为 `Mailer::RejectedError`，其 `smtp_code` 是服务器给出的代码（421、535、550 等），其消息包含所在步骤和服务器的文本。返回值是服务器对该邮件的应答（`"250 2.0.0 Ok: queued

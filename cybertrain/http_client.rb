@@ -1317,14 +1317,28 @@ module Cybertrain
         raise Net::LimitError, "#{label}: the response body is more than #{max_body} bytes" if body.bytesize + size > max_body
 
         body << reader.read_exact(size)
-        raise Net::ProtocolError, "#{label}: a chunk not followed by CRLF" unless reader.read_line(MAX_LINE_BYTES).empty?
+        HttpClient.end_chunk(reader, label)
       end
+      HttpClient.skip_trailers(reader, label)
+      body
+    end
+
+    # The CRLF that ends a chunk's data.
+    def self.end_chunk(reader, label)
+      return nil if reader.read_line(MAX_LINE_BYTES).empty?
+
+      raise Net::ProtocolError, "#{label}: a chunk not followed by CRLF"
+    end
+
+    # Reads past the trailer lines after the last chunk, MAX_HEADER_COUNT of
+    # them at most.
+    def self.skip_trailers(reader, label)
       trailers = 0
       until reader.read_line(MAX_LINE_BYTES).empty?
         trailers += 1
         raise Net::LimitError, "#{label}: more than #{MAX_HEADER_COUNT} trailer lines" if trailers > MAX_HEADER_COUNT
       end
-      body
+      nil
     end
 
     # A chunked body fed to `sink`: each frame whole when it is at most
@@ -1341,19 +1355,9 @@ module Cybertrain
           sink.sink_feed(piece)
           left -= take
         end
-        unless reader.read_line(MAX_LINE_BYTES).empty?
-          message = "#{label}: a chunk not followed by CRLF"
-          raise Net::ProtocolError, message
-        end
+        HttpClient.end_chunk(reader, label)
       end
-      trailers = 0
-      until reader.read_line(MAX_LINE_BYTES).empty?
-        trailers += 1
-        if trailers > MAX_HEADER_COUNT
-          message = "#{label}: more than #{MAX_HEADER_COUNT} trailer lines"
-          raise Net::LimitError, message
-        end
-      end
+      HttpClient.skip_trailers(reader, label)
       ""
     end
 
@@ -1396,7 +1400,7 @@ module Cybertrain
         b = s.getbyte(i)
         break if b == 59 || b == 32 || b == 9 # ; or whitespace before an extension
 
-        d = Net::Address.hex_value(b)
+        d = IpAddress.hex_value(b)
         raise Net::ProtocolError, "#{label}: a malformed chunk size" if d < 0
 
         digits += 1

@@ -3,13 +3,12 @@ require "cybertrain"
 require "cybertrain/test_help"
 require_relative "support/log_capture"
 
-# Cybertrain.error (spec sections 13.1, 13.3 and 13.4's queue, dedupe and
-# shutdown; plan D9, D11, D12): report, handle and subscribe, the event of
+# Cybertrain.error (docs/design.md D88): report, handle and subscribe, the event of
 # Strings built on the caller's thread, and its delivery on the reporter's
 # own thread. Compiled only (`spin test test/error_reporter.rb`): its
 # `require "cybertrain"` links SQLite and zlib through Spinel's FFI, which
 # CRuby cannot load. Restores go through plain helpers' `ensure`
-# (pre-flight ruling G4).
+# (spikes/NOTES.md rules 32 and 45).
 
 NOON = Time.utc(2026, 11, 11, 12)
 
@@ -170,8 +169,7 @@ class RecordingSender < Cybertrain::ErrorReporter::Sender
   end
 end
 
-# Added before the first test, as config/app.rb would: kept by every reset
-# (pre-flight ruling B8).
+# Added before the first test, as config/app.rb would: kept by every reset.
 Cybertrain.error.subscribe(BootSubscriber.new)
 Cybertrain.error.add_filter(BootFilter.new)
 
@@ -182,7 +180,7 @@ rescue RuntimeError => e
   Cybertrain.error.report(e)
 end
 
-# Runs the block with config.env "test" (pre-flight ruling G8) and the
+# Runs the block with config.env "test" and the
 # release `release`, both restored after it.
 def as_test_env(release)
   saved_env = Cybertrain.config.env
@@ -209,13 +207,13 @@ rescue ArgumentError => e
   raise e
 end
 
-# handle called through a forwarding block (ruling S5).
+# handle called through a forwarding block.
 def handle_forwarded
   Cybertrain.error.handle { yield }
 end
 
 # `break` in handle's block ends handle with the break's value; `return`
-# returns from the method around it (as under CRuby; ruling S5).
+# returns from the method around it (as under CRuby).
 def handle_break
   v = Cybertrain.error.handle { break "broke" }
   "after break: #{v}"

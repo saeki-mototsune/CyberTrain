@@ -1,0 +1,6 @@
+valid_encoding? of a stray byte: false
+valid_encoding? of text: true
+split with the separator present: ArgumentError invalid byte sequence in UTF-8
+split without it: ArgumentError invalid byte sequence in UTF-8
+index after the stray byte: 2
+index before it: 0

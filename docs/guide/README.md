@@ -14,7 +14,7 @@ page; the build skips it.
 | `<name>.md` | `guide/<name>.html` |
 | `<lang>/<name>.md` | the same path under `<lang>/`: `ja/tutorial.html`, `ja/guide/install.html` |
 
-The published URLs are under `https://saeki-mototsune.github.io/CyberTrain/`.
+The published URLs are under `https://www.cybertrain.dev/`.
 The build also writes the old API-reference URLs of the guides as redirects:
 `api/file.<name>.html` to the guide, `api/file.walkthrough.html` to the
 tutorial.
@@ -126,7 +126,7 @@ optional for a preview, needs `yard` as well:
 gem install kramdown -v "~> 2.5"
 gem install kramdown-parser-gfm -v "~> 1.1"
 gem install rouge -v "~> 5.1"
-gem install yard                      # optional, for script/api-docs
+gem install yard -v "~> 0.9"          # optional, for script/api-docs
 ```
 
 ```sh
