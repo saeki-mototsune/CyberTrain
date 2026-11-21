@@ -187,6 +187,46 @@ test "ParameterFilter.filter_path masks token-shaped segments only" do
   kept.each { |path| assert_equal path, f.filter_path(path) }
 end
 
+test "ParameterFilter.filter_path masks the whole segment after a listed prefix" do
+  f = Cybertrain::ParameterFilter
+  assert_equal 0, f.path_prefixes.size
+  assert_equal "/results/Zm9v.YmFy", f.filter_path("/results/Zm9v.YmFy")
+  f.path_prefixes = ["/results/", "", "/share/links/"]
+  assert_equal ["/results/", "/share/links/"], f.path_prefixes
+  assert_equal "/results/[FILTERED]", f.filter_path("/results/Zm9v.YmFy")
+  # The segment whatever it holds, a dot or bytes that are not UTF-8 too;
+  # what follows it is read as before.
+  assert_equal "/results/[FILTERED]/edit", f.filter_path("/results/a-b_c.json/edit")
+  assert_equal "/results/[FILTERED]/[FILTERED]/x", f.filter_path("/results/\xff\x00/#{PATH_TOKEN}/x")
+  assert_equal "/share/links/[FILTERED]", f.filter_path("/share/links/#{PATH_TOKEN}")
+  # Only at the start of the path, only a whole prefix, and only when a
+  # segment follows it.
+  kept = ["/results/", "/results", "/results//x", "/results.csv", "/resultsx/abc", "/a/results/abc", "/share/abc",
+          "/share/links", "/RESULTS/abc", ""]
+  kept.each { |path| assert_equal path, f.filter_path(path) }
+  f.path_prefixes = []
+  assert_equal "/results/abc", f.filter_path("/results/abc")
+end
+
+test "RequestLogger writes the segment after a listed prefix as [FILTERED]" do
+  sink = StringIO.new
+  stack = Cybertrain::RequestLogger.new(Cybertrain::Middleware.new, Cybertrain::Logger.new(sink))
+  Cybertrain::ParameterFilter.path_prefixes = ["/results/"]
+  stack.call(build_ctx("GET", "/results/s3cr3t-Link_token"))
+  stack.call(build_ctx("DELETE", "/results/s3cr3t-Link_token?page=2"))
+  stack.call(build_ctx("GET", "/posts/s3cr3t"))
+  Cybertrain::ParameterFilter.path_prefixes = []
+  lines = LogCapture.entries(sink.string)
+  assert_equal "INFO Started GET \"/results/[FILTERED]\" for 127.0.0.1", lines[0]
+  assert_equal "INFO Started DELETE \"/results/[FILTERED]?page=2\" for 127.0.0.1", lines[2]
+  assert_equal "INFO Started GET \"/posts/s3cr3t\" for 127.0.0.1", lines[4]
+  assert sink.string.index("Link_token").nil?
+end
+
+test "Config#filter_path_prefixes is empty by default" do
+  assert_equal 0, Cybertrain::Config.new.filter_path_prefixes.size
+end
+
 test "Config#filter_parameters comes from CYBERTRAIN_FILTER_PARAMETERS, Rails' list by default" do
   ENV["CYBERTRAIN_FILTER_PARAMETERS"] = ""
   assert_equal Cybertrain::ParameterFilter::DEFAULT_NAMES, Cybertrain::Config.new.filter_parameters

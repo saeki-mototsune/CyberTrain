@@ -1524,6 +1524,20 @@ Each item is written as "Decision / Reason / Rejected alternatives / Consequence
 - Known gap: an application following a branch of the framework by git is locked to that branch's `spin.toml` version, so it is refused from the commit that bumps the version until the gem of that release is installed; such an application uses a path dependency or the CLI built from the checkout (`spin install`).
 - Verification: `test/cli_framework_version.rb` (compiled and under CRuby), and the supervisor's entry in `test/cruby/dev_server.rb`.
 
+### D90. Masking a path segment by the prefix before it: `filter_path_prefixes` (2026-11-21)
+
+- Context: `ParameterFilter.filter_path` masks a path segment only when it has the shape of a `Cybertrain::Token` (D31, and the tokens decision). An application ported from Rails keeps a secret of its own in a path, `/results/<urlsafe base64>`, whose row a Rails database already holds, so the token cannot be reissued in the framework's shape. Every result URL was then written whole to the request log, where the Rails application had written `/results/[FILTERED]`. The `Started` line is written before routing, so the application has no place to mask it from.
+- Decision:
+  - `Config#filter_path_prefixes` (`Array<String>`, empty by default). `Application#boot` installs it with `ParameterFilter.path_prefixes = c.filter_path_prefixes`, the shape `filter_parameters` has (the HTTP layer cannot read Config).
+  - `filter_path` masks the whole segment that follows the first listed prefix the path starts with, whatever it holds (a `.json` after it too: a secret may contain a dot, and where it ends cannot be known). The rest of the path is read as before, so a token-shaped segment further on is still masked. Nothing changes for a path under no listed prefix.
+  - A prefix starts and ends with `/` and is not `/` alone (`validation_error`, the rule `csrf_exempt_prefixes` has): `/results` would also take `/results.csv`, and the byte after the prefix must start a segment. It is compared byte by byte with the path as sent.
+  - One function serves every place the framework writes a path (`Started`, `Blocked host`, the scope of an error report, the development error page), so they cannot disagree.
+- Rejected alternatives:
+  - A pattern per route (`resources :results, filter: true`): the `Started` line is written before the router runs.
+  - Regexps or a block in the config: the types Spinel needs to carry a Regexp or call a stored block from the HTTP layer (rules 30 / 69), as D31 found for `filter_parameters`.
+  - Masking any long random-looking segment by its shape: it would hide slugs and ids an operator needs, and miss a short secret.
+- Consequences: test/middleware.rb (the segment after a prefix, a prefix that is not at the start, no segment after it, bytes that are not UTF-8, the `Started` line), test/config_validation.rb (the refused prefixes), test/runtime.rb (boot installs the list). Not covered: a secret in a path the framework itself does not write, such as a reverse proxy's access log.
+
 ## 5. Request flow
 
 1. `Server` parses HTTP/1.1 on the accepted socket and builds a `Request`.

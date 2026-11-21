@@ -1398,6 +1398,7 @@ end
       @scheduler_tz = Config.env_or("CYBERTRAIN_SCHEDULER_TZ", "")
       # ParameterFilter.names' list; Application#boot installs it there.
       @filter_parameters = Config.default_filter_parameters
+      @filter_path_prefixes = Array.new(0) { "" }
       # The health check (HealthCheck). An empty variable turns it off,
       # unlike Config.env_or's "empty counts as unset": there is no other
       # way to switch off a default-on path from the environment.
@@ -1436,6 +1437,24 @@ end
     # @return [Array<String>]
     # @api public
     attr_accessor :filter_parameters
+
+    # Path prefixes after which one segment is a secret: wherever the
+    # framework writes a request's path (the request log's `Started` line,
+    # a `Blocked host` line, the request of an error report, the
+    # development error page), the whole segment that follows a listed
+    # prefix is written `[FILTERED]`. For an application whose URLs carry
+    # a secret of its own, such as a share link's token:
+    # `/results/Zm9v.YmFy` is logged as `/results/[FILTERED]`. A prefix is
+    # compared with the path as sent (not decoded) from its first byte and
+    # must start and end with "/" (`"/results/"`, not `"/results"`, which
+    # would also take `/results.csv`). Empty by default; the framework's
+    # own signed tokens are masked by their shape without it. A secret in
+    # the query string is a parameter: name it in {#filter_parameters}.
+    # @example config/app.rb
+    #   c.filter_path_prefixes = ["/results/", "/share/"]
+    # @return [Array<String>]
+    # @api public
+    attr_accessor :filter_path_prefixes
 
     # ParameterFilter::DEFAULT_NAMES, kept as a literal here (the HTTP layer
     # is not required by Config), or CYBERTRAIN_FILTER_PARAMETERS split on

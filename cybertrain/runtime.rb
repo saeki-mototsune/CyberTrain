@@ -77,6 +77,7 @@ module Cybertrain
       Request.trusted_proxy = config.trusted_proxy
       Request.trusted_proxies = config.trusted_proxies
       ParameterFilter.names = config.filter_parameters
+      ParameterFilter.path_prefixes = config.filter_path_prefixes
       Response.default_permissions_policy = config.permissions_policy
       # The level and the format (validation_error has refused unknown ones).
       apply_logging(config)
@@ -149,6 +150,7 @@ module Cybertrain
       Request.trusted_proxy = false
       Request.trusted_proxies = Array.new(0) { "" }
       ParameterFilter.names = ParameterFilter::DEFAULT_NAMES
+      ParameterFilter.path_prefixes = Array.new(0) { "" }
       Response.default_permissions_policy = DEFAULT_PERMISSIONS_POLICY
       Cybertrain.logger.level = :info
       Logger.json_lines = false
@@ -183,6 +185,7 @@ module Cybertrain
         "upload_root=#{BlobStore.root} max_page=#{Params.max_page} " \
         "trusted_proxy=#{Request.trusted_proxy} trusted_proxies=#{Request.trusted_proxies.join(",")} " \
         "filter_parameters=#{ParameterFilter.names.join(",")} " \
+        "filter_path_prefixes=#{ParameterFilter.path_prefixes.join(",")} " \
         "permissions_policy=#{Response.default_permissions_policy} " \
         "log_level=#{Cybertrain.logger.level} log_format=#{Logger.json_lines ? "json" : "text"} time_zone=#{Clock.zone.zone_name}"
     end

@@ -10,7 +10,8 @@ module Cybertrain
   # the HTTP layer cannot read the Config itself (the Params.max_page
   # shape). RequestLogger filters the query string of its `Started` line
   # with {ParameterFilter.filter_query} and its path with
-  # {ParameterFilter.filter_path} (signed tokens); Dev::ErrorPage the
+  # {ParameterFilter.filter_path} (signed tokens, and the segment after
+  # each of {ParameterFilter.path_prefixes}); Dev::ErrorPage the
   # request line and its parameter dump; HostAuthorization the path of its
   # `Blocked host` line.
   #
@@ -56,6 +57,36 @@ module Cybertrain
         i += 1
       end
       @filter_names = names
+      nil
+    end
+
+    # The installed path prefixes (Config#filter_path_prefixes): a
+    # module-level ivar with a typed seed (spikes/NOTES.md rules 9 and 18).
+    @path_prefixes = Array.new(0) { "" }
+
+    # @return [Array<String>] the path prefixes whose next segment
+    #   {ParameterFilter.filter_path} masks
+    # @api public
+    def self.path_prefixes
+      @path_prefixes
+    end
+
+    # Installs the path prefixes (Application#boot passes
+    # Config#filter_path_prefixes, which validation_error has checked: each
+    # starts and ends with "/"). Empty ones are dropped, so `[]` masks no
+    # path by its place.
+    # @param list [Array<String>]
+    # @return [nil]
+    # @api public
+    def self.path_prefixes=(list)
+      prefixes = Array.new(0) { "" }
+      i = 0
+      while i < list.size
+        prefix = list[i].to_s
+        prefixes << prefix unless prefix.empty?
+        i += 1
+      end
+      @path_prefixes = prefixes
       nil
     end
 
@@ -114,21 +145,33 @@ module Cybertrain
       out
     end
 
-    # A path with each segment shaped like a {Cybertrain::Token} (1 to 18
-    # digits, `--`, 1 to 18 digits, `--`, 64 hex digits; a `.format`
-    # after it is kept) replaced by `[FILTERED]`:
-    # `/passwords/7--1900--<64 hex>/edit` becomes
-    # `/passwords/[FILTERED]/edit`. Log lines written before routing (no
-    # parameter names yet: RequestLogger's `Started`, HostAuthorization's
-    # `Blocked host`) use it, so a password reset or confirmation link's
-    # token never reaches the log, whatever {.names} holds. Every other
-    # byte is kept as sent.
+    # A path as a log line may show it. Two kinds of segment are replaced
+    # by `[FILTERED]`; every other byte is kept as sent.
+    #
+    # One shaped like a {Cybertrain::Token} (1 to 18 digits, `--`, 1 to 18
+    # digits, `--`, 64 hex digits; a `.format` after it is kept), wherever
+    # it is: `/passwords/7--1900--<64 hex>/edit` becomes
+    # `/passwords/[FILTERED]/edit`, so a password reset or confirmation
+    # link's token never reaches the log, whatever {.names} holds.
+    #
+    # And the whole segment that follows one of {.path_prefixes}, whatever
+    # its shape, when the path starts with that prefix: with `/results/`
+    # listed, `/results/Zm9v.YmFy/share` becomes `/results/[FILTERED]/share`.
+    # That is for a secret of the application's own in a URL (a share
+    # link's token). `/results/` itself, with nothing after the prefix, is
+    # kept.
+    #
+    # Log lines written before routing (no parameter names yet:
+    # RequestLogger's `Started`, HostAuthorization's `Blocked host`) use
+    # it, and so do the request scope of an error report and the
+    # development error page.
     # @param path [String]
     # @return [String]
     # @api public
     def self.filter_path(path)
       s = path.to_s # NOTES rule 62
       n = s.bytesize
+      secret_at = ParameterFilter.prefixed_segment_start(s)
       out = +""
       i = 0
       while i < n
@@ -140,7 +183,9 @@ module Cybertrain
         j = i
         j += 1 while j < n && s.getbyte(j) != 47
         stop = ParameterFilter.token_end(s, i, j)
-        if stop >= 0 && (stop == j || s.getbyte(stop) == 46)
+        if i == secret_at
+          out << FILTERED
+        elsif stop >= 0 && (stop == j || s.getbyte(stop) == 46)
           out << FILTERED
           out << s.byteslice(stop, j - stop).to_s
         else
@@ -149,6 +194,26 @@ module Cybertrain
         i = j
       end
       out
+    end
+
+    # The byte at which the segment after a listed prefix starts (the
+    # prefix's length: a prefix ends with "/"), for the first of
+    # {.path_prefixes} that s starts with; -1 when s starts with none.
+    # Compared byte by byte: a path may hold invalid UTF-8 (NOTES rule 52).
+    def self.prefixed_segment_start(s)
+      n = s.bytesize
+      p = 0
+      while p < @path_prefixes.size
+        prefix = @path_prefixes[p]
+        m = prefix.bytesize
+        if m <= n
+          k = 0
+          k += 1 while k < m && s.getbyte(k) == prefix.getbyte(k)
+          return m if k == m
+        end
+        p += 1
+      end
+      -1
     end
 
     # Where a token shape that starts at byte `from` of s ends (before

@@ -101,12 +101,18 @@ test "the web limits at their boundaries" do
   c.max_multipart_parts = 4096
   c.max_page = 1
   c.csrf_exempt_prefixes = ["/a/"]
+  c.filter_path_prefixes = ["/r/"]
   assert_equal "", c.validation_error
   c.max_upload_bytes = 2
   assert_equal "max_upload_bytes (2) must not exceed max_body_bytes (1)", c.validation_error
   c.max_upload_bytes = 1
   c.csrf_exempt_prefixes = ["/"]
   assert_includes c.validation_error, "must start and end with \"/\" and not be \"/\" alone"
+  c.csrf_exempt_prefixes = ["/a/"]
+  c.filter_path_prefixes = ["/r/", "/results"]
+  assert_equal "filter_path_prefixes entry \"/results\" must start and end with \"/\" and not be \"/\" alone", c.validation_error
+  c.filter_path_prefixes = ["/"]
+  assert_includes c.validation_error, "filter_path_prefixes entry \"/\""
 end
 
 test "the background settings at their boundaries" do
