@@ -104,7 +104,7 @@ module Cybertrain
     # The request's log context ({HttpLogContext}), set by whatever gave
     # the request its id (a request-id middleware sets its own subclass of
     # HttpLogContext); {HttpLogContext::NONE} until then. The Server swaps
-    # it in through {HttpLogSwitch.installed} around the error line it logs
+    # it in through {HttpLogSwitch.installed_switch} around the error line it logs
     # for what escaped the handler, after the handler has put the thread's
     # own context back, so that line carries the request's id too.
     # @return [HttpLogContext]

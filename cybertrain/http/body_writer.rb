@@ -27,7 +27,7 @@ module Cybertrain
 
     # Runs `writer` on `sink` with `ctx` (the request's,
     # {Response#body_log_context}) as this thread's log context, swapped
-    # through {HttpLogSwitch.installed}, and puts the thread's own back
+    # through {HttpLogSwitch.installed_switch}, and puts the thread's own back
     # after it, also when it raises: a streamed body or an upgraded
     # connection is written after the middleware that made the context has
     # returned. Save, work, restore in `ensure`; no rescue here
@@ -40,11 +40,11 @@ module Cybertrain
     # @return [nil]
     # @api private
     def self.write_scoped(writer, sink, ctx)
-      saved = HttpLogSwitch.installed.swap_context(ctx)
+      saved = HttpLogSwitch.installed_switch.swap_context(ctx)
       writer.write_body(sink)
       nil
     ensure
-      HttpLogSwitch.installed.swap_context(saved)
+      HttpLogSwitch.installed_switch.swap_context(saved)
     end
   end
 

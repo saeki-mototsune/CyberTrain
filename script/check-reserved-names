@@ -498,6 +498,11 @@ NAME_HOMES = {
   # HttpLogContext): no other definer, kept so a new one is checked.
   "current_context" => %w[cybertrain/http/log.rb cybertrain/logger.rb],
   "swap_context" => %w[cybertrain/http/log.rb cybertrain/logger.rb],
+  # GzipDecoder.installed (a GzipDecoder). HttpLogSwitch's slot is
+  # installed_switch (an HttpLogSwitch), not installed: one return type
+  # per name (rule 34), and core loads both files.
+  "installed" => %w[cybertrain/http/gzip_decoder.rb],
+  "installed_switch" => %w[cybertrain/http/log.rb],
   # Logger#info and the HttpLog#info it overrides (nil).
   "info" => %w[cybertrain/cli/toolchain.rb cybertrain/logger.rb cybertrain/http/log.rb],
   # Server#drain; the reporter's is drain_reports. The CRuby preview's
@@ -513,7 +518,7 @@ NAME_HOMES = {
 NAME_CANDIDATES = %w[select format expect layout cookies signed encrypted permanent html json turbo_stream
                      csv xml text any permit scope t l translate localize locale remember
                      current zone advance now render_inline setup teardown response travel_to travel_back hour day
-                     error report handle subscribe tagged request_id release].freeze
+                     error report handle subscribe tagged request_id release installed].freeze
 root = File.expand_path("..", __dir__)
 home_rows_missing = NAME_CANDIDATES - NAME_HOMES.keys
 homeless = []

@@ -674,17 +674,17 @@ module Cybertrain
 
     # {run_writer} under the request's log context
     # ({Response#body_log_context}), swapped through
-    # {HttpLogSwitch.installed}, so the writer's lines and the `stream
+    # {HttpLogSwitch.installed_switch}, so the writer's lines and the `stream
     # error:` line carry the request's id; this thread's own context is
     # back afterwards, also when the writer raised something run_writer
     # does not rescue. Save, work, restore in `ensure`, no rescue
     # (spikes/NOTES.md rule 103).
     def run_writer_scoped(writer, sink, ctx)
-      saved = HttpLogSwitch.installed.swap_context(ctx)
+      saved = HttpLogSwitch.installed_switch.swap_context(ctx)
       ok = run_writer(writer, sink)
       ok
     ensure
-      HttpLogSwitch.installed.swap_context(saved)
+      HttpLogSwitch.installed_switch.swap_context(saved)
     end
 
     # TCP keep-alive on a streaming connection, best effort: a peer that
@@ -743,17 +743,17 @@ module Cybertrain
 
     # {ClientError.classify} (which logs the error or rejection line) under
     # the request's log context ({Request#log_context}), swapped through
-    # {HttpLogSwitch.installed}: the handler's request-id scheme has
+    # {HttpLogSwitch.installed_switch}: the handler's request-id scheme has
     # already put the thread's own context back when the exception gets
     # here, and the line must carry the request's id all the same. The
     # thread's context is back afterwards. Save, work, restore in
     # `ensure`, no rescue (spikes/NOTES.md rule 103).
     def classify_scoped(e, ctx)
-      saved = HttpLogSwitch.installed.swap_context(ctx)
+      saved = HttpLogSwitch.installed_switch.swap_context(ctx)
       status = ClientError.classify(e, @logger)
       status
     ensure
-      HttpLogSwitch.installed.swap_context(saved)
+      HttpLogSwitch.installed_switch.swap_context(saved)
     end
 
     # Writes an error response; serve closes the socket afterwards.

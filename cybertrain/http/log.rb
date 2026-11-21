@@ -68,7 +68,7 @@ module Cybertrain
   # swaps it around work it runs for a request ({#swap_context}: a handler's
   # exception line, a streamed body's writer). The base keeps none:
   # {#current_context} answers {HttpLogContext::NONE} and {#swap_context}
-  # stores nothing. A subclass installed with {.installed=} keeps the
+  # stores nothing. A subclass installed with {.installed_switch=} keeps the
   # context in a slot of its own per thread.
   # @api public
   class HttpLogSwitch
@@ -90,19 +90,21 @@ module Cybertrain
     # A module-level ivar, never @@ (spikes/NOTES.md rules 18 and 64), in
     # the Params.max_page shape: the base until a subclass is installed at
     # load, before any thread starts.
-    @installed = HttpLogSwitch.new
+    @installed_switch = HttpLogSwitch.new
 
-    # The switch the Server reads and swaps through.
+    # The switch the Server reads and swaps through. Not `installed`:
+    # GzipDecoder.installed answers a GzipDecoder, and a method name has
+    # one return type program-wide (spikes/NOTES.md rule 34).
     # @return [HttpLogSwitch]
-    def self.installed
-      @installed
+    def self.installed_switch
+      @installed_switch
     end
 
     # Installs `switch`, at load, before any thread starts.
     # @param switch [HttpLogSwitch] a subclass instance
     # @return [HttpLogSwitch] switch
-    def self.installed=(switch)
-      @installed = switch
+    def self.installed_switch=(switch)
+      @installed_switch = switch
     end
   end
 end

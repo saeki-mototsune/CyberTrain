@@ -909,7 +909,7 @@ end
 REQ1_CONTEXT = IdLogContext.new("req-1")
 
 # A sink that records each line with the thread's context when it was
-# written ({Cybertrain::HttpLogSwitch.installed}'s current).
+# written ({Cybertrain::HttpLogSwitch.installed_switch}'s current).
 $context_lines = Array.new(0) { "" }
 $context_seen = Array.new(0) { Cybertrain::HttpLogContext::NONE }
 
@@ -920,7 +920,7 @@ class ContextRecordingLog < Cybertrain::HttpLog
 
   def record(level, msg)
     $context_lines << "#{level}: #{msg}"
-    $context_seen << Cybertrain::HttpLogSwitch.installed.current_context
+    $context_seen << Cybertrain::HttpLogSwitch.installed_switch.current_context
     nil
   end
 end
@@ -957,7 +957,7 @@ test "a handler's exception is logged under the request's log context; the next 
   assert $context_seen[0].equal?(REQ1_CONTEXT)
   assert_equal "req-1", REQ1_CONTEXT.context_id
   assert $context_seen[1].equal?(Cybertrain::HttpLogContext::NONE)
-  assert Cybertrain::HttpLogSwitch.installed.current_context.equal?(Cybertrain::HttpLogContext::NONE)
+  assert Cybertrain::HttpLogSwitch.installed_switch.current_context.equal?(Cybertrain::HttpLogContext::NONE)
 end
 
 test "run serves until stop is called" do

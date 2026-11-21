@@ -31,7 +31,7 @@
 # The HTTP layer logs through an HttpLog and keeps a request's log context
 # as an opaque HttpLogContext (cybertrain/http/log.rb): Logger is an
 # HttpLog, Logger::Scope an HttpLogContext, and this file installs
-# {Logger::ScopeSwitch} as HttpLogSwitch.installed, so the Server's swaps
+# {Logger::ScopeSwitch} as HttpLogSwitch.installed_switch, so the Server's swaps
 # land in the thread's Scope slot.
 require "cybertrain/http/log"
 
@@ -669,7 +669,7 @@ module Cybertrain
   @logger = Logger.new
 
   # Installed at load, before any thread starts (the Params.max_page shape).
-  HttpLogSwitch.installed = Logger::ScopeSwitch.new
+  HttpLogSwitch.installed_switch = Logger::ScopeSwitch.new
 
   # The process's logger, the one the framework logs through:
   # `Cybertrain.logger.info("imported #{n} rows")` anywhere in the
