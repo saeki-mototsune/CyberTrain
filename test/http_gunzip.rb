@@ -17,13 +17,13 @@ def gzip_request(body, encoding = "gzip")
   Cybertrain::Request.new("POST", "/api", { "content-encoding" => encoding }, body)
 end
 
-# The bare class name of what decoded_body raises, "" when nothing does
-# (Class#name has no namespace under Spinel, NOTES rule 46).
+# The class name of what decoded_body raises, without its namespace, ""
+# when nothing does.
 def decode_error(req, limit)
   req.decoded_body(limit)
   ""
 rescue Cybertrain::QueryInvalid => e
-  Cybertrain::ClientError.bare_name(e.class.name.to_s)
+  e.class.name.to_s.split("::").last.to_s
 end
 
 test "a gzip body is inflated once and the same String is returned every time" do

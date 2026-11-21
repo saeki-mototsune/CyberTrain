@@ -88,6 +88,9 @@ env:
   secret:
     - CYBERTRAIN_SECRET_KEY_BASE
     # - CYBERTRAIN_SMTP_PASSWORD
+    # Encrypts the columns a model declares with `encrypts`; boot
+    # fails without it once one does. Also list it in .kamal/secrets.
+    # - CYBERTRAIN_ENCRYPTION_KEY
     # Where error reports are sent (a Sentry DSN); also list it in
     # .kamal/secrets.
     # - CYBERTRAIN_SENTRY_DSN

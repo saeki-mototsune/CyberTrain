@@ -21,7 +21,6 @@
 #               left as it is when omitted or empty
 # Prints what it changed. Exits 1 on a malformed argument, a lower version, or
 # when nothing would change.
-require "rubygems"
 
 VERSION_RB = "cybertrain/version.rb"
 SPIN_TOML = "spin.toml"

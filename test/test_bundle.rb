@@ -1,5 +1,5 @@
-# The bundle's runner and boot (spec section 8, plan decisions 5, 10, 11
-# and 19): Cybertrain::Test::Bundle.run! over a hand-written table in the
+# The bundle's runner and boot (docs/design.md D83):
+# Cybertrain::Test::Bundle.run! over a hand-written table in the
 # shape gen/tests.rb hands over (two class-form classes and two
 # top-level-form files), with its output captured; and Bundle.boot's
 # refusal of a database that is not the test one. Application#boot links

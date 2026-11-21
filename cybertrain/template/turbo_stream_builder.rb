@@ -16,6 +16,7 @@
 # which calls helper_object_call here, as for any HelperObject (Spinel has
 # no `send`: the actions are a `case`). A block is rendered by the helpers before the call and arrives
 # as its output, so the builder never holds one (spikes/NOTES.md rule 88).
+require "cybertrain/cast"
 require "cybertrain/html"
 require "cybertrain/turbo"
 require "cybertrain/template/form_builder"
@@ -117,9 +118,7 @@ module Cybertrain
         case given
         when Hash then return given
         when nil
-          none = { "" => [nil, 0, 0.0, "", true][0] }
-          none.delete("")
-          return none
+          return Cast.empty_hash
         end
         msg = "#{name} locals: must be a Hash"
         raise ArgumentError, msg

@@ -3,8 +3,9 @@ require "cybertrain/db"
 require "cybertrain/model"
 require "cybertrain/schema"
 require "cybertrain/encryptor"
+require_relative "support/schema_tables"
 
-# includes / preload (spec section 8) on the compiled fixture models, loaded
+# includes / preload (docs/design.md D47) on the compiled fixture models, loaded
 # as test/gen_models_compiles.rb loads them: Post has_many :comments,
 # Comment belongs_to :post. Every claim about queries is a delta of
 # Connection#statements_run. test/associations.rb covers has_one and a
@@ -17,36 +18,8 @@ require_relative "fixtures/gen_app/gen/concerns/models/concerns/visible"
 require_relative "fixtures/gen_app/app/models/comment"
 require_relative "fixtures/gen_app/app/models/post"
 
-def sql_type(column)
-  case column.type
-  when :integer, :boolean then "INTEGER"
-  when :float then "REAL"
-  when :decimal then "DECIMAL"
-  else "TEXT"
-  end
-end
-
-def create_tables_sql(definition)
-  sql = +""
-  definition.tables.each do |table|
-    parts = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
-    table.columns.each do |c|
-      part = +"\"#{c.name}\" #{sql_type(c)}"
-      part << " NOT NULL" unless c.null
-      default = c.default
-      part << " DEFAULT #{default}" unless default.nil?
-      parts << part
-    end
-    table.foreign_keys.each do |fk|
-      parts << "FOREIGN KEY (\"#{fk.column}\") REFERENCES \"#{fk.to_table}\"(id)"
-    end
-    sql << "CREATE TABLE \"#{table.name}\" (#{parts.join(", ")});"
-  end
-  sql
-end
-
 Cybertrain::DB.connect(":memory:", size: 1)
-Cybertrain::DB.with { |c| c.exec_script(create_tables_sql(Cybertrain::Schema.current)) }
+Cybertrain::DB.with { |c| c.exec_script(SchemaTables.create_sql(Cybertrain::Schema.current)) }
 
 def statements = Cybertrain::DB.with { |c| c.statements_run }
 
@@ -172,7 +145,7 @@ test "includes with no names, or a name twice, changes nothing" do
   assert_equal 3, statements - before
 end
 
-test "an empty result runs only its own statement (Review Focus 4)" do
+test "an empty result runs only its own statement" do
   seed_posts
   before = statements
   assert_equal 0, Post.where(id: -1).includes(:comments).to_a.size

@@ -27,10 +27,10 @@ module Cybertrain
       # @api public
       def self.blocked_reason(ip)
         text = ip.to_s # NOTES rule 62
-        v4 = Address.parse_ipv4(text)
+        v4 = IpAddress.parse_ipv4(text)
         return Address.ipv4_reason(v4) if v4.size == 4
 
-        v6 = Address.parse_ipv6(text)
+        v6 = IpAddress.parse_ipv6(text)
         return Address.ipv6_reason(v6) if v6.size == 16
 
         "not an IP address"
@@ -42,23 +42,6 @@ module Cybertrain
       # @api public
       def self.public?(ip)
         Address.blocked_reason(ip).empty?
-      end
-
-      # The four bytes of a dotted-quad IPv4 address, or [] (IpAddress, the
-      # HTTP layer's parser, which Request#client_ip uses too).
-      def self.parse_ipv4(text)
-        IpAddress.parse_ipv4(text)
-      end
-
-      # The sixteen bytes of an IPv6 address, or [] (IpAddress.parse_ipv6:
-      # "::" compression, a dotted IPv4 tail, a "%zone" suffix dropped).
-      def self.parse_ipv6(text)
-        IpAddress.parse_ipv6(text)
-      end
-
-      # 0..15 for an ASCII hex digit, -1 otherwise.
-      def self.hex_value(b)
-        IpAddress.hex_value(b)
       end
 
       # The ranges IANA's special-purpose registry lists as not globally

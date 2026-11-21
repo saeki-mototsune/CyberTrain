@@ -1,6 +1,6 @@
 require "cybertrain/clock"
 
-# Durations on Integer (spec section 3.1): `5.minutes`, `1.day`,
+# Durations on Integer (docs/design.md D81): `5.minutes`, `1.day`,
 # `2.weeks.ago`, `3.days.from_now`, `Time.current + 90.seconds`.
 #
 # A duration is an Integer number of seconds (Rails answers an

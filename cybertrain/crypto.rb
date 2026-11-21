@@ -6,7 +6,7 @@
 # was written that way when the `openssl` package was linked only into
 # programs that asked for it; `require "cybertrain"` now loads
 # cybertrain/encryptor.rb, and so openssl, in every program (the encrypted
-# session, spec section 5.1), but this file needs neither and stays usable
+# session, docs/design.md D61), but this file needs neither and stays usable
 # on its own. {Crypto.derive_key} turns `secret_key_base` into one 32-byte
 # key per purpose (the session, signed cookies, encrypted cookies), so no
 # two uses share a key. The derivation input carries a fixed prefix
@@ -132,26 +132,38 @@ module Cybertrain
     end
 
     # RFC 2104 HMAC over Digest::SHA256, keyed the way every implementation
-    # is: a key longer than the block size is hashed down first, a shorter
-    # one is zero-padded up to it. The pads start as BLOCK_SIZE copies of
-    # 0x36 ("6") and 0x5c ("\\") -- a zero key byte XORed with the pad
-    # byte -- and setbyte puts each key byte's XOR over them; `.b` makes
-    # them binary so `+ data.b` never meets an encoding mismatch.
+    # is (hmac_key, hmac_pad): 0x36 keys the inner pad, 0x5c the outer.
     def self.hmac_digest(secret, data)
-      key = secret.bytesize > BLOCK_SIZE ? Digest::SHA256.digest(secret) : secret
-      ipad = ("6" * BLOCK_SIZE).b
-      opad = ("\\" * BLOCK_SIZE).b
+      key = Crypto.hmac_key(secret)
+      inner = Digest::SHA256.digest(Crypto.hmac_pad(key, 0x36) + data.b)
+      Digest::SHA256.digest(Crypto.hmac_pad(key, 0x5c) + inner)
+    end
+
+    # The HMAC key for `secret`: a key longer than the block size is hashed
+    # down first (a shorter one is zero-padded up to it, in hmac_pad).
+    # Password's PBKDF2 keys its pads through these two as well, so there is
+    # one copy of the key handling.
+    # @api private
+    def self.hmac_key(secret)
+      secret.bytesize > BLOCK_SIZE ? Digest::SHA256.digest(secret) : secret
+    end
+
+    # One HMAC pad: BLOCK_SIZE bytes, each the key's byte XORed with `fill`
+    # (0x36 for the inner pad, 0x5c for the outer), and `fill` itself past
+    # the key's end -- a zero key byte XORed with it. Binary (`.b`), so
+    # `pad + data.b` never meets an encoding mismatch. Two calls, one pad
+    # each, rather than one call answering both in an Array: hmac_digest
+    # runs for every request that carries a session.
+    # @api private
+    def self.hmac_pad(key, fill)
+      pad = ("\0" * BLOCK_SIZE).b
       n = key.bytesize
       i = 0
-      while i < n
-        b = key.getbyte(i)
-        ipad.setbyte(i, b ^ 0x36)
-        opad.setbyte(i, b ^ 0x5c)
+      while i < BLOCK_SIZE
+        pad.setbyte(i, i < n ? key.getbyte(i) ^ fill : fill)
         i += 1
       end
-
-      inner = Digest::SHA256.digest(ipad + data.b)
-      Digest::SHA256.digest(opad + inner)
+      pad
     end
   end
 end

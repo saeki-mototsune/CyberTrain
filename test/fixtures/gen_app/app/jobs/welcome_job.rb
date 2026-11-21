@@ -2,7 +2,7 @@
 # rule 64).
 WELCOME_LOG = Array.new(0) { "" }
 
-# The spec's example job (section 2.1). args["mode"] makes it fail for the
+# Cybertrain::Job::Base's example job. args["mode"] makes it fail for the
 # compiled test: "timeout" raises the mailer's TimeoutError (retried every
 # 60 s, 5 attempts), "bad" an ArgumentError (discarded), "steal" plays a
 # worker whose row was reclaimed while it ran, then times out.

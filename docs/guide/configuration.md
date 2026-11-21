@@ -14,7 +14,7 @@ end
 
 | Variable | Attribute | Default |
 | --- | --- | --- |
-| `CYBERTRAIN_ENV` | `env` | `"development"`; `"production"` in a binary from `cybertrain build` (also `"test"`) |
+| `CYBERTRAIN_ENV` | `env` | `"development"`; `"production"` in a binary from `cybertrain build` (also `"test"`). Set the variable, not `c.env`: `database_path`, `session_secure` and the default `mail_delivery_method` are derived from it before `config/app.rb` runs |
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | required in production; dev/test auto-generate one into `tmp/secret_key` |
@@ -31,9 +31,9 @@ end
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`; comma-separated IPv4/IPv6 addresses or CIDRs (`172.16.0.0/12,10.0.0.0/8`) whose connections have `request.client_ip` taken from the last `X-Forwarded-For` address, for a proxy reached over a network, such as kamal-proxy in its container; a bad entry stops the server at boot |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: the largest page `params.page_number` gives and `Relation#page` accepts (see [Pagination](models.md#pagination)); a value that is not a number of at most 18 digits, or below 1, is the default |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; comma-separated names replace the list. A parameter whose name contains one of them (ASCII case-insensitively: `password` also matches `user[password]`) has its value written as `[FILTERED]` in the request log and on the development error page; `[]` in `config/app.rb` turns this off |
-| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`: the least important level written, `debug`, `info`, `warn`, `error`, `fatal` or `none` (in any case; `none` turns the request log off and still writes error lines); anything else stops the boot (see [Logs](background-and-operations.md#logs)). `cybertrain test` uses `:none` unless `config/app.rb` sets it |
+| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`: the least important level written, `debug`, `info`, `warn`, `error`, `fatal` or `none` (in any case; `none` turns the request log off and still writes error lines); anything else stops the boot (see [Logs](logs-and-errors.md#logs)). `cybertrain test` uses `:none` unless `config/app.rb` sets it |
 | `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text`; `json` writes one JSON object per line, for a log collector; anything else stops the boot. `cybertrain test` keeps text lines unless `config/app.rb` sets it, whatever the variable says |
-| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`: nothing is sent. A Sentry or GlitchTip DSN sends each error report there (see [Error reporting](background-and-operations.md#error-reporting)); it needs `require "cybertrain/error_reporter/sentry"` (or `require "cybertrain"`) in `bin/<app>.rb`, or the boot is refused. One that does not parse stops the boot, naming the part and never the key. `cybertrain test` empties it unless `config/app.rb` assigns it |
+| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`: nothing is sent. A Sentry or GlitchTip DSN sends each error report there (see [Error reporting](logs-and-errors.md#error-reporting)); it needs `require "cybertrain/error_reporter/sentry"` (or `require "cybertrain"`) in `bin/<app>.rb`, or the boot is refused. One that does not parse stops the boot, naming the part and never the key. `cybertrain test` empties it unless `config/app.rb` assigns it |
 | `CYBERTRAIN_ERROR_SAMPLE_RATE` | `error_sample_rate` | `1.0`: the share of error reports sent to Sentry, from 0.0 to 1.0, written as digits with an optional `.digits`; subscribers see every report; anything else stops the boot |
 | `CYBERTRAIN_RELEASE` | `release` | `""`: the version or commit sent with each error report |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` or `false` keeps a `server` process from running scheduled tasks, jobs and WebSocket feeds (see [Process roles](background-and-operations.md#process-roles)); `./<app> worker` and `feeds` ignore it |
@@ -41,7 +41,7 @@ end
 | `CYBERTRAIN_TIME_ZONE` | `time_zone` | `"UTC"`: the application's zone, an IANA name such as `Asia/Tokyo`, for `Time.zone`, the day and month boundaries, `Date.current`, `l` and `time_tag` (see [Time zones](#time-zones)); one the system's zoneinfo does not have stops the boot |
 | `CYBERTRAIN_SCHEDULER_TZ` | `scheduler_tz` | `time_zone` when unset: the zone a `Scheduler.cron` task without `tz:` is read in, an IANA name (see [Time zones](#time-zones)); one the system's zoneinfo does not have stops the boot |
 | `CYBERTRAIN_JOBS_PAGE_PER_PAGE` | `jobs_page_per_page` | `50`: rows per list on the [jobs page](background-and-operations.md#the-jobs-page-and-the-jobs-command); at least 1 |
-| `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300`: seconds between the prunes of expired [cache](background-and-operations.md#the-cache-store) rows, read when `cybertrain/cache` is required; at least 1 |
+| `CYBERTRAIN_CACHE_PRUNE_INTERVAL` | `cache_prune_interval` | `300`: seconds between the prunes of expired [cache](background-and-operations.md#the-cache-store) rows, at least 1. With `cybertrain/jobs` it is read once, when the scheduled prune is registered as the two are required, before `config/app.rb` runs, so set the variable; without jobs it is read at each cache write, so `c.cache_prune_interval` works too |
 | `CYBERTRAIN_FEED_STATUS_INTERVAL` | `feed_status_interval` | `10`: seconds between the writes of each WebSocket feed's status row (see [Feed health](realtime.md#feed-health)); at least 1 |
 | `CYBERTRAIN_FEED_RESTART_LIMIT` | `feed_restart_limit` | `10`: restarts of one feed's thread within the window after which a `feeds` process exits with status 1 when it dies again (see [Consuming WebSocket feeds](external-services.md#consuming-websocket-feeds)); at least 1 |
 | `CYBERTRAIN_FEED_RESTART_WINDOW` | `feed_restart_window` | `600`: that window, in seconds; at least 1 |
@@ -56,7 +56,7 @@ end
 | `CYBERTRAIN_SMTP_USER` | `smtp_user` | `""`: no AUTH; set, the mailer authenticates with AUTH PLAIN |
 | `CYBERTRAIN_SMTP_PASSWORD` | `smtp_password` | `""`; a secret, never logged, never in the boot banner or an error message |
 | `CYBERTRAIN_SMTP_FROM` | `smtp_from` | `""`: the sender `Mailer.deliver` uses when it is not given `from:` |
-| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; also `tls` (implicit TLS) or `none` (plain text, credentials to loopback only); both TLS modes need `require "cybertrain/net/tls"`, which `require "cybertrain"` loads |
+| `CYBERTRAIN_SMTP_TLS` | `smtp_tls` | `"starttls"`; also `tls` (implicit TLS) or `none` (plain text, credentials to loopback only); both TLS modes need `require "cybertrain/net/tls"` in `bin/<app>.rb`: `require "cybertrain"` loads it, `cybertrain/core` and `cybertrain/mailer` do not ([Subsystems](how-it-works.md#subsystems)) |
 | `CYBERTRAIN_MAIL_DELIVERY_METHOD` | `mail_delivery_method` | `:test` in the test environment, `:smtp` in every other: `:test` keeps each mail in `Cybertrain::Mailer.deliveries` instead of sending it ([Testing mail](testing.md#testing-mail)); outside the test environment it boots with a warning and sends nothing; anything else stops the boot. `cybertrain test` uses `:test` unless `config/app.rb` sets it, whatever the variable says |
 | `CYBERTRAIN_TEST_DATABASE` | — | `""`: the file `cybertrain test` deletes, migrates and runs the tests on, instead of `storage/test.sqlite3`; a file path (not `:memory:` or a `file:` URI). An existing file is deleted only when `cybertrain test` created it (it marks its databases), is this application's own `storage/test.sqlite3` or is empty; any other, and the development or production database, is refused with exit status 2 and nothing deleted ([Running the tests](testing.md#running-the-tests)) |
 | `CYBERTRAIN_I18N_DEFAULT_LOCALE` | `i18n_default_locale` | `:en`: the locale every request starts in, a name such as `ja` or `pt-BR` (see [Locales](#locales)); anything else stops the boot |
@@ -65,42 +65,50 @@ end
 | `CYBERTRAIN_AUTH_REMEMBER_FOR` | `auth_remember_for` | `2592000` (30 days): seconds a "keep me signed in" sign-in lasts; at least 1 |
 | `CYBERTRAIN_AUTH_IDLE_TIMEOUT` | `auth_idle_timeout` | `604800` (7 days): seconds without a request after which a sign-in ends; `0` turns it off |
 
+`cybertrain test` gives its tests values of its own for some of these, unless
+`config/app.rb` assigns them. Besides the four rows that say so, `force_ssl`
+is off and `CYBERTRAIN_HOSTS` is emptied whatever the variables say, `csrf` is
+off, `upload_root` is `tmp/test_uploads`, and `smtp_from` is
+`"from@example.com"` unless `CYBERTRAIN_SMTP_FROM` is set
+([Running the tests](testing.md#running-the-tests)).
+
 Use `None` (with `CYBERTRAIN_SESSION_PARTITIONED=1`) only for an app shown
 inside another site's frame; the browser must reach the app over HTTPS.
 
-Other attributes with fixed, overridable defaults: `views_root`
-(`"app/views"`), `public_root` (`"public"`), `layout`
-(`"layouts/application"`), `log_tags` (`[:request_id]`: the request's tags
-on each log line; `:remote_ip` adds the client's address, `[]` shows none,
-and anything else stops the boot; see
-[Request ids](background-and-operations.md#request-ids)), `session_cookie_name`,
-`session_max_age` (2 weeks), `session_secure` (`true` in production, which
-marks the session cookie `Secure`; `false` elsewhere, though `SameSite=None`
-and `Partitioned` add `Secure` anyway), `pool_size` (4), `static_files`/`csrf`
-(`true`), `csrf_exempt_prefixes` (`[]`: path prefixes such as `"/api/"` whose
-non-GET requests skip the CSRF check, for an endpoint that programs call with
-a credential of their own; each must start and end with `/` and not be `/`
-alone, or boot fails; the prefix is matched on the path as sent, so a
-percent-encoded spelling is still checked; no other route may match a path
-under the prefix, and the exempt controller must not rely on the session
-for authentication, since the session is still loaded there), `max_body_bytes`
-(10 MiB: a longer request body, as sent, is answered 413 before it is read;
-raise it for large uploads; a gzip body's inflated size is bounded separately
-by `request.decoded_body(limit)`), `max_render_depth` (12 renders open at once: the page and its
-partials; raise it for partials that legitimately recurse deeper; it must be
-at least 1, or boot fails). Upgrade note: render nesting, unlimited before, is
-now capped at 12 by default (the page is depth 1, so partials can nest 11
-levels; the layout renders after the page and does not nest), and an app with
-a deeper tree (threaded comments, a category menu) gets a template error until
-it sets `max_render_depth`. File uploads: `max_upload_bytes` (5 MiB per
-uploaded file; it must not exceed `max_body_bytes`), `max_multipart_parts`
-(128 parts, text fields included, at most 4096), `upload_root`
-(`"storage/uploads"`, where `Cybertrain::BlobStore` writes; created on the
-first upload, not at boot).
+Other attributes have no variable; `config/app.rb` sets them:
+
+| Attribute | Default | Meaning |
+| --- | --- | --- |
+| `views_root` | `"app/views"` | Where templates are read from in development and test; a built binary uses the ones embedded in it |
+| `public_root` | `"public"` | The static files' directory, and where the `public/<status>.html` error pages are found |
+| `layout` | `"layouts/application"` | The layout every page renders in; ignored when the file does not exist |
+| `secret_key_path` | `"tmp/secret_key"` | Where development and test keep their generated secret |
+| `log_tags` | `[:request_id]` | The request's tags on each log line: `:remote_ip` adds the client's address, `[]` shows none, anything else stops the boot ([Request ids](logs-and-errors.md#request-ids)) |
+| `session_cookie_name` | `"_cybertrain_session"` | The session cookie's name |
+| `session_max_age` | `1209600` (2 weeks) | The session cookie's `Max-Age` in seconds; it restarts whenever the session changes |
+| `session_absolute_max_age` | `1209600` (2 weeks) | The longest a session lives in seconds, however often it is used: an older cookie loads as an empty session. `0` turns the limit off |
+| `session_secure` | `true` in production, `false` elsewhere | Marks the session cookie `Secure`; `SameSite=None` and `Partitioned` add `Secure` anyway |
+| `pool_size` | `4` | SQLite connections in the pool |
+| `static_files` | `true` | Whether `public/` is served; turn it off when a reverse proxy serves it |
+| `csrf` | `true` | Whether a non-GET request must carry the CSRF token (403 without it) |
+| `csrf_exempt_prefixes` | `[]` | Path prefixes whose non-GET requests skip the CSRF check (see below) |
+| `max_body_bytes` | `10485760` (10 MiB) | A longer request body, as sent, is answered 413 before it is read; raise it for large uploads. A gzip body's inflated size is bounded separately, by `request.decoded_body(limit)` |
+| `max_render_depth` | `12` | Renders open at once, the page and its partials: the page is depth 1, so partials nest 11 levels (the layout renders after the page and does not nest). Deeper is a template error; at least 1, or boot fails |
+| `max_upload_bytes` | `5242880` (5 MiB) | The largest single uploaded file; it must not exceed `max_body_bytes` |
+| `max_multipart_parts` | `128` | The most parts in one multipart body, text fields included; at most 4096 |
+| `upload_root` | `"storage/uploads"` | Where `Cybertrain::BlobStore` writes; created on the first upload, not at boot |
+
+**CSRF-exempt prefixes:** `csrf_exempt_prefixes` is for an endpoint that
+programs call with a credential of their own, such as `"/api/"`. Each prefix
+must start and end with `/` and not be `/` alone, or boot fails. It is matched
+on the path as sent, so a percent-encoded spelling is still checked. No other
+route may match a path under the prefix, and the exempt controller must not
+rely on the session for authentication, since the session is still loaded
+there.
 
 **Jobs and streams:** besides the variables above, `config/app.rb` sets
 `scheduler_interval` (1 s, the scheduler's tick), `job_poll_interval` (1 s,
-how long an idle job thread waits; it was 5 before job threads),
+how long an idle job thread waits),
 `job_max_attempts` (5), `job_heartbeat_interval` (30 s),
 `job_heartbeat_stale` (300 s, more than the interval),
 `job_drain_timeout` (10 s, how long `SIGTERM` waits for running jobs) and
@@ -192,7 +200,10 @@ systemd, Caddy with HTTPS, redeploys, rollbacks and backups.
 **Kamal:** `cybertrain new` also writes what [Kamal 2](https://kamal-deploy.org)
 needs: a `Dockerfile` that runs `cybertrain setup` and `cybertrain build` in an
 Ubuntu build stage and copies `dist/` into a slim stage of the same release
-(migrate on boot, then serve on `0.0.0.0:3000`), a `.dockerignore`,
+(migrate on boot, then serve on `0.0.0.0:3000`, with
+`SPINEL_GC_FULL_INTERVAL=8` set, a variable of Spinel's garbage collector that
+[docs/deploy.en.md](../deploy.en.md) explains and sets for systemd too), a
+`.dockerignore`,
 `config/deploy.yml` (kamal-proxy with Let's Encrypt in front, the
 health check on `public/up.html`, the SQLite file on a volume at
 `/app/storage`) and `.kamal/secrets` (`KAMAL_REGISTRY_PASSWORD` and
@@ -235,8 +246,10 @@ Tests change a value with `set_string_setting`, `set_int_setting` and
 variable and default, and the boot banner prints the current values
 (`=> Settings: base_url="" worker=true ...`); a `secret: true` setting shows
 up in both only by name, as `[FILTERED]`. There is no
-`Cybertrain.config.base_url` accessor: Spinel has no `define_method`, so the
-readers are typed methods that take the name.
+`Cybertrain.config.base_url` accessor: a setting is declared by a call on the
+config object, and Spinel compiles `define_method` in a class body but
+refuses one called from an instance method, so the readers are typed methods
+that take the name.
 
 ### Locales
 
@@ -277,7 +290,7 @@ Spinel ships no tz database, and setting `ENV["TZ"]` to convert a time
 changes it for every thread of the process. `Cybertrain::TimeZone` reads the
 system's zone files instead: `/usr/share/zoneinfo/<name>`, or `$TZDIR/<name>`
 when `TZDIR` is set (install the `tzdata` package in a slim container image).
-It parses TZif versions 1 to 4 (RFC 8536), including the POSIX TZ rule a
+It parses TZif versions 1 to 4 (RFC 9636, which replaced RFC 8536), including the POSIX TZ rule a
 "slim" file relies on after its last transition, and caches each zone for the
 life of the process (copy-on-write, so lookups from several workers take no
 lock).
@@ -338,3 +351,8 @@ does, with `error: time_zone "Mars/Base" is not a known time zone` and exit
 status 1, before the database is opened. In `cybertrain test` every test
 starts in the configured zone. ([Dates and times](i18n.md#dates-and-times) has `l`'s
 formats.)
+
+## Upgrading
+
+The settings and defaults a release changes are listed by version in
+[Upgrading](upgrading.md#notes-by-version).

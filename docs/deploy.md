@@ -99,22 +99,27 @@ CyberTrain が必要とする修正を本家より先に取り込んだ matz/spi
 `make install`）。初回だけで、数分かかります（4 コアのマシンで 5 分前後でした。`make -j` は CPU の数だけ
 並列に動くので、CPU が少ないほど長くかかります）。CI も Spinel を同じ `cybertrain setup` で入れています。
 
-- 足りない道具（git・make・curl・`prism` gem を読み込める Ruby・C コンパイラ・SQLite のヘッダ／ライブラリ）があると、ビルドを始める前に
-  何が足りないかとインストールのコマンドを表示して止まります。
+- 足りない道具（git・make・curl・`prism` gem を読み込める Ruby・C コンパイラ・SQLite／zlib／OpenSSL の
+  ヘッダとライブラリ）があると、ビルドを始める前に何が足りないかとインストールのコマンドを表示して
+  止まります。
 - 各手順の出力はログ `~/.cybertrain/log/spinel-SPINEL_TAG-build.log` に書かれます。途中で失敗したときは
   ログの末尾が表示されます。
 - すでに入っている場合（`~/.cybertrain` にある、または同じリリースの `spinel` が PATH にある）は、
   `nothing to install` と表示して何もしません。`~/.cybertrain` のものを作り直したいときは
   `cybertrain setup --force` です。
-- 入れ先 `~/.cybertrain/spinel/SPINEL_TAG/` は約 41 MB です（Linux x86-64 で確認した値）。ビルド中だけ、
+- 入れ先 `~/.cybertrain/spinel/SPINEL_TAG/` は約 50 MB です（Linux x86-64 で確認した値）。ビルド中だけ、
   ソースと中間ファイルが `~/.cybertrain/src/spinel-SPINEL_TAG/` に 220 MB ほどでき、成功すると削除されます。
 
-前提が足りているかは `cybertrain doctor` で確認できます（git・make・curl・prism・cc・SQLite・OpenSSL と
-Spinel を 1 行ずつ表示します。足りないものは `MISSING` と表示され、インストールのコマンドが続きます）。
+前提が足りているかは `cybertrain doctor` で確認できます（git・make・curl・prism・fiddle・cc・SQLite・
+zlib・OpenSSL と Spinel を 1 行ずつ表示します。足りないものは `MISSING` と表示され、インストールの
+コマンドが続きます）。`fiddle` が関係するのは開発マシンだけです。`cybertrain server` の CRuby
+プレビューに必要で、無ければサーバーはコンパイル済みのバイナリだけで動きます。本番サーバーには
+要りません。
 
 `cybertrain new`・`db`・`server`・`build` は、この Spinel を自分で見つけて使うので、PATH の設定は要りません。
-`spin` を直接実行したいときは `cybertrain spin ...`（例: `cybertrain spin run gen -- --check`）でも
-動きます。それでも `spin` をそのまま打ちたい場合だけ、`~/.cybertrain/bin` を PATH に通します（zsh なら
+`spin` を直接実行したいときは `cybertrain spin ...`（例:
+`SPIN_DEBUG=1 cybertrain spin run gen -- --check`。`SPIN_DEBUG=1` は CLI が generator をビルドする
+モードで、付けておくと generator をもう一度コンパイルせずに済みます）でも動きます。それでも `spin` をそのまま打ちたい場合だけ、`~/.cybertrain/bin` を PATH に通します（zsh なら
 `~/.zshrc`）。`~/.cybertrain/bin` には現在使っているリリースへの `spinel`・`spin` のリンクが置かれるので、
 リリースが上がっても書き換えは要りません。`cybertrain setup` は、自分が入れた Spinel を使う場合に、
 同じ内容の `export PATH=...` の行を表示します。
@@ -173,10 +178,10 @@ git init -b main
 [package]
 name = "notes"
 version = "0.1.0"
-# jemalloc is a faster malloc for a server: 1.1 to 1.4 times the
-# requests per second on examples/blog (docs/benchmark.md). Building then
-# needs its development package (libjemalloc-dev on Debian/Ubuntu,
-# `brew install jemalloc` on macOS).
+# jemalloc is another malloc for a server: between no gain and 1.4 times
+# the requests per second on examples/blog, depending on the run
+# (docs/benchmark.md). Building then needs its development package
+# (libjemalloc-dev on Debian/Ubuntu, `brew install jemalloc` on macOS).
 # allocator = "jemalloc"
 
 [dependencies]
@@ -184,9 +189,10 @@ cybertrain = { git = "https://github.com/saeki-mototsune/cybertrain", ref = "vX.
 ```
 
 `# allocator = "jemalloc"` の行の `#` を外すと、アプリが glibc の malloc の代わりに jemalloc を
-リンクしてビルドされます。サーバーはリクエストごとに大量の小さなメモリ確保をするので、
-examples/blog では 1 秒あたりのリクエスト数が 1.1〜1.4 倍になりました（[benchmark.md](benchmark.md)）。
-本番ではおすすめです。手元とサーバーの両方に `libjemalloc-dev` が要ります（1-1 と 3-2 で入れています）。
+リンクしてビルドされます。サーバーはリクエストごとに大量の小さなメモリ確保をします。
+examples/blog での効果は、記録のある 2 回の計測で違いました。2026-10-09 の計測では動的なページで
+1 秒あたりのリクエスト数が 1.3〜1.4 倍、最新の計測では数 % の差（1 コアで POST は 18% 増）です
+（[benchmark.md](benchmark.md)）。頼る前に自分のアプリで測ってください。手元とサーバーの両方に `libjemalloc-dev` が要ります（1-1 と 3-2 で入れています）。
 入っていないと `cannot find -ljemalloc` でビルドが止まります。
 
 続けて `new` が `spin lock` と `spin run gen` を実行しています。フレームワークは spin の
@@ -292,7 +298,7 @@ rm -f dist/storage/rehearsal.sqlite3*
 コミット前に鮮度を確認します。
 
 ```sh
-cybertrain spin run gen -- --check   # 何も出ず終了コード 0 なら最新
+SPIN_DEBUG=1 cybertrain spin run gen -- --check   # 何も出ず終了コード 0 なら最新
 git add -A
 git commit -m "Create notes"
 ```
@@ -363,7 +369,9 @@ cybertrain version
 
 `-v` はアプリの `spin.toml` の `ref`（タグ `vX.Y.Z`）と同じバージョンにそろえてください。CLI と
 `spin.lock` が固定するフレームワーク（`spin run gen` はそのフレームワーク自身の generator を
-実行します）は対で更新するものなので、バージョンがずれるとビルドや起動が失敗します。
+実行します）は対で更新するものです。バージョンがずれていると、`cybertrain build` は何もビルドせずに
+止まり、見つけた二つのバージョンを表示します
+（[アプリを新しいリリースに移す](guide/ja/install.md#moving-an-app-to-a-new-release)）。
 
 続けて、同じ `notes` ユーザーで Spinel を入れます。
 
@@ -371,10 +379,8 @@ cybertrain version
 cybertrain setup
 ```
 
-1-3 と同じ処理で、初回だけ数分かかります（CPU が少ないサーバーほど長くかかります）。Spinel は `notes`
-ユーザーの `~/.cybertrain/spinel/SPINEL_TAG/`（ここでは `/srv/notes/.cybertrain/spinel/SPINEL_TAG/`。
-約 41 MB）に入り、ログは `~/.cybertrain/log/spinel-SPINEL_TAG-build.log` に残ります。ビルド中だけ、
-ソースと中間ファイルが `~/.cybertrain/src/` に 220 MB ほどできます（成功すると削除されます）。3-2 で
+1-3 と同じ処理で、初回だけ数分かかります（CPU が少ないサーバーほど長くかかります）。ここでは `~` が
+`/srv/notes` なので、Spinel は `/srv/notes/.cybertrain/spinel/SPINEL_TAG/` に入ります。3-2 で
 入れたパッケージで前提はそろっていますが、足りないと言われたら `cybertrain doctor` で確認してください。
 
 ### 3-5. デプロイキー
@@ -409,13 +415,13 @@ exit    # notes ユーザーを抜けて、sudo できるユーザーに戻る
 
 - `~/releases/<日時>/` … デプロイごとのチェックアウト（ビルド結果の `dist/` もここ）
 - `~/current` … 動かすリリースへのシンボリックリンク
-- `~/shared/` … リリースをまたいで残すもの（SQLite の DB）
+- `~/shared/` … リリースをまたいで残すもの（SQLite の DB、アップロードされたファイル）
 
 ---
 
 ## 第 4 部: 秘密鍵と環境変数
 
-本番の設定は環境変数で渡します。`CYBERTRAIN_SECRET_KEY_BASE` はセッション Cookie の署名鍵で、
+本番の設定は環境変数で渡します。`CYBERTRAIN_SECRET_KEY_BASE` はセッション Cookie を暗号化する秘密鍵で、
 本番では未設定だと起動しません。リポジトリには入れず、サーバーのファイルにだけ置きます。
 
 sudo できるユーザーで:
@@ -428,6 +434,7 @@ CYBERTRAIN_ENV=production
 CYBERTRAIN_SECRET_KEY_BASE=$SECRET
 CYBERTRAIN_DATABASE=/srv/notes/shared/production.sqlite3
 PORT=3000
+CYBERTRAIN_TRUSTED_PROXY=1
 SPINEL_GC_FULL_INTERVAL=8
 EOF
 unset SECRET
@@ -441,12 +448,14 @@ sudo chmod 640 /etc/notes/notes.env
 | `CYBERTRAIN_SECRET_KEY_BASE` | **必須**。変えると全員のセッションが切れます |
 | `CYBERTRAIN_DATABASE` | DB ファイル。リリースをまたいで残るよう `shared/` に置きます |
 | `PORT` | 待ち受けポート。Caddy の設定と合わせます |
+| `CYBERTRAIN_TRUSTED_PROXY=1` | Caddy は 127.0.0.1 から接続し、訪問者のアドレスを `X-Forwarded-For` に書きます。これを指定するとアプリは `request.client_ip` をそのヘッダから取るので、`rate_limit`（`cybertrain generate authentication` が書くサインインの制限）が Caddy ではなく訪問者ごとに数え、`request.base_url` も https になります |
 | `SPINEL_GC_FULL_INTERVAL=8` | Spinel の GC が full collection を 8 回に 1 回にします。既定の自動調整では、Web サーバーの負荷でほぼ毎回 full になり、8 に固定すると 1 CPU で毎秒のリクエスト数が約 16% 増えます。メモリ使用量は変わりません（[spinel-feedback.md](spinel-feedback.md) の 5） |
 
 必要ならログとエラー報告も設定します。エラー報告をすべて Sentry（または GlitchTip）に送るには、
-プロジェクトの DSN を同じファイルに足し、`bin/notes.rb` が `cybertrain` ではなく `cybertrain/core` を
-読み込んでいるなら、送信側をリンクする行も足します（DSN があって行がないと、アプリは起動を拒み、
-足すべき行を表示します）。`CYBERTRAIN_LOG_FORMAT=json` にするとログを 1 行 1 つの JSON
+プロジェクトの DSN を同じファイルに足し、`bin/notes.rb` に
+`require "cybertrain/error_reporter/sentry"` を足してデプロイします（新しいアプリは
+`cybertrain/core` だけを読み込みます。DSN があってこの行がないと、アプリは起動を拒み、足すべき行を
+表示します）。`CYBERTRAIN_LOG_FORMAT=json` にするとログを 1 行 1 つの JSON
 オブジェクトで書きます（ログ収集ツール向け。journal はどちらでも読めます）。
 
 ```sh
@@ -458,7 +467,13 @@ EOF
 
 `CYBERTRAIN_RELEASE` は報告がどのバージョンから来たかを示します。デプロイスクリプトでコミットを
 書き込んでもかまいません。変数と報告される内容は
-[エラー報告](guide/ja/background-and-operations.md#error-reporting)にあります。
+[エラー報告](guide/ja/logs-and-errors.md#error-reporting)にあります。
+
+`cybertrain new` が書く `.env.example` には、アプリが読むほかの変数がコメントで並んでいます。
+そのうち一つは、モデルが `encrypts` を宣言したときから必須になります。`CYBERTRAIN_ENCRYPTION_KEY` が
+ないと、そういうアプリは起動しません。鍵は開発マシンで `cybertrain secret --hex` で作り、
+`/etc/notes/notes.env` に足してください。暗号化したカラムはこの鍵がないと読めないので、控えも
+保管します。
 
 ---
 
@@ -505,6 +520,12 @@ sudo systemctl enable notes
   バイナリに埋め込まれているので、ディスクからは読みません。ここでは DB を
   `CYBERTRAIN_DATABASE` で `/srv/notes/shared/` に置くので、書き込みが要るのは
   `ReadWritePaths` のそこだけです。
+- ファイルのアップロード（`cybertrain generate attachment`）があるアプリは、作業ディレクトリの
+  `storage/uploads/` にファイルを置きます。この構成ではそこはリリースの中なので、サービスからは
+  書き込めず、デプロイのたびに新しくなります。`config/app.rb` に
+  `c.upload_root = "/srv/notes/shared/uploads" if c.production?` と書いて `shared/` に置き、
+  データベースと一緒にバックアップしてください（「バックアップ」）。2-6 のリハーサルも本番モードで
+  動くので、この行があると、`/srv/notes/shared/` のないマシンではアップロードを保存できません。
 - ログは標準出力に出るので、journald（`sudo journalctl -u notes`）に集まります。
 - 停止は SIGTERM で、受け付けを止め、処理中のリクエストに応答し終えてから終了します（最大 10 秒。
   `TimeoutStopSec=15` はこれより長くしてあります）。
@@ -545,7 +566,7 @@ cd "$release"
 git checkout --quiet "$REF"
 
 echo "==> gen/ が最新か確認"
-spin run gen -- --check
+SPIN_DEBUG=1 spin run gen -- --check
 
 echo "==> ビルド（ビューを埋め込んだ dist/notes と dist/public/）"
 cybertrain build
@@ -586,7 +607,9 @@ chmod 700 ~/deploy.sh
 ```
 
 `PATH` の先頭に `~/.cybertrain/bin` を入れているのは、`gen/` の確認で `spin` を直接呼ぶためです
-（`cybertrain build` は Spinel を自分で見つけます）。`~/.cybertrain/bin` は `cybertrain setup` が
+（`cybertrain build` は Spinel を自分で見つけます）。`SPIN_DEBUG=1` は `cybertrain build` が
+generator をビルドするモードで、こうしておくと generator のコンパイルは 1 回で済みます。
+`~/.cybertrain/bin` は `cybertrain setup` が
 現在のリリースに向けて張り直すリンクなので、Spinel のリリースが上がっても書き換えは要りません。
 
 途中のどこかで失敗した場合（`gen/` が古い、コンパイルエラー、マイグレーション失敗）は、
@@ -695,6 +718,37 @@ curl -sI https://notes.example.com/
 ノートを作成・編集・削除してみてください。うまくいかないときは
 `sudo journalctl -u caddy -n 50 --no-pager` を見ます。
 
+### 6-4. 堅くする（任意）
+
+サイトが動いたあとでできる変更が四つあります。どれも Caddyfile のサイトブロック（変えたら
+`sudo systemctl reload caddy`）か `/etc/notes/notes.env`（変えたら `sudo systemctl restart notes`）を
+書き換えます。
+
+- **HTTPS に固定する。** 動作を確認した後で Caddyfile のサイトブロックに
+  `header Strict-Transport-Security "max-age=31536000"` を足してください（セッション Cookie は
+  本番では `Secure` 付きです）。アプリにさせることもできます。`/etc/notes/notes.env` に
+  `CYBERTRAIN_FORCE_SSL=1` を書くと、HSTS を送り、`X-Forwarded-Proto` を見て http を https に
+  リダイレクトします（アプリが組み立てる URL を https にするのは、第 4 部で書いた
+  `CYBERTRAIN_TRUSTED_PROXY=1` です）。`CYBERTRAIN_FORCE_SSL=1` にしたときはデプロイスクリプトの確認も
+  `http://127.0.0.1:$PORT/up` に変えてください。リダイレクトされないのはヘルスチェックのパスだけで、
+  素の http での `/up.html` はリダイレクトされ、確認がアプリの応答を証明しなくなります。
+- **ホスト名を一つにする。** `CYBERTRAIN_HOSTS=notes.example.com` を書くと、それ以外の `Host` へのリクエストは 403 になります。
+  ループバックの名前（`localhost`・`127.0.0.1`・`[::1]`）は通るので、デプロイスクリプトの
+  `curl http://127.0.0.1:...` はそのまま動きます。
+- **静的ファイルのセキュリティヘッダ。** アプリは全レスポンスに `X-Content-Type-Options: nosniff`・
+  `X-Frame-Options: SAMEORIGIN`・`Permissions-Policy` を付けます（アプリの応答、エラー応答、`Static` ミドルウェアが返す `public/` のファイルも）。ただし 6-2 の
+  Caddyfile では `public/` のファイルを Caddy が直接返すので、アプリを通らず、これらは付きません。
+  揃えたいときは、サイトブロックに `header ?X-Content-Type-Options nosniff` と
+  `header ?X-Frame-Options SAMEORIGIN` を足してください（`?` は、アプリがすでに付けているときは
+  上書きしない指定です。埋め込み用のページがアプリ側で値を変えていても、それが残ります）。
+- **`/assets/` のキャッシュ。** `public/assets/` のダイジェスト付きファイルも同じです。アプリは
+  `Cache-Control: public, max-age=31536000, immutable` で返しますが、Caddy は自分のヘッダで返します。
+  サイトブロックに `header /assets/* Cache-Control "public, max-age=31536000, immutable"` のような
+  行を足すと、アプリと同じキャッシュになります。リリースは毎回まっさらなクローンなので、その
+  `public/assets/` にはそのリリースのダイジェストしかありません。また、アプリは `public/` の外へ
+  向かうシンボリックリンク越しにはファイルを返しません。`public/assets/` を `shared/` に置くなら、
+  リンクではなくマウントしてください。
+
 ---
 
 ## 第 7 部: 日々の運用
@@ -710,7 +764,7 @@ sudo -iu notes /srv/notes/deploy.sh v1.2     # タグやコミットを指定す
 ```
 
 手元での変更の流れは開発時と同じです。スキーマ・ルート・コントローラのコールバックやインスタンス
-変数を変えたら `cybertrain spin run gen` をしてから `gen/` ごとコミットしてください（忘れるとデプロイが
+変数を変えたら `SPIN_DEBUG=1 cybertrain spin run gen` をしてから `gen/` ごとコミットしてください（忘れるとデプロイが
 `gen/ が最新か確認` で止まります）。
 
 再起動の間（数秒）は Caddy が 500.html を返します。
@@ -781,10 +835,13 @@ crontab -e
 ```
 
 サーバーが壊れたときのために、`/srv/notes/backups/` は別の場所（別サーバーやオブジェクト
-ストレージ）にも定期的にコピーしてください。
+ストレージ）にも定期的にコピーしてください。アップロードされたファイル
+（`/srv/notes/shared/uploads/`、5-1）はデータベースの中にはありません。このディレクトリも
+バックアップと一緒にコピーしてください。
 
 `sqlite3` の代わりに、アプリのバイナリ自身でもバックアップを取れます（`db backup` のある
-フレームワークで作ったアプリ。README の「Operations」）。
+フレームワークで作ったアプリ。
+[運用](guide/ja/background-and-operations.md#operations-backups-vacuum-health-check)）。
 `CYBERTRAIN_DATABASE=/srv/notes/shared/production.sqlite3 /srv/notes/current/dist/notes db backup /srv/notes/backups/ --keep 14`
 は `notes-<UTC の日時>.sqlite3` を一時ファイル経由でモード 0600 で書き、その形のファイルを新しい
 14 個だけ残します。crontab の `sqlite3 ... && find ...` をこの 1 コマンドに置き換えられます。行を
@@ -802,19 +859,23 @@ sudo systemctl start notes
 
 ### フレームワークを更新する
 
-手元で:
+ここでは、このチュートリアルのサーバーでの更新の順番を説明します。どのリリースにも共通する手順の全体
+（再生成、ジェネレーターの再実行、テスト）と、各リリースがアプリに求める変更は
+[アップグレードのガイド](guide/ja/upgrading.md) にあります。次の順に更新します。
 
-`spin.toml` の `ref` を新しいタグ（`"vX.Y.Z"`）に書き換え、`gem install cybertrain` で
-CLI も同じバージョンにそろえてから（サーバーの `notes` ユーザーでも
-`gem install --user-install cybertrain -v X.Y.Z` のように、`spin.toml` のタグと同じバージョンを
-指定して CLI を更新します。CLI と `spin.lock` が固定するフレームワークは対で更新するものなので、
-バージョンがずれるとビルドや起動が失敗します）:
+1. 手元で、`spin.toml` の `ref` を新しいタグ（`"vX.Y.Z"`）に書き換えます。
+2. 手元で、`gem install cybertrain` で CLI を同じバージョンにそろえます。
+3. サーバーでも、`notes` ユーザーで同じバージョンの CLI を入れます
+   （`gem install --user-install cybertrain -v X.Y.Z`）。二つがずれているとデプロイが止まります
+   （3-4）。
+
+続けて、手元で:
 
 ```sh
 rm spin.lock              # spin lock だけでは固定済みのコミットが残る
 cybertrain spin lock      # 新しいタグのコミットを spin.lock に固定する
-cybertrain spin run gen   # 生成コードがフレームワークに合わせて変わることがある
-cybertrain spin test      # テストを書いているなら
+SPIN_DEBUG=1 cybertrain spin run gen   # 生成コードがフレームワークに合わせて変わることがある
+cybertrain test           # アプリのテスト
 cybertrain server         # 動作確認
 git add -A && git commit -m "Update cybertrain"
 git push
@@ -831,7 +892,7 @@ git push
 0.4 のリリースから更新するときは、データベースの日時も一度だけ書き換えます。0.4 は
 `2026-10-05T09:00:00Z` の形で保存していましたが、その後のリリースは Rails と同じ
 `2026-10-05 09:00:00.000000` の形で保存し、二つの形が混ざったカラムは形の順に並んでしまいます
-（[モデルのガイド](guide/models.md#datetimes-and-db-normalize)）。その一回のデプロイでは
+（[モデルのガイド](guide/ja/models.md#datetimes-and-db-normalize)）。その一回のデプロイでは
 `~/deploy.sh` の `dist/notes migrate` のあとに二行足します:
 
 ```sh
@@ -853,6 +914,247 @@ dist/notes db normalize
 `/etc/notes/notes.env` の `CYBERTRAIN_SECRET_KEY_BASE` を新しい値（`openssl rand -hex 32`）に
 書き換えて `sudo systemctl restart notes`。全員のセッションとフラッシュが消え、開きっぱなしの
 フォームは CSRF エラーになります。
+
+---
+
+## 第 8 部: Kamal でデプロイする
+
+（英語版: [deploy-kamal.md](deploy-kamal.md)）
+
+第 3 部〜第 6 部（サーバー上でビルドし、systemd と Caddy で動かす）の代わりに、Docker イメージに
+して [Kamal 2](https://kamal-deploy.org) で配ることもできます。`cybertrain new` は次のファイルを
+書いています。
+
+| ファイル | 中身 |
+| --- | --- |
+| `Dockerfile` | 2 段のビルド。1 段目（Ubuntu 24.04）で `gem install cybertrain`・`cybertrain setup`（Spinel）・`cybertrain build` を実行し、2 段目（同じ Ubuntu）に `dist/` と実行時に要るライブラリ（SQLite・zlib・jemalloc・OpenSSL）だけを入れる。起動時に `./notes migrate` してから `./notes` を `exec` する |
+| `.dockerignore` | `build/`・`dist/`・`log/`・`storage/` と `tmp/` の中身すべて・`.git/`・`.kamal/` をビルドに渡さない |
+| `config/deploy.yml` | Kamal の設定。kamal-proxy が HTTPS（Let's Encrypt）を受けてアプリの 3000 番に渡し、`/up.html` でヘルスチェックする。DB とアップロードされたファイル（`storage/uploads/`）はボリューム `notes_storage`（コンテナの `/app/storage`）に置き、`asset_path: /app/public/assets` で前のリリースのダイジェスト付きアセットを引き継ぐ |
+| `.kamal/secrets` | `KAMAL_REGISTRY_PASSWORD` と `CYBERTRAIN_SECRET_KEY_BASE` を、kamal を実行するシェルの環境変数から読む。値そのものは書かない（コミットするファイル） |
+| `public/up.html` | ヘルスチェック用のページ。アプリ自身が静的ファイルとして返す |
+
+[examples/blog](../examples/blog#deploying-with-kamal) にも同じ設定が入っています（フレームワークは
+このリポジトリのものを使うので、`Dockerfile` は gem を入れずにチェックアウトの CLI を使い、ビルド
+コンテキストはリポジトリのルートです）。
+
+バイナリは Docker の中でビルドされるので、「動かすマシンと同じ OS でビルドする」制約はイメージが
+満たします。CPU は合わせる必要があります（`builder.arch`。下記）。
+
+### 8-1. 用意するもの
+
+- 手元: Docker と Kamal（`gem install kamal`）。
+- サーバー: Ubuntu など、root（または sudo できるユーザー）で SSH できるマシン。Docker は
+  `kamal setup` が入れます。80 と 443 を開けておきます。
+- DNS: `notes.example.com` の A（AAAA）レコードをサーバーに向けておきます（3-1 と同じ）。
+- イメージの置き場: Docker Hub か GitHub Container Registry（ghcr.io）のアカウントと、push できる
+  トークン。
+- フレームワークの参照: `spin.toml` の `cybertrain =` が git のタグ（`cybertrain new` の既定）か
+  バージョンであること。`--path` で作ったアプリは、イメージの中からそのパスが見えないのでビルド
+  できません。
+
+### 8-2. `config/deploy.yml` を書き換える
+
+`CHANGE ME` と書いた値を自分のものにします。書き換える部分は次のとおりです（ジョブのある
+アプリの例です。新しいアプリでは `worker` の役割はコメントになっています。下で説明します）。
+
+```yaml
+service: notes
+image: YOUR_DOCKERHUB_USER/notes      # ghcr.io なら YOUR_GITHUB/notes
+
+servers:
+  web:
+    hosts:
+      - 203.0.113.10                  # サーバーの IP アドレスかホスト名
+  worker:
+    hosts:
+      - 203.0.113.10
+    cmd: ./notes worker
+    options:
+      restart: unless-stopped
+
+proxy:
+  ssl: true
+  host: notes.example.com
+  app_port: 3000
+  healthcheck:
+    path: /up.html
+
+registry:
+  # server: ghcr.io                   # ghcr.io を使うときだけ
+  username: YOUR_DOCKERHUB_USER
+  password:
+    - KAMAL_REGISTRY_PASSWORD
+```
+
+`builder.arch` はサーバーの CPU に合わせます（x86-64 なら `amd64`、arm64 なら `arm64`）。
+イメージのビルドでは Spinel もコンパイルするので、手元と違う CPU 向けにエミュレーションでビルド
+すると非常に遅くなります。Apple Silicon の Mac から x86-64 のサーバーに配るときは
+`builder.remote: ssh://root@203.0.113.10` を有効にして、サーバー上でビルドさせるのがおすすめです。
+
+`proxy.ssl` は外さないでください。本番のセッション Cookie は `Secure` なので、HTTP ではフォーム
+送信が 403 になります。
+
+#### 役割
+
+`servers` の役割はどれも同じイメージで動きます。`web` は HTTP（と、`CYBERTRAIN_WORKER=0` で
+ない限りジョブと定期タスク）、`worker` はジョブと定期タスクだけを `./notes worker` で動かします。
+同じボリュームのデータベースを共有し、定期タスクはリースを持つ 1 つだけが動かします（第 9 部
+「役割を分ける」）。WebSocket の購読を自分のコンテナで動かすときは、生成されたファイルで
+コメントになっている `feeds` の役割（`cmd: ./notes feeds trades`）を有効にし、`web` に
+`env: clear: CYBERTRAIN_WORKER: 0` を足します（`feeds` の役割には `bin/notes.rb` の
+`require "cybertrain/feeds"` が必要です）。ハートビートのない古い cybertrain のリリースから
+上げる 1 回目は、`kamal app stop` で古いコンテナをすべて止めてから `kamal deploy` してください
+（古いワーカーの実行中のジョブを新しいワーカーが二重に実行しないように）。
+
+`worker` の役割にはジョブのサブシステム、つまり `bin/notes.rb` と `bin/db.rb` の
+`require "cybertrain/jobs"` が必要です（[サブシステム](guide/ja/how-it-works.md#subsystems)）。
+新しいアプリはコアだけを読み込むので、`cybertrain new` はこの役割をコメントにして書きます。
+`cybertrain generate job` と `generate authentication` がその行を足し、コメントを外します。
+ジョブを使わないなら外したままにしてください。`./notes worker` が
+`the worker role needs require "cybertrain/jobs" in bin/notes.rb` と出して 1 で終了し、
+Docker が再起動し続けます。
+
+`worker` の役割（とコメントになっている `feeds`）には `options: restart: unless-stopped` が
+付いています。kamal-proxy がヘルスチェックを見るのは `web` の役割だけで、それもデプロイ中だけ
+なので、これらのコンテナを再起動するものはほかにありません。プロセスが終了したときに Docker が
+再起動します。ワーカーは起動できないときに 0 以外で終了し、feeds プロセスはスレッドが死んだ
+フィードを再起動しますが、同じフィードが死に続けると（600 秒のうちに 10 回の再起動）終了
+ステータス 1 で終わり、Docker が新しいコンテナを起動します。フィードを自分のコンテナで動かすと、
+フィードかそのプロセスが 180 秒黙っているとき `web` の `/up` が `503 feed stale` を返します
+（フィードは状態をデータベースに書きます）。リリースで消したり名前を変えたりしたフィードは
+数えられず、きれいに止めた feeds コンテナ（`kamal app stop -r feeds`、台数の削減）は自分の行を
+消すので、どちらも次の web のデプロイを止めません。クラッシュしたコンテナの行は残り、古く
+なります。プロキシのヘルスチェックを `/up` に向けていて、
+静かなフィードでデプロイを止めたくないときは、`env.clear` に `CYBERTRAIN_HEALTH_FEEDS: 0` を
+足してください。
+
+#### ヘルスチェック
+
+組み込みのヘルスチェック（`GET /up`。
+[運用](guide/ja/background-and-operations.md#operations-backups-vacuum-health-check)）がある
+フレームワークで作ったアプリなら、
+`healthcheck` の `path` を `/up.html` から `/up` に変えられます。`/up` はデータベースのスキーマを
+読む問い合わせをして、読めなければ 503 を返すので、ボリュームやデータベースが壊れたリリースに
+トラフィックが切り替わりません。`/up.html` は静的ファイルで、プロセスが HTTP に応えることしか
+示しません。古い cybertrain で作ったアプリは `/up.html` のままにしてください。
+
+kamal-proxy はすでに http を https にリダイレクトし、アプリには `X-Forwarded-Proto: https` が
+届きます。（HSTS ヘッダのために）`CYBERTRAIN_FORCE_SSL: 1` も有効にするなら、`healthcheck` を
+`/up` に向けてください。`CYBERTRAIN_HOSTS: notes.example.com`（ほかの `Host` を拒否します）を
+有効にする場合も同じです。プロキシのチェックはコンテナへの素の http で、アドレスに対して行われ、
+リダイレクトと Host の検査を免れるのはヘルスチェックのパス（`/up`）だけです。`/up.html` のままだと
+リダイレクトされるか 403 になり、新しいコンテナは正常になりません。
+
+#### プロキシのアドレス
+
+生成される `config/deploy.yml` は `env.clear` に `CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` を
+書きます。kamal-proxy は別のコンテナで動き、Docker のネットワーク上のアドレス（既定では
+172.16.0.0/12 の中）からアプリにつなぐので、そこからの接続に限って `X-Forwarded-For` の最後の
+アドレス（kamal-proxy が付けたもの）を `request.client_ip` にします。これがないと、サインインの
+レート制限（`rate_limit`）が訪問者全員を kamal-proxy の一つのアドレスとして数えます。Docker の
+ネットワークを別の範囲にしているときは、その範囲に書き換えてください（`docker network inspect kamal`
+で確かめられます）。`proxy.forward_headers` は設定しません。TLS を終端する kamal-proxy は
+`X-Forwarded-For` を自分で付け、クライアントが送ったものは渡さないので、それが望む動きです。
+
+#### デプロイをまたぐアセット
+
+生成される `config/deploy.yml` には `asset_path: /app/public/assets` があります。イメージには
+そのリリースのダイジェスト付きのスタイルシートとスクリプトしか入っていないので、Kamal が前の
+リリースのファイルを新しいコンテナへ引き継ぎ、切り替えの間も、デプロイ前に読み込んだページが
+HTML に書かれたファイルを取得できます。古い cybertrain で作った `config/deploy.yml` にはこの行を
+足してください。どのアプリも OpenSSL をリンクするようになったので、その `Dockerfile` には
+ビルド段に `libssl-dev`、実行段に `libssl3t64` も要ります。
+
+### 8-3. 秘密鍵を用意する
+
+`.kamal/secrets` は環境変数を読むだけなので、kamal を実行するシェルで設定します。
+`CYBERTRAIN_SECRET_KEY_BASE` は一度だけ作り、パスワードマネージャーなどに保管してください
+（変えると全員のセッションが切れます）。
+
+```sh
+export KAMAL_REGISTRY_PASSWORD=...                      # レジストリのトークン
+export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"   # 初回だけ作り、保管した値を使う
+```
+
+パスワードマネージャーから直接読む書き方は
+[Kamal のドキュメント](https://kamal-deploy.org/docs/commands/secrets/)にあります。
+
+`cybertrain new` が書く `.env.example` には、アプリが読むほかの変数が並んでいます。そのうち一つは、
+モデルが `encrypts` を宣言したときから必須になります。`CYBERTRAIN_ENCRYPTION_KEY` がないと、
+そういうアプリは起動しません。鍵は `cybertrain secret --hex` で作ってもう一つの秘密鍵と一緒に
+保管し、下の Sentry の DSN と同じ形で渡します。そのための行も、生成されたファイルにコメントで
+用意してあります。`config/deploy.yml` の `env: secret:` の `- CYBERTRAIN_ENCRYPTION_KEY` と、
+`.kamal/secrets` の `CYBERTRAIN_ENCRYPTION_KEY=$CYBERTRAIN_ENCRYPTION_KEY` のコメントを外し、
+シェルで export します（古い cybertrain で作ったファイルにはこの 2 行を足してください）。
+
+エラー報告を Sentry（または GlitchTip）に送るための行は、生成されたファイルにコメントで用意して
+あります。`config/deploy.yml` の `env: secret:` の `- CYBERTRAIN_SENTRY_DSN` と、`.kamal/secrets` の
+`CYBERTRAIN_SENTRY_DSN=$CYBERTRAIN_SENTRY_DSN` のコメントを外し、`bin/notes.rb` に
+`require "cybertrain/error_reporter/sentry"` を足し（新しいアプリはコアだけを読み込みます。この行が
+ないと、DSN を渡されたコンテナは起動を拒んでそう表示します）、同じシェルで DSN を export します。
+`env: clear:` のコメントになっている `CYBERTRAIN_LOG_FORMAT: json` を有効にすると、ログを 1 行
+1 つの JSON オブジェクトで書きます（ログ収集ツール向け）。`kamal app logs` はどちらでも行を
+そのまま表示します。
+
+```sh
+export CYBERTRAIN_SENTRY_DSN=https://PUBLIC_KEY@o1.ingest.sentry.io/42   # Sentry のプロジェクトの DSN
+```
+
+### 8-4. 最初のデプロイ
+
+Kamal は手元の git の HEAD からイメージをビルドします。`gen/` を含めてコミットしてから実行します
+（2-7）。
+
+```sh
+SPIN_DEBUG=1 cybertrain spin run gen -- --check
+git add -A && git commit -m "Configure Kamal"
+kamal setup
+```
+
+`kamal setup` はサーバーに Docker と kamal-proxy を入れ、イメージをビルドして push し、
+コンテナを起動します。初回は Spinel のコンパイルがあるので数分かかります（Docker のレイヤー
+キャッシュに残るので、2 回目からはアプリのビルドだけです）。コンテナは起動時に
+`./notes migrate` を流してからサーバーを起動し、`/up.html` が 200 を返すと kamal-proxy が
+トラフィックを切り替えます。`deploy_timeout`（30 秒）のうちに応答しなければデプロイは失敗し、
+トラフィックは古いコンテナのままです（初回は古いコンテナがありません）。
+https://notes.example.com を開いて確かめます。
+
+### 8-5. 日々の運用
+
+| やりたいこと | コマンド |
+| --- | --- |
+| 更新をデプロイする（コミットしてから） | `kamal deploy` |
+| ログを見る | `kamal app logs -f` |
+| マイグレーションの状態 | `kamal db_status`（`config/deploy.yml` の `aliases`） |
+| コンテナでシェルを開く | `kamal shell` |
+| 失敗したジョブを見て、1 つ再試行する | `kamal app exec --reuse --roles=web "./notes jobs list"`、続けて `"./notes jobs retry 42"` |
+| フィードが最後に報告した状態を見る | `kamal app exec --reuse "./notes feeds status"` |
+| 前のバージョンに戻す | `kamal rollback VERSION`（`kamal app containers` で一覧） |
+
+- DB はサーバーの Docker ボリューム `notes_storage`（サーバー上の
+  `/var/lib/docker/volumes/notes_storage/_data/`）にあります。バックアップはサーバーで
+  `sudo apt install -y sqlite3` してから、SQLite の `.backup` で取ります（書き込み中でも壊れません）。
+
+  ```sh
+  sudo sqlite3 /var/lib/docker/volumes/notes_storage/_data/production.sqlite3 ".backup /root/notes-$(date +%Y%m%d).sqlite3"
+  ```
+
+  アップロードのあるアプリは、DB の隣の `/var/lib/docker/volumes/notes_storage/_data/uploads/` に
+  ファイルがあります。バックアップのたびにこのディレクトリもコピーしてください。
+
+- `kamal deploy` は新しいコンテナがヘルスチェックに通ってから古いコンテナを止めるので、第 7 部の
+  systemd の再起動と違い、デプロイ中も接続は拒否されません。ただし新旧のコンテナが短い間同じ
+  SQLite ファイルを開き、新しいコンテナのマイグレーションは古いコンテナが動いている間に流れます。
+  列を消すようなマイグレーションは、古いコードがその列を使わなくなってから別のデプロイで流します。
+- サーバーは 1 台にしてください（SQLite のファイルはそのサーバーのボリュームにしかありません）。
+- フレームワークを上げるとき（第 7 部の「フレームワークを更新する」）は、`Dockerfile` の
+  `gem install cybertrain -v ...` も `spin.toml` の `ref` と同じバージョンにします。
+
+## 第 9 部: プロセスを増やす（任意）
+
+最初のデプロイには要りません。CPU が複数あるサーバーや、ジョブや WebSocket の購読を Web の
+プロセスの外で動かしたいアプリのための部です。下のユニットは第 3 部〜第 6 部の systemd の構成に
+足すものです。Kamal で同じ役割を分ける方法は 8-2 にあります。
 
 ### 複数のプロセスで動かす
 
@@ -922,6 +1224,14 @@ sudo systemctl enable --now notes@2 notes@3
 `./notes worker` はポートを開かず、ジョブ（`job_threads` 本のスレッド。既定は 3、
 `CYBERTRAIN_JOB_THREADS`）と定期タスクだけを動かします。`./notes feeds [NAME...]` は
 WebSocket の購読だけを動かします（名前を並べるとその購読だけ）。
+
+`worker` の役割と `jobs` コマンドにはジョブのサブシステム（`bin/notes.rb` と `bin/db.rb` の
+`require "cybertrain/jobs"`。`cybertrain generate job` と `generate authentication` が足します）が、
+`feeds` の役割には `require "cybertrain/feeds"` が必要です
+（[サブシステム](guide/ja/how-it-works.md#subsystems)）。新しいアプリはコアだけを読み込み、この
+チュートリアルの `notes` もそうです。この行がないとバイナリは
+`the worker role needs require "cybertrain/jobs" in bin/notes.rb` と出して 1 で終了し、
+`Restart=always` がそれを繰り返します。下のユニットは、ジョブのあるアプリにだけ足してください。
 
 ジョブを Web のプロセスから切り離すには、`notes.service` と同じ形のユニットをもう一つ作ります。
 
@@ -1011,218 +1321,6 @@ dist/notes feeds status                       # 各フィードが最後に報�
 - `feeds status` は各フィードが最後に報告した状態（つながっているか、プロセス、最後に何かを
   受け取ってからの時間、再起動の回数、行の古さ）を表示します。
 
----
-
-## 第 8 部: Kamal でデプロイする
-
-（英語版: [deploy-kamal.md](deploy-kamal.md)）
-
-第 3 部〜第 6 部（サーバー上でビルドし、systemd と Caddy で動かす）の代わりに、Docker イメージに
-して [Kamal 2](https://kamal-deploy.org) で配ることもできます。`cybertrain new` は次のファイルを
-書いています。
-
-| ファイル | 中身 |
-| --- | --- |
-| `Dockerfile` | 2 段のビルド。1 段目（Ubuntu 24.04）で `gem install cybertrain`・`cybertrain setup`（Spinel）・`cybertrain build` を実行し、2 段目（同じ Ubuntu）に `dist/` と実行時に要るライブラリ（SQLite・zlib・jemalloc・OpenSSL）だけを入れる。起動時に `./notes migrate` してから `./notes` を `exec` する |
-| `.dockerignore` | `build/`・`dist/`・`storage/` の DB・`tmp/`・`.git/`・`.kamal/` をビルドに渡さない |
-| `config/deploy.yml` | Kamal の設定。kamal-proxy が HTTPS（Let's Encrypt）を受けてアプリの 3000 番に渡し、`/up.html` でヘルスチェックする。DB はボリューム `notes_storage`（コンテナの `/app/storage`）に置き、`asset_path: /app/public/assets` で前のリリースのダイジェスト付きアセットを引き継ぐ |
-| `.kamal/secrets` | `KAMAL_REGISTRY_PASSWORD` と `CYBERTRAIN_SECRET_KEY_BASE` を、kamal を実行するシェルの環境変数から読む。値そのものは書かない（コミットするファイル） |
-| `public/up.html` | ヘルスチェック用のページ。アプリ自身が静的ファイルとして返す |
-
-[examples/blog](../examples/blog#deploying-with-kamal) にも同じ設定が入っています（フレームワークは
-このリポジトリのものを使うので、`Dockerfile` は gem を入れずにチェックアウトの CLI を使い、ビルド
-コンテキストはリポジトリのルートです）。
-
-バイナリは Docker の中でビルドされるので、「動かすマシンと同じ OS でビルドする」制約はイメージが
-満たします。CPU は合わせる必要があります（`builder.arch`。下記）。
-
-### 8-1. 用意するもの
-
-- 手元: Docker と Kamal（`gem install kamal`）。
-- サーバー: Ubuntu など、root（または sudo できるユーザー）で SSH できるマシン。Docker は
-  `kamal setup` が入れます。80 と 443 を開けておきます。
-- DNS: `notes.example.com` の A（AAAA）レコードをサーバーに向けておきます（3-1 と同じ）。
-- イメージの置き場: Docker Hub か GitHub Container Registry（ghcr.io）のアカウントと、push できる
-  トークン。
-- フレームワークの参照: `spin.toml` の `cybertrain =` が git のタグ（`cybertrain new` の既定）か
-  バージョンであること。`--path` で作ったアプリは、イメージの中からそのパスが見えないのでビルド
-  できません。
-
-### 8-2. `config/deploy.yml` を書き換える
-
-`CHANGE ME` と書いた値を自分のものにします。
-
-```yaml
-service: notes
-image: YOUR_DOCKERHUB_USER/notes      # ghcr.io なら YOUR_GITHUB/notes
-
-servers:
-  web:
-    hosts:
-      - 203.0.113.10                  # サーバーの IP アドレスかホスト名
-  worker:
-    hosts:
-      - 203.0.113.10
-    cmd: ./notes worker
-    options:
-      restart: unless-stopped
-
-proxy:
-  ssl: true
-  host: notes.example.com
-  app_port: 3000
-  healthcheck:
-    path: /up.html
-
-registry:
-  # server: ghcr.io                   # ghcr.io を使うときだけ
-  username: YOUR_DOCKERHUB_USER
-  password:
-    - KAMAL_REGISTRY_PASSWORD
-```
-
-`builder.arch` はサーバーの CPU に合わせます（x86-64 なら `amd64`、arm64 なら `arm64`）。
-イメージのビルドでは Spinel もコンパイルするので、手元と違う CPU 向けにエミュレーションでビルド
-すると非常に遅くなります。Apple Silicon の Mac から x86-64 のサーバーに配るときは
-`builder.remote: ssh://root@203.0.113.10` を有効にして、サーバー上でビルドさせるのがおすすめです。
-
-`proxy.ssl` は外さないでください。本番のセッション Cookie は `Secure` なので、HTTP ではフォーム
-送信が 403 になります。
-
-`servers` の役割はどれも同じイメージで動きます。`web` は HTTP（と、`CYBERTRAIN_WORKER=0` で
-ない限りジョブと定期タスク）、`worker` はジョブと定期タスクだけを `./notes worker` で動かします。
-同じボリュームのデータベースを共有し、定期タスクはリースを持つ 1 つだけが動かします（第 7 部
-「役割を分ける」）。WebSocket の購読を自分のコンテナで動かすときは、生成されたファイルで
-コメントになっている `feeds` の役割（`cmd: ./notes feeds trades`）を有効にし、`web` に
-`env: clear: CYBERTRAIN_WORKER: 0` を足します。ハートビートのない古い cybertrain のリリースから
-上げる 1 回目は、`kamal app stop` で古いコンテナをすべて止めてから `kamal deploy` してください
-（古いワーカーの実行中のジョブを新しいワーカーが二重に実行しないように）。
-
-`worker` の役割にはジョブのサブシステム、つまり `bin/notes.rb` と `bin/db.rb` の
-`require "cybertrain/jobs"` が必要です（[サブシステム](guide/ja/how-it-works.md#subsystems)）。
-新しいアプリはコアだけを読み込むので、`cybertrain new` はこの役割をコメントにして書きます。
-`cybertrain generate job` と `generate authentication` がその行を足し、コメントを外します。
-ジョブを使わないなら外したままにしてください。`./notes worker` が
-`the worker role needs require "cybertrain/jobs" in bin/notes.rb` と出して 1 で終了し、
-Docker が再起動し続けます。
-
-`worker` の役割（とコメントになっている `feeds`）には `options: restart: unless-stopped` が
-付いています。kamal-proxy がヘルスチェックを見るのは `web` の役割だけで、それもデプロイ中だけ
-なので、これらのコンテナを再起動するものはほかにありません。プロセスが終了したときに Docker が
-再起動します。ワーカーは起動できないときに 0 以外で終了し、feeds プロセスはスレッドが死んだ
-フィードを再起動しますが、同じフィードが死に続けると（600 秒のうちに 10 回の再起動）終了
-ステータス 1 で終わり、Docker が新しいコンテナを起動します。フィードを自分のコンテナで動かすと、
-フィードかそのプロセスが 180 秒黙っているとき `web` の `/up` が `503 feed stale` を返します
-（フィードは状態をデータベースに書きます）。リリースで消したり名前を変えたりしたフィードは
-数えられず、きれいに止めた feeds コンテナ（`kamal app stop -r feeds`、台数の削減）は自分の行を
-消すので、どちらも次の web のデプロイを止めません。クラッシュしたコンテナの行は残り、古く
-なります。プロキシのヘルスチェックを `/up` に向けていて、
-静かなフィードでデプロイを止めたくないときは、`env.clear` に `CYBERTRAIN_HEALTH_FEEDS: 0` を
-足してください。
-
-組み込みのヘルスチェック（`GET /up`、README の「Operations」）があるフレームワークで作ったアプリなら、
-`healthcheck` の `path` を `/up.html` から `/up` に変えられます。`/up` はデータベースのスキーマを
-読む問い合わせをして、読めなければ 503 を返すので、ボリュームやデータベースが壊れたリリースに
-トラフィックが切り替わりません。`/up.html` は静的ファイルで、プロセスが HTTP に応えることしか
-示しません。古い cybertrain で作ったアプリは `/up.html` のままにしてください。
-
-生成される `config/deploy.yml` は `env.clear` に `CYBERTRAIN_TRUSTED_PROXIES: 172.16.0.0/12` を
-書きます。kamal-proxy は別のコンテナで動き、Docker のネットワーク上のアドレス（既定では
-172.16.0.0/12 の中）からアプリにつなぐので、そこからの接続に限って `X-Forwarded-For` の最後の
-アドレス（kamal-proxy が付けたもの）を `request.client_ip` にします。これがないと、サインインの
-レート制限（`rate_limit`）が訪問者全員を kamal-proxy の一つのアドレスとして数えます。Docker の
-ネットワークを別の範囲にしているときは、その範囲に書き換えてください（`docker network inspect kamal`
-で確かめられます）。`proxy.forward_headers` は設定しません。TLS を終端する kamal-proxy は
-`X-Forwarded-For` を自分で付け、クライアントが送ったものは渡さないので、それが望む動きです。
-
-生成される `config/deploy.yml` には `asset_path: /app/public/assets` もあります。イメージには
-そのリリースのダイジェスト付きのスタイルシートとスクリプトしか入っていないので、Kamal が前の
-リリースのファイルを新しいコンテナへ引き継ぎ、切り替えの間も、デプロイ前に読み込んだページが
-HTML に書かれたファイルを取得できます。古い cybertrain で作った `config/deploy.yml` にはこの行を
-足してください。どのアプリも OpenSSL をリンクするようになったので、その `Dockerfile` には
-ビルド段に `libssl-dev`、実行段に `libssl3t64` も要ります。
-
-kamal-proxy はすでに http を https にリダイレクトし、アプリには `X-Forwarded-Proto: https` が
-届きます。（HSTS ヘッダのために）`CYBERTRAIN_FORCE_SSL: 1` も有効にするなら、`healthcheck` を
-`/up` に向けてください。`CYBERTRAIN_HOSTS: notes.example.com`（ほかの `Host` を拒否します）を
-有効にする場合も同じです。プロキシのチェックはコンテナへの素の http で、アドレスに対して行われ、
-リダイレクトと Host の検査を免れるのはヘルスチェックのパス（`/up`）だけです。`/up.html` のままだと
-リダイレクトされるか 403 になり、新しいコンテナは正常になりません。
-
-### 8-3. 秘密鍵を用意する
-
-`.kamal/secrets` は環境変数を読むだけなので、kamal を実行するシェルで設定します。
-`CYBERTRAIN_SECRET_KEY_BASE` は一度だけ作り、パスワードマネージャーなどに保管してください
-（変えると全員のセッションが切れます）。
-
-```sh
-export KAMAL_REGISTRY_PASSWORD=...                      # レジストリのトークン
-export CYBERTRAIN_SECRET_KEY_BASE="$(openssl rand -hex 32)"   # 初回だけ作り、保管した値を使う
-```
-
-パスワードマネージャーから直接読む書き方は
-[Kamal のドキュメント](https://kamal-deploy.org/docs/commands/secrets/)にあります。
-
-エラー報告を Sentry（または GlitchTip）に送るための行は、生成されたファイルにコメントで用意して
-あります。`config/deploy.yml` の `env: secret:` の `- CYBERTRAIN_SENTRY_DSN` と、`.kamal/secrets` の
-`CYBERTRAIN_SENTRY_DSN=$CYBERTRAIN_SENTRY_DSN` のコメントを外し、`bin/notes.rb` に
-`require "cybertrain/error_reporter/sentry"` を足し（新しいアプリはコアだけを読み込みます。この行が
-ないと、DSN を渡されたコンテナは起動を拒んでそう表示します）、同じシェルで DSN を export します。
-`env: clear:` のコメントになっている `CYBERTRAIN_LOG_FORMAT: json` を有効にすると、ログを 1 行
-1 つの JSON オブジェクトで書きます（ログ収集ツール向け）。`kamal app logs` はどちらでも行を
-そのまま表示します。
-
-```sh
-export CYBERTRAIN_SENTRY_DSN=https://PUBLIC_KEY@o1.ingest.sentry.io/42   # Sentry のプロジェクトの DSN
-```
-
-### 8-4. 最初のデプロイ
-
-Kamal は手元の git の HEAD からイメージをビルドします。`gen/` を含めてコミットしてから実行します
-（2-7）。
-
-```sh
-cybertrain spin run gen -- --check
-git add -A && git commit -m "Configure Kamal"
-kamal setup
-```
-
-`kamal setup` はサーバーに Docker と kamal-proxy を入れ、イメージをビルドして push し、
-コンテナを起動します。初回は Spinel のコンパイルがあるので数分かかります（Docker のレイヤー
-キャッシュに残るので、2 回目からはアプリのビルドだけです）。コンテナは起動時に
-`./notes migrate` を流してからサーバーを起動し、`/up.html` が 200 を返すと kamal-proxy が
-トラフィックを切り替えます。`deploy_timeout`（30 秒）のうちに応答しなければデプロイは失敗し、
-トラフィックは古いコンテナのままです（初回は古いコンテナがありません）。
-https://notes.example.com を開いて確かめます。
-
-### 8-5. 日々の運用
-
-| やりたいこと | コマンド |
-| --- | --- |
-| 更新をデプロイする（コミットしてから） | `kamal deploy` |
-| ログを見る | `kamal app logs -f` |
-| マイグレーションの状態 | `kamal db_status`（`config/deploy.yml` の `aliases`） |
-| コンテナでシェルを開く | `kamal shell` |
-| 失敗したジョブを見て、1 つ再試行する | `kamal app exec --reuse --roles=web "./notes jobs list"`、続けて `"./notes jobs retry 42"` |
-| フィードが最後に報告した状態を見る | `kamal app exec --reuse "./notes feeds status"` |
-| 前のバージョンに戻す | `kamal rollback VERSION`（`kamal app containers` で一覧） |
-
-- DB はサーバーの Docker ボリューム `notes_storage`（サーバー上の
-  `/var/lib/docker/volumes/notes_storage/_data/`）にあります。バックアップはサーバーで
-  `sudo apt install -y sqlite3` してから、SQLite の `.backup` で取ります（書き込み中でも壊れません）。
-
-  ```sh
-  sudo sqlite3 /var/lib/docker/volumes/notes_storage/_data/production.sqlite3 ".backup /root/notes-$(date +%Y%m%d).sqlite3"
-  ```
-
-- `kamal deploy` は新しいコンテナがヘルスチェックに通ってから古いコンテナを止めるので、第 7 部の
-  systemd の再起動と違い、デプロイ中も接続は拒否されません。ただし新旧のコンテナが短い間同じ
-  SQLite ファイルを開き、新しいコンテナのマイグレーションは古いコンテナが動いている間に流れます。
-  列を消すようなマイグレーションは、古いコードがその列を使わなくなってから別のデプロイで流します。
-- サーバーは 1 台にしてください（SQLite のファイルはそのサーバーのボリュームにしかありません）。
-- フレームワークを上げるとき（第 7 部の「フレームワークを更新する」）は、`Dockerfile` の
-  `gem install cybertrain -v ...` も `spin.toml` の `ref` と同じバージョンにします。
-
 ## トラブルシューティング
 
 | 症状 | 原因と対処 |
@@ -1233,7 +1331,8 @@ https://notes.example.com を開いて確かめます。
 | 起動ログに `error: views are not embedded in this binary` | ビューを埋め込まずにビルドしたバイナリ（`spin build notes` の `build/bin/notes` など）を本番モードで起動している。`cybertrain build` で作った `dist/notes` を使う |
 | 500 になり、ログに `Missing template ...` が出る | ビルド時に `app/views/` に無かったテンプレート。`cybertrain build` をやり直す |
 | `attempt to write a readonly database` / `unable to open database file` | DB のパスが `ReadWritePaths=` の外にある、または `/srv/notes/shared` の所有者が `notes` でない |
-| デプロイが `stale: gen/...` で止まる | 手元で `cybertrain spin run gen` して `gen/` をコミットし忘れている |
+| デプロイが `stale: gen/...` で止まる | 手元で `SPIN_DEBUG=1 cybertrain spin run gen` して `gen/` をコミットし忘れている |
+| デプロイが `this application's framework is cybertrain X.Y.Z (spin.lock), but this cybertrain command is A.B.C` で止まる | `notes` ユーザーの CLI がアプリのリリースと違う。メッセージが示すバージョンを `gem install --user-install cybertrain -v X.Y.Z`（3-4）で入れ、`cybertrain setup` を実行する |
 | デプロイが「新しいリリースが応答しない」で終わる | 新しいリリースが約 30 秒のうちに `/up.html` に応答しなかった（スクリプトは前のリリースに戻している）。`sudo journalctl -u notes -n 50` で原因を見る。起動はしているのに応答しないなら、アプリに `public/up.html` が無い（5-3） |
 | `spin: command not found`（デプロイ時） | `notes` ユーザーに Spinel が入っていない（3-4 の `cybertrain setup`）、または `~/deploy.sh` の `PATH` に `~/.cybertrain/bin` が無い（5-3） |
 | `cybertrain: command not found`（デプロイ時） | `notes` ユーザーに cybertrain の CLI が入っていない（3-4 の `gem install --user-install cybertrain -v X.Y.Z`） |
@@ -1246,36 +1345,13 @@ https://notes.example.com を開いて確かめます。
 ## いまの cybertrain の制約（本番で気にしておくこと）
 
 - **DB は SQLite だけ**です。サーバー 1 台で動かす前提で、横に並べることはできません（同じサーバーの
-  中でプロセスを増やすのは「複数のプロセスで動かす」のとおりです）。
+  中でプロセスを増やす方法は第 9 部にあります）。
 - **再起動（デプロイ）のあいだは数秒つながりません**。SIGTERM を受けると新しい接続の受け付けを
   止め、処理中のリクエストには応答し終えてから終了しますが、新しいプロセスが listen するまでの
   間に来た接続は拒否されます（Caddy は 502 を返します）。処理中のリクエストを待つのは最大 10 秒
   で、それより長くかかるリクエストはそこで切れます。
-- HTTPS に固定したい場合は、動作を確認した後で Caddyfile のサイトブロックに
-  `header Strict-Transport-Security "max-age=31536000"` を足してください（セッション Cookie は
-  本番では `Secure` 付きです）。アプリにさせることもできます。`/etc/notes/notes.env` に
-  `CYBERTRAIN_FORCE_SSL=1` を書くと、HSTS を送り、`X-Forwarded-Proto` を見て http を https に
-  リダイレクトします。そのときは `CYBERTRAIN_TRUSTED_PROXY=1` も書いてください。書かないと、アプリが
-  組み立てる URL（`request.base_url`）は http のままです。このときはデプロイスクリプトの確認も
-  `http://127.0.0.1:$PORT/up` に変えてください。リダイレクトされないのはヘルスチェックのパスだけで、
-  素の http での `/up.html` はリダイレクトされ、確認がアプリの応答を証明しなくなります。
-- `CYBERTRAIN_HOSTS=notes.example.com` を書くと、それ以外の `Host` へのリクエストは 403 になります。
-  ループバックの名前（`localhost`・`127.0.0.1`・`[::1]`）は通るので、デプロイスクリプトの
-  `curl http://127.0.0.1:...` はそのまま動きます。
-- アプリは全レスポンスに `X-Content-Type-Options: nosniff`・`X-Frame-Options: SAMEORIGIN`・
-  `Permissions-Policy` を付けます
-  （アプリの応答、エラー応答、`Static` ミドルウェアが返す `public/` のファイルも）。ただし 6-2 の
-  Caddyfile では `public/` のファイルを Caddy が直接返すので、アプリを通らず、これらは付きません。
-  揃えたいときは、サイトブロックに `header ?X-Content-Type-Options nosniff` と
-  `header ?X-Frame-Options SAMEORIGIN` を足してください（`?` は、アプリがすでに付けているときは
-  上書きしない指定です。埋め込み用のページがアプリ側で値を変えていても、それが残ります）。
-- `public/assets/` のダイジェスト付きファイルも同じです。アプリは
-  `Cache-Control: public, max-age=31536000, immutable` で返しますが、Caddy は自分のヘッダで返します。
-  サイトブロックに `header /assets/* Cache-Control "public, max-age=31536000, immutable"` のような
-  行を足すと、アプリと同じキャッシュになります。リリースは毎回まっさらなクローンなので、その
-  `public/assets/` にはそのリリースのダイジェストしかありません。また、アプリは `public/` の外へ
-  向かうシンボリックリンク越しにはファイルを返しません。`public/assets/` を `shared/` に置くなら、
-  リンクではなくマウントしてください。
-- 認証（ログイン）機能はフレームワークにありません。公開前に、誰が書き込めるべきかを考えてください。
+- scaffold だけのアプリにはログインがなく、サイトに届く人は誰でも書き込めます。公開前に
+  `cybertrain generate authentication`（[認証](guide/ja/authentication.md)）で足すか、
+  誰が書き込めるべきかを決めてください。
 - ビューはビルド時にバイナリへ埋め込まれます。ビューだけの変更でも、本番ではデプロイ
   （再ビルドと再起動）が必要です。

@@ -1,5 +1,5 @@
-# Phase 6 spike, Task 1 of docs/superpowers/plans/2026-11-13-optional-subsystems-plan.md:
-# the feature registry of the optional-subsystems design (spec section 4)
+# Phase 6 spike (spikes/NOTES.md rule 111): the feature registry of the
+# optional subsystems (docs/design.md D85, cybertrain/feature.rb)
 # under the pinned Spinel, with no framework. feature_registry/core.rb
 # holds a base class Feature whose hooks return String, Bool, Integer,
 # nil, an Array of String and a Response (a class with ivars) or nil, and

@@ -1,4 +1,4 @@
-# Phase 5a spike, item 2 (spec section 16; pre-flight rulings B1 and R12):
+# Phase 5a spike, item 2:
 # methods on Integer and Time, ZonedTime's readers beside Time's, and each
 # new name compiled beside the framework method it shares a name with, in
 # one program that requires the whole framework. A record, not a test.
@@ -10,9 +10,9 @@
 #   grep -c 'sp_raise_nomethod(sp_nomethod_msg("hour"' $TMPDIR/d.c    (also min, day, wday, zone, advance, minutes, seconds)
 # Built in 234 s (C only: 143 s). This program was compiled with the names
 # as they stood at ac0beb1 (Net::Timer.seconds, Stream::Poller.advance), so
-# it shows the clashes the pre-flight scan feared compile and answer; Task 1
-# renamed those two anyway (pre-flight B1) and the calls below use the new
-# names. Output (the first build):
+# it shows that those two name clashes compile and answer; phase 5a renamed
+# the two anyway and the calls below use the new names. Output (the first
+# build):
 #   -- Integer
 #   5.minutes 300 (== 300 true); 1.day 86400; 1.hour 3600; 2.weeks 1209600; 90.seconds 90; 1.minute 60; 1.week 604800
 #   frozen at 2026-11-12 12:00 UTC: 2.weeks.ago 2026-10-29 12:00:00; 3.days.from_now 2026-11-15 12:00:00

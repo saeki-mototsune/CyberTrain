@@ -32,6 +32,20 @@ module Cybertrain
       @pool
     end
 
+    # Whether the calling thread is connected and not inside a
+    # {DB.transaction}: what a module asks before it remembers that it
+    # created its table for this {generation}. SQLite's DDL is
+    # transactional: a table created inside a DB.transaction that later
+    # rolls back is gone again, so only a CREATE outside one is remembered.
+    # Not {in_transaction?}, which asks the connection (a BEGIN run by hand
+    # counts there) and raises when not connected.
+    # @return [Boolean]
+    # @api private
+    def self.outside_transaction?
+      current = @pool
+      !current.nil? && current.held_index < 0
+    end
+
     def self.connected?
       !@pool.nil?
     end
@@ -45,21 +59,30 @@ module Cybertrain
       current.nil? ? "" : current.pool_path
     end
 
-    # Returns the block's value. Forward the block with &block: re-yielding
-    # from an inner block loses the value under Spinel.
-    #
-    # The value may be an instance of an application class
-    # (`Cybertrain::DB.with { |c| AUTH.login(c, name) }.ok?`). Spinel
-    # 2026.10.26.7019 lost that class, so a method call on it raised
-    # NoMethodError; the pinned release carries the fix (spikes/NOTES.md
-    # rule 77).
+    # Runs the block with a connection from the pool and answers the block's
+    # value:
+    # `rows = Cybertrain::DB.with { |c| c.execute("SELECT * FROM posts WHERE id = ?", [1]) }`.
     #
     # Inside a `transaction` block on the same thread, the block gets the
     # transaction's connection rather than a second one from the pool, so
     # what it runs (a Model's save, a Relation's query) is part of that
     # transaction, and a one-connection pool (":memory:") does not wait on
     # itself forever.
+    # @yieldparam connection [DB::Connection]
+    # @return [Object] the block's value
+    # @raise [Cybertrain::DB::Error] when the database is not connected
+    # @api public
     def self.with(&block)
+      # The block is forwarded with &block, not re-yielded from an inner
+      # block. (A small program that re-yields answers the block's value
+      # on Spinel 2026.11.04.7026 as under CRuby; the pool's own chain was
+      # not tried in that form.)
+      #
+      # The value may be an instance of an application class
+      # (`Cybertrain::DB.with { |c| AUTH.login(c, name) }.ok?`). Spinel
+      # 2026.10.26.7019 lost that class, so a method call on it raised
+      # NoMethodError; the pinned release carries the fix (spikes/NOTES.md
+      # rule 77).
       current = @pool
       raise Error, "not connected: call Cybertrain::DB.connect first" if current.nil?
       current.with(&block)
@@ -145,7 +168,7 @@ module Cybertrain
         conn.begin!(immediate: immediate)
         begin
           block.call(conn)
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           conn.rollback!
           raise e
         end

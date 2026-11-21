@@ -1,9 +1,14 @@
-# Regression: a program with the TLS layer in it whose Logger io is only
-# ever nil (the default Cybertrain.logger, as in an app that speaks wss://
-# or https and never sets a logger) failed C compilation under Spinel
-# 2026.10.26.7019: Logger#log's nil-only `@io.puts` went through the IO
-# dispatch and was emitted as sp_File_puts_bin with an sp_String* argument.
-# Nothing here may set a logger io.
+# A program with the TLS layer in it whose Logger io is only ever nil (the
+# default Cybertrain.logger, as in an app that speaks wss:// or https and
+# never sets a logger) failed C compilation under Spinel 2026.10.26.7019:
+# the logger's nil-only `@io.puts` went through the IO dispatch and was
+# emitted as sp_File_puts_bin with an sp_String* argument, so
+# Logger#write_now calls `@io.write` (spikes/NOTES.md rule 78). Nothing
+# here may set a logger io. On 2026.11.04.7026 this program also built
+# with `@io.puts(line)` put back: it shows that the shape compiles and
+# logs. The rule's reduced program is
+# spikes/rechecks/nil_only_puts_openssl.rb, and docs/spinel-feedback.md K
+# has where it stands.
 #
 # cybertrain/net/tls requires Spinel's openssl package, so the snapshot
 # comes from the compiled binary (spikes/NOTES.md rule 23):

@@ -4,6 +4,7 @@ require "cybertrain/mailer"
 require "cybertrain/test"
 require "cybertrain/generator/job_scan"
 require "cybertrain/generator/jobs_emitter"
+require_relative "support/schema_tables"
 
 # Proves the job generator's output compiles and runs: the fixture app's
 # job classes and its checked-in gen/jobs.rb, in the order gen/app.rb
@@ -36,36 +37,6 @@ Job = Cybertrain::Job
 LOG = StringIO.new
 Cybertrain.logger = Cybertrain::Logger.new(LOG)
 Cybertrain.config.encryption_key = "8f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
-
-# CREATE TABLE statements for the fixture schema (as
-# test/gen_models_compiles.rb writes them), for TouchPostJob's Post.
-def sql_type(column)
-  case column.type
-  when :integer, :boolean then "INTEGER"
-  when :float then "REAL"
-  when :decimal then "DECIMAL"
-  else "TEXT"
-  end
-end
-
-def create_tables_sql(definition)
-  sql = +""
-  definition.tables.each do |table|
-    parts = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
-    table.columns.each do |c|
-      part = +"\"#{c.name}\" #{sql_type(c)}"
-      part << " NOT NULL" unless c.null
-      default = c.default
-      part << " DEFAULT #{default}" unless default.nil?
-      parts << part
-    end
-    table.foreign_keys.each do |fk|
-      parts << "FOREIGN KEY (\"#{fk.column}\") REFERENCES \"#{fk.to_table}\"(id)"
-    end
-    sql << "CREATE TABLE \"#{table.name}\" (#{parts.join(", ")});"
-  end
-  sql
-end
 
 def fresh_db
   DB.connect(":memory:")
@@ -187,7 +158,7 @@ end
 
 test "discard_on Cybertrain::RecordNotFound: a post deleted before the job runs is discarded, not retried" do
   fresh_db
-  DB.with { |c| c.exec_script(create_tables_sql(Cybertrain::Schema.current)) }
+  DB.with { |c| c.exec_script(SchemaTables.create_sql(Cybertrain::Schema.current)) }
   TOUCH_LOG.pop until TOUCH_LOG.empty?
   post = Post.create!(title: "Hello", body: "first")
   kept = TouchPostJob.perform_at(Time.at(1000), { "post_id" => post.id })

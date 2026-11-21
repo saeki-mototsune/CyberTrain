@@ -1,5 +1,5 @@
 ---
-source_sha256: 91814a663a58f955f84324f2eb6723e26decd07ae2f41a3174fc593bcca58f8a
+source_sha256: edc01fc327f6eda54332284e41ca1c0a578966e4996608a471927152d0640b52
 ---
 # Modèles et base de données
 
@@ -14,8 +14,12 @@ Une migration dans `db/migrate/<version>_<name>.rb` est une sous-classe de
 table](#changing-a-table))&nbsp;; `cybertrain db migrate`
 applique chaque version en attente dans sa propre transaction et réécrit
 `db/schema.rb` à partir de la base de données, et `cybertrain db rollback [N]`
-exécute l’inverse de `change`. Quand `change` contient une opération sans
-inverse automatique, écrivez `down` (et `up`).
+exécute l’inverse de `change`. `create_table`, `add_column`, `add_index` et
+`rename_column` s’inversent d’eux-mêmes&nbsp;; un `change` qui contient
+`add_reference`, `remove_column`, `remove_index` ou `drop_table` arrête un
+rollback avec
+`version N is irreversible: no automatic inverse for <operation>`&nbsp;:
+écrivez `up` et `down` pour ceux-là.
 
 Un changement de schéma qui a besoin d’une étape sur les données pour être sûr
 utilise `execute(sql, binds =
@@ -176,7 +180,7 @@ Rails](#taking-over-a-database-rails-created)).
 | --- | --- | --- |
 | `t.string`, `t.text` | `VARCHAR(n)` / `VARCHAR`, `TEXT` | String |
 | `t.integer`, `t.bigint`, `t.references` | `INTEGER`, `BIGINT` | Integer |
-| `t.float` | `FLOAT` | Float |
+| `t.float` | `REAL` | Float |
 | `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float, arrondi à l’échelle à l’enregistrement, exact jusqu’à 15 chiffres significatifs |
 | `t.boolean` | `BOOLEAN` | true / false |
 | `t.datetime` | `DATETIME` | Time (UTC, microsecondes) |
@@ -217,12 +221,7 @@ Gardez l’argent en unités mineures dans une colonne entière
 (`price_cents`)&nbsp;: l’arithmétique Integer et `sum_int` sont exactes.
 Lisez un champ de formulaire avec
 `(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` et
-affichez-le avec `number_to_currency(price_cents / 100.0)`. Note de mise à
-niveau&nbsp;: un cas limite que le framework compilé arrondissait vers le bas
-(1.005 stocké comme 1.0) est désormais stocké arrondi vers le haut, pour les
-nouvelles écritures seulement, et la validation générée refuse des valeurs
-qui étaient stockées auparavant&nbsp;; D73 donne les étapes pour passer une
-colonne decimal aux unités mineures.
+affichez-le avec `number_to_currency(price_cents / 100.0)`.
 
 ### Colonnes JSON
 
@@ -348,8 +347,8 @@ Time.current.in_time_zone.hour       # => l’heure dans Time.zone
 ## Conditions et recherches
 
 Les méthodes de requête de la relation générée sont aussi des méthodes de
-classe (toutes sauf `or`, `not`, `page` et `to_sql`, et les méthodes à la
-manière d’un Array `to_a`, `each`, `size`, `empty?`), si bien que l’écriture
+classe (toutes sauf `or`, `not`, `page`, `to_sql` et `update_all_sql`, et
+les méthodes à la manière d’un Array `to_a`, `each`, `size`, `empty?`), si bien que l’écriture
 Rails fonctionne telle quelle&nbsp;: `Article.where.not(body: nil)`,
 `Article.find_each { }`, `Article.pluck(:id, :title)`,
 `Article.pluck_int(:id)`.
@@ -366,11 +365,15 @@ Rails fonctionne telle quelle&nbsp;: `Article.where.not(body: nil)`,
 | `update_all`, `destroy_all`, `find_each(batch_size: 500)` | `update_all`, `destroy_all`, `find_each(batch: 500)` |
 | `create!`, `record.update_columns(views: 0)` | La même chose |
 
-- Une Range dans un Hash de `where` prend des bornes Integer&nbsp;: sous
-  Spinel, une Range de Time ou de Date ne peut pas être construite, et une
-  Range de Float ou de String n’est pas reconnue comme telle&nbsp;; ces bornes
-  passent donc par `where_between`, dont les bornes Time et Date sont
-  comparées comme le texte stocké (qui se trie comme l’instant).
+- Une Range dans un Hash de `where` prend des bornes Integer. Compilée avec
+  la version épinglée de Spinel, une Range de Time ou de Date lève
+  `TypeError` là où elle est construite, et une Range de Float n’est pas
+  reconnue comme une Range (programmes réduits&nbsp;; spikes/NOTES.md
+  règle 86)&nbsp;; ces bornes passent donc par `where_between`, dont les
+  bornes Time et Date sont comparées comme le texte stocké (qui se trie
+  comme l’instant). Une Range de String est reconnue dans les mêmes
+  programmes, mais `where` est écrit pour des bornes Integer&nbsp;: donnez
+  aussi les bornes String à `where_between`.
 - Une condition String est mise entre parenthèses, si bien qu’un `OR` qu’elle
   contient reste à l’intérieur. Ses binds sont des scalaires&nbsp;:
   `where("id IN (?)", ids)` lève une erreur&nbsp;; écrivez `where(id: ids)`.
@@ -473,7 +476,7 @@ Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%'
   `Cybertrain::DB.with { |c| c.execute(sql, Cybertrain::Cast.binds(id, since)) }`.
 - `Cybertrain::Cast.hash(v)` / `Cast.array(v)` restreignent une valeur JSON
   analysée à un Hash / un Array, ou à un nouveau conteneur vide quand elle n’en
-  est pas un (un Time est vérifié d’abord, spikes/NOTES.md règle 8). Elles
+  est pas un. Elles
   renvoient une copie superficielle typée, pas `v` lui-même&nbsp;;
   `Cast.empty_hash` / `Cast.empty_array` sont les conteneurs vides
   pré-typés.
@@ -700,7 +703,8 @@ donne «&nbsp;Author&nbsp;»), et écrit seul un message sur `:base`.
 
 - `length` accepte `minimum`, `maximum`, `is` et `in` (une Range d’Integer).
 - `inclusion` et `exclusion` acceptent un Array, ou une Range d’Integer
-  (Spinel ne construit pas d’autre Range)&nbsp;; `1...5` accepte 4.5 sur une
+  (toute autre Range est refusée&nbsp;:
+  `in: takes a Range of Integers only`)&nbsp;; `1...5` accepte 4.5 sur une
   colonne float, comme dans Rails.
 - `numericality` analyse d’abord une String (`"12"` passe)&nbsp;; un Float
   échoue à `only_integer`, comme dans Rails.
@@ -732,7 +736,8 @@ end
 Les lignes `validate :method` s’exécutent après les règles `validates`, dans
 l’ordre. `if:` et `unless:` (sur les deux) prennent un Symbol qui nomme une
 méthode du modèle, une colonne ou une association&nbsp;; le générateur écrit
-la table qui l’appelle, puisque Spinel n’a pas de `send`. Une lambda,
+la table `case` qui l’appelle plutôt que d’utiliser `send`, et refuse un nom
+qui n’est aucun des trois. Une lambda,
 `:if => :x` et `"if": :x` arrêtent le générateur avec un message qui demande
 de nommer une méthode, tout comme un nom de `validate` que le fichier du
 modèle ne définit pas. `validates_with`, `validates_each`, `confirmation`,
@@ -769,7 +774,7 @@ colonne ne peut pas être cherchée&nbsp;:
 
 ### Clés et rotation
 
-Un modèle avec `encrypts` fait exiger openssl à l’application et fait échouer
+Un modèle avec `encrypts` fait échouer
 le démarrage si `CYBERTRAIN_ENCRYPTION_KEY` ne contient pas 64 caractères
 hexadécimaux (créez-en une avec `cybertrain secret --hex`&nbsp;; [les
 variables](configuration.md#configuration-and-environment-variables)). La
@@ -785,9 +790,10 @@ enregistrement&nbsp;:
 Account.find_each { |account| account.update_columns(api_key: account.api_key) }
 ```
 
-Le code qui appelle lui-même `Cybertrain::Crypto.encrypt(text)` /
-`Crypto.decrypt(payload)`, dans une application sans `encrypts`, ajoute
-`require "cybertrain/encryptor"` à `bin/<app>.rb` et définit la clé.
+Le code d’une application sans `encrypts` peut appeler lui-même
+`Cybertrain::Crypto.encrypt(text)` / `Crypto.decrypt(payload)` une fois la
+clé définie&nbsp;: le démarrage ne la demande pas dans ce cas, et un appel
+sans elle lève `Cybertrain::Encryptor::Error`.
 
 ### Chiffrer une colonne qui contient déjà du texte
 
@@ -890,7 +896,7 @@ Le code qui doit garder son `rescue` dans une méthode simple utilise la forme s
 
 ## Noms de colonnes
 
-Un nom de colonne doit être un identifiant ASCII (`[A-Za-z_][A-Za-z0-9_]*`), là où Rails accepte n’importe lequel. Un schéma avec un nom de colonne non ASCII (`名前`, `prénom`) se générait sous CRuby avant la PR #10, et `spin run gen` le refuse désormais&nbsp;; renommez donc la colonne lors de la mise à niveau (un nom comme `first-name` n’a jamais été un nom de méthode).
+Un nom de colonne doit être un identifiant ASCII (`[A-Za-z_][A-Za-z0-9_]*`), là où Rails accepte n’importe lequel. `spin run gen` refuse un schéma avec un nom de colonne non ASCII (`名前`, `prénom`), qu’un ancien générateur acceptait quand il tournait sous CRuby&nbsp;: renommez la colonne (un nom comme `first-name` n’a jamais été un nom de méthode).
 
 Une colonne nommée comme une méthode que la classe générée ou le framework appelle sur un enregistrement (`errors`, `save`, `attributes`, `hash`, `to_s`, `to_ary`, `raise`, ...) ou comme un mot-clé Ruby (`end`, `class`, `begin`) est générée sous `<column>_column` (`hash_column`&nbsp;: lecteur, écrivain et ivar) avec une note dans le fichier généré. Ses deux noms s’utilisent ainsi&nbsp;:
 
@@ -902,27 +908,40 @@ Une colonne nommée comme une autre méthode d’Object (`display`, `tap`, `meth
 
 Une colonne nommée comme une méthode du framework qui n’a qu’un type de
 retour garde son nom quand son lecteur renvoie ce type, et est refusée
-sinon&nbsp;: `request_id` (`Cybertrain::Request#request_id`) et `release`
+sinon. `request_id` (`Cybertrain::Request#request_id`) et `release`
 (`Cybertrain::Config#release`) renvoient une String, donc une colonne
 string, text ou binary de ces noms, nullable ou non, est acceptée, et tout
-autre type arrête `spin run gen`, par exemple
-`table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column`.
-Un `request_id` entier issu de `t.references :request` reçoit plutôt le
-conseil de renommer la référence&nbsp;: `t.integer "source_request_id"` and `s.add_foreign_key "audit_entries", "requests", column: "source_request_id"` (le `belongs_to` se lit
-alors `source_request`). `handle` nomme des méthodes du framework de types
-différents, donc une colonne `handle` se lit `handle_column` comme les noms
-réservés ci-dessus (l’application appelle `user.handle_column`&nbsp;; les
-requêtes gardent `"handle"`), et `cybertrain generate scaffold` refuse le
-champ&nbsp;:
-`'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`.
+autre type arrête `spin run gen`. Un `request_id` entier issu de
+`t.references :request` reçoit plutôt le conseil de renommer la
+référence&nbsp;: `t.integer "source_request_id"` et
+`s.add_foreign_key "audit_entries", "requests", column: "source_request_id"`
+(le `belongs_to` se lit alors `source_request`).
+
+`handle` nomme des méthodes du framework de types différents, donc une
+colonne `handle` se lit `handle_column` comme les noms réservés ci-dessus
+(l’application appelle `user.handle_column`&nbsp;; les requêtes gardent
+`"handle"`).
+
 `cybertrain generate scaffold` vérifie ces noms avant d’écrire quoi que ce
-soit&nbsp;: un champ string ou text nommé `request_id` ou `release`, ou un
-champ sans type, est accepté, et tout autre type est refusé (statut de
-sortie 1), comme
-`'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field`&nbsp;;
-un champ `references` dont la colonne ou le lecteur `belongs_to` prendrait
-l’un de ces noms est refusé aussi&nbsp;:
-`'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`.
+soit. Un champ string ou text nommé `request_id` ou `release`, ou un champ
+sans type, est accepté, et tout autre type est refusé (statut de
+sortie 1)&nbsp;; sont refusés aussi un champ `references` dont la colonne
+ou le lecteur `belongs_to` prendrait l’un de ces noms, et un champ nommé
+`handle`.
+
+<details><summary>Les messages exacts — ce qu’affichent gen et le générateur de scaffold pour ces noms</summary>
+
+- `spin run gen`, pour une colonne boolean nommée `release`&nbsp;:
+  `table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column`
+- `generate scaffold`, pour `request_id:integer`&nbsp;:
+  `'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field`
+- `generate scaffold`, pour `request:references`&nbsp;:
+  `'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`
+- `generate scaffold`, pour un champ nommé `handle`&nbsp;:
+  `'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`
+
+</details>
+
 Les noms et les types sont `Cybertrain::Ident::FRAMEWORK_METHOD_TYPES`. Non
 vérifiés&nbsp;: un `belongs_to` que gen tire d’une clé étrangère comme
 `release_id`, et un scope nommé `release` ou `request_id`.
@@ -966,7 +985,7 @@ Photo.find(photo.id).thumbnail.bytesize   # les mêmes octets en retour
 - `db/schema.rb` réécrit la colonne sous la forme `t.binary`, et la console
   affiche une valeur binaire comme `<N bytes>`.
 - Gardez les gros fichiers hors de la base&nbsp;: un envoi de fichier
-  ([Ajouter un envoi de fichier](tutorial.md#attachments)) est un fichier
+  ([Ajouter une image de couverture](tutorial.md#attachments)) est un fichier
   sous `storage/uploads/`, alors qu’un BLOB est lu entièrement en mémoire
   avec sa ligne et grossit chaque sauvegarde et le WAL.
 
@@ -1009,9 +1028,9 @@ Un fichier SQLite créé par une application Rails 8 se lit tel quel&nbsp;:
    `ON DELETE` sont exportés aussi.
 5. Limites&nbsp;: une table dont la clé primaire n’est pas une colonne `id`
    (une table de jointure) est exportée en `create_table "articles_tags",
-   id: false` et n’a pas de modèle (`spin run gen` affiche `skipped
-   articles_tags: no id column`)&nbsp;; atteignez-la avec `DB.with`&nbsp;; une
-   clé primaire `id` qui n’est pas un entier (`id: :uuid` ou `id: :string`
+   id: false` et n’a pas de modèle (`spin run gen` affiche
+   `skipped articles_tags: no id column, so no model (reach it with Cybertrain::DB.with)`)&nbsp;;
+   une clé primaire `id` qui n’est pas un entier (`id: :uuid` ou `id: :string`
    dans Rails) est exportée de la même façon, son `id` gardé comme une
    colonne ordinaire sans PRIMARY KEY&nbsp;;
    `ar_internal_metadata` est laissée telle quelle&nbsp;; une table dont le
@@ -1025,38 +1044,7 @@ Un fichier SQLite créé par une application Rails 8 se lit tel quel&nbsp;:
 les scopes qu’avaient les modèles Rails, sous les formes que montre cette
 page.
 
-## Mettre à jour depuis 0.4
+## Mise à jour
 
-Chaque changement ci-dessous est une modification à faire en un passage dans
-une application écrite pour CyberTrain 0.4&nbsp;:
-
-1. Un lecteur `has_many` renvoie une relation, pas un Array&nbsp;: ajoutez
-   `.to_a` avant une méthode propre aux Array (`map`, `select`, `[]`, `+`).
-   Les templates ne changent pas.
-2. Les dates-heures sont stockées au format de Rails&nbsp;: lancez
-   `db normalize` une fois après la mise à jour ([Dates-heures et `db
-   normalize`](#datetimes-and-db-normalize))&nbsp;; d’ici là, une colonne
-   qui mélange les deux formats se trie par format.
-3. `as_json` et `to_json` écrivent les heures sous la forme
-   `2026-10-05T09:00:00.000Z` (c’était `2026-10-05T09:00:00Z`)&nbsp;: les
-   snapshots JSON des tests changent.
-4. Un attribut `t.date` est une `Date`, pas une String&nbsp;: `strftime`
-   fonctionne toujours, la concaténation demande `to_s`. Une colonne date NOT
-   NULL valide maintenant sa présence.
-5. Un `belongs_to` déclaré sans `optional: true` valide sa clé
-   étrangère&nbsp;; ceux qui ne sont pas déclarés ne changent pas.
-6. `where(x: a..b)` avec des bornes Integer est une condition d’intervalle
-   (c’était une égalité avec le texte de la Range, qui ne correspondait
-   jamais)&nbsp;; les bornes Time et Date utilisent `where_between`.
-7. `Cybertrain::Cast.iso8601` est le format d’affichage&nbsp;: le code qui
-   s’en servait pour construire du texte SQL passe à `Cast.sql_datetime`, et
-   `Cast.binds` lie un Time au format stocké.
-8. `allow_blank: true` sur une ligne `validates` laisse aussi `presence` de
-   cette ligne accepter une valeur vide, comme dans Rails (il ne s’appliquait
-   qu’à `length`).
-9. Une colonne nommée comme une méthode qu’a maintenant chaque modèle
-   (`update_columns`, `destroy_dependents`, `run_custom_validations`, ...) est
-   générée sous `<column>_column` ([Noms de colonnes](#column-names)).
-10. Un lecteur `belongs_to` garde le parent qu’il a lu jusqu’à ce que la clé
-    étrangère change (il le relisait à chaque appel)&nbsp;: appelez `reload`
-    pour voir un changement fait par un autre processus.
+Ce qu’une version change pour les modèles et la base de données
+figure par version dans [Mise à jour](upgrading.md#notes-by-version).

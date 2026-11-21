@@ -1,4 +1,3 @@
-require "cybertrain/generator/inflector"
 require "cybertrain/generator/routes_dsl"
 
 module Cybertrain
@@ -95,7 +94,7 @@ module Cybertrain
       def self.helpers_source(spec)
         out = +""
         names = arg_names(spec)
-        # Plan decision 13: braceless keywords at the call (`page: 2`,
+        # Braceless keywords at the call (`page: 2`,
         # `format: :json`) arrive as the trailing options Hash, renamed when
         # a segment already took the name (`get "/x/:options"`).
         opts = "options"
@@ -113,36 +112,9 @@ module Cybertrain
       end
 
       # Helper parameter names for a route's dynamic segments: the names the
-      # Mapper recorded (RouteSpec#helper_args), else the pattern's.
+      # Mapper recorded (RouteSpec#helper_args).
       def self.arg_names(spec)
-        return spec.helper_args unless spec.helper_args.empty?
-
-        pattern_arg_names(spec.pattern)
-      end
-
-      # ":post_id" -> "post", ":id" after "comments" -> "comment", ":slug" -> "slug".
-      def self.pattern_arg_names(pattern)
-        names = []
-        previous = ""
-        pattern.split("/").each do |seg|
-          next if seg.empty?
-
-          if seg.start_with?(":")
-            key = seg[1, seg.size - 1]
-            name = if key.end_with?("_id") && key.size > 3
-                     key[0, key.size - 3]
-                   elsif key == "id" && previous != ""
-                     Inflector.singularize(previous)
-                   else
-                     key
-                   end
-            name = "#{name}#{names.size + 1}" if names.include?(name)
-            names << name
-          else
-            previous = seg
-          end
-        end
-        names
+        spec.helper_args
       end
 
       # A Ruby string literal for the pattern with each dynamic segment

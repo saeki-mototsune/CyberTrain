@@ -1,5 +1,5 @@
 ---
-source_sha256: 5eebbff21f9a12ce6f7a0fe38f032a5fdbda83819e1b6f62cbad52711cfc8ddd
+source_sha256: c6a6fbebb6ac3e6e10a08124e20ba6b77fa34985f1f6601156f5e32b5f2ae280
 ---
 # Cybertrain 模板语言参考
 
@@ -11,7 +11,7 @@ Cybertrain 的视图（`app/views/**/*.html.erb`）看起来像 Rails 的 ERB，
 
 模板**不是** Ruby。Spinel（cybertrain 所面向的 Matz-Ruby AOT 编译器）没有 `eval`，所以“在请求时解释视图自身的 Ruby 代码”从来就不在考虑之列（`docs/design.md` 中的 D9）；实际运行的是一套小巧、封闭的语法，只是披着 ERB/Ruby 风格的外衣。标签内不能写任意 Ruby——只能写 `ExprParser`（`parser.rb`）识别为语句或表达式的内容。没有 `eval`、`send`、`instance_eval`、方法/类/模块定义、`require`、异常（`begin/rescue`）、范围、正则表达式或多重赋值。块只出现在本文档列出的地方：`each`/`each_with_index`/`each_slice` 循环、Array 和 Hash 的一组固定方法（`map`、`select`、`sum`、`group_by` ……——参见[块](#blocks)）、辅助方法调用（`form_with(...) do |f| ... end`）以及 `tag` 构建器。每个方法调用（`recv.name`）都由 `interpreter.rb` 中手写的 `case` 分派表解析，以接收者在运行时的 Ruby 类为键；不在该类型表中的名称会以 `RuntimeError` 失败——没有 `method_missing`，没有反射，并且（见 `Interpreter#call_method`）正是因为 Spinel 没有 `send`，这里才是一个 `case`，而不是元编程的查找。模板只能做本文档所描述的事情。
 
-<details><summary>这些代码在源码中的位置 — 模板流水线的八个文件</summary>
+<details><summary>这些代码在源码中的位置 — 模板流水线的各个文件</summary>
 
 这条流水线位于 `cybertrain/template/` 中：
 
@@ -25,6 +25,9 @@ Cybertrain 的视图（`app/views/**/*.html.erb`）看起来像 Rails 的 ERB，
 | `helpers.rb` | `link_to`、`form_with`、`render`、`pluralize` 等——模板不带接收者调用的一切 |
 | `form_builder.rb` | `form_with(...) do \|f\| ... end` 传给块的 `f` |
 | `engine.rb` | 加载 `.html.erb` 源代码——从某个根目录下的磁盘，或从嵌入的 `gen/views.rb` 表（`Engine.embedded`）——解析它们（并可选择缓存），连同布局一起渲染 |
+| `limits.rb` | `MAX_RENDER_DEPTH`，渲染嵌套层数的默认上限 |
+| `helper_object.rb` | `HelperObject`，子系统的辅助对象（`turbo_stream` 构建器）的基类 |
+| `turbo_stream_builder.rb`、`stream_helpers.rb` | 由 `cybertrain/streams` 加载：`turbo_stream` 构建器，以及 `turbo_stream_from`、`signed_stream_name`、`stream_source_path` |
 
 </details>
 
@@ -244,7 +247,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 
 1. 五个内置方法，始终可用：`id`、`persisted?`、`new_record?`、`to_param`（`id.to_s`）、`errors`（一个 `Errors`，见[各类型的方法表](#per-type-method-table)）。
 2. `read_attribute(:name)`——生成的列。
-3. `read_association(:name)`——生成的 `has_many`/`belongs_to`。
+3. `read_association(:name)`——生成的 `has_many`、`has_one` 或 `belongs_to`。
 4. `call_view_method(:name)`——模型生成器在 `app/models/**/*.rb` 中找到的手写的、无参数的 `def`（永远不带参数）。
 
 ```erb
@@ -262,7 +265,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 
 ## 辅助方法与表单构建器
 
-每个不带接收者的调用都交给 `Helpers#helper_call`（`helpers.rb`），它先匹配下面的内置辅助方法；在[组件](#components)的模板中，接着尝试该组件的视图方法；把以 `_path`/`_url` 结尾的名称当作生成的路由辅助方法（通过 `Cybertrain::Views.url_resolver`，在应用安装解析器之前会抛出 `"no routes"`）；然后尝试[应用的辅助方法](#application-helpers)；否则抛出 `"undefined helper 'name'"`。
+每个不带接收者的调用都交给 `Helpers#helper_call`（`helpers.rb`），它依次尝试：下面的内置辅助方法；已加载子系统的辅助方法（`turbo_stream_from`、`turbo_stream`、`signed_stream_name` 和 `stream_source_path` 在有 `require "cybertrain/streams"` 时才存在）；在[组件](#components)的模板中，该组件的视图方法（调用不带参数也不带块时）；在请求中，控制器的 `helper_method` 方法（[Concern 与 `helper_method`](requests.md#concerns-and-helper_method)）；把以 `_path`/`_url` 结尾的名称当作生成的路由辅助方法（通过 `Cybertrain::Views.url_resolver`，在应用安装解析器之前会抛出 `"no routes"`）；[应用的辅助方法](#application-helpers)；否则抛出 `"undefined helper 'name'"`。
 
 | 辅助方法 | 签名 | 说明 / 示例 |
 | --- | --- | --- |
@@ -288,6 +291,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `number_to_currency` | `number_to_currency(n, unit: "$", precision: 2, format: "%u%n")` | `1234.5` → `"$1,234.50"`； 负数会在格式前写出 `-` |
 | `number_to_human_size` | `number_to_human_size(n)` | `1234` → `"1.21 KB"` (以 1024 为底)； `1` → `"1 Byte"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | Rails 风格的区间，不精确到秒：`"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"`，取自语言区域的 `datetime.distance_in_words`（日语为 `"2分"`） |
+| `distance_of_time_in_words` | `distance_of_time_in_words(from_time, to_time)`（不接受关键字参数） | 两个 Time 之间的同一套区间，顺序不限：相隔两小时 → `"about 2 hours"` |
 | `content_for` / `content_for?` | `content_for(:key) do...end`、`content_for(:key, "text")`、`content_for?(:key)` | 参见[布局、`yield`、`content_for`、局部模板](#layouts-yield-content_for-partials) |
 | `csrf_meta_tags` / `csrf_token` | | 没有控制器会话时为空 / 不存在 |
 | `csp_meta_tag` / `content_security_policy_nonce` | | `<meta name="csp-nonce" content="...">` / 只有 nonce，即本次请求的 [Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts) nonce；没有策略生效时为 `""` |
@@ -419,7 +423,7 @@ end
 - 模板把组件的实例变量看作局部变量（`title`），按名称看到它不带参数的公开方法（`value_text`），以及 `content`，即 `do` 块输出的内容（没有块时为 `""`）。它在没有布局的情况下渲染，可以渲染局部模板和其他组件，并像局部模板一样计入 `max_render_depth`。它渲染的局部模板看不到组件的方法。组件模板中不带目录的局部模板名（`render "chip"`）在 `app/components/` 下查找（`app/components/_chip.html.erb`）；带目录的名字（`render "shared/note"`）照常在 `app/views/` 下查找。
 - 组件用去掉 `_component` 的 snake_case 名称来指定，就像局部模板用路径来指定一样：`CardComponent` 为 `"card"`，`Admin::UserRowComponent`（`app/components/admin/user_row_component.rb`）为 `"admin/user_row"`。模板不能指名常量。
 - `spin run gen` 像处理辅助方法一样，通过词法扫描写出 `gen/components.rb`：类定义行、`@x =` 赋值、不带参数的 `def`，以及 `initialize` 的关键字。`initialize` 只接受关键字参数（其中最多三个可选），并且它的模板必须存在；缺少关键字或出现未知关键字在渲染时是 `ArgumentError`。未知的组件是 `Cybertrain::Component::Unknown`：`` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``。`content` 是保留名：同名的 `initialize` 关键字或 `@content` 实例变量会被块的输出覆盖，所以 `spin run gen` 会拒绝它，并指出文件和行号。`app/views/components/` 仍然是和其他目录一样的视图目录（属于 `ComponentsController`）；只有 `app/views/__components/` 是保留的，组件模板就存放在这个名称下。
-- `cybertrain generate component card title value:integer` 会写出这个类、它的模板，以及一个用 `Cybertrain::Test.render_component` 渲染它的测试。
+- `cybertrain generate component card title value:integer` 会写出这个类、它的模板，以及一个用 `render_inline` 渲染它、用 `assert_select` 检查它的测试（[测试流和组件](testing.md#testing-streams-and-components)）。
 
 ### 在请求之外渲染
 
@@ -522,7 +526,7 @@ end
 | 严格局部变量接受 `name: default_expr`（Rails 7.1） | 只能写不带修饰的 `name:`（必需）；带默认值的条目是 `SyntaxError` |
 | 未定义的实例变量/局部变量通过 Ruby / 视图上下文的方法解析 | `@x` 是简单的、从不失败的 env 查找；未定义的裸局部变量是一次显式的、封闭的辅助方法调用尝试（找不到时为 `"undefined helper"`） |
 | 使用 `===` 的 `case/when`（范围、类、正则表达式） | 只使用 `==` 的 `case/when`（数字按值比较） |
-| `and`/`or`/`not`、范围、正则表达式、多重赋值都可以使用 | 这些都不存在；保留字会以专门的 “not supported in templates” 消息失败，而不是一般的解析错误 |
+| `and`/`or`/`not`、范围、正则表达式、多重赋值都可以使用 | 这些都不存在；出现在表达式开头的保留字会以专门的 “not supported in templates” 消息失败（`<%= not x %>`），出现在表达式之后的则以解析器的 `unexpected 'and' in 'a and b'` 失败 |
 | 数字字面量：十六进制、八进制、二进制、指数、有理数 | 只有十进制整数/浮点数，可以用 `_` 作分隔符 |
 | `:"quoted symbol"`、`:+` 运算符符号 | 符号只能由标识符字符组成 |
 | `foo (x)`、`foo [x]`（允许空格，有时会给出警告） | 两者都是硬性的 `SyntaxError`——调用的 `(` 或索引的 `[` 之前不能有空格 |

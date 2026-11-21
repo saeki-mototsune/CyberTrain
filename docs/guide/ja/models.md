@@ -1,5 +1,5 @@
 ---
-source_sha256: 91814a663a58f955f84324f2eb6723e26decd07ae2f41a3174fc593bcca58f8a
+source_sha256: edc01fc327f6eda54332284e41ca1c0a578966e4996608a471927152d0640b52
 ---
 # モデルとデータベース
 
@@ -7,7 +7,7 @@ source_sha256: 91814a663a58f955f84324f2eb6723e26decd07ae2f41a3174fc593bcca58f8a
 
 ## マイグレーション
 
-`db/migrate/<version>_<name>.rb` のマイグレーションは `Cybertrain::Migration::Base` のサブクラスです。その `change` はスキーマの操作（`create_table`、`add_column`、`add_index`、`rename_column`、`add_reference`、`remove_column`、`remove_index`、`drop_table`、それに[テーブルを変える](#changing-a-table)の操作）を記録します。`cybertrain db migrate` は未適用の各バージョンをそれぞれのトランザクションで適用し、データベースから `db/schema.rb` を書き直します。`cybertrain db rollback [N]` は `change` の逆を実行します。自動的な逆操作のない操作を `change` が含む場合は、`down`（と `up`）を書いてください。
+`db/migrate/<version>_<name>.rb` のマイグレーションは `Cybertrain::Migration::Base` のサブクラスです。その `change` はスキーマの操作（`create_table`、`add_column`、`add_index`、`rename_column`、`add_reference`、`remove_column`、`remove_index`、`drop_table`、それに[テーブルを変える](#changing-a-table)の操作）を記録します。`cybertrain db migrate` は未適用の各バージョンをそれぞれのトランザクションで適用し、データベースから `db/schema.rb` を書き直します。`cybertrain db rollback [N]` は `change` の逆を実行します。`create_table`、`add_column`、`add_index`、`rename_column` は自分で逆になります。`add_reference`、`remove_column`、`remove_index`、`drop_table` を含む `change` は、`version N is irreversible: no automatic inverse for <operation>` でロールバックを止めるので、それらには `up` と `down` を書いてください。
 
 安全に行うためにデータの手順を必要とするスキーマの変更には、`execute(sql, binds =
 [])` を使います。これはマイグレーション内の書かれた位置で、マイグレーター自身の接続で、そのバージョンのスキーマ操作と同じトランザクションの中で実行されます。そのため、その前に追加したカラムは実行時には存在しており、失敗するとバージョン全体が取り消されます：
@@ -103,7 +103,7 @@ end
 | --- | --- | --- |
 | `t.string`, `t.text` | `VARCHAR(n)` / `VARCHAR`, `TEXT` | String |
 | `t.integer`, `t.bigint`, `t.references` | `INTEGER`, `BIGINT` | Integer |
-| `t.float` | `FLOAT` | Float |
+| `t.float` | `REAL` | Float |
 | `t.decimal :price, precision: 18, scale: 8` | `DECIMAL(18,8)` | Float。保存時に scale に丸められ、有効数字 15 桁まで正確 |
 | `t.boolean` | `BOOLEAN` | true / false |
 | `t.datetime` | `DATETIME` | Time（UTC、マイクロ秒） |
@@ -122,7 +122,7 @@ Rails は `decimal` カラムを BigDecimal として読みますが、ここで
 - **範囲外はバリデーションエラーです。** precision のある decimal カラムに対して `spin run gen` は `numericality` のバリデーションを書くので、精度を超える値、Infinity、NaN に対して `save` は保存せずに false を返します。
 - **合計は Float の合計です。** 合計は端で `Cybertrain::Cast.round_scale(total, 2)` で丸めてください。`total.round(2)` ではありません。
 
-金額は整数カラムに最小単位で持ってください（`price_cents`）：Integer の演算と `sum_int` は正確です。フォームの項目は `(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` で読み、`number_to_currency(price_cents / 100.0)` で表示します。アップグレード時の注意：コンパイルしたフレームワークがこれまで切り捨てていた境界値（1.005 が 1.0 として保存されていた）は、新しい書き込みに限り、切り上げて保存されるようになりました。また、生成されるバリデーションは、これまで保存されていた値を拒否します。decimal カラムを最小単位に移す手順は D73 にあります。
+金額は整数カラムに最小単位で持ってください（`price_cents`）：Integer の演算と `sum_int` は正確です。フォームの項目は `(Cybertrain::Cast.round_scale(params[:price], 2) * 100).round` で読み、`number_to_currency(price_cents / 100.0)` で表示します。
 
 ### JSON のカラム
 
@@ -183,7 +183,7 @@ Time.current.in_time_zone.hour       # => Time.zone での時
 
 ## 条件と検索
 
-生成されるリレーションのクエリメソッドはクラスメソッドでもあるので（`or`、`not`、`page`、`to_sql` と、Array のような `to_a`、`each`、`size`、`empty?` を除く）、Rails の書き方がそのまま動きます：`Article.where.not(body: nil)`、`Article.find_each { }`、`Article.pluck(:id, :title)`、`Article.pluck_int(:id)`。
+生成されるリレーションのクエリメソッドはクラスメソッドでもあるので（`or`、`not`、`page`、`to_sql`、`update_all_sql` と、Array のような `to_a`、`each`、`size`、`empty?` を除く）、Rails の書き方がそのまま動きます：`Article.where.not(body: nil)`、`Article.find_each { }`、`Article.pluck(:id, :title)`、`Article.pluck_int(:id)`。
 
 | Rails | CyberTrain |
 | --- | --- |
@@ -197,7 +197,7 @@ Time.current.in_time_zone.hour       # => Time.zone での時
 | `update_all`, `destroy_all`, `find_each(batch_size: 500)` | `update_all`, `destroy_all`, `find_each(batch: 500)` |
 | `create!`, `record.update_columns(views: 0)` | 同じ |
 
-- `where` の Hash の中の Range は Integer の端を取ります：Spinel のもとでは Time や Date の Range は作れず、Float や String の Range は Range として扱われないので、そうした端は `where_between` を通します。その Time と Date の端は、保存されたテキストとして比べられます（テキストの順は時刻の順と同じです）。
+- `where` の Hash の中の Range は Integer の端を取ります。固定している Spinel でコンパイルすると、Time や Date の Range は作る時点で `TypeError` になり、Float の Range は Range として認識されません（縮小したプログラムでの結果です。spikes/NOTES.md のルール 86）。そのため、そうした端は `where_between` を通します。その Time と Date の端は、保存されたテキストとして比べられます（テキストの順は時刻の順と同じです）。String の Range は同じプログラムでは認識されますが、`where` は Integer の端のために書かれているので、String の端も `where_between` に渡してください。
 - String の条件は括弧で囲まれるので、その中の `OR` は中に留まります。バインドはスカラーです：`where("id IN (?)", ids)` は例外を出します。`where(id: ids)` と書いてください。
 - `a.or(b)` は `((a) OR (b))` です。二つは並び順、limit、offset、`distinct` がそろっている必要があります。
 - json か暗号化されたカラムへの `where` は `ArgumentError` を出します。
@@ -247,7 +247,7 @@ Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%'
 - `count_by` のキーは String（`Cast.str` を通したもの）で、昇順です。NULL と `""` はキー `""` を共有します。`limit` / `offset` がある場合、`count_by`、`sum_*`、`increment` は、`count` や `delete_all`（サブセレクトを通して）と同じく、その範囲に対して働きます。
 - `where_like` はテキスト中の `\`、`%`、`_` をエスケープしてくれ、部分文字列の一致です（SQLite の LIKE と同じく、ASCII については大文字小文字を区別しません）。前方一致の検索では自分でパターンを書きます：`Article.all.where_sql("title LIKE ? ESCAPE '\\'", [Cybertrain::Cast.like_escape(q) + "%"])`。
 - 手書きの SQL には、`Cybertrain::Cast.binds(a, b, c)` が `execute` の受け取るバインドの Array を組み立てます（Time は保存用の datetime の形、Date は `YYYY-MM-DD`、真偽値は 1/0）：`Cybertrain::DB.with { |c| c.execute(sql, Cybertrain::Cast.binds(id, since)) }`。
-- `Cybertrain::Cast.hash(v)` / `Cast.array(v)` は、パースした JSON の値を Hash / Array に絞り込みます。そうでない場合は新しい空のものを返します（Time を最初に確認します。spikes/NOTES.md のルール 8）。返すのは `v` そのものではなく、型付きの浅いコピーです。`Cast.empty_hash` / `Cast.empty_array` は、型の種となる空のコンテナーです。
+- `Cybertrain::Cast.hash(v)` / `Cast.array(v)` は、パースした JSON の値を Hash / Array に絞り込みます。そうでない場合は新しい空のものを返します。返すのは `v` そのものではなく、型付きの浅いコピーです。`Cast.empty_hash` / `Cast.empty_array` は、型の種となる空のコンテナーです。
 
 ### 複数のカラム：`pluck` と `pick`
 
@@ -363,7 +363,7 @@ end
 メッセージは Rails のデフォルトで、リクエストのロケールの同梱の辞書から来ます：英語では「can't be blank」、「is too short (minimum is 3 characters)」、「is the wrong length (should be 5 characters)」、「is not included in the list」、「is reserved」、「is invalid」、「is not a number」、「must be an integer」、「must be greater than or equal to 0」、「has already been taken」、日本語では「を入力してください」などです。上限 1 は「1 character」になります。`message:` は行の上でもルールの Hash の中でも、メッセージを置き換えます。`config/locales/` で、すべてのモデルについて、または 1 つのモデルについて置き換えることもできます（[モデルとバリデーションメッセージ](i18n.md#models-and-validation-messages)）。`errors.full_messages` は各属性を `Post.human_attribute_name(:title)`（「Title」。`author_id` は「Author」）で呼び、`:base` のメッセージは単独で書きます。
 
 - `length` は `minimum`、`maximum`、`is`、`in`（Integer の Range）を取ります。
-- `inclusion` と `exclusion` は Array か Integer の Range を取ります（Spinel はほかの Range を作れません）。Rails と同じく、`1...5` は float カラムの 4.5 を通します。
+- `inclusion` と `exclusion` は Array か Integer の Range を取ります（それ以外の Range は `in: takes a Range of Integers only` で拒否されます）。Rails と同じく、`1...5` は float カラムの 4.5 を通します。
 - `numericality` はまず String をパースします（`"12"` は通ります）。Float は Rails と同じく `only_integer` に通りません。
 - `uniqueness` は、その値を持つ別の行があるかをデータベースに問い合わせます（`case_sensitive: false` なら `LOWER(col) = LOWER(?)`、nil なら `IS NULL`）。`scope:` で範囲を絞ります。暗号化されたカラムには使えません。
 - `allow_nil:` と `allow_blank:` は、その行のすべてのルール（`presence` も含む）で nil や空の値を飛ばします。`on: :create` か `on: :update`（Symbol 一つ）は、新しいレコードか保存済みのレコードのときだけその行を実行します。
@@ -383,7 +383,7 @@ class Booking
 end
 ```
 
-`validate :method` の行は `validates` のルールのあとに順に実行されます。`if:` と `unless:`（どちらの行でも）は、モデルのメソッド、カラム、関連付けを名指しする Symbol を取ります。Spinel には `send` がないので、ジェネレーターがそれを呼ぶ表を書きます。ラムダ、`:if => :x`、`"if": :x` は、メソッドを名指しするよう告げるメッセージでジェネレーターを止めます。モデルのファイルが定義していない `validate` の名前も同じです。`validates_with`、`validates_each`、`confirmation`、`acceptance`、`valid?(context)` はありません。
+`validate :method` の行は `validates` のルールのあとに順に実行されます。`if:` と `unless:`（どちらの行でも）は、モデルのメソッド、カラム、関連付けを名指しする Symbol を取ります。ジェネレーターは `send` を使わず、それを呼ぶ `case` の表を書き、この三つのどれでもない名前は拒否します。ラムダ、`:if => :x`、`"if": :x` は、メソッドを名指しするよう告げるメッセージでジェネレーターを止めます。モデルのファイルが定義していない `validate` の名前も同じです。`validates_with`、`validates_each`、`confirmation`、`acceptance`、`valid?(context)` はありません。
 
 ## 暗号化されたカラム
 
@@ -403,13 +403,13 @@ end
 
 ### 鍵と入れ替え
 
-`encrypts` のあるモデルがあると、アプリケーションは openssl を必要とし、`CYBERTRAIN_ENCRYPTION_KEY` が 64 文字の 16 進数でなければ起動に失敗します（`cybertrain secret --hex` で作ります。[環境変数](configuration.md#configuration-and-environment-variables)）。鍵は `CYBERTRAIN_SECRET_KEY_BASE` から導かれないので、セッションの秘密鍵を変えてもデータは読めます。暗号化の鍵をなくすとデータは失われます。入れ替えるには、新しい鍵を `CYBERTRAIN_ENCRYPTION_KEY` に、古い鍵を `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS`（カンマ区切り。読むときだけ試されます）に入れてから、すべてのレコードを書き直します：
+`encrypts` のあるモデルがあると、`CYBERTRAIN_ENCRYPTION_KEY` が 64 文字の 16 進数でなければ起動に失敗します（`cybertrain secret --hex` で作ります。[環境変数](configuration.md#configuration-and-environment-variables)）。鍵は `CYBERTRAIN_SECRET_KEY_BASE` から導かれないので、セッションの秘密鍵を変えてもデータは読めます。暗号化の鍵をなくすとデータは失われます。入れ替えるには、新しい鍵を `CYBERTRAIN_ENCRYPTION_KEY` に、古い鍵を `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS`（カンマ区切り。読むときだけ試されます）に入れてから、すべてのレコードを書き直します：
 
 ```ruby
 Account.find_each { |account| account.update_columns(api_key: account.api_key) }
 ```
 
-`encrypts` のないアプリケーションで `Cybertrain::Crypto.encrypt(text)` / `Crypto.decrypt(payload)` を自分で呼ぶコードは、`bin/<app>.rb` に `require "cybertrain/encryptor"` を足し、鍵を設定します。
+`encrypts` のないアプリケーションのコードも、鍵を設定すれば `Cybertrain::Crypto.encrypt(text)` / `Crypto.decrypt(payload)` を自分で呼べます：その場合、起動時に鍵は求められず、鍵なしで呼ぶと `Cybertrain::Encryptor::Error` になります。
 
 ### すでにテキストのあるカラムを暗号化する
 
@@ -483,7 +483,7 @@ Rails の `transaction` と異なる点と、避けるべきこと：
 
 ## カラム名
 
-カラム名は ASCII の識別子（`[A-Za-z_][A-Za-z0-9_]*`）でなければなりません。Rails ではどんな名前でもかまいません。ASCII 以外のカラム名（`名前`、`prénom`）を持つスキーマは PR #10 以前は CRuby の下で生成できましたが、今は `spin run gen` が拒否するので、アップグレード時にカラム名を変えてください（`first-name` のような名前は、もともとメソッド名になれませんでした）。
+カラム名は ASCII の識別子（`[A-Za-z_][A-Za-z0-9_]*`）でなければなりません。Rails ではどんな名前でもかまいません。`spin run gen` は ASCII 以外のカラム名（`名前`、`prénom`）を持つスキーマを拒否します。初期のジェネレーターは、CRuby の下で動いていたときにこれを受け付けていました。カラム名を変えてください（`first-name` のような名前は、もともとメソッド名になれませんでした）。
 
 生成されたクラスやフレームワークがレコードに対して呼ぶメソッド（`errors`、`save`、`attributes`、`hash`、`to_s`、`to_ary`、`raise` など）や Ruby のキーワード（`end`、`class`、`begin`）と同じ名前のカラムは、`<column>_column`（`hash_column`：リーダー、ライター、インスタンス変数）として生成され、生成ファイルに注記が付きます。その 2 つの名前は次のように使います：
 
@@ -493,7 +493,26 @@ Rails の `transaction` と異なる点と、避けるべきこと：
 
 その他の Object のメソッド（`display`、`tap`、`methods`）と同じ名前のカラムは、注記付きでその名前のまま生成されます。`cybertrain generate scaffold` はキーワードと予約名を拒否し（名前を変えたリーダーを呼ばなければならなくなるため）、覆い隠す名前はジェネレーターと同じく注記付きで受け付けます。
 
-戻り値の型が 1 つのフレームワークのメソッドと同じ名前のカラムは、リーダーがその型を返すなら自分の名前のまま残り、そうでなければ拒否されます。`request_id`（`Cybertrain::Request#request_id`）と `release`（`Cybertrain::Config#release`）は String を返すので、その名前の string、text、binary のカラムは（null を許すかどうかにかかわらず）受け付けられ、それ以外の型は `spin run gen` を止めます。たとえば `table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column` です。`t.references :request` からの Integer の `request_id` には、代わりに参照の名前を変える助言が出ます：`t.integer "source_request_id"` and `s.add_foreign_key "audit_entries", "requests", column: "source_request_id"`（`belongs_to` は `source_request` と読めます）。`handle` は型の違うフレームワークのメソッドの名前なので、`handle` というカラムは上の予約された名前と同じく `handle_column` として読みます（アプリケーションは `user.handle_column` を呼び、クエリは `"handle"` のままです）。`cybertrain generate scaffold` はそのフィールドを拒否します：`'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`。`cybertrain generate scaffold` は、何かを書く前にこれらの名前を検査します。`request_id` や `release` という string や text のフィールド、または型なしのものは受け付け、それ以外の型は拒否します（終了ステータス 1）。たとえば `'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field` です。カラムや `belongs_to` のリーダーがこれらの名前になる `references` のフィールドも拒否します：`'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`。名前と型の表は `Cybertrain::Ident::FRAMEWORK_METHOD_TYPES` です。検査されないもの：gen が `release_id` のような外部キーから導く `belongs_to` と、`release` や `request_id` という名前のスコープ。
+戻り値の型が 1 つのフレームワークのメソッドと同じ名前のカラムは、リーダーがその型を返すなら自分の名前のまま残り、そうでなければ拒否されます。`request_id`（`Cybertrain::Request#request_id`）と `release`（`Cybertrain::Config#release`）は String を返すので、その名前の string、text、binary のカラムは（null を許すかどうかにかかわらず）受け付けられ、それ以外の型は `spin run gen` を止めます。`t.references :request` からの Integer の `request_id` には、代わりに参照の名前を変える助言が出ます：`t.integer "source_request_id"` と `s.add_foreign_key "audit_entries", "requests", column: "source_request_id"`（`belongs_to` は `source_request` と読めます）。
+
+`handle` は型の違うフレームワークのメソッドの名前なので、`handle` というカラムは上の予約された名前と同じく `handle_column` として読みます（アプリケーションは `user.handle_column` を呼び、クエリは `"handle"` のままです）。
+
+`cybertrain generate scaffold` は、何かを書く前にこれらの名前を検査します。`request_id` や `release` という string や text のフィールド、または型なしのものは受け付け、それ以外の型は拒否します（終了ステータス 1）。カラムや `belongs_to` のリーダーがこれらの名前になる `references` のフィールドと、`handle` というフィールドも拒否します。
+
+<details><summary>正確なメッセージ — これらの名前に対して gen とスキャフォールドのジェネレーターが表示するもの</summary>
+
+- `spin run gen`、`release` という boolean のカラム：
+  `table audit_entries: column "release" is boolean, so model AuditEntry's reader release would answer true or false or nil, but the framework's Cybertrain::Config#release answers String, and a method name answers one type across the program (spikes/NOTES.md rules 10, 34); rename the column`
+- `generate scaffold`、`request_id:integer`：
+  `'request_id:integer' would give the model a reader request_id answering Integer or nil, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; pick another field name, or make it a string or text field`
+- `generate scaffold`、`request:references`：
+  `'request:references' adds the column request_id, an Integer, but the framework's Cybertrain::Request#request_id answers String, and one method name answers one type in the program; name the reference differently: the scaffold cannot point another name at requests, so add an integer field such as source_request_id:integer and write the foreign key and belongs_to :source_request, class_name: "Request", foreign_key: :source_request_id by hand`
+- `generate scaffold`、`handle` というフィールド：
+  `'handle' names framework methods that answer different types (Cybertrain::ErrorReporter#handle (its block's value), Cybertrain::Server#handle (a Response) and the jobs subsystem's handle (nil)), and a model reader of that name would be one more; pick another field`
+
+</details>
+
+名前と型の表は `Cybertrain::Ident::FRAMEWORK_METHOD_TYPES` です。検査されないもの：gen が `release_id` のような外部キーから導く `belongs_to` と、`release` や `request_id` という名前のスコープ。
 
 素の名前がすでにカラム、別の関連付け、`Model` のメソッドに使われている関連付け（Rails では関連付けが `errors` を覆い隠せます）は、生成ファイルにコメントを付けて代わりの名前で出力されます：`has_many` なら `<table>_as_<column stem>`（`comments_as_article`）、`belongs_to` なら `<stem>_as_<column>`（`author_as_author_id`）。
 
@@ -520,7 +539,7 @@ Photo.find(photo.id).thumbnail.bytesize   # 同じバイト列が戻る
 - `Photo.where(thumbnail: bytes)` もバイト列を BLOB として bind します（TEXT の bind は保存された BLOB と等しくなりません）。
 - 生の SQL で読んだ BLOB のセルは、そのバイト列の String です。`Cybertrain::Cast.binary(value)` で絞り込めます（`NULL` なら `""`）。
 - `db/schema.rb` はこのカラムを `t.binary` として書き戻し、コンソールはバイナリの値を `<N bytes>` と表示します。
-- 大きなファイルはデータベースに入れないでください：アップロード（[ファイルアップロードを追加する](tutorial.md#attachments)）は `storage/uploads/` の下のファイルですが、BLOB は行と一緒に丸ごとメモリーに読み込まれ、バックアップと WAL を大きくします。
+- 大きなファイルはデータベースに入れないでください：アップロード（[カバー画像を追加する](tutorial.md#attachments)）は `storage/uploads/` の下のファイルですが、BLOB は行と一緒に丸ごとメモリーに読み込まれ、バックアップと WAL を大きくします。
 
 ## 並び順
 
@@ -543,21 +562,10 @@ Rails 8 のアプリケーションが作った SQLite のファイルは、そ�
 2. `cybertrain db schema`（ビルドしたバイナリなら `./<app> db schema`）を実行します。`db migrate` が使うのと同じダンパーでデータベースから `db/schema.rb` を書き、`wrote .../db/schema.rb from <path>` と表示し、ほかには何もしません。そのあと `cybertrain db migrate` は適用するものを見つけず、モデルを生成します。
 3. Rails の `db/migrate/*.rb` はコピーしません：新しいマイグレーションはここから始めます。`schema_migrations`（どちらでも同じテーブル）にすでにある Rails のバージョンにはここにファイルがないので、マイグレーターはそれを実行もロールバックもせず、`db status` は `applied (no file)` と一覧します。
 4. 変換が要らないもの：日時（Rails の形が保存用の形です）、真偽値（`1` / `0`、古い `t` / `f`）、decimal（Rails は REAL の値を書くので Float として読めます）、json（TEXT で、Hash として読めます）、Rails が書く型名（`datetime(6)`、`decimal(18,8)`、`varchar`、`bigint`、`json`）。部分インデックス、式インデックス、`ON DELETE` の動作もダンプされます。
-5. 制限：主キーが `id` カラムでないテーブル（結合テーブル）は `create_table "articles_tags", id: false` としてダンプされ、モデルはありません（`spin run gen` が `skipped articles_tags: no id column` と表示します）。`DB.with` で扱います。整数でない `id` 主キー（Rails の `id: :uuid` や `id: :string`）も同じようにダンプされ、`id` は PRIMARY KEY のない普通のカラムとして残ります。`ar_internal_metadata` はそのままにします。スキーマが表せないものを `CREATE TABLE` に含むテーブルは、作り直すヘルパーでは変えられません（[テーブルを変える](#changing-a-table)）。Rails が暗号化したカラムは暗号化し直します（[すでにテキストのあるカラムを暗号化する](#encrypting-a-column-that-already-holds-text)）。
+5. 制限：主キーが `id` カラムでないテーブル（結合テーブル）は `create_table "articles_tags", id: false` としてダンプされ、モデルはありません（`spin run gen` が `skipped articles_tags: no id column, so no model (reach it with Cybertrain::DB.with)` と表示します）。整数でない `id` 主キー（Rails の `id: :uuid` や `id: :string`）も同じようにダンプされ、`id` は PRIMARY KEY のない普通のカラムとして残ります。`ar_internal_metadata` はそのままにします。スキーマが表せないものを `CREATE TABLE` に含むテーブルは、作り直すヘルパーでは変えられません（[テーブルを変える](#changing-a-table)）。Rails が暗号化したカラムは暗号化し直します（[すでにテキストのあるカラムを暗号化する](#encrypting-a-column-that-already-holds-text)）。
 
 そのうえで、Rails のモデルにあったバリデーション、関連付け、スコープを、このページの形で `app/models/*.rb` に書きます。
 
-## 0.4 からの更新
+## アップグレード
 
-以下の変更はどれも、CyberTrain 0.4 向けに書いたアプリケーションを一回で直せるものです：
-
-1. `has_many` の読み出しは Array ではなくリレーションを返します：Array にしかないメソッド（`map`、`select`、`[]`、`+`）の前に `.to_a` を付けてください。テンプレートは変わりません。
-2. 日時は Rails の形で保存されます：更新のあとで一度 `db normalize` を実行してください（[日時と `db normalize`](#datetimes-and-db-normalize)）。それまでは、二つの形が混ざったカラムは形の順に並びます。
-3. `as_json` と `to_json` は時刻を `2026-10-05T09:00:00.000Z` と書きます（以前は `2026-10-05T09:00:00Z`）：テストの JSON のスナップショットが変わります。
-4. `t.date` の属性は String ではなく `Date` です：`strftime` はそのまま使え、連結には `to_s` が要ります。NOT NULL の日付カラムは存在を検証するようになりました。
-5. `optional: true` のない宣言した `belongs_to` は外部キーを検証します。宣言していないものは変わりません。
-6. Integer の端を持つ `where(x: a..b)` は範囲の条件です（以前は Range のテキストとの等値で、一致することはありませんでした）。Time と Date の端は `where_between` を使います。
-7. `Cybertrain::Cast.iso8601` は表示用の形です：これで SQL のテキストを組み立てていたコードは `Cast.sql_datetime` に替え、`Cast.binds` は Time を保存用の形でバインドします。
-8. `validates` の行の `allow_blank: true` は、Rails と同じく、その行の `presence` にも空の値を通させます（以前は `length` にだけ効きました）。
-9. すべてのモデルが持つようになったメソッドと同じ名前のカラム（`update_columns`、`destroy_dependents`、`run_custom_validations` など）は `<column>_column` として生成されます（[カラム名](#column-names)）。
-10. `belongs_to` の読み出しは、外部キーが変わるまで読んだ親を覚えています（以前は呼ぶたびに読みました）：別のプロセスによる変更を見るには `reload` を呼んでください。
+モデルとデータベースについてリリースが変えることは、[アップグレード](upgrading.md#notes-by-version) にバージョンごとに載っています。

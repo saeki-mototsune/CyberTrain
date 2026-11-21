@@ -1,4 +1,4 @@
-# Phase 4b spike, item 6c (R4): a thread-local locale under Spinel, in a
+# Phase 4b spike, item 6c: a thread-local locale under Spinel, in a
 # program with the whole framework (`require "cybertrain"`) and the db
 # pool in use, so Thread.current also holds a Connection under the pool's
 # TRANSACTION_KEY. Two green threads each set
@@ -27,7 +27,7 @@
 # the same values. Each thread reads its own Symbol after the other set
 # its own, the main thread keeps :fr, and a Symbol beside the pool's
 # Connection under another key of Thread.current needs nothing special.
-# Verdict: PASS; I18n.locale is thread-local (R4), no Context field.
+# Verdict: PASS; I18n.locale is thread-local, no Context field.
 require "cybertrain"
 
 module LocaleSpike

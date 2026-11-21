@@ -1,10 +1,11 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/asset_scan"
 require "cybertrain/generator/importmap_reader"
 require "cybertrain/generator/views_emitter"
 
 module Cybertrain
   module Gen
-    # Writes gen/assets.rb (spec sections 7.1 and 7.3): Gen::Assets with
+    # Writes gen/assets.rb (docs/design.md D63): Gen::Assets with
     # digest_path (a `case` from logical to digested path, "" for an
     # unknown name), the import map as compact JSON, the preloaded paths,
     # and the resolver handed to Cybertrain::Assets.install. And
@@ -172,19 +173,11 @@ module Cybertrain
         log
       end
 
-      def self.make_dirs(dir)
-        return nil if File.directory?(dir)
-
-        make_dirs(File.dirname(dir))
-        Dir.mkdir(dir)
-        nil
-      end
-
       # Writes a new file through a temporary one renamed into place, so a
       # server reading public/assets never sees half a file and a symlink
       # left at the path is replaced, not followed.
       def self.write_new(path, body)
-        make_dirs(File.dirname(path))
+        SourceText.make_dirs(File.dirname(path))
         write_replacing(path, body)
       end
 

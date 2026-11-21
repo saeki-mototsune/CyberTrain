@@ -1,5 +1,5 @@
 ---
-source_sha256: 4d2f34b5565d3b155fb42b317bb2b8548de7e76aeab9e9f2f11e8cf44f6bd971
+source_sha256: 0ac92df8f2d3d6ae1a67b27813f027a53e1ada3527cc73bb34c9baad2db17ab7
 ---
 # リアルタイム：ブラウザーへのストリーム
 
@@ -18,13 +18,15 @@ source_sha256: 4d2f34b5565d3b155fb42b317bb2b8548de7e76aeab9e9f2f11e8cf44f6bd971
 
 ## Turbo Streams
 
-[Turbo](https://turbo.hotwired.dev) は、Rails 8 のアプリケーションと同じように、`<turbo-stream action="append" target="comments">` 要素からページを更新します。レイアウトで Turbo を読み込み（アセットパイプラインはありません：CDN か `public/` に置いたコピー）、`turbo_stream_from` でページを購読させます。ブロードキャスト、ストリームエンドポイント、ストリームのヘルパーには、`bin/<app>.rb` と `bin/db.rb` に `require "cybertrain/streams"` が必要です。ないと、`spin run gen` は最初の `turbo_stream_from` で止まり、その行を示します（[サブシステム](how-it-works.md#subsystems)）：
+[Turbo](https://turbo.hotwired.dev) は、Rails 8 のアプリケーションと同じように、`<turbo-stream action="append" target="comments">` 要素からページを更新します。Turbo はインポートマップを通じて読み込みます：`config/importmap.rb` の `@hotwired/turbo` の pin と、`app/javascript/application.js` の `import "@hotwired/turbo"` のコメントを外してください。どちらも `cybertrain new` が書き出したものです（[インポートマップ](assets.md#the-import-map)）。そして `turbo_stream_from` でページを購読させます。ブロードキャスト、ストリームエンドポイント、ストリームのヘルパーには、`bin/<app>.rb` と `bin/db.rb` に `require "cybertrain/streams"` が必要です。ないと、`spin run gen` は最初の `turbo_stream_from` で止まり、その行を示します（[サブシステム](how-it-works.md#subsystems)）：
 
-```erb app/views/layouts/application.html.erb（抜粋）
-<head>
-  <%= csrf_meta_tags %>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8/dist/turbo.es2017-esm.js"></script>
-</head>
+```ruby config/importmap.rb
+pin "application"
+pin "@hotwired/turbo", to: "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js"
+```
+
+```javascript app/javascript/application.js
+import "@hotwired/turbo"
 ```
 
 ```erb app/views/articles/show.html.erb（抜粋）
@@ -58,19 +60,20 @@ Turbo はリンクとフォームも fetch のリクエストに変えます（T
 
 ### Turbo Stream でフォームに応答する
 
-Turbo が送信するフォームは `text/vnd.turbo-stream.html` を受け付けます。リダイレクトの代わりにストリームで応答するには、要素を自分でレンダリングします。`Cybertrain::Turbo` がそれを組み立てます（`replace`、`update`、`append`、`prepend`、`before`、`after`、`remove`、`refresh`）：
+Turbo が送信するフォームは `text/vnd.turbo-stream.html` を受け付けるので、リクエストのフォーマットは `:turbo_stream` になります。リダイレクトの代わりにストリームで応答するには、Rails と同じようにそのフォーマットを列挙します（[フォーマットと `respond_to`](requests.md#formats-and-respond_to)）：
 
 ```ruby
 def destroy
   @comment = Comment.where(article_id: @article.id).find(params[:id])
   @comment.destroy
-  if request.header("accept").to_s.include?("text/vnd.turbo-stream.html")
-    render html: Cybertrain::Turbo.remove(@comment), content_type: "text/vnd.turbo-stream.html"
-  else
-    redirect_to article_path(@article), status: :see_other
+  respond_to do |format|
+    format.turbo_stream { render turbo_stream: turbo_stream.remove(@comment) }
+    format.html { redirect_to article_path(@article), status: :see_other }
   end
 end
 ```
+
+`turbo_stream` は `replace`、`update`、`append`、`prepend`、`before`、`after`（ターゲットと、`locals:` 付きの `partial:` か `html:` のどちらか）と `remove` を組み立てます。ブロックのない `format.turbo_stream` は、レイアウトなしで `<action>.turbo_stream.erb` をレンダリングし、そこでは同じビルダーがヘルパーとして使えます（`<%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>`。examples/blog の `create.turbo_stream.erb` より）。コントローラーやテンプレートの外では、`Cybertrain::Turbo` が要素を組み立てます：同じ 7 つと `refresh` です。
 
 ### ジョブ・タスク・フィードからブロードキャストする
 
@@ -141,7 +144,7 @@ Turbo が駆動しないページ（チャート、ティッカー）では、�
 
 ## アクションからストリーミングする
 
-アクションは、Rails の `ActionController::Live` のように自分のレスポンスを開いたままにできます：`stream` はアクションの後に接続のスレッドでブロックを実行し、ソケットを `Cybertrain::Sink` として渡します。
+アクションは、Rails の `ActionController::Live` のように自分のレスポンスを開いたままにできます：`stream` はアクションの後に接続のスレッドでブロックを実行し、ソケットを `Cybertrain::Sink` として渡します。`stream` と `Sink` はコアにあります。例で使っている `Cybertrain::SSE` は `require "cybertrain/streams"` で読み込まれ、その行のないアプリケーションは `cybertrain/http/sse` を自分で require します。
 
 ```ruby app/controllers/reports_controller.rb（抜粋）
 def progress
@@ -158,11 +161,10 @@ end
 
 ## 署名付きストリーム名
 
-ページがストリームを読めるのは、それを名指すトークンがあるときだけです。トークンはストリーム名と、`secret_key_base` からストリーム専用に導出した鍵で作った HMAC-SHA256 の署名からなります（Rails の `turbo/signed_stream_verifier_key` と同じです）。そのためトークンがセッションクッキーとして通ることはありません。エンドポイントは署名を確かめ、セッションもデータベースも読みません。これは Turbo のモデルです：ページをレンダリングできた人は、そのストリームを読めます。トークンに期限はありません。`secret_key_base` を変えるとすべてのトークンが無効になり、そのデプロイをまたいで開いていたページは再読み込みされるまで受信が止まります（`EventSource` は 403 を最終的なものとして扱います）。
+ページがストリームを読めるのは、それを名指すトークンがあるときだけです。トークンはストリーム名と、`secret_key_base` からストリーム専用に導出した鍵で作った HMAC-SHA256 の署名からなります（Rails の `turbo/signed_stream_verifier_key` と同じです）。そのためトークンがセッションクッキーとして通ることはありません。エンドポイントは署名を確かめ、セッションもデータベースも読みません。これは Turbo のモデルです：ページをレンダリングできた人は、そのストリームを読めます。トークンに期限はありません。`secret_key_base`（`CYBERTRAIN_SECRET_KEY_BASE`）を変えるとすべてのトークンが、すべてのセッションとともに無効になり、そのデプロイをまたいで開いていたページは再読み込みされるまで受信が止まります（`EventSource` は 403 を最終的なものとして扱います）。
 
 <!-- list: points -->
 - 1 人のユーザーのためのストリームは、そのユーザーのレコードにちなんで名付けたストリーム `turbo_stream_from @user`（`"users:7"`）で、そのユーザーのページにだけレンダリングします。トークンを手に入れた人は誰でも、シークレットが変わらない限りそのストリームを読めます。
-- トークンに期限はありません。`CYBERTRAIN_SECRET_KEY_BASE` を変えると、すべてのトークン（とすべてのセッション）が無効になります。
 - トークンは URL に載るので、リバースプロキシのアクセスログに記録されます。フレームワーク自身のリクエストログは `[FILTERED]` と書きます。`/cybertrain/stream` についてはプロキシのログを止めるか、そのログをストリームと同じくらい非公開にしてください。
 - トークンが不正か欠けていると、SSE では 403、WebSocket ではハンドシェイク直後の 1008 によるクローズになります。
 - 名前は 1〜200 バイトで、制御文字とカンマを含みません。トークン 1 つには最大 16 個、接続 1 つには最大 64 個の名前が入ります。

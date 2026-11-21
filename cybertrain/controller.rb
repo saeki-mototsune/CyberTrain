@@ -1,5 +1,4 @@
 require "json"
-require "digest"
 require "cybertrain/context"
 require "cybertrain/html"
 require "cybertrain/http/client_error"
@@ -10,7 +9,6 @@ require "cybertrain/feature"
 require "cybertrain/views"
 require "cybertrain/rendering"
 require "cybertrain/http_cache"
-require "cybertrain/assets"
 require "cybertrain/format_collector"
 require "cybertrain/template/helpers"
 require "cybertrain/generator/inflector"
@@ -35,7 +33,7 @@ module Cybertrain
   #         @articles = Article.all.to_a
   #       end
   #
-  #       def new_action   # GET /articles/new: a method named `new` would shadow ArticlesController.new
+  #       def new_action   # GET /articles/new: the generated routes call the `new` action by this name
   #         @article = Article.new
   #       end
   #
@@ -198,15 +196,26 @@ module Cybertrain
 
     def self.add_callback(callback)
       list = (CALLBACKS[self.name] ||= [])
-      if CONCERN_CALLBACK_AT.key?(self.name)
-        at = CONCERN_CALLBACK_AT[self.name]
-        at = list.size if at > list.size
-        list.insert(at, callback)
-        CONCERN_CALLBACK_AT[self.name] = at + 1
-      else
-        list << callback
-      end
+      list.insert(Controller.take_insert_index(CONCERN_CALLBACK_AT, self.name, list.size), callback)
       nil
+    end
+
+    # Where the next declaration of the class `name` goes in its list of
+    # `size` entries: the end, or during a {.concern_insert_at} splice the
+    # position recorded in `positions` (the end when it is past it), which
+    # then moves on by one.
+    # @param positions [Hash{String => Integer}] CONCERN_CALLBACK_AT or CONCERN_RESCUE_AT
+    # @param name [String]
+    # @param size [Integer]
+    # @return [Integer]
+    # @api private
+    def self.take_insert_index(positions, name, size)
+      return size unless positions.key?(name)
+
+      at = positions[name]
+      at = size if at > size
+      positions[name] = at + 1
+      at
     end
 
     # Written by gen/concerns.rb (`spin run gen`) around the `included`
@@ -234,8 +243,8 @@ module Cybertrain
       nil
     end
 
-    # Makes controller methods callable from this controller's templates
-    # (spec 4.3). A declaration only: `spin run gen` reads the names.
+    # Makes controller methods callable from this controller's templates.
+    # A declaration only: `spin run gen` reads the names.
     # @example
     #   helper_method :current_user, :admin?
     # @param names [Array<Symbol>]
@@ -260,7 +269,7 @@ module Cybertrain
       nil
     end
 
-    # This controller's own Content Security Policy (spec C-5): a copy of
+    # This controller's own Content Security Policy: a copy of
     # the nearest ancestor's, or of the application's
     # (Config#content_security_policy, declared in config/app.rb, which
     # loads first), yielded at once to the block and kept for this class
@@ -291,20 +300,20 @@ module Cybertrain
 
     # The policy content_security_policy declared for klass or its nearest
     # ancestor, nil when none did (the class is passed in, as for
-    # chain_for).
+    # lineage).
     # @param klass [Class]
     # @return [ContentSecurityPolicy, nil]
     # @api private
     def self.policy_for(klass)
       return nil if CSP_POLICIES.empty?
 
-      k = klass
-      while k
-        found = CSP_POLICIES[k.name]
+      names = Controller.lineage(klass)
+      i = 0
+      while i < names.size
+        found = CSP_POLICIES[names[i]]
         return found unless found.nil?
-        break if k == Controller
 
-        k = k.superclass
+        i += 1
       end
       nil
     end
@@ -366,12 +375,13 @@ module Cybertrain
     end
 
     # The skips that apply to klass: its own and its ancestors', up to
-    # Controller (the class is passed in, as for chain_for).
+    # Controller (the class is passed in, as for lineage).
     def self.skips_for(klass)
       skips = []
-      k = klass
-      while k
-        list = SKIPS[k.name]
+      names = Controller.lineage(klass)
+      i = 0
+      while i < names.size
+        list = SKIPS[names[i]]
         unless list.nil?
           j = 0
           while j < list.size
@@ -379,9 +389,7 @@ module Cybertrain
             j += 1
           end
         end
-        break if k == Controller
-
-        k = k.superclass
+        i += 1
       end
       skips
     end
@@ -431,32 +439,36 @@ module Cybertrain
     def self.rescue_from(klass, with: nil, &block)
       list = (RESCUES[self.name] ||= [])
       handler = RescueHandler.new(klass.name, with, block)
-      if CONCERN_RESCUE_AT.key?(self.name)
-        at = CONCERN_RESCUE_AT[self.name]
-        at = list.size if at > list.size
-        list.insert(at, handler)
-        CONCERN_RESCUE_AT[self.name] = at + 1
-      else
-        list << handler
-      end
+      list.insert(Controller.take_insert_index(CONCERN_RESCUE_AT, self.name, list.size), handler)
       nil
     end
 
-    # The class is passed in rather than read from self: an inherited class
-    # method called as self.class.chain_for binds self to the base class
-    # under Spinel.
-    def self.chain_for(klass)
-      names = []
+    # The names of klass and its ancestors up to Controller, nearest
+    # first. The class is passed in rather than read from self: an
+    # inherited class method called as self.class.lineage binds self to
+    # the base class under Spinel.
+    # @param klass [Class]
+    # @return [Array<String>]
+    # @api private
+    def self.lineage(klass)
+      names = Array.new(0) { "" }
       k = klass
       while k
-        names.unshift(k.name)
+        names << k.name
         break if k == Controller
 
         k = k.superclass
       end
+      names
+    end
+
+    # The callbacks that apply to klass, parents' first (the class is
+    # passed in, as for lineage).
+    def self.chain_for(klass)
+      names = Controller.lineage(klass)
       chain = []
-      i = 0
-      while i < names.size
+      i = names.size - 1
+      while i >= 0
         list = CALLBACKS[names[i]]
         unless list.nil?
           j = 0
@@ -465,16 +477,17 @@ module Cybertrain
             j += 1
           end
         end
-        i += 1
+        i -= 1
       end
       chain
     end
 
     def self.rescues_for(klass)
       handlers = []
-      k = klass
-      while k
-        list = RESCUES[k.name]
+      names = Controller.lineage(klass)
+      i = 0
+      while i < names.size
+        list = RESCUES[names[i]]
         unless list.nil?
           j = 0
           while j < list.size
@@ -482,9 +495,7 @@ module Cybertrain
             j += 1
           end
         end
-        break if k == Controller
-
-        k = k.superclass
+        i += 1
       end
       handlers
     end
@@ -631,7 +642,7 @@ module Cybertrain
       raise UnknownCallback, msg
     end
 
-    # Whether `name` is one of this controller's helper methods (spec 4.3):
+    # Whether `name` is one of this controller's helper methods:
     # gen/controllers.rb overrides it with a `case` over the names of the
     # controller's `helper_method` lines and its concerns', then `super`.
     # Called on self, never through a stored block.
@@ -697,7 +708,8 @@ module Cybertrain
     # has its interpolated values escaped; the answer is a String all the
     # same (wrap it in a SafeString to render it as HTML).
     # @example
-    #   redirect_to posts_path, notice: t(".created", title: @post.title)
+    #   flash[:notice] = t(".created", title: @post.title)
+    #   redirect_to posts_path, status: :see_other
     # @param key [String, Symbol]
     # @param options [Hash{Symbol => Object}] as for I18n.t
     # @return [String]
@@ -734,8 +746,8 @@ module Cybertrain
     end
 
     # The layout an action's HTML renders in: `"layouts/application"` (the
-    # configured {Views.layout_name}) here, and in a controller with
-    # `layout` lines the one they choose for the action. gen/controllers.rb
+    # configured `Cybertrain::Views.layout_name`) here, and in a controller
+    # with `layout` lines the one they choose for the action. gen/controllers.rb
     # writes the override from them, in order, the first that applies
     # winning, else `super`:
     #
@@ -843,8 +855,9 @@ module Cybertrain
       nil
     end
 
-    # Renders the response from a template, text, HTML or JSON: exactly
-    # one of template, plain:, html:, json: or partial:.
+    # Renders the response from a template, text, HTML, JSON, a partial or
+    # Turbo Stream elements: exactly one of template, `plain:`, `html:`,
+    # `json:`, `partial:` or `turbo_stream:`.
     #
     # An action that renders nothing renders its own template
     # (`app/views/<controller_path>/<action>.html.erb`) in the layout, or
@@ -858,8 +871,8 @@ module Cybertrain
     #   unless a `layout` line chooses another), when it exists. `layout:
     #   "admin"` (or `"layouts/admin"`) uses
     #   `app/views/layouts/admin.html.erb` instead, and raises
-    #   {MissingTemplate} when that layout does not exist; `layout: false`
-    #   none. Inside a {#respond_to} declaration for another format
+    #   `Cybertrain::MissingTemplate` when that layout does not exist;
+    #   `layout: false` none. Inside a {#respond_to} declaration for another format
     #   (`format.json { render :show }`) it is `<template>.<format>.erb`
     #   (`show.json.erb`), never in a layout.
     # - `plain:` the String as `text/plain`.
@@ -986,6 +999,8 @@ module Cybertrain
     end
 
     # The longest path {#local_path?} accepts, in bytes.
+    # @return [Integer]
+    # @api public
     MAX_LOCAL_PATH_BYTES = 2048
 
     # Whether `text` is a path on this site that is safe to redirect to: it
@@ -993,8 +1008,8 @@ module Cybertrain
     # host), holds printable ASCII only (no space, control character,
     # backslash or byte above 126: browsers strip or reinterpret those; a
     # path the browser sent is percent-encoded already) and is at most
-    # {MAX_LOCAL_PATH_BYTES} bytes. Use it on any destination that came
-    # from the request (a `return_to` parameter, a remembered page).
+    # 2048 bytes ({MAX_LOCAL_PATH_BYTES}). Use it on any destination that
+    # came from the request (a `return_to` parameter, a remembered page).
     # @example
     #   local_path?("/articles?page=2")   # => true
     #   local_path?("//evil.example/")    # => false
@@ -1092,8 +1107,8 @@ module Cybertrain
 
     # Serves stored bytes that came from a user (an upload), safely. This is
     # the only supported way to send an upload back: never put uploads under
-    # `public/`, because {Static} serves them with whatever type their
-    # extension implies.
+    # `public/`, because the static file middleware serves them with
+    # whatever type their extension implies.
     #
     # The bytes are untrusted, so the response never lets a browser run them:
     #
@@ -1106,9 +1121,8 @@ module Cybertrain
     # - `X-Content-Type-Options: nosniff`, `Content-Security-Policy:
     #   default-src 'none'; sandbox` and `Cache-Control: private,
     #   max-age=3600` are always set. (nosniff and `X-Frame-Options:
-    #   SAMEORIGIN` are also the defaults of every response, see
-    #   {Response#to_http}; the header set here is the one sent, not a
-    #   second copy.)
+    #   SAMEORIGIN` are also the defaults of every response; the header
+    #   set here is the one sent, not a second copy.)
     #
     # HEAD works as for any action: the Server leaves the body out.
     # @example
@@ -1267,7 +1281,7 @@ module Cybertrain
 
     def run_action(action, body)
       @action_name = action.to_s
-      # The request's `where` (spec section 13): the controller and action,
+      # The request's `where` (docs/design.md D88): the controller and action,
       # on the Context and on the thread's log Scope, which a RequestId
       # made for this request; nothing is written to the shared empty
       # Scope (a controller run without one: a test, a nested call).
@@ -1292,13 +1306,13 @@ module Cybertrain
           run_after_callbacks(chain, action)
         end
         HttpCache.add_vary_accept(@request, @response)
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
-        # JSON::ParserError named (NOTES rule 33: not a StandardError under
-        # Spinel) so an action's bad JSON.parse goes through
-        # rescue_with_handler like any other exception. A `rescue_from
-        # JSON::ParserError` handler fires under CRuby; under Spinel the
-        # constant cannot be referenced as a value (rule 48), so no app can
-        # register one there and the exception goes on to the error pages.
+      rescue StandardError => e
+        # An action's bad JSON.parse goes through rescue_with_handler
+        # like any other exception: a `rescue_from JSON::ParserError`
+        # handler is found by the class's name, and with none the
+        # exception goes on to the error pages. No test in test/ registers
+        # such a handler; spikes/rechecks/differing/rescue_from_json_error.rb
+        # does, compiled (NOTES status 48).
         rescue_with_handler(e)
         HttpCache.add_vary_accept(@request, @response)
       end
@@ -1370,11 +1384,11 @@ module Cybertrain
       # a Query.parse of its own past Query's limits) answers 400 with its
       # message in plain text, like Rails' bad-request page, instead of
       # surfacing as a 500. The decision is ClientError's, the same one the
-      # error pages use, by class name (NOTES rules 46, 47): comparing the
-      # full "Cybertrain::Params::ParameterMissing" here would miss under
-      # Spinel, where Class#name is the bare "ParameterMissing". Which
-      # headers survive is Response#client_error!'s policy; then performed!
-      # so the chain stops. classify also logs the "rejected request" info
+      # error pages use, by full class name (ClientError::CLIENT_FAULTS
+      # against `e.class.name`; NOTES rules 47 and 54 are why it is a list
+      # of names and not an `is_a?`). Which headers survive is
+      # Response#client_error!'s policy; then performed! so the chain
+      # stops. classify also logs the "rejected request" info
       # line, which the error pages write for the same fault one layer up
       # (Cybertrain.logger, as Dev::ErrorPage does), so an answer given here
       # is as visible as one given there. It is called only once status_for

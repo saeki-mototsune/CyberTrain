@@ -18,5 +18,11 @@ class GatedController < ApplicationController
 
   def log_visit
     response.set_header("X-Visit", "logged")
+    response.set_header("X-Class-Limits", "#{self.class.gate_limit} #{self.class.class_limit} #{self.class.parent_limit} " \
+                                          "#{self.class.stamp_limit} #{self.class.audit_limit}")
+    response.set_header("X-Limits", "#{gate_limit} #{class_limit} #{parent_limit} #{stamp_limit} #{audit_limit}")
   end
+
+  # AdminGate's class_methods has a class_limit too.
+  def class_limit = 2
 end

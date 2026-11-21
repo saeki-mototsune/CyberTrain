@@ -31,6 +31,8 @@ module Cybertrain
     # below 10**18, so reading one back never overflows a 64-bit Integer).
     MAX_DIGITS = 18
     # The largest id a token can carry.
+    # @return [Integer]
+    # @api public
     MAX_ID = 999_999_999_999_999_999
     # Hex digits of the HMAC-SHA256.
     MAC_HEX = 64
@@ -43,7 +45,8 @@ module Cybertrain
     #   Cybertrain::Token.issue("password_reset", user.id, 15 * 60, user.password_digest)
     #   # => "7--1762861200--3f9c..." (64 hex digits at the end)
     # @param purpose [String] what the token is for; non-empty, no `:`
-    # @param id [Integer] the record's id, 1 to {MAX_ID}
+    # @param id [Integer] the record's id, 1 to 999,999,999,999,999,999
+    #   ({MAX_ID})
     # @param expires_in [Integer] seconds, positive
     # @param bound_to [String] a value the token stops verifying without
     #   (the password digest, the address being confirmed)

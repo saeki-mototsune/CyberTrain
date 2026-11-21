@@ -1,10 +1,10 @@
 #!/bin/bash
-# Phase 5a spike, item 6 (spec section 16): the framework's own top-level-
+# Phase 5a spike, item 6: the framework's own top-level-
 # form test programs (test/*.rb) concatenated into one program, to see how
 # many compile together, what stops the rest (rules 41, 63, duplicate
 # top-level names), and the compile time and binary size against D34's
 # 14-minute full compile. A record, not a test; nothing in phase 5 depends
-# on the number (spec section 17).
+# on the number.
 #
 # Each file's `Cybertrain::Test.run!` line is dropped, its
 # `require_relative "x"` is rebased onto test/ (the bundle is written
@@ -62,7 +62,7 @@ echo "Cybertrain::Test.run!" >> "$bundle"
 echo "$n files, $(wc -l < "$bundle") lines in $bundle"
 
 # Top-level names defined in more than one file (a later `def` replaces an
-# earlier one under CRuby; the bundle of spec section 8 refuses them).
+# earlier one under CRuby; `cybertrain test`'s bundle refuses them).
 grep -H -E '^def [a-z_][A-Za-z0-9_]*[?!]?' $files | sed -E 's/^([^:]*):def ([a-z_][A-Za-z0-9_]*[?!]?).*/\2 \1/' |
   sort | awk '{c[$1]++; f[$1]=f[$1]" "$2} END {for (k in c) if (c[k] > 1) d++; print d+0, "top-level method names defined in more than one file"}'
 grep -H -E '^[A-Z][A-Z0-9_]* *=' $files | sed -E 's/^([^:]*):([A-Z][A-Z0-9_]*).*/\2 \1/' |

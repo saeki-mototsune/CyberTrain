@@ -3,10 +3,11 @@ require "cybertrain/middleware/csrf_protection"
 require "cybertrain/middleware/session_store"
 require "cybertrain/router"
 
-# Task 7 review, issue 3 (compile fragility): several program shapes the
+# Compile fragility a review found: several program shapes the
 # framework itself produces failed to compile under Spinel before this fix
-# (CsrfProtection.token_for took a bare `session` parameter that widened to
-# an untyped poly value across call sites -- see Session#csrf_token!).
+# (a CsrfProtection.token_for helper, since removed, took a bare `session`
+# parameter that widened to an untyped poly value across call sites -- see
+# Session#csrf_token!).
 # Documented here is which of those shapes now compile.
 #
 # COMPILES (covered below and by test/csrf_chain.rb):
@@ -17,30 +18,25 @@ require "cybertrain/router"
 #     instantiation where the `false` branch is the one actually taken at
 #     run time, so `CsrfProtection.new` is never *executed*, only present
 #     as a reachable call site in the source.
-#   - `CsrfProtection.token_for(ctx.session)` called from inside a Router
+#   - `ctx.session.csrf_token!` called from inside a Router
 #     block, i.e. from a route handler (the shape the form helpers in
 #     cybertrain/template/helpers.rb use) -- see test/csrf_chain.rb.
 #   - The real production stack, SessionStore -> CsrfProtection -> Router,
 #     built and called end to end -- see test/csrf_chain.rb.
 #
-# STILL DOES NOT COMPILE (a genuine Spinel whole-program type-inference gap,
-# not something fixable from cybertrain code -- tracked, not worked around):
+# DID NOT COMPILE on Spinel 2026.09.12 (the record behind spikes/NOTES.md
+# rule 36; the failing program was not kept):
 #   - `require "cybertrain/middleware/session_store"` in a program where
-#     `SessionStore#call` is never reachable (SessionStore is never
-#     instantiated, or is instantiated but its `#call` chain is never
-#     invoked). The dead method body still gets type-checked with no
-#     concrete Session usage to pin its types, and that miscompiles code in
-#     cybertrain/params.rb that has nothing to do with sessions. Requiring
-#     session_store.rb is safe exactly when the program also builds AND
-#     calls a real SessionStore chain, which is always true of a real app
-#     (Application#stack always instantiates and calls SessionStore) and of
-#     every test here.
-class Page < Cybertrain::Middleware
-  def call(ctx)
-    ctx.response.body = "page"
-    nil
-  end
-end
+#     `SessionStore#call` was never reachable (SessionStore never
+#     instantiated, or instantiated without its `#call` chain being
+#     invoked). The dead method body was still type-checked with no
+#     concrete Session usage to pin its types, and that miscompiled code in
+#     cybertrain/params.rb that has nothing to do with sessions. A program
+#     of this shape that uses params.rb compiles in a probe on
+#     2026.11.04.7026 (NOTES status 36, which has its source); that is one
+#     program, so every test here still builds AND calls a real
+#     SessionStore chain when it requires session_store.rb, as a real app
+#     always does (Application#stack instantiates and calls SessionStore).
 
 # Mirrors Application#stack: `CsrfProtection (if csrf)`.
 def build_stack(router, csrf)

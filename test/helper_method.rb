@@ -6,7 +6,7 @@ require "cybertrain/model"
 require "cybertrain/job"
 require "cybertrain/generator"
 require_relative "fixtures/gen_app/config/routes"
-# helper_method (spec 4.3), on the fixture app loaded through its
+# helper_method (docs/design.md D60), on the fixture app loaded through its
 # checked-in gen/app.rb: PostsController declares `helper_method
 # :viewer_name, :price_label`, GatedController gets `helper_method :admin?`
 # from AdminGate's `included` block, and gen/controllers.rb dispatches each

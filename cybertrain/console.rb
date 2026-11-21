@@ -12,7 +12,7 @@
 #
 # The model names reach the generated models through four module-level
 # accessors that the application's generated gen/console.rb sets (a `case`
-# table per model: no computed dispatch, spikes/NOTES.md rule 2). Until they
+# table per model: no computed dispatch, spikes/NOTES.md rule 1). Until they
 # are set, every model name is an UnknownModel, so this file needs no gen/
 # file to compile:
 #
@@ -102,8 +102,10 @@ module Cybertrain
     # `no model "Nope" (models: Article, Comment)`. The `else` of a
     # generated scope / create table calls it. Typed as returning a
     # Relation (never reached), so a lambda that ends in it has the type of
-    # the real builder: raise, then a typed value, so the method is never a
-    # body whose only expression is `raise` (NOTES rule 79).
+    # the real builder: raise, then a typed value. Without the value, a
+    # rescuing method given this helper and a default builder's call as
+    # blocks does not compile (NOTES rule 124; test/console.rb has the
+    # case).
     # @param name [String]
     # @return [Relation] never: it always raises
     # @raise [UnknownModel]
@@ -114,7 +116,7 @@ module Cybertrain
     end
 
     # {Console.unknown_model} for create_builder: typed as returning a
-    # record (raise, then a typed value: NOTES rule 79).
+    # record (raise, then a typed value: NOTES rule 124).
     # @param name [String]
     # @return [Model] never: it always raises
     # @raise [UnknownModel]
@@ -197,9 +199,8 @@ module Cybertrain
     end
 
     # One line's output: its value, or the error it raised, newline-ended.
-    # The rescue sits in this plain method (NOTES rules 32/45); JSON's
-    # errors are named because they are not StandardErrors under Spinel
-    # (rules 33 and 61). The rescued class is spelt from the top
+    # The rescue sits in this plain method (NOTES rules 32/45). The
+    # rescued class is spelt from the top
     # (`Cybertrain::Template::...`): a relative `Template::SyntaxError` in a
     # rescue clause is not found (NOTES rule 81).
     def self.evaluate_line(text, lineno, helpers, interp, env)
@@ -207,9 +208,8 @@ module Cybertrain
       names = Console.env_names(env)
       shown = ""
       failed = true
-      # Every class the console prints is named exactly, from the top: a
-      # rescue clause does not see an exception's superclass under Spinel
-      # (NOTES rule 54) and a relative path can miss (rule 81).
+      # A template SyntaxError is printed without its class path; every
+      # other error goes through failure_text.
       begin
         value = evaluate(text, lineno, interp, env)
         env["_"] = value
@@ -217,13 +217,7 @@ module Cybertrain
         failed = false
       rescue Cybertrain::Template::SyntaxError => e
         shown = "SyntaxError: #{e.message}\n"
-      rescue Cybertrain::Template::RuntimeError => e
-        shown = "#{failure_text(helpers, e, lineno)}\n"
-      rescue Cybertrain::Console::UnknownModel => e
-        shown = "#{failure_text(helpers, e, lineno)}\n"
-      rescue Cybertrain::RecordNotFound => e
-        shown = "#{failure_text(helpers, e, lineno)}\n"
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      rescue StandardError => e
         shown = "#{failure_text(helpers, e, lineno)}\n"
       end
       Console.drop_new_names(env, names) if failed

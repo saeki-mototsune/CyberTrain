@@ -1,8 +1,9 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/job_scan"
 
 module Cybertrain
   module Gen
-    # Writes gen/jobs.rb (spec sections 2.2 and 3): per job class the
+    # Writes gen/jobs.rb (docs/design.md D51): per job class the
     # reopened class with `self.job_kind`, `perform_later`, `perform_at`,
     # `perform_in`, `perform_now` and `self.run_job(run)`, whose policies are
     # literal `rescue` arms in declaration order (Spinel has no computed
@@ -36,7 +37,7 @@ module Cybertrain
 
       # A job's own policies, then each ancestor's, nearest first.
       def self.policies_of(info, infos)
-        out = Array.new(0) { PolicyInfo.new("", "", 0, false, 0, 0) }
+        out = Array.new(0) { PolicyInfo.new("", "", 0, false, 0) }
         info.policies.each { |p| out << p }
         JobScan.ancestors(info, infos).each { |a| a.policies.each { |p| out << p } }
         out
@@ -74,23 +75,7 @@ module Cybertrain
         superclass = info.superclass_name
         superclass = "::#{superclass}" unless superclass.start_with?("::")
         body = plain_class_source(info, parts.last.to_s, superclass, policies)
-        out = +""
-        depth = 0
-        parts.each_with_index do |mod, i|
-          next if i == parts.size - 1
-
-          out << ("  " * depth) << "#{info.scope_keywords[i]} #{mod}\n"
-          depth += 1
-        end
-        body.each_line do |line|
-          out << ("  " * depth) unless line == "\n"
-          out << line
-        end
-        while depth > 0
-          depth -= 1
-          out << ("  " * depth) << "end\n"
-        end
-        out
+        SourceText.wrap_in_scopes(info.class_name, info.scope_keywords, body)
       end
 
       def self.plain_class_source(info, name, superclass, policies)

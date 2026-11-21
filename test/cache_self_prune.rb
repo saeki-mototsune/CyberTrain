@@ -3,8 +3,8 @@ require "cybertrain/cache"
 require "cybertrain/test"
 require_relative "support/log_capture"
 
-# Cybertrain::Cache without jobs (the optional-subsystems design, section
-# 4): no scheduler runs its prune, so a write prunes the expired rows itself:
+# Cybertrain::Cache without jobs (docs/design.md D85): no scheduler runs
+# its prune, so a write prunes the expired rows itself:
 # the first write of the process, and the first once
 # Config#cache_prune_interval (300 s by default) has passed since the last
 # prune, at most one batch (Cache::PRUNE_BATCH, 1000 rows) per write; a full

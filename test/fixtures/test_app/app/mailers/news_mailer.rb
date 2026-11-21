@@ -1,4 +1,4 @@
-# The mail test/mailers/news_mailer_test.rb checks (spec section 10): a
+# The mail test/mailers/news_mailer_test.rb checks: a
 # mailer method answers a Cybertrain::MailMessage, sent with deliver_now
 # or deliver_later.
 module NewsMailer

@@ -1,5 +1,7 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/inflector"
 require "cybertrain/generator/helper_scan"
+require "cybertrain/generator/concern_scan"
 
 module Cybertrain
   module Gen
@@ -25,7 +27,7 @@ module Cybertrain
       end
     end
 
-    # One method a `rate_limit` line names (spec C-4): rate_limit_option is
+    # One method a `rate_limit` line names: rate_limit_option is
     # "by", "with", "if" or "unless", rate_limit_method the method's name,
     # rate_limit_place the line ("app/controllers/x.rb:3"), for a refusal.
     class RateLimitRef
@@ -42,7 +44,7 @@ module Cybertrain
     class ControllerInfo
       attr_reader :file, :class_name, :superclass_name, :ivars, :callbacks,
                   :includes, :include_positions, :rescue_positions, :include_lines,
-                  :method_names, :method_lines, :module_prefix, :helper_methods, :defs, :def_errors, :layouts,
+                  :method_names, :module_prefix, :helper_methods, :defs, :def_errors, :layouts,
                   :rate_limit_refs
 
       # includes: the module names of the class's `include` lines, in the
@@ -51,11 +53,11 @@ module Cybertrain
       # include_positions / rescue_positions: per include, the count of
       # callback declarations (before_action, after_action, rate_limit) / of
       # rescue_from lines above it in the class.
-      # include_lines: per include, its line number. method_names /
-      # method_lines: the class's instance `def`s. module_prefix: the
-      # modules around the class line ("Admin"; "" at the top level).
-      # helper_methods: the names of the class's `helper_method` lines
-      # (spec 4.3), in order; defs: a HelperDef per instance `def` (its
+      # include_lines: per include, its line number. method_names: the
+      # class's instance `def`s. module_prefix: the modules around the
+      # class line ("Admin"; "" at the top level).
+      # helper_methods: the names of the class's `helper_method` lines,
+      # in order; defs: a HelperDef per instance `def` (its
       # parameters when HelperScan.parse_def reads them, else the name and
       # line); def_errors: per def, HelperScan's message when it could not
       # read the parameters ("" when it could), so a helper_method naming
@@ -65,7 +67,7 @@ module Cybertrain
       def initialize(file, class_name, superclass_name, ivars, callbacks,
                      includes = Array.new(0) { "" }, include_positions = Array.new(0) { 0 },
                      rescue_positions = Array.new(0) { 0 }, include_lines = Array.new(0) { 0 },
-                     method_names = Array.new(0) { "" }, method_lines = Array.new(0) { 0 }, module_prefix = "")
+                     method_names = Array.new(0) { "" }, module_prefix = "")
         @file = file
         @class_name = class_name
         @superclass_name = superclass_name
@@ -76,13 +78,12 @@ module Cybertrain
         @rescue_positions = rescue_positions
         @include_lines = include_lines
         @method_names = method_names
-        @method_lines = method_lines
         @module_prefix = module_prefix
         @helper_methods = Array.new(0) { "" }
-        @defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        @defs = HelperScan.no_helper_defs
         @def_errors = Array.new(0) { "" }
-        @layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
-        @rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
+        @layouts = ControllerScan.no_layout_decls
+        @rate_limit_refs = ControllerScan.no_rate_limit_refs
       end
 
       # A superclass written bare inside a module, once every controller is
@@ -105,8 +106,8 @@ module Cybertrain
     # `end` at its own indentation, so `module Admin` around `class
     # ArticlesController < ApplicationController` is Admin::ArticlesController
     # (the compact `class Admin::ArticlesController` too), and reads the
-    # class's `include` lines (concerns, spec 4.1), its `helper_method`
-    # lines (spec 4.3) and instance `def`s.
+    # class's `include` lines (concerns), its `helper_method`
+    # lines and instance `def`s.
     module ControllerScan
       CLASS_LINE = /\A\s*class\s+([A-Z][\w:]*)\s*<\s*([A-Z][\w:]*)/
       MODULE_LINE = /\A\s*module\s+([A-Z][\w:]*)\s*(?:#.*)?\z/
@@ -145,6 +146,17 @@ module Cybertrain
       LAYOUT_OPTION = /\A,\s*(only|except):\s*(\[[^\]]*\]|%i\[[^\]]*\]|:\w+[?!]?)\s*/
       LAYOUT_UNREADABLE = "layout takes a name (layout \"admin\"), false, or a method's name (layout :choose_layout), then only: or except:"
 
+      # An empty list of rate_limit references (a new Array each call):
+      # the one place that spells the element type out for the compiler.
+      def self.no_rate_limit_refs
+        Array.new(0) { RateLimitRef.new("", "", "") }
+      end
+
+      # An empty list of layout declarations, likewise.
+      def self.no_layout_decls
+        Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
+      end
+
       # nil when the source has no `class X < Y` line. When a file defines
       # several classes, the one named after the file wins
       # (posts_controller.rb -> PostsController).
@@ -160,12 +172,11 @@ module Cybertrain
         rescue_positions = Array.new(0) { 0 }
         include_lines = Array.new(0) { 0 }
         method_names = Array.new(0) { "" }
-        method_lines = Array.new(0) { 0 }
         helper_methods = Array.new(0) { "" }
-        defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+        defs = HelperScan.no_helper_defs
         def_errors = Array.new(0) { "" }
-        layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
-        rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
+        layouts = ControllerScan.no_layout_decls
+        rate_limit_refs = ControllerScan.no_rate_limit_refs
         lines = source.lines
         # The open modules (full names) and their indentation.
         modules = Array.new(0) { "" }
@@ -182,13 +193,13 @@ module Cybertrain
           stripped = line.strip
           next if stripped.start_with?("#")
 
-          indent = indent_of(line)
-          if class_indent >= 0 && indent <= class_indent && closing_end?(stripped)
+          indent = SourceText.indent_of(line)
+          if class_indent >= 0 && indent <= class_indent && SourceText.closing_end?(stripped)
             class_indent = -1
             def_indent = -1
             next
           end
-          if class_indent < 0 && !module_indents.empty? && indent <= module_indents.last && closing_end?(stripped)
+          if class_indent < 0 && !module_indents.empty? && indent <= module_indents.last && SourceText.closing_end?(stripped)
             modules.pop
             module_indents.pop
             next
@@ -213,12 +224,11 @@ module Cybertrain
               rescue_positions = Array.new(0) { 0 }
               include_lines = Array.new(0) { 0 }
               method_names = Array.new(0) { "" }
-              method_lines = Array.new(0) { 0 }
               helper_methods = Array.new(0) { "" }
-              defs = Array.new(0) { HelperDef.new("", 0, [], [], [], [], "") }
+              defs = HelperScan.no_helper_defs
               def_errors = Array.new(0) { "" }
-              layouts = Array.new(0) { LayoutDecl.new("", "", [], [], 0) }
-              rate_limit_refs = Array.new(0) { RateLimitRef.new("", "", "") }
+              layouts = ControllerScan.no_layout_decls
+              rate_limit_refs = ControllerScan.no_rate_limit_refs
               callbacks_above = 0
               rescues_above = 0
               class_indent = indent unless stripped.include?(";")
@@ -240,7 +250,6 @@ module Cybertrain
             dm = line.match(DEF_NAME)
             if dm
               method_names << dm[1].to_s
-              method_lines << number
               defs << def_at(file, lines, number, def_errors)
             end
             helper_method_names(line).each { |n| helper_methods << n unless helper_methods.include?(n) }
@@ -252,7 +261,7 @@ module Cybertrain
             # Declarations are class-body lines: not a method's (a local
             # named layout is no declaration).
             if def_indent >= 0
-              def_indent = -1 if indent <= def_indent && closing_end?(stripped)
+              def_indent = -1 if indent <= def_indent && SourceText.closing_end?(stripped)
             elsif stripped.match?(DEF_OPEN)
               def_indent = indent unless one_line_def?(lines, number)
             else
@@ -266,7 +275,7 @@ module Cybertrain
         return nil if class_name == ""
 
         info = ControllerInfo.new(file, class_name, superclass_name, ivars, callbacks, includes, include_positions,
-                                  rescue_positions, include_lines, method_names, method_lines, prefix)
+                                  rescue_positions, include_lines, method_names, prefix)
         helper_methods.each { |n| info.helper_methods << n }
         defs.each { |d| info.defs << d }
         def_errors.each { |e| info.def_errors << e }
@@ -340,7 +349,7 @@ module Cybertrain
       # ArgumentError, naming the line, for one of those options given
       # anything but a Symbol or nil (a lambda, a String).
       def self.rate_limit_refs_at(file, lines, number)
-        refs = Array.new(0) { RateLimitRef.new("", "", "") }
+        refs = ControllerScan.no_rate_limit_refs
         line = lines[number - 1].to_s
         return refs unless line.match?(RATE_LIMIT_CALL)
 
@@ -455,7 +464,7 @@ module Cybertrain
       def self.scan_dir(dir)
         infos = []
         concerns_dir = "#{dir}/concerns/"
-        ruby_files(dir).each do |path|
+        SourceText.ruby_files(dir).each do |path|
           next if path.start_with?(concerns_dir)
 
           info = scan_source(path, File.read(path))
@@ -488,41 +497,6 @@ module Cybertrain
           end
         end
         nil
-      end
-
-      # Sorted "<dir>/<rel>.rb" paths under dir ([] when dir is missing).
-      def self.ruby_files(dir)
-        files = []
-        return files unless File.directory?(dir)
-
-        Dir.children(dir).sort.each do |entry|
-          path = "#{dir}/#{entry}"
-          if File.directory?(path)
-            ruby_files(path).each { |f| files << f }
-          elsif entry.end_with?(".rb")
-            files << path
-          end
-        end
-        files.sort
-      end
-
-      def self.indent_of(raw)
-        n = 0
-        raw.each_char do |ch|
-          break unless ch == " " || ch == "\t"
-
-          n += 1
-        end
-        n
-      end
-
-      # "end", "end # comment", "end;" or an "end." chain.
-      def self.closing_end?(line)
-        return false unless line.start_with?("end")
-        return true if line == "end"
-
-        nxt = line[3, 1]
-        nxt == " " || nxt == "#" || nxt == ";" || nxt == "."
       end
 
       # "app/controllers/x.rb" for a path under the project root (messages

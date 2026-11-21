@@ -1,6 +1,6 @@
 # ActiveSupport::Concern, as far as a controller or model concern needs
-# it to compile (spec sections 4.1 and 4.2, plan decision 11). `ActiveSupport` as a whole
-# does not exist.
+# it to compile (docs/design.md D60). `ActiveSupport` as a whole does not
+# exist.
 module ActiveSupport
   # Lets a module of `app/controllers/concerns` (or `app/models/concerns`)
   # be written the Rails way:
@@ -46,12 +46,9 @@ module ActiveSupport
   # without a receiver (`scope :visible, -> { where(hidden: 0) }`).
   #
   # Differences from Rails: `around_action` in an `included` block is
-  # refused (there are no around callbacks); a `class_methods` method may
-  # not share its name with an instance method of the concern or of a
-  # class that includes it (the compiled program would also give every
-  # including class an instance method of that name; spikes/NOTES.md rule
-  # 93), nor, in a model, with a scope or a class method every model has;
-  # and a model concern's callbacks (`before_save` and the rest) run after
+  # refused (there are no around callbacks); in a model, a `class_methods`
+  # method may not share its name with a scope or with a class method
+  # every model has; and a model concern's callbacks (`before_save` and the rest) run after
   # all of the model's own, wherever the `include` stands (Rails runs them
   # in declaration order, so a concern included first runs first).
   # @api public

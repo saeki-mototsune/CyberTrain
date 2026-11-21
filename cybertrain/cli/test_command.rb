@@ -1,4 +1,4 @@
-# `cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]` (spec section 8): every
+# `cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]` (docs/design.md D83): every
 # test of the application in one program. The arguments are checked first
 # (Test::Args, the same parser the compiled bundle filters with), then
 # `SPIN_DEBUG=1 spin run gen` writes gen/tests.rb and gen/test/**, gen/tests.rb is
@@ -158,10 +158,10 @@ module Cybertrain
         File.file?(path) ? File.read(path) : "(none)\n"
       end
 
-      # The bundle's compile, run in the application's directory (plan
-      # decision 7, as task 1's spike recorded it): gen/test before test,
-      # so a top-level-form file's `require "test_helper"` finds the copy
-      # the bundle already loaded (ruling R9). `$(spin flags)` is split by
+      # The bundle's compile, run in the application's directory (the
+      # command spikes/phase5/class_app/tests.rb records): gen/test before
+      # test, so a top-level-form file's `require "test_helper"` finds the
+      # copy the bundle already loaded. `$(spin flags)` is split by
       # the shell, as spin prints it: a path with a space in it cannot be
       # passed through it.
       # @param root [String]

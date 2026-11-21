@@ -69,33 +69,21 @@ decide() {
   echo "preview_e2e=$e2e"
 }
 
-# expect WANT PATH...: decide on the paths and compare `framework`;
-# expect_cruby does the same for `cruby_preview`, expect_e2e for
-# `preview_e2e`.
-expect() {
-  want="framework=$1"
-  shift
-  got=$(printf '%s\n' "$@" | decide | grep '^framework=')
+# expect_key KEY WANT PATH...: decide on the paths and compare the output
+# line KEY with KEY=WANT. expect WANT PATH... does it for `framework`,
+# expect_cruby for `cruby_preview`, expect_e2e for `preview_e2e`.
+expect_key() {
+  key=$1
+  want="$key=$2"
+  shift 2
+  got=$(printf '%s\n' "$@" | decide | grep "^$key=")
   if [ "$got" = "$want" ]; then return 0; fi
   echo "script/ci-changes: $* gave $got, expected $want" >&2
   failed=1
 }
-expect_cruby() {
-  want="cruby_preview=$1"
-  shift
-  got=$(printf '%s\n' "$@" | decide | grep '^cruby_preview=')
-  if [ "$got" = "$want" ]; then return 0; fi
-  echo "script/ci-changes: $* gave $got, expected $want" >&2
-  failed=1
-}
-expect_e2e() {
-  want="preview_e2e=$1"
-  shift
-  got=$(printf '%s\n' "$@" | decide | grep '^preview_e2e=')
-  if [ "$got" = "$want" ]; then return 0; fi
-  echo "script/ci-changes: $* gave $got, expected $want" >&2
-  failed=1
-}
+expect() { expect_key framework "$@"; }
+expect_cruby() { expect_key cruby_preview "$@"; }
+expect_e2e() { expect_key preview_e2e "$@"; }
 
 if [ "${1:-}" = "--self-test" ]; then
   failed=0

@@ -3,8 +3,8 @@
 The CyberTrain-vs-Rails benchmark: [docs/benchmark.md](../docs/benchmark.md)
 has the method, the recorded results and how to run it.
 
-The two apps are out of step at the moment, and `run` stops at its static
-request: [The apps today](../docs/benchmark.md#the-apps-today) says what has
+The two apps are out of step at the moment, and `run` stops while seeding
+examples/blog: [The apps today](../docs/benchmark.md#the-apps-today) says what has
 to be done before the next run.
 
 - `run` builds [examples/blog](../examples/blog) (`cybertrain build`) and
@@ -13,8 +13,8 @@ to be done before the next run.
   `results/<date>.json`.
 - `report` prints the Markdown tables of docs/benchmark.md from a result.
 - `rails_blog/` is the blog in Rails 8.1, as examples/blog was at the last
-  recorded run ([its README](rails_blog/README.md) lists every change from
-  `rails new`).
+  recorded run plus the cover image added to both since
+  ([its README](rails_blog/README.md) lists every change from `rails new`).
 - `results/` holds the recorded runs; `tmp/` (ignored) the scratch copies,
   server logs and the pages each app served.
 

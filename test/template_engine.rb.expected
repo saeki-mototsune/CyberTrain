@@ -9,6 +9,6 @@ ok   relative paths and symlinks that stay within the root still render
 ok   missing paths and non-files use the missing template behavior
 ok   a reloaded symlink is checked again before reading
 ok   cache off re-reads a template after a rewrite
-ok   cache on keeps the first parse until clear_cache!
+ok   cache on keeps the first parse
 ok   errors name the template file and line
-13 tests, 76 assertions, 0 failures
+13 tests, 75 assertions, 0 failures

@@ -1,5 +1,5 @@
 ---
-source_sha256: 4d2f34b5565d3b155fb42b317bb2b8548de7e76aeab9e9f2f11e8cf44f6bd971
+source_sha256: 0ac92df8f2d3d6ae1a67b27813f027a53e1ada3527cc73bb34c9baad2db17ab7
 ---
 # Temps réel : des flux vers le navigateur
 
@@ -41,19 +41,23 @@ fonctionnalité.
 
 [Turbo](https://turbo.hotwired.dev) met une page à jour à partir d’éléments
 `<turbo-stream action="append" target="comments">`, comme le font les
-applications Rails 8. Chargez Turbo dans le layout (il n’y a pas d’asset
-pipeline&nbsp;: un CDN ou une copie dans `public/`), et abonnez une page avec
+applications Rails 8. Chargez Turbo par l’import map&nbsp;: décommentez le pin
+`@hotwired/turbo` de `config/importmap.rb` et `import "@hotwired/turbo"` dans
+`app/javascript/application.js`, deux lignes écrites par `cybertrain new`
+([L’import map](assets.md#the-import-map)), et abonnez une page avec
 `turbo_stream_from`. Les diffusions, le point d’accès des flux et les helpers
 de flux demandent `require "cybertrain/streams"` dans `bin/<app>.rb` et
 `bin/db.rb`&nbsp;; sans elle, `spin run gen` s’arrête au premier
 `turbo_stream_from` et nomme la ligne
 ([Sous-systèmes](how-it-works.md#subsystems))&nbsp;:
 
-```erb app/views/layouts/application.html.erb (extrait)
-<head>
-  <%= csrf_meta_tags %>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8/dist/turbo.es2017-esm.js"></script>
-</head>
+```ruby config/importmap.rb
+pin "application"
+pin "@hotwired/turbo", to: "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js"
+```
+
+```javascript app/javascript/application.js
+import "@hotwired/turbo"
 ```
 
 ```erb app/views/articles/show.html.erb (extrait)
@@ -110,22 +114,29 @@ Drive). Le scaffold répond déjà comme Turbo l’attend&nbsp;: une redirection
 
 ### Répondre à un formulaire par un Turbo Stream
 
-Un formulaire que Turbo soumet accepte `text/vnd.turbo-stream.html`. Pour
-répondre par un flux plutôt que par une redirection, rendez l’élément
-vous-même&nbsp;; `Cybertrain::Turbo` les construit (`replace`, `update`,
-`append`, `prepend`, `before`, `after`, `remove`, `refresh`)&nbsp;:
+Un formulaire que Turbo soumet accepte `text/vnd.turbo-stream.html`, donc le
+format de la requête est `:turbo_stream`. Pour répondre par un flux plutôt
+que par une redirection, listez ce format, comme dans Rails
+([Formats et `respond_to`](requests.md#formats-and-respond_to))&nbsp;:
 
 ```ruby
 def destroy
   @comment = Comment.where(article_id: @article.id).find(params[:id])
   @comment.destroy
-  if request.header("accept").to_s.include?("text/vnd.turbo-stream.html")
-    render html: Cybertrain::Turbo.remove(@comment), content_type: "text/vnd.turbo-stream.html"
-  else
-    redirect_to article_path(@article), status: :see_other
+  respond_to do |format|
+    format.turbo_stream { render turbo_stream: turbo_stream.remove(@comment) }
+    format.html { redirect_to article_path(@article), status: :see_other }
   end
 end
 ```
+
+`turbo_stream` construit `replace`, `update`, `append`, `prepend`, `before`
+et `after` (une cible et, au choix, `partial:` avec `locals:` ou `html:`),
+ainsi que `remove`. Un `format.turbo_stream` sans bloc rend
+`<action>.turbo_stream.erb`, sans le layout, et le même constructeur y est un
+helper (`<%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>`, tiré du `create.turbo_stream.erb` d’examples/blog). Hors d’un
+contrôleur ou d’un template, `Cybertrain::Turbo` construit les éléments&nbsp;:
+les sept mêmes et `refresh`.
 
 ### Diffuser depuis un job, une tâche ou un flux
 
@@ -238,7 +249,10 @@ trop de retard.
 Une action peut garder sa propre réponse ouverte, comme le fait
 `ActionController::Live` de Rails&nbsp;: `stream` exécute le bloc après
 l’action, sur le thread de la connexion, et lui donne le socket sous la forme
-d’un `Cybertrain::Sink`.
+d’un `Cybertrain::Sink`. `stream` et le `Sink` sont dans le cœur&nbsp;;
+`Cybertrain::SSE`, qu’utilise l’exemple, vient avec
+`require "cybertrain/streams"`, et une application sans cette ligne requiert
+`cybertrain/http/sse` elle-même.
 
 ```ruby app/controllers/reports_controller.rb (extrait)
 def progress
@@ -268,7 +282,8 @@ dérivée de `secret_key_base` pour les seuls flux (comme
 jamais un cookie de session valide&nbsp;; le point d’entrée vérifie la signature et ne lit ni
 la session ni la base de données. C’est le modèle de Turbo&nbsp;: qui pouvait
 rendre la page pouvait lire ses flux. Les jetons n’expirent pas&nbsp;;
-changer `secret_key_base` les invalide tous, et une page restée ouverte à
+changer `secret_key_base` (`CYBERTRAIN_SECRET_KEY_BASE`) les invalide tous,
+et toutes les sessions avec eux, et une page restée ouverte à
 travers ce déploiement ne reçoit plus rien (un `EventSource` tient le 403
 pour définitif) jusqu’à son rechargement.
 
@@ -278,8 +293,6 @@ pour définitif) jusqu’à son rechargement.
   (`"users:7"`), rendu seulement sur les pages de cet utilisateur.
   Quiconque obtient le jeton peut lire ce flux, tant que le secret ne change
   pas.
-- Les jetons n’expirent pas. Changer `CYBERTRAIN_SECRET_KEY_BASE` invalide
-  tous les jetons (et toutes les sessions).
 - Le jeton voyage dans l’URL, donc le journal d’accès d’un reverse proxy
   l’enregistre. Le journal des requêtes du framework l’écrit `[FILTERED]`&nbsp;;
   désactivez la journalisation du proxy pour `/cybertrain/stream`, ou gardez

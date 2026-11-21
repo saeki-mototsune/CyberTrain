@@ -177,79 +177,6 @@ test "a list sent where a scalar is permitted is dropped, not coerced" do
   assert_equal({}, params_from("post[title][]=x").require(:post).permit(:title))
 end
 
-test "merge! lets the other Params win on conflicts" do
-  a = Cybertrain::Params.new
-  a.set_value("id", "1")
-  a.set_value("keep", "yes")
-  a.add_list_value("tags", "a")
-  a.child!("post").set_value("title", "old")
-
-  b = Cybertrain::Params.new
-  b.set_value("id", "2")
-  b.add_list_value("tags", "b")
-  b.child!("post").set_value("title", "new")
-
-  a.merge!(b)
-
-  assert_equal "2", a["id"]
-  assert_equal "yes", a["keep"]
-  assert_equal ["b"], a.list("tags")
-  assert_equal "new", a.nested("post")["title"]
-end
-
-test "merge! deep-merges nested Params, keeping receiver-only keys" do
-  a = Cybertrain::Params.new
-  a.child!("post").set_value("a", "1")
-
-  b = Cybertrain::Params.new
-  b.child!("post").set_value("b", "2")
-
-  a.merge!(b)
-
-  assert_equal "1", a.nested("post")["a"]
-  assert_equal "2", a.nested("post")["b"]
-end
-
-test "merge! does not alias other's lists or nested params" do
-  a = Cybertrain::Params.new
-
-  b = Cybertrain::Params.new
-  b.add_list_value("t", "x")
-  b.child!("c").set_value("k", "v")
-
-  a.merge!(b)
-  a.add_list_value("t", "y")
-  a.child!("c").set_value("k2", "v2")
-
-  assert_equal ["x"], b.list("t")
-  assert_equal({ "k" => "v" }, b.nested("c").to_h)
-  assert_equal "{\"t\"=>[\"x\"], \"c\"=>{\"k\"=>\"v\"}}", b.inspect
-end
-
-test "merge! preserves inspect ordering: receiver order first, then other's new keys" do
-  a = Cybertrain::Params.new
-  a.set_value("keep", "yes")
-  a.add_list_value("tags", "a")
-  a.child!("post").set_value("title", "old")
-
-  b = Cybertrain::Params.new
-  b.set_value("id", "2")
-  b.set_value("keep", "no")
-  b.add_list_value("tags", "b")
-  b.add_list_value("extra", "z")
-  b.child!("post").set_value("title", "new")
-  b.child!("author").set_value("name", "matz")
-
-  a.merge!(b)
-
-  ["keep", "id", "tags", "extra", "post", "author"].each { |k| assert a.key?(k) }
-  assert_equal(
-    "{\"keep\"=>\"no\", \"id\"=>\"2\", \"tags\"=>[\"b\"], \"extra\"=>[\"z\"], " \
-      "\"post\"=>{\"title\"=>\"new\"}, \"author\"=>{\"name\"=>\"matz\"}}",
-    a.inspect
-  )
-end
-
 test "a name can only be one kind at a time: last write wins, like Rack" do
   p = Cybertrain::Params.new
   p.set_value("a", "1")
@@ -282,23 +209,6 @@ test "to_h returns only scalars, empty? and inspect are deterministic" do
   refute p.empty?
   assert_equal({ "id" => "1" }, p.to_h)
   assert_equal "{\"id\"=>\"1\", \"tags\"=>[\"a\", \"b\"], \"post\"=>{\"title\"=>\"x\"}}", p.inspect
-end
-
-test "merge! copies Strings: the merged tree shares none with its source" do
-  src = Cybertrain::Params.new
-  src.set_value("q", "1")
-  src.add_list_value("t", "a")
-  src.child!("c").set_value("k", "v")
-  dst = Cybertrain::Params.new.merge!(src)
-  dst["q"] << "XYZ"
-  dst.list("t")[0] << "XYZ"
-  dst.nested("c")["k"] << "XYZ"
-  # Only the source is asserted: whether the appends stuck on dst is the
-  # runtime's business (under Spinel a String read out of a Params does not
-  # take an in-place `<<`, NOTES rule 55); what matters is that src is intact.
-  assert_equal "1", src["q"]
-  assert_equal ["a"], src.list("t")
-  assert_equal "v", src.nested("c")["k"]
 end
 
 def upload_named(name, data)
@@ -426,40 +336,6 @@ test "permit never returns a file" do
   permitted = p.permit("title", "cover")
   assert_equal({ "title" => "hi" }, permitted)
   assert_equal({ "title" => "hi" }, p.to_h)
-end
-
-test "merge! carries files across, evicting and nesting like the other kinds" do
-  a = Cybertrain::Params.new
-  a.set_value("avatar", "string")
-  a.set_upload("keep", upload_named("keep.png", "1"))
-  a.child!("post").set_upload("old", upload_named("old.png", "1"))
-
-  b = Cybertrain::Params.new
-  b.set_upload("avatar", upload_named("new.png", "22"))
-  b.child!("post").set_upload("cover", upload_named("cover.png", "333"))
-  b.set_value("keep", "now a string")
-
-  a.merge!(b)
-  assert_nil a["avatar"]
-  assert_equal "new.png", a.upload("avatar").original_filename
-  refute a.upload?("keep")
-  assert_equal "now a string", a["keep"]
-  assert_equal "old.png", a.nested("post").upload("old").original_filename
-  assert_equal "cover.png", a.nested("post").upload("cover").original_filename
-  # other is left alone.
-  assert_equal "new.png", b.upload("avatar").original_filename
-  assert_equal "cover.png", b.nested("post").upload("cover").original_filename
-  assert_equal "{\"keep\"=>\"now a string\", \"post\"=>{\"old\"=>#<Cybertrain::UploadedFile \"old.png\" 1 bytes>, \"cover\"=>#<Cybertrain::UploadedFile \"cover.png\" 3 bytes>}, \"avatar\"=>#<Cybertrain::UploadedFile \"new.png\" 2 bytes>}", a.inspect
-end
-
-test "merge! lets the other's list replace a file of the same name" do
-  a = Cybertrain::Params.new
-  a.set_upload("tags", upload_named("tags.png", "1"))
-  b = Cybertrain::Params.new
-  b.add_list_value("tags", "x")
-  a.merge!(b)
-  refute a.upload?("tags")
-  assert_equal ["x"], a.list("tags")
 end
 
 test "uploads are inspected after scalars, lists and nested Params" do

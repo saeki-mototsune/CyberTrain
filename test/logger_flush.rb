@@ -49,7 +49,7 @@ def logged_while_running(log_path)
 end
 
 # Whether `line` starts with `YYYY-MM-DDTHH:MM:SS.mmmZ ` (by bytes; no
-# regexp, pre-flight ruling G5).
+# regexp).
 def timestamp_shape?(line)
   s = line.to_s
   return false if s.bytesize < 25

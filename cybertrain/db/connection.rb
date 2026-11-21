@@ -22,8 +22,6 @@ module Cybertrain
       BUSY_MAX_PAUSE = 0.001
       BUSY_WAIT_LIMIT = 5.0
 
-      attr_reader :path
-
       # True for a path whose database lives only in its connection, so no
       # other connection can see it: ":memory:", "" (a private temporary
       # database) and, since Connection opens with OPEN_URI, a `file:` URI
@@ -49,7 +47,6 @@ module Cybertrain
       # with SQLITE_USE_URI). With create: false a missing file is refused
       # by SQLite itself (SQLITE_CANTOPEN -> DB::Error) instead of created.
       def initialize(path, create: true)
-        @path = path
         @closed = false
         @transaction_depth = 0
         # SQLITE_LIMIT_VARIABLE_NUMBER, read on the first #variable_limit.
@@ -105,8 +102,8 @@ module Cybertrain
         # object, so nobody else can. A Pool slot in quarantine reopens on
         # every checkout (Pool#reopen), and a handle leaked per request is a
         # file descriptor and a WAL/shm lock per request until EMFILE. A
-        # rescue, not an ensure, as everywhere in this file (NOTES rules 33,
-        # 50); `close` is the same path a user close takes.
+        # rescue, not an ensure, as everywhere in this file (NOTES rule 50);
+        # `close` is the same path a user close takes.
         begin
           # Lock waits through the busy handler's slot instead of PRAGMA
           # busy_timeout (see SQLite3): in Ruby for a statement, in C for a
@@ -120,7 +117,7 @@ module Cybertrain
           # the PRAGMA: SQLite answers "memory" for it and keeps that mode.
           exec_script("PRAGMA journal_mode=WAL") unless Connection.private_database?(path)
           exec_script("PRAGMA foreign_keys=ON")
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           close
           raise e
         end
@@ -128,6 +125,13 @@ module Cybertrain
 
       # Runs one statement with positional `?` binds and returns its rows as
       # Hashes keyed by column name (an empty Array for DDL/DML).
+      # @param sql [String]
+      # @param binds [Array<Object>] one value per `?` (build them with
+      #   {Cast.binds})
+      # @return [Array<Hash{String => Object}>]
+      # @raise [Cybertrain::DB::Error] when the statement fails, or the
+      #   connection is closed
+      # @api public
       def execute(sql, binds = [])
         run_statement(sql, binds, false)
       end
@@ -289,9 +293,8 @@ module Cybertrain
         SQLite3.sqlite3_get_autocommit(@db) == 0
       end
 
-      # BEGIN / COMMIT around the block, ROLLBACK and re-raise when it raises
-      # (JSON::ParserError named too: not a StandardError under Spinel, NOTES
-      # rule 33). A failed COMMIT (deferred foreign key, SQLITE_BUSY) leaves
+      # BEGIN / COMMIT around the block, ROLLBACK and re-raise when it raises.
+      # A failed COMMIT (deferred foreign key, SQLITE_BUSY) leaves
       # SQLite inside the transaction, so it is rolled back too before the
       # COMMIT error is re-raised. A nested call just runs its block inside
       # the outer transaction. Do not break or return out of a transaction
@@ -300,12 +303,15 @@ module Cybertrain
       # transaction), so a later `transaction` on the same checkout would
       # nest into it and never COMMIT. Nothing in this method can observe
       # that: an `ensure` is the only construct that could, and an ensure in
-      # this re-entrant yielding method miscompiles under Spinel (NOTES rule
-      # 50; rule 45 for nested calls). The Pool rolls the
-      # open transaction back on check-in (abandon_transaction!, with a warn
-      # line), so the hole is bounded to the rest of that one checkout under
-      # CRuby, and it does not exist under Spinel: a `break` there is
-      # refused at compile time and a `return` just ends the block (rule 44).
+      # this re-entrant yielding method miscompiled on Spinel 2026.09.12
+      # (NOTES rule 50; rule 45 for nested calls; their status rows have the
+      # probes that pass on the pinned build, and the method keeps its
+      # shape). The Pool rolls the open transaction back on check-in
+      # (abandon_transaction!, with a warn line), so the hole is bounded to
+      # the rest of that one checkout. That
+      # holds for both runtimes: Spinel 2026.09.12 refused such a `break` at
+      # compile time and ended only the block on a `return` (rule 44), and
+      # in status 44's probes the pinned build runs both as CRuby does.
       # A BEGIN run by hand is caught by the Pool the same way.
       # Returns nil: the blocks callers pass return unrelated types, and one
       # generic return value would not type-check under Spinel.
@@ -318,7 +324,7 @@ module Cybertrain
         begin!
         begin
           yield
-        rescue JSON::NestingError, JSON::ParserError, StandardError => e
+        rescue StandardError => e
           rollback!
           raise e
         end
@@ -342,7 +348,7 @@ module Cybertrain
       #   begin
       #     c.execute("UPDATE accounts SET balance = balance - ? WHERE id = ?", [n, from])
       #     c.execute("UPDATE accounts SET balance = balance + ? WHERE id = ?", [n, to])
-      #   rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      #   rescue StandardError => e
       #     c.rollback!
       #     raise e
       #   end

@@ -20,4 +20,4 @@ ok   a job's superclass must load before it; < ApplicationJob needs application_
 ok   framework errors: those require "cybertrain" loads need no require line, the mailer's do
 ok   a framework exception class not named ...Error: retry_on and discard_on Cybertrain::RecordNotFound
 ok   FRAMEWORK_ERRORS names every exception class under cybertrain/, and PRELOADED_FILES are those cybertrain/core.rb loads
-22 tests, 147 assertions, 0 failures
+22 tests, 145 assertions, 0 failures

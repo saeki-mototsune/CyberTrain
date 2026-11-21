@@ -17,8 +17,7 @@ module Cybertrain
       end
     end
 
-    # How the console shows a value (spec: docs/superpowers/specs, phase 1,
-    # section 7):
+    # How the console shows a value (docs/design.md D41):
     #
     #   record    #<Article id: 1, title: "x", created_at: 2026-11-05 10:00:00 UTC>
     #   Array     one element per line, then "N records" (or "N elements")
@@ -38,9 +37,6 @@ module Cybertrain
         case value
         when Text then value.console_text
         when Cybertrain::Model then record_text(value)
-        # Time before Array: a Time in a polymorphic slot also matches Array
-        # (NOTES rule 8).
-        when Time then value.to_s
         when Array then list_text(value)
         when Cybertrain::Relation then relation_text(value)
         else inline(value)

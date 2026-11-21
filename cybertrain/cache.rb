@@ -37,7 +37,7 @@ module Cybertrain
   # `"cybertrain cache prune"` (requiring both registers it); without
   # jobs, by the writes ({Cache.write}, {Cache.increment}): the first of
   # the process and the first once that interval has passed, at most
-  # 1000 rows per write ({Cache.prune_if_due}).
+  # 1000 rows per write.
   # @api public
   module Cache
     TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_cache (" \
@@ -110,8 +110,7 @@ module Cybertrain
       DB.with { |c| c.exec_script(TABLE_SQL) }
       # A CREATE inside a transaction that rolls back is undone, so only one
       # outside a transaction is remembered (as Job.install! does).
-      pool = DB.pool
-      @installed_generation = DB.generation if !pool.nil? && pool.held_index < 0
+      @installed_generation = DB.generation if DB.outside_transaction?
       nil
     end
 
@@ -455,7 +454,7 @@ module Cybertrain
     end
 
     # Registers the scheduled task `"cybertrain cache prune"`, every
-    # {Cache.prune_interval} seconds, when cybertrain/jobs is loaded and no
+    # {Config#cache_prune_interval} seconds, when cybertrain/jobs is loaded and no
     # task of that name is registered already
     # (Features.schedule_all_periodic: JobsFeature takes on CacheFeature's
     # periodic hook). Requiring this file and cybertrain/jobs, in either order,

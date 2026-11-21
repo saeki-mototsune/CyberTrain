@@ -2,6 +2,7 @@ require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/main"
 require_relative "support/log_capture"
+require_relative "support/file_tree"
 
 # Cybertrain::Main.command: an application's own subcommands on its binary.
 # The blocks below are registered at top level, as bin/<name>.rb does
@@ -13,31 +14,16 @@ require_relative "support/log_capture"
 TMP = Dir.mktmpdir("cybertrain-main-command")
 Dir.chdir(TMP)
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 # Test.run! exits the process, so the temp tree is removed at exit.
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
-end
-
-def no_views
-  none = { "" => "" }
-  none.delete("")
-  none
+  FileTree.remove(TMP)
 end
 
 def resolver = ->(name, args, options) { "/#{name}" }
 
 def run(argv)
-  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: no_views)
+  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: Cybertrain::Application.no_views)
 end
 
 # What the blocks saw, read back by the tests (a constant: NOTES rule 64).
@@ -162,7 +148,7 @@ def dsn_for_this_case
 end
 
 # Runs `argv` with config.log_format = :json, then puts the text format
-# back (a plain method's ensure: pre-flight ruling G4).
+# back (a plain method's ensure).
 def run_in_json(argv)
   Cybertrain.config.log_format = :json
   run(argv)

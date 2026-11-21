@@ -50,6 +50,8 @@ module Cybertrain
     # and no comma (the separator inside a token).
     MAX_NAME_BYTES = 200
     # The most names one token may carry.
+    # @return [Integer]
+    # @api public
     MAX_NAMES = 16
     # The hex HMAC-SHA256 at the end of a token, and its "--" before it.
     SIGNATURE_LENGTH = 64
@@ -87,6 +89,7 @@ module Cybertrain
     # String is returned as it is.
     # @param record_or_string [Model, String]
     # @return [String]
+    # @raise [ArgumentError] for a record that is not saved (it has no id)
     # @api public
     def self.name_for(record_or_string)
       case record_or_string
@@ -103,13 +106,13 @@ module Cybertrain
 
     # A token naming `names`: base64url of the names joined by ",", then
     # "--", then the hex HMAC-SHA256 of that text keyed with a key derived
-    # from {Config#secret_key_base} for streams alone ({Stream.signing_key},
-    # as Rails' "turbo/signed_stream_verifier_key"), so a token never
+    # from {Config#secret_key_base} for streams alone (as Rails'
+    # "turbo/signed_stream_verifier_key"), so a token never
     # verifies as a session cookie, whose layout is the same. Tokens do not
     # expire; changing the secret invalidates all of them.
     # @param names [Array<String>]
     # @return [String]
-    # @raise [ArgumentError] for no names, more than {MAX_NAMES}, or an
+    # @raise [ArgumentError] for no names, more than 16 ({MAX_NAMES}), or an
     #   invalid name
     # @api public
     def self.sign(names)
@@ -259,8 +262,7 @@ module Cybertrain
       DB.with { |c| c.exec_script(TABLE_SQL) }
       # As Job.install!: a CREATE inside a transaction that rolls back is
       # gone again, so only one outside a transaction is remembered.
-      pool = DB.pool
-      @installed_generation = DB.generation if !pool.nil? && pool.held_index < 0
+      @installed_generation = DB.generation if DB.outside_transaction?
       nil
     end
 

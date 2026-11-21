@@ -71,8 +71,6 @@ module Cybertrain
     # The clock for one exchange: a per-wait timeout and an overall deadline,
     # both in seconds, measured on the monotonic clock.
     class Timer
-      attr_reader :timer_label
-
       # @param label [String] "host:port", for error messages
       # @param per_wait [Numeric] the longest any single wait may take
       # @param deadline [Numeric] the longest the whole exchange may take

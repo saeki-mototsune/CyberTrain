@@ -1,6 +1,6 @@
-# The tests `cybertrain generate authentication` writes (spec section 11,
-# third bullet): Rails-shaped classes that `cybertrain test` runs in one
-# program, on the fixtures of test/fixtures/users.yml, signing in with
+# The tests `cybertrain generate authentication` writes: Rails-shaped
+# classes that `cybertrain test` runs in one program, on the fixtures of
+# test/fixtures/users.yml, signing in with
 # SessionTestHelper#sign_in_as (test/support/session_test_helper.rb, which
 # test/test_helper.rb includes into ActionDispatch::IntegrationTest).
 #
@@ -21,7 +21,7 @@
 # time), and mail is read from Cybertrain::Mailer.deliveries (the test
 # environment stores it) with assert_emails and perform_enqueued_jobs.
 # Phase 4b's top-level test files these replace (TEST_FILES_REPLACED) are
-# named on a re-run, and deleted with --force (plan decision D15).
+# named on a re-run, and deleted with --force.
 require "digest"
 require "base64"
 
@@ -300,7 +300,7 @@ module Cybertrain
           next if stop.nil?
           next unless Templates.scaffold_setup_line?(source[line_at, stop - line_at].to_s)
 
-          File.write(path, insert_after_line(source, "#{TEST_SETUP_LINE}\n", SIGN_IN_LINE))
+          File.write(path, SourceEdit.insert_after_line(source, "#{TEST_SETUP_LINE}\n", SIGN_IN_LINE))
           puts "insert test/controllers/#{File.basename(path)} (sign_in_as users(:one))"
         end
         nil
@@ -356,7 +356,7 @@ module Cybertrain
                end
         open_actions = invite_only ? "sign-in and setup" : "sign-in and sign-up"
         text = sessions_controller_test_body.sub("@OPEN_ACTIONS@", open_actions)
-        splice(text, "@SIGN_UP_LINK@", margin(link, 4))
+        SourceEdit.splice(text, "@SIGN_UP_LINK@", SourceEdit.margin(link, 4))
       end
 
       def self.sessions_controller_test_body
@@ -576,7 +576,7 @@ module Cybertrain
       # confirmations_controller_test.rb's).
       def self.registrations_controller_test(confirmable = false)
         text = registrations_controller_test_body
-        splice(text, "@SIGN_UP_TEST@", margin(confirmable ? sign_up_confirm_test : sign_up_sign_in_test, 2))
+        SourceEdit.splice(text, "@SIGN_UP_TEST@", SourceEdit.margin(confirmable ? sign_up_confirm_test : sign_up_sign_in_test, 2))
       end
 
       def self.registrations_controller_test_body
@@ -1531,7 +1531,7 @@ module Cybertrain
       # change the environment, the hosts and the base_url setting, each
       # line indented for a class body.
       def self.with_config_helper
-        margin(<<~'RUBY', 2)
+        SourceEdit.margin(<<~'RUBY', 2)
           # Runs the block with Config#env, hosts_from_env and the base_url
           # setting given, text log lines (and Cybertrain.logger writing errors to
           # log, unless it is nil), then puts them back, also when the block fails.
@@ -1592,7 +1592,7 @@ module Cybertrain
       # stack, its mail from Cybertrain::Mailer.deliveries.
       def self.passwords_controller_test(app)
         text = passwords_controller_test_body.gsub(BASE_URL_ENV_MARK, base_url_env(app))
-        splice(text, "@HELPERS@", with_config_helper)
+        SourceEdit.splice(text, "@HELPERS@", with_config_helper)
       end
 
       def self.passwords_controller_test_body
@@ -1983,9 +1983,9 @@ module Cybertrain
 
       # test/controllers/accounts_controller_test.rb: the account page.
       def self.accounts_controller_test(confirmable = false)
-        text = splice(accounts_controller_test_body, "@ADDRESS_HELPERS@",
-                      margin(confirmable ? accounts_test_confirm_helpers : accounts_test_address_helpers, 2))
-        splice(text, "@HELPERS@", with_config_helper)
+        text = SourceEdit.splice(accounts_controller_test_body, "@ADDRESS_HELPERS@",
+                                 SourceEdit.margin(confirmable ? accounts_test_confirm_helpers : accounts_test_address_helpers, 2))
+        SourceEdit.splice(text, "@HELPERS@", with_config_helper)
       end
 
       def self.accounts_controller_test_body
@@ -2490,8 +2490,8 @@ module Cybertrain
       # or (--invite-only) /setup's confirmed first user.
       def self.confirmations_controller_test(app, invite_only = false)
         text = confirmations_controller_test_body
-        text = splice(text, "@FIRST_USER_TEST@", margin(invite_only ? confirmations_setup_test : confirmations_sign_up_test, 2))
-        text = splice(text, "@HELPERS@", with_config_helper)
+        text = SourceEdit.splice(text, "@FIRST_USER_TEST@", SourceEdit.margin(invite_only ? confirmations_setup_test : confirmations_sign_up_test, 2))
+        text = SourceEdit.splice(text, "@HELPERS@", with_config_helper)
         text = text.gsub(BASE_URL_ENV_MARK, base_url_env(app))
         text.gsub("@APP@", app)
       end

@@ -1,5 +1,5 @@
 ---
-source_sha256: a4339f594b9c9de55b09807da627307deb782afc97659df37c44b27bbc402157
+source_sha256: 6a1655f18b429bd1cfd676a69d23b8a7edf43720044e4bc6ff0b24537c141f17
 ---
 # Authentification
 
@@ -27,7 +27,7 @@ Il écrit, dans l’application&nbsp;:
 | `app/views/...` | les écrans, chaque texte passant par `t()`, et le partial `sessions/_nav` |
 | `test/fixtures/users.yml`, `test/support/session_test_helper.rb`, `test/models/`, `test/controllers/`, `test/integration/` | les utilisateurs de fixture, `sign_in_as`, et des tests pour chaque partie ([Tests](#testing)) |
 
-et des modifications, une fois chacune&nbsp;: `include Authentication` dans `ApplicationController`, les routes, la ligne de la page des jobs ([Administrateurs](#admin-users-and-the-jobs-page)), le partial de navigation dans le layout, la commande utilisateur dans `bin/<app>.rb`, le réglage `base_url` dans `config/app.rb` ([Liens dans les courriels](#links-in-mails)), et dans `bin/<app>.rb` et `bin/db.rb` les lignes des sous-systèmes que le code utilise, sauf si `require "cybertrain"` les charge déjà toutes&nbsp;: `cybertrain/jobs`, `cybertrain/mailer`, `cybertrain/mailer/later` et `cybertrain/rate_limit` ([Sous-systèmes](how-it-works.md#subsystems)). Le relancer avec les mêmes options ne change rien&nbsp;: une modification déjà faite est retrouvée et sautée, et un fichier déjà tel qu’il l’écrirait est laissé. Un fichier qu’il écrirait autrement (que vous avez modifié, ou qu’un générateur plus ancien ou d’autres options ont écrit) n’est jamais écrasé sans `--force`&nbsp;: son diff est affiché à la place ([Mettre à jour depuis 0.4](#upgrading-from-04), [Activer la confirmation plus tard](#turning-on-confirmation-later)).
+et des modifications, une fois chacune&nbsp;: `include Authentication` dans `ApplicationController`, les routes, la ligne de la page des jobs ([Administrateurs](#admin-users-and-the-jobs-page)), le partial de navigation dans le layout, la commande utilisateur dans `bin/<app>.rb`, le réglage `base_url` dans `config/app.rb` ([Liens dans les courriels](#links-in-mails)), et dans `bin/<app>.rb` et `bin/db.rb` les lignes des sous-systèmes que le code utilise, sauf si `require "cybertrain"` les charge déjà toutes&nbsp;: `cybertrain/jobs`, `cybertrain/mailer`, `cybertrain/mailer/later` et `cybertrain/rate_limit` ([Sous-systèmes](how-it-works.md#subsystems)). Il inclut aussi `SessionTestHelper` dans `test/test_helper.rb`, connecte `users(:one)` en tête des tests de scaffold et de pièces jointes déjà présents ([Tests](#testing)), et décommente dans `config/deploy.yml` le rôle worker que `cybertrain new` a laissé en commentaire, puisque c’est un thread de jobs qui envoie les courriels. Le relancer avec les mêmes options ne change rien&nbsp;: une modification déjà faite est retrouvée et sautée, et un fichier déjà tel qu’il l’écrirait est laissé. Un fichier qu’il écrirait autrement (que vous avez modifié, ou qu’un générateur plus ancien ou d’autres options ont écrit) n’est jamais écrasé sans `--force`&nbsp;: son diff est affiché à la place ([Relancer le générateur](#running-the-generator-again), [Activer la confirmation plus tard](#turning-on-confirmation-later)).
 
 Les textes des écrans générés sont dans les dictionnaires anglais et japonais du framework, sous leurs clés de recherche paresseuse (`sessions.new.title`, `passwords.create.sent`)&nbsp;; une application les surcharge, ou ajoute une langue, dans `config/locales/` ([Internationalisation](i18n.md#the-bundled-dictionaries)).
 
@@ -61,7 +61,7 @@ class ArticlesController < ApplicationController
 
 ## Inscription, ou sur invitation
 
-Par défaut le générateur écrit `RegistrationsController` (`/sign_up`), qui crée un utilisateur et le connecte. Le générateur de Rails n’a pas de page d’inscription et laisse le premier utilisateur à la console&nbsp;; CyberTrain n’a pas de console Ruby, il en écrit donc une. Les inscriptions sont limitées à dix par adresse cliente toutes les trois minutes, comme les connexions&nbsp;: chacune calcule un hachage de mot de passe, peut envoyer un lien, et son "has already been taken" dit si une adresse est inscrite.
+Par défaut le générateur écrit `RegistrationsController` (`/sign_up`), qui crée un utilisateur et le connecte. Le générateur de Rails n’a pas de page d’inscription et laisse le premier utilisateur à `rails console`&nbsp;; la console de CyberTrain n’est pas une invite Ruby ([La console](background-and-operations.md#the-console)), le générateur en écrit donc une. Les inscriptions sont limitées à dix par adresse cliente toutes les trois minutes, comme les connexions&nbsp;: chacune calcule un hachage de mot de passe, peut envoyer un lien, et son "has already been taken" dit si une adresse est inscrite.
 
 Chaque adresse que le code généré enregistre, depuis la page d’inscription, `/setup`, la page de compte ou la commande utilisateur, doit être une seule adresse&nbsp;: `User.email_address_format?` exige exactement un `@` avec du texte de part et d’autre, et aucune virgule, aucun blanc, aucun chevron ni caractère de contrôle. Le mailer lit `ann@example.com,eve@evil.example` comme deux destinataires&nbsp;; sans ce contrôle, un compte pourrait avoir deux boîtes aux lettres, recevoir son lien de réinitialisation dans les deux et, avec `--confirmable`, être confirmé par l’une ou l’autre. L’adresse doit aussi passer le contrôle du mailer lui-même (`Cybertrain::Mailer.address_problem`)&nbsp;: de l’ASCII seulement (donc aucun blanc ni caractère de contrôle Unicode non plus), aucun de `( ) [ ] ; : \ "`, une partie locale d’au plus 64&nbsp;octets et au plus 254&nbsp;octets en tout. Une adresse que le mailer refuserait pourrait être enregistrée mais ne recevrait jamais de courrier&nbsp;; elle est donc refusée dès la saisie. Certaines adresses que les normes du courrier admettent sont refusées aussi (une partie locale entre guillemets contenant un espace ou une virgule, une adresse non ASCII)&nbsp;; la méthode est à l’application de la changer. Une adresse enregistrée avant ce contrôle n’est pas contrôlée de nouveau, si bien que son compte peut toujours être réinitialisé et utilisé pour se connecter.
 
@@ -207,9 +207,11 @@ Le temps avance avec `travel_to` et `travel` (aucune ligne n’est reculée
 dans le temps), et les courriels se lisent dans
 `Cybertrain::Mailer.deliveries` avec `assert_emails` et
 `perform_enqueued_jobs`. Un scaffold généré après l’authentification
-connecte `users(:one)` en tête de son test de contrôleur&nbsp;; un scaffold
-généré avant ne le fait pas&nbsp;: ajoutez `sign_in_as users(:one)` à son
-`setup`. Relancé sur une application dont un générateur précédent a écrit
+connecte `users(:one)` en tête de son test de contrôleur. Pour un scaffold
+généré avant, le générateur insère `sign_in_as users(:one)` dans le `setup`
+du test (et dans le `setup` d’un test d’intégration de `generate
+attachment`)&nbsp;; un `setup` que vous avez réécrit est laissé tel quel,
+ajoutez-y donc la ligne vous-même. Relancé sur une application dont un générateur précédent a écrit
 les tests (`test/authentication.rb`, `admin.rb`, `remember_me.rb`,
 `lockout.rb`, `passwords.rb`, `accounts.rb`, `confirmations.rb`,
 `test/support/app_test.rb`, `test/support/authentication_helpers.rb`), le
@@ -218,9 +220,9 @@ supprime.
 
 `script/auth-e2e signup invite confirmable upgrade04` dans ce dépôt construit des applications avec le générateur et les pilote de bout en bout.
 
-## Mettre à jour depuis 0.4
+## Relancer le générateur
 
-Relancez le générateur dans une application que 0.4 a générée. Il écrit les fichiers manquants, une migration avec les colonnes qui manquent aux migrations existantes, et les modifications&nbsp;; pour chaque fichier qu’il écrirait en entier et qui existe avec un autre contenu, il ne change rien et affiche un diff&nbsp;:
+Relancez le générateur dans une application qu’une version antérieure a générée. Il écrit les fichiers manquants, une migration avec les colonnes qui manquent aux migrations existantes, et les modifications&nbsp;; pour chaque fichier qu’il écrirait en entier et qui existe avec un autre contenu, il ne change rien et affiche un diff. Dans une application que 0.4 a générée&nbsp;:
 
 ```text sortie — cybertrain generate authentication (extrait)
 exist db/migrate/20260925120000_create_users.rb
@@ -244,14 +246,11 @@ manual  app/controllers/application_controller.rb: apply this diff by hand, or r
 +  include Authentication
 ```
 
-[test/fixtures/auth_04_app.upgrade.diff](../../test/fixtures/auth_04_app.upgrade.diff) est la sortie complète pour une application avec inscription que 0.4 a générée.
-
 <!-- list: points -->
 - Enregistrez la sortie et appliquez-la avec `patch -p1` depuis le répertoire de l’application (patch saute les lignes qui ne font pas partie d’un diff), ou appliquez chaque diff à la main là où vous avez modifié le fichier. L’application peut ne pas se construire tant qu’ils ne sont pas appliqués&nbsp;: les nouveaux fichiers appellent ce qu’ajoutent les diffs.
-- `--force` écrit à la place les nouveaux fichiers par-dessus les anciens, pour les fichiers que vous n’avez jamais modifiés&nbsp;; le bloc de 0.4 dans `ApplicationController` n’est remplacé que s’il est exactement tel que 0.4 l’a écrit.
+- `--force` écrit à la place les nouveaux fichiers par-dessus les anciens, pour les fichiers que vous n’avez jamais modifiés.
 - La nouvelle migration n’ajoute que les colonnes manquantes&nbsp;; lancez `cybertrain db migrate`. Avec `--confirmable`, elle compte aussi les utilisateurs déjà là comme confirmés (depuis leur création), sans quoi aucun ne pourrait se connecter.
-- Avec `--confirmable`, les diffs des contrôleurs sessions et registrations portent une ligne `IMPORTANT:`&nbsp;: tant qu’ils ne sont pas appliqués, un compte non confirmé n’apprend pas pourquoi il ne peut pas se connecter, et une inscription ne reçoit aucun lien. Dans une application 0.4, le concern est un nouveau fichier, écrit avec son contrôle de confirmation, si bien qu’il ne démarre toujours aucune session pour un compte non confirmé (et journalise `WARN [<request id>] no session started: user <id> has not confirmed its address`) même si ces diffs ne sont jamais appliqués.
-- Chaque session prend fin une fois à la mise à jour (le cookie est désormais chiffré), et le reste de [Mettre à jour une application depuis 0.4](requests.md#upgrading-an-application-from-04) s’applique aussi.
+- Ce que change le générateur d’une version, et ce que cette version demande d’autre à l’application, figure par version dans [Mise à jour](upgrading.md#notes-by-version).
 
 ### Activer la confirmation plus tard
 

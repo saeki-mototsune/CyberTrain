@@ -11,8 +11,6 @@ require "cybertrain/test"
 # snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
 
 class CreateBackups < Cybertrain::Migration::Base
-  version "20260201000000"
-
   def change
     create_table "backups" do |t|
       t.string "name", null: false
@@ -26,8 +24,6 @@ end
 # The issue's example: existing rows keep "forever" (0), new rows get 90.
 # The add_index after the execute must still run after it.
 class AddRetentionDays < Cybertrain::Migration::Base
-  version "20260201000100"
-
   def change
     add_column "backups", "retention_days", :integer, null: false, default: "90"
     execute "UPDATE backups SET retention_days = ?", [0]
@@ -38,8 +34,6 @@ end
 # The same with a hand-written down, which makes it reversible. The INSERT
 # into audits shows that recording `up` during a rollback runs nothing.
 class AddRetentionDaysWithDown < Cybertrain::Migration::Base
-  version "20260201000100"
-
   def change
     add_column "backups", "retention_days", :integer, null: false, default: "90"
     execute "UPDATE backups SET retention_days = ?", [0]
@@ -53,8 +47,6 @@ end
 
 # The schema AddRetentionDays leaves, without the data step.
 class AddRetentionDaysSchemaOnly < Cybertrain::Migration::Base
-  version "20260201000100"
-
   def change
     add_column "backups", "retention_days", :integer, null: false, default: "90"
     add_index "backups", ["retention_days"]
@@ -62,8 +54,6 @@ class AddRetentionDaysSchemaOnly < Cybertrain::Migration::Base
 end
 
 class SeedBackups < Cybertrain::Migration::Base
-  version "20260201000200"
-
   def up
     execute "INSERT INTO backups (name) VALUES (?)", ["seeded"]
   end
@@ -75,8 +65,6 @@ end
 
 # No binds: a script of several statements.
 class TwoStatements < Cybertrain::Migration::Base
-  version "20260201000300"
-
   def up
     execute "INSERT INTO audits (note) VALUES ('one'); INSERT INTO audits (note) VALUES ('two')"
   end
@@ -88,8 +76,6 @@ end
 
 # A data step that fails takes the version's schema operations with it.
 class BrokenDataStep < Cybertrain::Migration::Base
-  version "20260201000400"
-
   def change
     add_column "backups", "label", :string
     execute "UPDATE no_such_table SET x = ?", [1]
@@ -97,8 +83,6 @@ class BrokenDataStep < Cybertrain::Migration::Base
 end
 
 class AddNoteIndex < Cybertrain::Migration::Base
-  version "20260201000500"
-
   def change
     add_index "audits", ["note"]
   end
