@@ -1,8 +1,56 @@
 # Retained compiler rechecks
 
-These small programs retain evidence for [NOTES.md](../NOTES.md), not a
-claim that their workarounds can be removed from the whole framework.
+Each program here is evidence for an item of
+[docs/spinel-feedback.md](../../docs/spinel-feedback.md), named in the
+table below, and is kept until that item is closed there ("Item register"
+says what closed means). A program that now prints CRuby's result is still
+kept: passing is not closed. The rules written because of the items are in
+[NOTES.md](../NOTES.md). None of these programs is a claim that a
+workaround can be removed from the whole framework.
 Run them explicitly; they are not part of `spin test` or the CI gate.
+
+What this file and the programs' headers say a program did is the run that
+produced the program and its `.expected` file, with its date, machine and
+tools. It is not brought up to a later pin: what a program did on each pin
+is in docs/spinel-feedback.md, "Status by rule".
+
+## Programs and their items
+
+A file of several sections is kept section by section: a section goes when
+its item is closed, and a section whose item is a constraint or a record
+is permanent. `run.sh` runs the programs of this directory and belongs to
+none of them.
+
+| Program | Item | Rules | Kept until |
+| --- | --- | --- | --- |
+| `value_shapes.rb` | rule 12, rule 18, rule 60 | 12, 18, 60 | each is closed |
+| `exception_shapes.rb` | AE, rule 46 | 46, 47, 53, 54 | AE and rule 46 are closed |
+| `openssl_dispatch.rb` | rule 62 | 62 | rule 62 is closed |
+| `decimal.rb` | not a Spinel item: a probe for docs/design.md D42 | | while D42 stands |
+| `dispatch_shapes.rb` | rule 1 to rule 6, rule 30, rule 31, rule 40, rule 42 | 1 to 6, 30, 31, 40, 42 | each is closed; the sections of rules 1, 2 and 5 (constraints) are permanent |
+| `type_shapes.rb` | rule 7 to rule 11, rule 14, rule 26, rule 29, rule 34, rule 35, rule 37, rule 39, rule 41, rule 43, rule 46 | 7 to 11, 14, 26, 29, 34, 35, 37, 39, 41, 43, 46 | each is closed |
+| `constant_order.rb` | rule 17 (a record: ordinary Ruby) | 17 | permanent |
+| `io_shapes.rb` | rule 19, rule 28 | 19, 28 | each is closed |
+| `socket_shapes.rb` | rule 21, rule 27 | 21, 27 | rule 21 is closed; the section of rule 27 (a constraint) is permanent |
+| `socket_bare_readpartial.rb` | rule 20 | 20 | rule 20 is closed |
+| `rescue_shapes.rb` | rule 32, rule 44, rule 45, rule 50, AE | 32, 44, 45, 47, 50 | each is closed |
+| `json_error_shapes.rb` | rule 33, rule 48, rule 61 | 33, 48, 61 | each is closed |
+| `block_call_shapes.rb` | rule 69 | 69 | rule 69 is closed |
+| `container_shapes.rb` | rule 51, rule 55, Q | 51, 55, 86 | each is closed |
+| `outbound_socket_shapes.rb` | rule 72 (not O, which is `connect_timeout:`) | 72 | rule 72 is closed |
+| `invalid_utf8_shapes.rb` | AD, AU (the calls of rule 52 that match CRuby) | 52 | AD and AU are closed |
+| `builtin_superclass_no_module.rb` | AJ | 104 | AJ is closed |
+| `json_nesting_shapes.rb` | rule 61 | 61 | rule 61 is closed |
+| `define_method_shapes.rb` | rule 1 (a constraint: no run-time code) | 1 | permanent |
+| `differing/env_nonliteral_key.rb` | AS | 123 | AS is closed |
+| `differing/builtin_superclass_with_module.rb` | AJ | 104 | AJ is closed |
+| `differing/require_in_regex.rb` | AR | 122 | AR is closed |
+| `differing/nil_only_puts_openssl.rb` | K | 78 | K is closed |
+| `differing/invalid_utf8.rb` | AD, AU | 52 | AD and AU are closed |
+| `differing/float_range_boxed.rb` | Q | 86 | Q is closed |
+| `differing/rescue_from_json_error.rb` | rule 48 | 48 | rule 48 is closed |
+
+## The first four programs, 2026-11-11
 
 Recorded on 2026-11-11 against framework base `72104d7`: Linux x86_64,
 Spinel `2026.11.04.7026` (`a2d06115`, GCC 14.2.0), `-O 0`, CRuby 3.3.8.
