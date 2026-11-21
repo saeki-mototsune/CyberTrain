@@ -1,6 +1,6 @@
 # spinel-http: the HTTP server as a package of its own
 
-Date: 2026-11-21. Status: draft for the maintainer's approval. Section 2
+Date: 2026-11-21. Status: approved by the maintainer on 2026-11-21. Section 2
 records what the maintainer decided (five points); everything marked *author's call* is a
 proposal they can correct.
 
@@ -116,7 +116,7 @@ Anti-goals (a failure even if everything else works)
   Ruby's usual mapping of a hyphenated gem name, and no claim on a
   `Spinel` namespace the compiler project may want).
 - License MIT, as cybertrain. Version starts at `0.1.0`.
-- The maintainer creates the repository (decision 5); this session cannot.
+- The maintainer created the repository (empty) on 2026-11-21 (decision 5).
 
 ## 6. What moves, what stays
 
