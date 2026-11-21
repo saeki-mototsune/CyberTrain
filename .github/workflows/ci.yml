@@ -103,6 +103,10 @@ env:
   # cybertrain/version.rb instead, so that a release run testing a tag with
   # another branch's copy of this file still keys the toolchain it builds.
   SPINEL_TAG: "2026.11.15.7033"
+  # The upstream release (matz/spinel) the http-upstream job builds the HTTP
+  # layer's tests with: the layer is to become a library of its own, which
+  # must build with upstream Spinel as well as with the fork pinned above.
+  SPINEL_UPSTREAM_TAG: "2026.10.25"
 
 # Every job has a timeout-minutes, so that a hung compile or a server that
 # never answers ends the job instead of running to GitHub's limit of six
@@ -335,6 +339,76 @@ jobs:
         run: |
           spinel --version
           script/test-shard ${{ matrix.shard }} 4
+
+  # The HTTP layer (cybertrain/http/) under upstream Spinel: the programs
+  # that move with it into a library of its own, built by matz/spinel's
+  # release SPINEL_UPSTREAM_TAG rather than the fork. test/http_standalone.rb
+  # loads the layer and nothing else of the framework. Upstream is built with
+  # the four steps `cybertrain setup` runs for the fork (clone, make deps,
+  # make, make install; cybertrain/cli/toolchain.rb), cached by tag, runner
+  # image and architecture as setup-spinel caches the fork. `spin test` takes
+  # the compiler's flags from upstream's own `spin flags` (`--require-gate`
+  # where the fork says `--strict-require`). Upstream 2026.10.25 predates
+  # the fork's fixes merged on 2026-10-26; spikes/NOTES.md rule 125 has the
+  # one shape the tests keep for it. Ubuntu only.
+  http-upstream:
+    needs: changes
+    if: needs.changes.outputs.framework == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
+        with:
+          ruby-version: "3.3"
+
+      - name: Install zlib headers
+        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+
+      # ImageOS and ImageVersion are variables of the runner process, not of
+      # the expression context (setup-spinel does the same).
+      - name: Name the runner image
+        id: image
+        run: echo "id=${ImageOS:-unknown}-${ImageVersion:-0}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore upstream Spinel
+        id: upstream-cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.spinel-upstream/${{ env.SPINEL_UPSTREAM_TAG }}
+          key: spinel-upstream-${{ env.SPINEL_UPSTREAM_TAG }}-${{ runner.os }}-${{ steps.image.outputs.id }}-${{ runner.arch }}-v1
+
+      - name: Build upstream Spinel
+        if: steps.upstream-cache.outputs.cache-hit != 'true'
+        run: |
+          src="$RUNNER_TEMP/spinel-upstream-src"
+          git clone -q --depth 1 --branch "$SPINEL_UPSTREAM_TAG" https://github.com/matz/spinel "$src"
+          cd "$src"
+          make deps
+          make -j"$(nproc)"
+          make install PREFIX="$HOME/.spinel-upstream/$SPINEL_UPSTREAM_TAG"
+
+      # Saved right after the build, as setup-spinel saves the fork.
+      - name: Save upstream Spinel
+        if: steps.upstream-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.spinel-upstream/${{ env.SPINEL_UPSTREAM_TAG }}
+          key: ${{ steps.upstream-cache.outputs.cache-primary-key }}
+
+      - name: The HTTP layer's tests under upstream Spinel
+        run: |
+          export PATH="$HOME/.spinel-upstream/$SPINEL_UPSTREAM_TAG/bin:$PATH"
+          spinel --version
+          spin flags
+          spin test test/http_standalone.rb test/http_log.rb test/http_parser.rb \
+            test/http_request.rb test/http_response.rb test/query.rb test/query_extras.rb \
+            test/cookies.rb test/sse.rb test/multipart.rb test/uploaded_file.rb \
+            test/http_gunzip.rb test/server.rb
 
   test:
     needs: changes

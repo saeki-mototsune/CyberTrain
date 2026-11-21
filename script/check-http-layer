@@ -1,8 +1,12 @@
 #!/usr/bin/env ruby
 # Guards the boundary of the HTTP layer (cybertrain/http/*), kept free of the
 # rest of the framework so it can be lifted out as its own library: loading
-# cybertrain/http/server must pull in only cybertrain/http/*, plus Logger,
-# and never Context, Middleware, Router, Controller and the like. CRuby only.
+# cybertrain/http/server must pull in only cybertrain/http/* and nothing else
+# of cybertrain (no Logger, Params, Config, Context, Middleware, Router,
+# Controller and the like). `allowed` lists the files outside the layer it may
+# still load, each with its reason; it is empty since the layer stopped
+# loading Logger (HttpLog) and Params (its core moved into the layer).
+# CRuby only.
 #
 # A constant named in a method body resolves only when the method runs, so
 # a reference to a framework module the layer does not load (Clock, say)
@@ -17,7 +21,7 @@ require "cybertrain/http/server"
 
 root = File.expand_path("..", __dir__) + "/"
 loaded = $LOADED_FEATURES.select { |f| f.start_with?(root + "cybertrain/") }.map { |f| f.delete_prefix(root) }
-allowed = ["cybertrain/logger.rb"]
+allowed = []
 stray = loaded.reject { |f| f.start_with?("cybertrain/http/") || allowed.include?(f) }
 
 unless stray.empty?
@@ -56,4 +60,4 @@ unless unresolved.empty?
   unresolved.each { |u| warn "  #{u}" }
   exit 1
 end
-puts "http layer: #{loaded.length} files, none outside cybertrain/http/ besides #{allowed.join(", ")}"
+puts "http layer: #{loaded.length} files, none outside cybertrain/http/#{allowed.empty? ? "" : " besides " + allowed.join(", ")}"
