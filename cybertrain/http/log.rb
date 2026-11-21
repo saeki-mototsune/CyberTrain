@@ -1,18 +1,17 @@
 module Cybertrain
   # What the HTTP layer logs through, and the per-request context those
-  # lines are written under (docs/superpowers/specs/2026-11-21-spinel-http-extraction-design.md,
-  # section 7). The layer loads alone (script/check-http-layer), so it
-  # defines plain bases here: a sink that writes to standard error
-  # ({HttpLog}), an opaque context with no behaviour ({HttpLogContext}),
-  # and the thread's context as the server reads and swaps it
-  # ({HttpLogSwitch}). cybertrain/logger.rb makes Logger an HttpLog,
-  # Logger::Scope an HttpLogContext, and installs Logger::ScopeSwitch at
-  # load, so every line that carries a request id today still does.
+  # lines are written under (docs/design.md D90). The layer loads alone
+  # (script/check-http-layer), so it defines plain bases here: a sink that
+  # writes to standard error ({HttpLog}), an opaque context with no
+  # behaviour ({HttpLogContext}), and the thread's context as the server
+  # reads and swaps it ({HttpLogSwitch}). A framework on top subclasses
+  # all three and installs its switch at load, so its own log lines carry
+  # its per-request fields.
 
   # An opaque per-request log context: the layer stores one
   # ({Request#log_context}, {Response#body_log_context}) and hands it back
   # to the installed {HttpLogSwitch}; it never looks inside. A subclass
-  # carries what the lines need (Logger::Scope: the request id and tags).
+  # carries what the lines need (a request id and tags, say).
   # @api public
   class HttpLogContext
   end
@@ -24,7 +23,7 @@ module Cybertrain
 
   # The sink the Server logs through: `debug`, `info`, `warn`, `error`,
   # each answering nil. The base writes `"<level>: <msg>\n"` to standard
-  # error and drops `debug`; a subclass (Logger) writes its own lines.
+  # error and drops `debug`; a subclass writes its own lines.
   # @api public
   class HttpLog
     # @param msg [String]
@@ -69,11 +68,11 @@ module Cybertrain
   # swaps it around work it runs for a request ({#swap_context}: a handler's
   # exception line, a streamed body's writer). The base keeps none:
   # {#current_context} answers {HttpLogContext::NONE} and {#swap_context}
-  # stores nothing.
-  # cybertrain installs Logger::ScopeSwitch, which keeps it in the
-  # thread's Logger::Scope slot.
+  # stores nothing. A subclass installed with {.installed=} keeps the
+  # context in a slot of its own per thread.
   # @api public
   class HttpLogSwitch
+    # The thread's context; the base keeps none.
     # @return [HttpLogContext]
     def current_context
       HttpLogContext::NONE
@@ -99,8 +98,9 @@ module Cybertrain
       @installed
     end
 
-    # Installs `switch` (cybertrain/logger.rb installs Logger::ScopeSwitch).
-    # @param switch [HttpLogSwitch]
+    # Installs `switch`, at load, before any thread starts.
+    # @param switch [HttpLogSwitch] a subclass instance
+    # @return [HttpLogSwitch] switch
     def self.installed=(switch)
       @installed = switch
     end

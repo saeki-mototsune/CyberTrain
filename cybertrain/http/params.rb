@@ -10,16 +10,15 @@
 # parsing).
 #
 # This file is the HTTP layer's half: what Query and Multipart fill and the
-# readers over it. It loads alone (script/check-http-layer). The strong
-# parameters (#require, #permit, #expect, ParameterMissing) are added by
-# cybertrain/params.rb, which reopens the class.
+# readers over it. It loads alone (script/check-http-layer). Strong
+# parameters are not the layer's: a framework on top adds them by
+# reopening the class (docs/design.md D90).
 require_relative "uploaded_file"
 
 module Cybertrain
   # The request parameters as the HTTP layer parses them: Strings, lists of
-  # Strings, nested Params and uploaded files, one kind per key.
-  # cybertrain/params.rb documents the whole class and adds the strong
-  # parameters.
+  # Strings, nested Params and uploaded files, one kind per key. A framework
+  # on top may reopen the class to add strong parameters.
   class Params
     def initialize
       @values = {}
@@ -101,24 +100,23 @@ module Cybertrain
       @uploads.key?(key.to_s)
     end
 
-    # {.max_page} before any boot, which Runtime.reset! restores.
+    # {.max_page} until another ceiling is installed.
     DEFAULT_MAX_PAGE = 10_000
 
-    # The largest page number {#page_number} gives (and {Relation#page}
-    # accepts), `10000` by default. A module-level ivar, the Multipart
-    # shape (spikes/NOTES.md rule 18):
-    # Application#boot installs Config#max_page here, since Params belongs
-    # to the HTTP layer and cannot read the Config itself.
+    # The largest page number {#page_number} gives, `10000` by default. A
+    # module-level ivar, the Multipart shape (spikes/NOTES.md rule 18): the
+    # application's configured ceiling is installed here at boot, since the
+    # HTTP layer reads no configuration of its own.
     @max_page = DEFAULT_MAX_PAGE
 
-    # @return [Integer] the largest page number accepted (Config#max_page)
+    # @return [Integer] the largest page number accepted
     # @api public
     def self.max_page
       @max_page
     end
 
-    # Installs the page ceiling. Called by Application#boot with
-    # Config#max_page; a test may call it directly.
+    # Installs the page ceiling, at boot, before any thread starts; a test
+    # may call it directly.
     # @param n [Integer] at least 1
     # @return [nil]
     # @api public
@@ -152,9 +150,9 @@ module Cybertrain
       Params.clamp_int(@values[key.to_s], default, min, max)
     end
 
-    # The 1-based page number from `?page=N`, for {Relation#page}: 1 when
+    # The 1-based page number from `?page=N`, for a paginated query: 1 when
     # `page` is absent or not a number, else clamped to
-    # `1..Params.max_page` (Config#max_page). Reads the key `page` only.
+    # `1..Params.max_page`. Reads the key `page` only.
     # @example
     #   @page = Article.order("id DESC").page(params.page_number, per: 20)
     # @return [Integer]
@@ -181,7 +179,8 @@ module Cybertrain
 
     # A decimal Integer from text, or default when text is not an optional
     # `-` and 1 to 18 ({MAX_INT_DIGITS}) ASCII digits. Never raises: the length
-    # is checked before `to_i` (NOTES rule 25). Shared with Config.
+    # is checked before `to_i` (NOTES rule 25). Public, so that other text
+    # (a setting, say) is read the same way.
     # @param text [String]
     # @param default [Integer]
     # @return [Integer]
