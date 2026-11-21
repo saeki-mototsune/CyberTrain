@@ -119,6 +119,19 @@ test "json_hash reads a json cell as a Hash, {} for anything it cannot" do
   assert_equal({}, Cast.json_hash(5))
 end
 
+# The two failures JSON.parse has for request or stored text: a document
+# that is not JSON (JSON::ParserError) and one nested past 100 levels
+# (JSON::NestingError). 300 levels is past the limit of every build tried.
+test "parse_json answers nil for a malformed document and for one nested too deeply" do
+  deep = '{"a":' * 300 + "1" + "}" * 300
+  assert_nil Cast.parse_json("{not json")
+  assert_nil Cast.parse_json(deep)
+  assert_equal({}, Cast.json_hash(deep))
+  assert_nil Cast.hash_or_nil("")
+  assert_equal({}, Cast.hash_or_nil(deep))
+  assert_equal 1, Cast.int(Cast.hash(Cast.parse_json('{"a": 1}'))["a"])
+end
+
 test "a Date binds as its text and reads back from a DATE column" do
   DB.with { |c| c.execute("DELETE FROM t", []) }
   DB.with { |c| c.execute("INSERT INTO t (day) VALUES (?)", [Date.new(2026, 10, 5)]) }

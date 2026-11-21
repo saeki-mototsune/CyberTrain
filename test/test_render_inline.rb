@@ -5,7 +5,7 @@ require "cybertrain/test/select"
 require "cybertrain/controller"
 require "cybertrain/streams"
 
-# render_inline (spec section 9.1) and assert_select over what the
+# render_inline (docs/design.md D84) and assert_select over what the
 # framework renders: a component (CardComponent, with the Gen::Components
 # table hand-written in gen's shape as in test/component_render.rb), a
 # form partial (form_with on a new record, outside any request), a page

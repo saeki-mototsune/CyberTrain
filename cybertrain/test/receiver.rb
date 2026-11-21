@@ -3,7 +3,7 @@
 # number of connections one after the other, and bounded reads.
 #
 # Under Spinel a blocking socket call holds an OS worker, so nothing here
-# blocks (spikes/NOTES.md rules 5, 20-22):
+# blocks (spikes/NOTES.md rules 20-22):
 #
 # - the accept is a wait_readable in POLL slices and an accept only once a
 #   connection is queued, so the thread notices #stop within POLL seconds

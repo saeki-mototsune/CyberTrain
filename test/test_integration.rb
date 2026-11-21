@@ -1,8 +1,8 @@
-# ActionDispatch::IntegrationTest (spec section 5.1, plan decision 6):
+# ActionDispatch::IntegrationTest (docs/design.md D84):
 # get, post, patch, put, delete and head with nested params:, the cookie
 # jar per test, follow_redirect!, the instance assert_response /
-# assert_redirected_to beside the top-level forms (one shared check each,
-# pre-flight R17), *_url targets on the test host reduced to their
+# assert_redirected_to beside the top-level forms (one shared check
+# each), *_url targets on the test host reduced to their
 # path (another host refused), Rails' header names and status Symbols,
 # Cybertrain::Test.flatten_params, with_forgery_protection (put back when
 # an assertion in it fails), and the bundle's boot silencing the request
@@ -478,17 +478,14 @@ end
 
 test "the bundle's boot silences the request log and turns forgery protection off unless config gives them" do
   assert_equal :none, CONFIG.log_level
-  refute CONFIG.log_level_given?
   refute CONFIG.csrf
   c = Cybertrain::Config.new
   c.log_level = :debug
   c.log_level_unless_given(:none)
   assert_equal :debug, c.log_level
-  assert c.log_level_given?
   d = Cybertrain::Config.new
   d.log_level_unless_given(:none)
   assert_equal :none, d.log_level
-  refute d.log_level_given?
 end
 
 test "with_forgery_protection turns it on for its block only" do

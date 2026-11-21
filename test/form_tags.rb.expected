@@ -4,4 +4,5 @@ ok   options_from_collection_for_select reads each record
 ok   label_tag, text_field_tag, hidden_field_tag and submit_tag
 ok   check_box_tag is a box with no hidden field, value 1 unless given
 ok   the tag helpers check their arguments
-6 tests, 40 assertions, 0 failures
+ok   a Time takes no Array or Hash arm in attributes, class names, safe_join and options
+7 tests, 53 assertions, 0 failures

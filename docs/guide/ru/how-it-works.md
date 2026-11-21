@@ -1,6 +1,6 @@
 ---
 description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, необязательные подсистемы, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
-source_sha256: 1ef9863a32c9cd418e4fc175c5dd157510bb5bf8b5f31cfb9c46e2399287edf9
+source_sha256: 3fdb7f0673a0194bd548b024455478697a34e83364317a70e2856800271ac272
 ---
 
 # Как это работает
@@ -22,7 +22,9 @@ DSL `Routes.draw` из `config/routes.rb`, чтобы получить *данн
 файлов `app/controllers/**/*.rb` и `app/models/**/*.rb` в поисках присваиваний
 `@ivar =`, имён `before_action`/`after_action`/`rescue_from ... with:`, строк
 `helper_method`, `layout` и `rate_limit`, `include` concerns и `def` без
-аргументов. Он ставит дайджест на файлы в `app/assets/`, `app/javascript/` и
+аргументов. Так же он сканирует `app/helpers`, `app/components`, `app/jobs` и
+`test/` и читает строки `require "cybertrain/..."` в `bin/<app>.rb`
+([Подсистемы](#subsystems)). Он ставит дайджест на файлы в `app/assets/`, `app/javascript/` и
 `vendor/javascript/`, читает `config/importmap.rb` как текст и читает словари
 в `config/locales/` собственным читателем YAML.
 
@@ -32,6 +34,10 @@ DSL `Routes.draw` из `config/routes.rb`, чтобы получить *данн
 - `gen/routes.rb`: таблица маршрутов, диспетчер, хелперы `*_path`/`*_url`;
 - `gen/controllers.rb`: `view_assigns`, `run_callback`, таблица `helper_method` и `controller_layout` для каждого контроллера;
 - `gen/concerns.rb` и `gen/concerns/**`: блоки `included` concerns, вставленные в каждый включающий класс, и модули concerns с опустошёнными блоками ([Concerns](requests.md#concerns-and-helper_method));
+- `gen/helpers.rb`: диспетчеризация вызова из шаблона в модули хелперов приложения ([Хелперы приложения](template-language.md#application-helpers));
+- `gen/components.rb`: `view_assigns` и таблица методов каждого компонента, а также таблица от имени компонента к его классу ([Компоненты](template-language.md#components));
+- `gen/jobs.rb`: `perform_later` и ветви повторов каждого класса задач;
+- `gen/console.rb`: модели, которые консоль может назвать по имени ([Консоль](background-and-operations.md#the-console));
 - `gen/assets.rb`: пути ассетов с дайджестом и import map ([Ассеты](assets.md)), а файлы с дайджестом — в `public/assets/`;
 - `gen/locales.rb`: словари приложения в виде двух Hash, которые читает `I18n.t` ([Интернационализация](i18n.md#dictionaries));
 - `gen/migrations.rb`;
@@ -43,8 +49,9 @@ DSL `Routes.draw` из `config/routes.rb`, чтобы получить *данн
 
 `gen/` коммитится, а не попадает в gitignore: у `spin build` и `spin test` нет
 хука, чтобы сначала выполнить генерацию, поэтому закоммиченный результат уже
-должен быть тем, что компилируется. CI заново запускает `spin run gen` и падает
-при наличии различий, так что устаревший сгенерированный код не может попасть
+должен быть тем, что компилируется. Workflow CI, который пишет `cybertrain new`, запускает
+`spin run gen -- --check`: он ничего не записывает и падает, называя каждый
+устаревший файл, так что устаревший сгенерированный код не может попасть
 в основную ветку.
 
 ## Подсистемы
@@ -61,12 +68,12 @@ Spinel компилирует каждый метод каждого файла,
 | `require "cybertrain/jobs"` | `Job` и классы задач, `Scheduler` (`every`, `cron`), роль `worker`, команду `jobs` и страницу задач |
 | `require "cybertrain/streams"` | `Stream.broadcast_*`, конечную точку потоков (SSE и WebSocket), `Controller#turbo_stream`, хелперы `turbo_stream_from`, `turbo_stream`, `signed_stream_name` и `stream_source_path` |
 | `require "cybertrain/feeds"` | `Background`, роль `feeds` и её проверку здоровья; её загружает `require "cybertrain/websocket"` (`WebSocket.subscribe`) |
-| `require "cybertrain/mailer"` | `Mailer.deliver` |
+| `require "cybertrain/mailer"` | `Mailer.deliver`; для отправки через `starttls` (по умолчанию) или `tls` нужна ещё и `require "cybertrain/net/tls"` |
 | `require "cybertrain/mailer/later"` | `Mailer.deliver_later`; загружает почту и задачи |
 | `require "cybertrain/cache"` | `Cache` |
 | `require "cybertrain/rate_limit"` | `rate_limit` в контроллерах; загружает кэш |
-| `require "cybertrain/error_reporter/sentry"` | отправитель Sentry: `CYBERTRAIN_SENTRY_DSN` отправляет каждый отчёт об ошибке в Sentry или GlitchTip ([Отчёты об ошибках](background-and-operations.md#error-reporting)); загружает `HttpClient` и TLS. Только в `bin/<app>.rb` |
-| `require "cybertrain"` | всё перечисленное |
+| `require "cybertrain/error_reporter/sentry"` | отправитель Sentry: `CYBERTRAIN_SENTRY_DSN` отправляет каждый отчёт об ошибке в Sentry или GlitchTip ([Отчёты об ошибках](logs-and-errors.md#error-reporting)); загружает `HttpClient` и TLS. Только в `bin/<app>.rb` |
+| `require "cybertrain"` | все строки выше (а значит, через отправитель Sentry, и `HttpClient` с TLS); `cybertrain/websocket` и `cybertrain/sse` остаются отдельными строками |
 
 Каждая строка идёт после `require "cybertrain/core"` (`cybertrain/jobs` и
 `cybertrain/feeds` загружают ядро сами, остальные нет), и порядок строк не
@@ -87,6 +94,13 @@ Spinel компилирует каждый метод каждого файла,
 `require "cybertrain"`, которая по-прежнему загружает всё: оно собирается
 и работает как раньше, а быстрее его сборку делает замена этой строки на ядро
 и нужные строки.
+
+`cybertrain/net/tls`, слой TLS для почты, `HttpClient` и `WebSocket`, в
+таблицу не входит, и ни один генератор его не добавляет.
+`require "cybertrain"` его загружает; приложение на `cybertrain/core`,
+которое отправляет почту через `starttls` или `tls` либо открывает URL
+`https://` или `wss://`, добавляет эту строку в `bin/<app>.rb` само
+([Отправка электронной почты](external-services.md#sending-e-mail)).
 
 Недостающая строка обнаруживается до запуска приложения:
 
@@ -139,8 +153,10 @@ prune"` ([Хранилище кэша](background-and-operations.md#the-cache-st
 Файлы `app/views/**/*.html.erb` выглядят как ERB из Rails, но во время запроса
 разбираются в AST, который затем обходит интерпретатор, проходящий по дереву. В
 Spinel нет `eval`, поэтому это замкнутая грамматика (литералы, обращения к
-`@ivar`/локальным переменным, вызовы через фиксированные таблицы диспетчеризации
-для каждого типа, `if`/`unless`, `each`/`each_with_index`/блок одного хелпера),
+`@ivar`/локальным переменным, присваивание локальной переменной, вызовы через
+фиксированные таблицы диспетчеризации для каждого типа, `if`/`unless`/`case`,
+циклы `each`/`each_with_index`/`each_slice`, блоки у фиксированного набора
+методов Array и Hash, у построителя `tag` и у хелперов),
 а не настоящий Ruby. Полная грамматика, хелперы и пробелы описаны в
 [справочнике по языку шаблонов](template-language.md).
 
@@ -210,8 +226,9 @@ C, что использует бинарный файл. Первая сбор�
 флаг, и тогда сборка идёт без него. Вывод пишется в `tmp/rebuild.log`.
 
 Супервизор опрашивает `app/**/*.rb`, `config/**/*.rb`, `db/schema.rb`,
-`gen/**/*.rb` и корни ассетов (`app/assets/**`, `app/javascript/**`,
-`vendor/javascript/**`) десять раз в секунду. Представления исключены (обе
+`gen/**/*.rb`, словари (`config/locales/**/*.yml`) и корни ассетов
+(`app/assets/**`, `app/javascript/**`, `vendor/javascript/**`) десять раз
+в секунду. Представления исключены (обе
 среды выполнения перечитывают их с диска), как и `gen/views.rb`, пустой в
 режиме разработки. Изменение отменяет идущую сборку, выполняет gen под
 CRuby, заменяет дочерний процесс новым дочерним процессом CRuby и начинает
@@ -278,69 +295,79 @@ run NAME`. Бинарный файл сам опрашивает те же фа�
 изменении запускает в фоне `SPIN_DEBUG=1 spin run gen && spin build NAME
 -- --incremental` и в случае успеха останавливает слушатель, дожидается
 завершения открытых запросов и делает `execv` нового бинарного файла на том
-же порту и с тем же PID; неудачная сборка продолжает обслуживать старым
+же порту и с тем же PID. Неудачная сборка продолжает обслуживать старым
 бинарным файлом и показывает вывод компилятора баннером в его
 HTML-ответах (кроме загрузок, `Content-Disposition: attachment`, и тел,
-закодированных приложением, `Content-Encoding`), а пересборки пропускаются, пока `cybertrain build` держит свою
-блокировку. CLI и этот цикл собирают gen, а CLI ещё и `bin/db.rb`, в
-отладочном режиме spin (`SPIN_DEBUG=1`, `-O0`): они работают миллисекунды, а
-gen компилируется за малую долю времени, которое занимает `-O2`; приложение
-всегда собирается в режиме release. Когда превью не может работать,
-`cybertrain server` выводит одну строку, начинающуюся с `preview
-unavailable:`, и запускает скомпилированный цикл. Так бывает, когда
-`CYBERTRAIN_ENV` задаёт окружение, отличное от `development`, когда
-фреймворк приложения старше превью (в нём нет `cybertrain/preview.rb` или
-`cybertrain/dev/supervision.rb`), когда в `PATH` нет `ruby` или когда этот
-`ruby` не удаётся запустить, он не отвечает за 10 с или не может загрузить
-`fiddle` (`cybertrain doctor` это проверяет). Ничего из этого не
-загружается в production.
+закодированных приложением, `Content-Encoding`), а пересборки пропускаются,
+пока `cybertrain build` держит свою блокировку.
+
+CLI и этот цикл собирают gen, а CLI ещё и `bin/db.rb`, в отладочном режиме
+spin (`SPIN_DEBUG=1`, `-O0`): они работают миллисекунды, а gen компилируется
+за малую долю времени, которое занимает `-O2`. Приложение всегда собирается
+в режиме release.
+
+Когда превью не может работать, `cybertrain server` выводит одну строку,
+начинающуюся с `preview unavailable:`, и запускает скомпилированный цикл.
+Строка называет первую из этих причин, которая выполняется:
+
+- `CYBERTRAIN_ENV` задаёт окружение, отличное от `development`;
+- фреймворк приложения старше превью (в нём нет `cybertrain/preview.rb` или
+  `cybertrain/dev/supervision.rb`);
+- в `PATH` нет `ruby`;
+- этот `ruby` не удаётся запустить, он не отвечает за 10 с или не может
+  загрузить `fiddle` (`cybertrain doctor` это проверяет).
+
+Ничего из этого не загружается в production.
 
 ## Отличия от Rails
+
+Строки сгруппированы по темам: сначала команды, инструменты и цикл
+разработки, затем контроллеры и маршрутизация, модели, представления и
+ассеты, сервисы, которыми пользуется приложение, и эксплуатация.
 
 <!-- table: cmp -->
 | Rails | CyberTrain |
 | --- | --- |
 | `rails console`, `rails dbconsole` | `./<app> console` вычисляет язык выражений шаблонов над моделями (в Spinel нет `eval`, так что это не Ruby); `./<app> dbconsole` открывает `sqlite3` ([Консоль](background-and-operations.md#the-console)) |
-| `config/application.rb` требует railtie, которые использует приложение | `bin/<app>.rb` и `bin/db.rb` требуют `cybertrain/core` и [подсистемы](#subsystems), которые использует приложение; `require "cybertrain"` — это все они |
 | `rails runner`, `lib/tasks/*.rake` | `Cybertrain::Main.command("name", "description") { \|argv\| ...; 0 }` в `bin/<app>.rb`: `./<app> name ARGS` запускает её с подключённой базой данных |
+| `config/application.rb` требует railtie, которые использует приложение | `bin/<app>.rb` и `bin/db.rb` требуют `cybertrain/core` и [подсистемы](#subsystems), которые использует приложение; `require "cybertrain"` — это все они |
 | Правите код — запущенное приложение подхватывает изменения | Изменения Ruby видны сразу через CRuby-превью; скомпилированный бинарный файл забирает порт, когда его сборка завершится (`cybertrain server`) |
 | Правите представление — перезагрузка не нужна | Так же — в режиме разработки представления разбираются с диска при каждом запросе |
-| `def new` | `def new_action` (`new` затенил бы `Klass.new(ctx)`) |
+| Rack, его middleware и любой гем в `Gemfile` | Нет совместимости с Rack; небольшой фиксированный набор middleware; собственный `spin-index` Spinel, ограниченный тем, что компилируется в рамках его подмножества Ruby |
+| minitest / RSpec | Тестовые классы в духе Rails (`ActiveSupport::TestCase`, `ActionDispatch::IntegrationTest`, `ViewComponent::TestCase`) и фикстуры, которые `spin run gen` переписывает в одну программу, а `cybertrain test` компилирует и запускает; раннеры на основе рефлексии не могут работать при AOT-компиляции ([Тестирование приложения](testing.md)) |
+| Полный бэктрейс при исключении | Класс, сообщение, строка запроса, имя/строка шаблона — Spinel не предоставляет бэктрейсов |
+| `def new` | `def new_action`: маршрут `GET /posts/new` и представление `new.html.erb` сохраняют свои имена, переименован только метод |
 | `before_action { do_thing }` (неявный `self`) | `before_action { \|c\| c.do_thing }` — для сохранённого блока нет `instance_exec`, поэтому колбэки получают контроллер/запись явно |
+| `skip_before_action :x` | То же самое для именованных before-колбэков (у колбэка-блока нет имени, которое можно пропустить); `skip_after_action` нет |
+| `ActiveSupport::Concern`, включаемый во время выполнения | Concerns в `app/controllers/concerns` и `app/models/concerns`, которые `spin run gen` разворачивает во включающие классы; `include` называет concern, а имя метода `class_methods` в concern модели не может совпадать со scope модели или с методом класса, который есть у каждой модели ([Concerns](requests.md#concerns-and-helper_method)) |
 | `resources :posts do resources :comments end` | `resources :posts do \|posts\| posts.resources :comments end` — вложенные блоки получают маппер явно |
-| ERB компилируется в метод; любой объект, любой метод | Интерпретируется по фиксированной грамматике/таблице диспетчеризации ([Язык шаблонов](template-language.md)) |
+| `resource :session` | Те же шесть действий в `SessionsController`; блок (`do \|session\| ... end`) добавляет маршруты-члены и вложенные ресурсы ([Маршрутизация](requests.md#routing)) |
+| `get "/x"`, затем `post "/x"` | Оба допустимы: выведенное имя второго маршрута уже занято, поэтому он остаётся без имени, как в Rails; повторяющийся `as:` по-прежнему ошибка |
+| `namespace`, `scope`, форматы и `respond_to` | То же ([Маршрутизация](requests.md#routing), [Форматы](requests.md#formats-and-respond_to)); JSON отдаётся через `render json:` (без шаблонов jbuilder) |
+| `constraints`, `mount`, glob-сегменты | Не реализовано |
+| `skip_forgery_protection` в API-контроллере | CSRF выполняется до маршрутизации, поэтому API исключается по пути, `c.csrf_exempt_prefixes = ["/api/"]`, и сам аутентифицирует вызывающих ([Конфигурация](configuration.md#configuration-and-environment-variables)) |
+| Rack оставляет тело запроса в gzip как есть | Тело с `Content-Encoding: gzip` — это `request.decoded_body`, распакованное с ограничением в 10 МиБ; повреждённое или слишком большое — 400; `request.body` остаётся как отправлено ([Строки запроса и тела](requests.md#query-strings-and-bodies)) |
 | Сессия хранит любой сериализуемый через Marshal объект | Значения сессии — только строки (String), в cookie, зашифрованной AES-256-GCM, как cookie store в Rails ([Cookies и сессия](requests.md#cookies-and-the-session)) |
+| `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` — массив строк, сопоставляемых по подстроке без учёта регистра (без Regexp и лямбд); применяется к логу запросов и странице ошибок в режиме разработки ([Фильтруемые параметры](configuration.md#configuration-and-environment-variables)) |
 | Множество адаптеров баз данных | Только SQLite, через FFI |
 | `Article.transaction { ... }` возвращает значение блока; `raise ActiveRecord::Rollback`; точки сохранения `requires_new: true` | `Article.transaction { \|c\| ... }` передаёт в блок соединение и возвращает nil; выходят из неё, возбуждая исключение; вложенные вызовы присоединяются к внешней транзакции, точек сохранения нет ([Транзакции](models.md#transactions)) |
 | `has_many :through`, enum, STI, полиморфные ассоциации | Не реализовано; `has_many`, `has_one` и `belongs_to` выводятся из внешних ключей или однострочных объявлений, с `dependent:`, `counter_cache:` и одним уровнем `includes` ([Ассоциации](models.md#associations)) |
 | `pluck(:a)`, `maximum(:a)`, `group(:a).sum(:b)`, `upsert`, `update_counters`, `where(created_at: t1..t2)` | Типизированные варианты, потому что у метода Spinel один тип возвращаемого значения: `pluck_int` и ему подобные, `maximum_int`, `sum_float_by`, `upsert`, `increment(:col, by: n)`; диапазон Time — это `where_between` ([Запросы помимо `where`](models.md#querying-beyond-where)) |
 | Любое имя столбца; ассоциация может затенить `errors` | Только идентификаторы ASCII; столбец, названный как метод фреймворка или ключевое слово Ruby, генерируется как `<column>_column`, конфликтующая ассоциация — под запасным именем ([Имена столбцов](models.md#column-names)) |
-| `namespace`, `scope`, форматы и `respond_to` | То же ([Маршрутизация](requests.md#routing), [Форматы](requests.md#formats-and-respond_to)); JSON отдаётся через `render json:` (без шаблонов jbuilder) |
-| `constraints`, `mount`, glob-сегменты | Не реализовано |
-| `ActiveSupport::Concern`, включаемый во время выполнения | Concerns в `app/controllers/concerns` и `app/models/concerns`, которые `spin run gen` разворачивает во включающие классы; `include` называет concern, а метод `class_methods` не может называться так же, как метод экземпляра ([Concerns](requests.md#concerns-and-helper_method)) |
-| `rescue StandardError` перехватывает неудачный `JSON.parse` | Под Spinel `JSON::ParserError` не является `StandardError`: коду приложения нужно `rescue JSON::ParserError, StandardError`. Сервер перехватывает его в крайнем случае и отвечает 500 |
-| `skip_forgery_protection` в API-контроллере | CSRF выполняется до маршрутизации, поэтому API исключается по пути, `c.csrf_exempt_prefixes = ["/api/"]`, и сам аутентифицирует вызывающих ([Конфигурация](configuration.md#configuration-and-environment-variables)) |
-| Rack оставляет тело запроса в gzip как есть | Тело с `Content-Encoding: gzip` — это `request.decoded_body`, распакованное с ограничением в 10 МиБ; повреждённое или слишком большое — 400; `request.body` остаётся как отправлено ([Строки запроса и тела](requests.md#query-strings-and-bodies)) |
 | `order("lower(title)")`, `order("posts.title")`, `order(params[:sort])` | `order` принимает только списки `column [ASC\|DESC]`; данные запроса проходят через список разрешённых значений, сырой SQL — через `order_sql` ([Порядок](models.md#ordering)). Некорректные или слишком глубоко вложенные параметры — 400 ([Строки запроса и тела](requests.md#query-strings-and-bodies)) |
-| Полный бэктрейс при исключении | Класс, сообщение, строка запроса, имя/строка шаблона — Spinel не предоставляет бэктрейсов |
-| Rack, его middleware и любой гем в `Gemfile` | Нет совместимости с Rack; небольшой фиксированный набор middleware; собственный `spin-index` Spinel, ограниченный тем, что компилируется в рамках его подмножества Ruby |
-| minitest / RSpec | Тестовые классы в духе Rails (`ActiveSupport::TestCase`, `ActionDispatch::IntegrationTest`, `ViewComponent::TestCase`) и фикстуры, которые `spin run gen` переписывает в одну программу, а `cybertrain test` компилирует и запускает; раннеры на основе рефлексии не могут работать при AOT-компиляции ([Тестирование приложения](testing.md)) |
+| ERB компилируется в метод; любой объект, любой метод | Интерпретируется по фиксированной грамматике/таблице диспетчеризации ([Язык шаблонов](template-language.md)) |
+| Propshaft, importmap-rails | Та же раскладка (`app/assets`, `app/javascript`, `vendor/javascript`, `config/importmap.rb`), `spin run gen` ставит дайджест и пишет в `public/assets/`; без `bin/importmap pin`, Turbo в комплект не входит ([Ассеты](assets.md)) |
+| i18n в Rails, словари rails-i18n, `I18n.t`, `t(".title")` | Тот же API и ключи, английский и японский встроены; `config/locales/*.yml` компилируются `spin run gen` из подмножества YAML (без якорей, псевдонимов и тегов), списки — через `I18n.translate_list` ([Интернационализация](i18n.md)) |
+| Action Cable, `turbo_stream_from`, `broadcast_append_to` | Те же имена хелперов поверх подписанных потоков, доставляемых через Server-Sent Events или WebSocket из одной таблицы SQLite; без классов каналов ([Реальное время](realtime.md)) |
 | `bin/rails generate authentication`, `has_secure_password` + bcrypt | `cybertrain generate authentication` пишет ту же структуру плюс страницу регистрации; пароли используют PBKDF2-HMAC-SHA256 (bcrypt потребовал бы библиотеку на C; `String#crypt` на macOS не поддерживает bcrypt); сброс пароля, подтверждение, блокировка и «оставаться в системе» тоже генерируются, как их добавил бы Devise ([Аутентификация](authentication.md)) |
 | Active Storage, `has_one_attached :cover` | `cybertrain generate attachment` пишет пять столбцов `cover_*` и методы модели; файлы лежат на локальном диске в `storage/uploads/` и отдаются через `send_blob`; один файл на поле, без вариантов и прямых загрузок ([Добавление обложки](tutorial.md#attachments)) |
-| `skip_before_action :x` | То же самое для именованных before-колбэков (у колбэка-блока нет имени, которое можно пропустить); `skip_after_action` нет |
-| `resource :session` | Те же шесть маршрутов к `SessionsController`; вложение в него не поддерживается |
-| `get "/x"`, затем `post "/x"` | Оба допустимы: выведенное имя второго маршрута уже занято, поэтому он остаётся без имени, как в Rails; повторяющийся `as:` по-прежнему ошибка |
-| `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, данные часовых поясов из ActiveSupport | `Cybertrain::TimeZone.find("Asia/Tokyo")` читает системные файлы TZif (`/usr/share/zoneinfo` или `TZDIR`) и преобразует целые секунды эпохи Unix (`utc_offset_at`, `utc_to_local`, `local_to_utc`); `c.time_zone` задаёт `Time.zone` для всего приложения, `in_time_zone` возвращает небольшое значение с полями местного времени, а Time остаётся моментом в UTC (без TimeWithZone, `time.hour` — в UTC) ([Часовые пояса](configuration.md#time-zones)) |
 | `Net::HTTP`, Faraday | `Cybertrain::HttpClient` для вебхуков и API: каждое ожидание ограничено, непубличные адреса назначения по умолчанию отвергаются, редиректы только по просьбе, потоковые и gzip-ответы, парсер Server-Sent Events, без keep-alive (см. [Исходящий HTTP](external-services.md#outbound-http)); `Net::HTTP` из Spinel блокирует весь сервер на зависшем собеседнике |
 | Action Mailer (`deliver_later`, классы мейлеров, представления) | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` отправляет по SMTP простой текст или `multipart/alternative` с HTML-частью, отрисованной из частичного шаблона (`Views.render_mail`) (STARTTLS, неявный TLS или открытым текстом на loopback; AUTH PLAIN; каждое ожидание ограничено); `Mailer.deliver_later` отправляет его из встроенной задачи; мейлер — это модуль в `app/mailers`, методы которого возвращают `Cybertrain::MailMessage` (`deliver_later`, `deliver_now`), как сгенерированный `PasswordsMailer`; без вложений (см. [Отправка электронной почты](external-services.md#sending-e-mail)) |
 | Active Job, `perform_later`, `solid_queue`, повторяющиеся задачи, Mission Control | Классы задач в `app/jobs` (`< Cybertrain::Job::Base`, `perform(args)` с Hash значений JSON, `perform_later`, `retry_on`, `discard_on`, `limits_concurrency` с ключом), `Job.handle(kind)` как короткая форма; `Scheduler.every` и `Scheduler.cron` с часовым поясом и расписанием, хранящимся в базе; страница задач (`jobs_page` в маршрутах) и `./<app> jobs`; `job_threads` потоков на процесс, на сервере или в процессах `./<app> worker`, доставка хотя бы один раз ([Фоновая работа](background-and-operations.md#background-work)) |
 | `Rails.cache.fetch(key, expires_in:, race_condition_ttl:)` | `Cybertrain::Cache.fetch` в базе SQLite приложения, с теми же параметрами; значения — String, для остального `fetch_hash`, `fetch_array` и `fetch_int`; без хранилища в памяти или Redis ([Хранилище кэша](background-and-operations.md#the-cache-store)) |
 | Клиент ActionCable, faye-websocket, websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url)` держит поток подключённым, пока работает сервер (переподключения, пинги, обнаружение тишины); `WebSocket::Client` — для одного синхронного соединения; только исходящие ([Потребление потоков WebSocket](external-services.md#consuming-websocket-feeds)) |
-| `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` — массив строк, сопоставляемых по подстроке без учёта регистра (без Regexp и лямбд); применяется к логу запросов и странице ошибок в режиме разработки ([Фильтруемые параметры](configuration.md#configuration-and-environment-variables)) |
+| `Time.zone = "Asia/Tokyo"`, `time.in_time_zone`, данные часовых поясов из ActiveSupport | `Cybertrain::TimeZone.find("Asia/Tokyo")` читает системные файлы TZif (`/usr/share/zoneinfo` или `TZDIR`) и преобразует целые секунды эпохи Unix (`utc_offset_at`, `utc_to_local`, `local_to_utc`); `c.time_zone` задаёт `Time.zone` для всего приложения, `in_time_zone` возвращает небольшое значение с полями местного времени, а Time остаётся моментом в UTC (без TimeWithZone, `time.hour` — в UTC) ([Часовые пояса](configuration.md#time-zones)) |
 | `get "up" => "rails/health#show"` (маршрут к контроллеру) | `GET /up` встроен и получает ответ до статических файлов, сессии и маршрутизатора, поэтому никакой `before_action` не выполняется; он проверяет базу данных, обработчик фоновых задач и фиды WebSocket: `200 ok` или `503` ([Эксплуатация](background-and-operations.md#operations-backups-vacuum-health-check)) |
 | Задачи `bin/rails db:...` для резервных копий (встроенных нет) | `./<app> db backup PATH` / `db backup DIR/ --keep N` (`VACUUM INTO`, режим 0600, переименование на место) и `./<app> db vacuum` |
-| Action Cable, `turbo_stream_from`, `broadcast_append_to` | Те же имена хелперов поверх подписанных потоков, доставляемых через Server-Sent Events или WebSocket из одной таблицы SQLite; без классов каналов ([Реальное время](realtime.md)) |
-| Propshaft, importmap-rails | Та же раскладка (`app/assets`, `app/javascript`, `vendor/javascript`, `config/importmap.rb`), `spin run gen` ставит дайджест и пишет в `public/assets/`; без `bin/importmap pin`, Turbo в комплект не входит ([Ассеты](assets.md)) |
-| i18n в Rails, словари rails-i18n, `I18n.t`, `t(".title")` | Тот же API и ключи, английский и японский встроены; `config/locales/*.yml` компилируются `spin run gen` из подмножества YAML (без якорей, псевдонимов и тегов), списки — через `I18n.translate_list` ([Интернационализация](i18n.md)) |
 
 <!-- table-foot: Список не исчерпывающий: более полная запись в `docs/design.md` §8 («What was deliberately left out»). -->

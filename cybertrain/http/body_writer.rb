@@ -15,10 +15,9 @@ module Cybertrain
     # went away: {Sink#closed?}). An exception it raises is logged and ends
     # the connection; unless it is one a client that went away causes
     # (EOFError, IOError, Errno::ECONNRESET, Errno::EPIPE), the Server also
-    # hands it to the installed stream-failure sink
-    # ({Cybertrain.stream_failure}), which reports it to Cybertrain.error
-    # once cybertrain/error_reporter is loaded (as `require
-    # "cybertrain/core"` does).
+    # hands it to the installed stream-failure sink, which reports it to
+    # Cybertrain.error once cybertrain/error_reporter is loaded (as
+    # `require "cybertrain/core"` does).
     # @param sink [Sink]
     # @return [nil]
     # @api public

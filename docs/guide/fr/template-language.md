@@ -1,5 +1,5 @@
 ---
-source_sha256: 5eebbff21f9a12ce6f7a0fe38f032a5fdbda83819e1b6f62cbad52711cfc8ddd
+source_sha256: c6a6fbebb6ac3e6e10a08124e20ba6b77fa34985f1f6601156f5e32b5f2ae280
 ---
 # Référence du langage de templates de Cybertrain
 
@@ -11,7 +11,7 @@ Ce document décrit exactement ce que ce pipeline accepte et exécute. Là où i
 
 Les templates ne sont **pas** du Ruby. Spinel (le compilateur AOT de Ruby de Matz que vise cybertrain) n’a pas d’`eval`, donc «&nbsp;interpréter le Ruby propre à la vue au moment de la requête&nbsp;» n’a jamais été envisageable (D9 dans `docs/design.md`)&nbsp;; ce qui s’exécute à la place est une petite grammaire fermée qui ne fait qu’emprunter une syntaxe d’allure ERB/Ruby. Il n’y a pas de Ruby arbitraire dans une balise — seulement ce que `ExprParser` (`parser.rb`) reconnaît comme instruction ou expression. Il n’y a pas d’`eval`, de `send`, d’`instance_eval`, de définitions de méthodes/classes/modules, de `require`, d’exceptions (`begin/rescue`), d’intervalles, de regex, ni d’affectation multiple. Les blocs n’existent que là où ce document les énumère&nbsp;: les boucles `each`/`each_with_index`/`each_slice`, un ensemble fixe de méthodes d’Array et de Hash (`map`, `select`, `sum`, `group_by`... — voir [Blocs](#blocks)), les appels de helpers (`form_with(...) do |f| ... end`) et le constructeur `tag`. Chaque appel de méthode (`recv.name`) est résolu par des tables de dispatch `case` écrites à la main dans `interpreter.rb`, indexées par la classe Ruby du receveur à l’exécution&nbsp;; un nom absent de la table de ce type échoue avec une `RuntimeError` — il n’y a pas de `method_missing`, pas de réflexion, et (d’après `Interpreter#call_method`) c’est précisément l’absence de `send` dans Spinel qui fait que c’est un `case` et non une recherche par métaprogrammation. Un template ne peut faire que ce que décrit ce document.
 
-<details><summary>Où cela se trouve dans le source — les huit fichiers du pipeline de templates</summary>
+<details><summary>Où cela se trouve dans le source — les fichiers du pipeline de templates</summary>
 
 Le pipeline se trouve dans `cybertrain/template/`&nbsp;:
 
@@ -25,6 +25,9 @@ Le pipeline se trouve dans `cybertrain/template/`&nbsp;:
 | `helpers.rb` | `link_to`, `form_with`, `render`, `pluralize`, ... — tout ce qu’un template appelle sans receveur |
 | `form_builder.rb` | Le `f` passé par `form_with(...) do \|f\| ... end` |
 | `engine.rb` | Charge les sources `.html.erb` — depuis le disque sous une racine, ou depuis la table intégrée `gen/views.rb` (`Engine.embedded`) —, les analyse (et éventuellement les met en cache), et les rend avec un layout |
+| `limits.rb` | `MAX_RENDER_DEPTH`, la limite par défaut d’imbrication des rendus |
+| `helper_object.rb` | `HelperObject`, la base de l’objet helper d’un sous-système (le constructeur `turbo_stream`) |
+| `turbo_stream_builder.rb`, `stream_helpers.rb` | Chargés par `cybertrain/streams`&nbsp;: le constructeur `turbo_stream`, et `turbo_stream_from`, `signed_stream_name`, `stream_source_path` |
 
 </details>
 
@@ -244,7 +247,7 @@ Une sous-classe de `Cybertrain::Model` (un `Post`, un `Note` générés, ...) r�
 
 1. Cinq méthodes intégrées, toujours disponibles&nbsp;: `id`, `persisted?`, `new_record?`, `to_param` (`id.to_s`), `errors` (un `Errors`, [Table des méthodes par type](#per-type-method-table)).
 2. `read_attribute(:name)` — une colonne générée.
-3. `read_association(:name)` — un `has_many`/`belongs_to` généré.
+3. `read_association(:name)` — un `has_many`, un `has_one` ou un `belongs_to` généré.
 4. `call_view_method(:name)` — un `def` sans argument écrit à la main que le générateur de modèles a trouvé dans `app/models/**/*.rb` (jamais d’arité).
 
 ```erb
@@ -262,7 +265,7 @@ Deux modèles se comparent avec `==` par classe et par `id` (`Model#==`), access
 
 ## Helpers et constructeur de formulaires
 
-Chaque appel sans receveur va à `Helpers#helper_call` (`helpers.rb`), qui fait correspondre l’une des méthodes intégrées ci-dessous&nbsp;; dans le template d’un [composant](#components), essaie ensuite les méthodes de vue de ce composant&nbsp;; traite un nom finissant par `_path`/`_url` comme un helper de route généré (via `Cybertrain::Views.url_resolver`, qui lève `"no routes"` tant que l’application n’en a pas installé un)&nbsp;; essaie ensuite les [helpers de l’application](#application-helpers)&nbsp;; ou lève `"undefined helper 'name'"`.
+Chaque appel sans receveur va à `Helpers#helper_call` (`helpers.rb`), qui essaie, dans l’ordre&nbsp;: les méthodes intégrées ci-dessous&nbsp;; les helpers d’un sous-système chargé (`turbo_stream_from`, `turbo_stream`, `signed_stream_name` et `stream_source_path` existent avec `require "cybertrain/streams"`)&nbsp;; dans le template d’un [composant](#components), les méthodes de vue de ce composant (pour un appel sans argument ni bloc)&nbsp;; dans une requête, les méthodes `helper_method` du contrôleur ([Concerns et `helper_method`](requests.md#concerns-and-helper_method))&nbsp;; un nom finissant par `_path`/`_url` comme un helper de route généré (via `Cybertrain::Views.url_resolver`, qui lève `"no routes"` tant que l’application n’en a pas installé un)&nbsp;; les [helpers de l’application](#application-helpers)&nbsp;; sinon il lève `"undefined helper 'name'"`.
 
 | Helper | Signature | Remarques / exemple |
 | --- | --- | --- |
@@ -288,6 +291,7 @@ Chaque appel sans receveur va à `Helpers#helper_call` (`helpers.rb`), qui fait 
 | `number_to_currency` | `number_to_currency(n, unit: "$", precision: 2, format: "%u%n")` | `1234.5` → `"$1,234.50"`&nbsp;; un nombre négatif écrit `-` avant le format |
 | `number_to_human_size` | `number_to_human_size(n)` | `1234` → `"1.21 KB"` (base 1024)&nbsp;; `1` → `"1 Byte"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | Tranches à la Rails, sans précision à la seconde&nbsp;: `"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"`, tirées du `datetime.distance_in_words` de la locale (en japonais `"2分"`) |
+| `distance_of_time_in_words` | `distance_of_time_in_words(from_time, to_time)` (pas d’arguments nommés) | les mêmes tranches entre deux Time, dans un ordre ou dans l’autre&nbsp;: deux heures d’écart → `"about 2 hours"` |
 | `content_for` / `content_for?` | `content_for(:key) do...end`, `content_for(:key, "text")`, `content_for?(:key)` | voir [Layouts, `yield`, `content_for`, partiels](#layouts-yield-content_for-partials) |
 | `csrf_meta_tags` / `csrf_token` | | vide / absent sans session de contrôleur |
 | `csp_meta_tag` / `content_security_policy_nonce` | | `<meta name="csp-nonce" content="...">` / le nonce seul, le nonce de la [Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts) de cette requête&nbsp;; `""` quand aucune politique ne s’applique |
@@ -419,7 +423,7 @@ end
 - Le template voit les variables d’instance du composant comme des variables locales (`title`), ses méthodes publiques sans paramètre par leur nom (`value_text`), et `content`, ce qu’a affiché le bloc `do` (`""` sans bloc). Il se rend sans layout, peut rendre des partiels et d’autres composants, et compte pour `max_render_depth` comme un partiel. Un partiel qu’il rend ne voit pas les méthodes du composant. Un nom de partiel sans répertoire dans le template d’un composant (`render "chip"`) est cherché sous `app/components/` (`app/components/_chip.html.erb`) ; un nom avec répertoire (`render "shared/note"`) sous `app/views/`, comme d’habitude.
 - Un composant est désigné par son nom en snake_case sans `_component`, comme un partiel l’est par son chemin&nbsp;: `"card"` pour `CardComponent`, `"admin/user_row"` pour `Admin::UserRowComponent` (`app/components/admin/user_row_component.rb`). Les templates ne peuvent pas nommer de constantes.
 - `spin run gen` écrit `gen/components.rb` à partir d’une analyse lexicale, comme pour les helpers&nbsp;: la ligne de classe, les affectations `@x =`, les `def` sans paramètre et les mots-clés d’`initialize`. `initialize` ne prend que des mots-clés (au plus trois optionnels), et son template doit exister&nbsp;; un mot-clé manquant ou inconnu est une `ArgumentError` au rendu. Un composant inconnu est un `Cybertrain::Component::Unknown`&nbsp;: `` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``. `content` est réservé&nbsp;: un mot-clé d’`initialize` ou une variable d’instance `@content` de ce nom serait écrasé par la sortie du bloc, donc `spin run gen` le refuse en nommant le fichier et la ligne. `app/views/components/` reste un répertoire de vues comme un autre (celui d’un `ComponentsController`)&nbsp;; seul `app/views/__components/` est réservé, les noms sous lesquels sont rangés les templates des composants.
-- `cybertrain generate component card title value:integer` écrit la classe, son template et un test qui le rend avec `Cybertrain::Test.render_component`.
+- `cybertrain generate component card title value:integer` écrit la classe, son template et un test qui le rend avec `render_inline` et le vérifie avec `assert_select` ([Tester les flux et les composants](testing.md#testing-streams-and-components)).
 
 ### Rendre hors d’une requête
 
@@ -522,7 +526,7 @@ Toute `StandardError` ordinaire venant d’un helper ou d’un appel de méthode
 | Les locals stricts acceptent `name: default_expr` (Rails 7.1) | Uniquement un `name:` nu (obligatoire)&nbsp;; une entrée avec valeur par défaut est une `SyntaxError` |
 | Une ivar/variable locale non définie se résout via Ruby / les méthodes du contexte de vue | `@x` est une simple lecture de l’env qui n’échoue jamais&nbsp;; une variable locale nue non définie est une tentative explicite et fermée d’appel de helper (`"undefined helper"` en l’absence de correspondance) |
 | `case/when` avec `===` (intervalles, classes, regex) | `case/when` avec `==` seulement (les nombres par valeur) |
-| `and`/`or`/`not`, intervalles, regex, affectation multiple fonctionnent tous | Rien de tout cela n’existe&nbsp;; les mots réservés échouent avec un message spécifique «&nbsp;not supported in templates&nbsp;», pas une erreur d’analyse générique |
+| `and`/`or`/`not`, intervalles, regex, affectation multiple fonctionnent tous | Rien de tout cela n’existe&nbsp;; un mot réservé au début d’une expression échoue avec un message spécifique «&nbsp;not supported in templates&nbsp;» (`<%= not x %>`), et un mot réservé après une expression avec le message de l’analyseur `unexpected 'and' in 'a and b'` |
 | Littéraux numériques&nbsp;: hexadécimal, octal, binaire, exposants, rationnels | Uniquement des entiers/flottants décimaux avec des séparateurs `_` facultatifs |
 | `:"quoted symbol"`, symboles d’opérateur `:+` | Les symboles ne contiennent que des caractères d’identifiant |
 | `foo (x)`, `foo [x]` (espace toléré, parfois avec un avertissement) | Les deux sont des `SyntaxError` franches — pas d’espace avant la `(` d’un appel ni le `[` d’une indexation |

@@ -1,7 +1,6 @@
 require "cybertrain/middleware"
 require "cybertrain/db"
 require "cybertrain/feature"
-require "cybertrain/cast"
 
 module Cybertrain
   # The built-in health check (Config#health_path, "/up" by default): a GET

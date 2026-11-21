@@ -10,14 +10,13 @@ module Cybertrain
     # The longest extension the router splits off a last segment.
     MAX_EXTENSION_BYTES = 20
 
-    attr_reader :verb, :pattern, :segments, :name, :handler
+    attr_reader :verb, :name, :handler
     # Whether the route matches an optional extension on its last segment
     # (`/posts/3.json`), true unless drawn with `format: false`.
     attr_reader :takes_format
 
     def initialize(verb, pattern, name, handler, takes_format = true)
       @verb = verb.upcase
-      @pattern = pattern
       @segments = pattern.split("/").reject(&:empty?)
       @name = name
       @handler = handler
@@ -101,30 +100,10 @@ module Cybertrain
 
       i
     end
-
-    # Fills the ":name" segments from params: path({ "id" => "1" }) -> "/posts/1/edit".
-    def path(params)
-      return "/" if @segments.empty?
-
-      out = +""
-      @segments.each do |seg|
-        out << "/"
-        if seg.start_with?(":")
-          key = seg[1..-1].to_s
-          value = params[key]
-          raise ArgumentError, "missing :#{key} for route #{@pattern}" if value.nil? || value.empty?
-
-          out << Router.escape_segment(value)
-        else
-          out << seg
-        end
-      end
-      out
-    end
   end
 
   # The end of the middleware chain: finds the first route matching the
-  # request, fills ctx.params / route_params / route_name and runs the
+  # request, fills ctx.params / route_params and runs the
   # route's handler. Unmatched requests get a plain-text 404.
   class Router < Middleware
     def initialize
@@ -164,13 +143,6 @@ module Cybertrain
       add("DELETE", pattern, name, &handler)
     end
 
-    def path_for(name, params = {})
-      @routes.each do |route|
-        return route.path(params) if route.name == name
-      end
-      nil
-    end
-
     def call(ctx)
       request = ctx.request
       segments = request.path_segments
@@ -179,7 +151,6 @@ module Cybertrain
         next if captured.nil?
 
         ctx.route_params = captured
-        ctx.route_name = route.name
         request.format_extension = route.matched_extension(segments)
         ctx.params = assemble_params(request, captured)
         route.handler.call(ctx)

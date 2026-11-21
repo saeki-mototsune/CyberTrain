@@ -51,7 +51,7 @@ class PostsController < ApplicationController
     response.set_header("X-Action", action_name)
   end
 
-  # Helper methods (spec 4.3): test/helper_method.rb renders templates
+  # Helper methods: test/helper_method.rb renders templates
   # that call them.
   def viewer_name = "ann"
 

@@ -150,8 +150,7 @@ module Cybertrain
       end
     end
 
-    # A Last-Modified value as epoch seconds, -1 for none. `when Time`
-    # first (NOTES rule 8).
+    # A Last-Modified value as epoch seconds, -1 for none.
     def self.modified_stamp(value)
       case value
       when Time then value.to_i

@@ -87,14 +87,13 @@ module Cybertrain
       # letters, digits and `'()+_,-./:=?` (no quote, CR or LF: it goes
       # into a quoted header value).
       def self.check_boundary(mark)
-        s = mark.to_s # NOTES rule 62
-        n = s.bytesize
+        n = mark.bytesize
         raise ArgumentError, "the boundary is empty" if n == 0
         raise ArgumentError, "the boundary is longer than #{MAX_BOUNDARY_BYTES} bytes" if n > MAX_BOUNDARY_BYTES
 
         i = 0
         while i < n
-          b = s.getbyte(i)
+          b = mark.getbyte(i)
           raise ArgumentError, "the boundary contains a character RFC 2046 does not allow" unless Message.boundary_byte?(b)
 
           i += 1

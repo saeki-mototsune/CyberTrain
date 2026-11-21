@@ -1,9 +1,10 @@
-# Phase 5a spike, item 3 (spec sections 5.2 and 16): a hand-written program
-# in the shape of Task 10's gen/tests.rb, over the class-form copies in
-# gen_test/ (D18's rewritten shape, as Task 9 writes them under gen/test/),
-# a top-level-form file, and gen_test/data.rb (Task 8's gen/test/data.rb).
-# The stand-ins of Tasks 6, 8, 12 and 13 are spikes/phase5/standins/. A
-# record, not a test.
+# Phase 5a spike, item 3: a hand-written program in the shape of
+# gen/tests.rb (cybertrain/generator/tests_emitter.rb), over the class-form
+# copies in gen_test/ (the rewritten shape cybertrain/generator/test_scan.rb
+# writes under gen/test/), a top-level-form file, and gen_test/data.rb (the
+# shape of gen/test/data.rb). The stand-ins of the lifecycle, the database
+# steps, the integration test and render_inline are spikes/phase5/standins/.
+# A record, not a test.
 #
 # Run (Spinel 2026.11.04.7026, from spikes/phase5/class_app/; a shared
 # 4-vCPU cloud machine):

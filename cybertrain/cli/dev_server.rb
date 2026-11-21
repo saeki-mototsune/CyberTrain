@@ -1,11 +1,14 @@
-# `cybertrain server` under CRuby: the supervisor of
-# docs/superpowers/specs/2026-11-12-cruby-preview-design.md section 6. It
+# `cybertrain server` under CRuby: the supervisor of the CRuby preview
+# (docs/design.md D87). It
 # owns the listening socket for its whole life and runs one child on it at
 # a time: the application under CRuby right after a change, the compiled
 # binary once the background build has made it. What to do on each event is
 # Machine's (machine.rb); the processes, files and held connections are
-# Processes' (processes.rb); this file is the startup, the loop that feeds
-# the machine its events, and the stop.
+# Processes' (processes.rb); who another process is (its parent, command
+# line, state, whether it is this application's) is in process_table.rb,
+# and running a program with its output bounded and its group owned in
+# owned_run.rb, both as functions of this module; this file is the startup,
+# the loop that feeds the machine its events, and the stop.
 #
 # Startup: the application's name, the pinned Spinel (Toolchain.ensure!),
 # the load path (the -I directories of `spin flags`), the framework's dev
@@ -66,6 +69,8 @@ require "socket"
 require "cybertrain/version"
 require "cybertrain/cli"
 require_relative "dev_server/machine"
+require_relative "dev_server/process_table"
+require_relative "dev_server/owned_run"
 
 module Cybertrain
   module CLI
@@ -73,7 +78,7 @@ module Cybertrain
       # A refusal at startup: its message follows `error: `.
       Failure = Class.new(StandardError)
 
-      # The supervisor's files in the application (P2).
+      # The supervisor's files in the application.
       DEV_DIR = "tmp/cybertrain-dev"
 
       # The framework's files the preview needs, in the order they are
@@ -97,11 +102,11 @@ module Cybertrain
       # What the banner says when the children's Ruby does not answer.
       UNKNOWN_VERSION = "(unknown version)"
 
-      # The driver's tick (P11): the longest the loop waits before it polls
+      # The driver's tick: the longest the loop waits before it polls
       # the processes and gives the machine its on_tick.
       TICK = 0.05
 
-      # A leftover child (P14) gets this long after TERM before KILL.
+      # A leftover child gets this long after TERM before KILL.
       LEFTOVER_GRACE = 5
 
       # Cybertrain::PortInUse's reasons, restated: that class lives in the
@@ -230,7 +235,7 @@ module Cybertrain
         compiled_loop(argv)
       end
 
-      # exe/cybertrain hands `server ... --spinel` to CLI.run (P8).
+      # exe/cybertrain hands `server ... --spinel` to CLI.run.
       def self.compiled_loop(argv)
         CLI.run(argv + ["--spinel"])
       end
@@ -261,7 +266,7 @@ module Cybertrain
         raise Failure, "`spin flags` could not run: #{e.message}"
       end
 
-      # P14: a supervisor.pid naming a live `cybertrain server` means one
+      # A supervisor.pid naming a live `cybertrain server` means one
       # already serves this application. A PID that is gone, or that now
       # names another program, is a leftover of a killed supervisor.
       def self.refuse_second_supervisor(root)
@@ -272,7 +277,7 @@ module Cybertrain
         raise Failure, "a cybertrain server is already running here (pid #{pid})"
       end
 
-      # P14: a child a killed supervisor left still holds the listener (and
+      # A child a killed supervisor left still holds the listener (and
       # may run jobs): when child.pid names a live process that is this
       # application's child (application_child?), TERM, then KILL after
       # LEFTOVER_GRACE. Any other process is left alone. A child of the live
@@ -362,26 +367,6 @@ module Cybertrain
         raise Failure, "a cybertrain server is already running here (pid #{supervisor})"
       end
 
-      # The parent's PID, from /proc/PID/stat where it exists, else from
-      # `ps -o ppid=`; nil when neither tells.
-      # @return [Integer, nil]
-      def self.parent_pid(pid)
-        stat = proc_stat(pid)
-        # After the parenthesised command name: the state, then the parent.
-        text = stat.nil? || stat.rindex(")").nil? ? nil : stat[(stat.rindex(")") + 1)..].split[1]
-        text = IO.popen(["ps", "-o", "ppid=", "-p", pid.to_s], in: File::NULL, err: File::NULL, &:read).strip if text.nil?
-        text.match?(/\A[0-9]+\z/) ? text.to_i : nil
-      rescue SystemCallError
-        nil
-      end
-
-      # /proc/PID/stat's text, nil where it cannot be read.
-      def self.proc_stat(pid)
-        File.read("/proc/#{pid}/stat")
-      rescue SystemCallError
-        nil
-      end
-
       # How long a build's leader (spin) gets to end after its children
       # were sent TERM: spin then removes its compiler's stderr file
       # ($TMPDIR/spin-compile-PID.err) and exits, which took about 25 ms
@@ -414,42 +399,7 @@ module Cybertrain
         nil
       end
 
-      # The live (not zombie) processes of group pgid, from
-      # `ps -A -o pid=,pgid=,stat=` (Linux and macOS); nil when ps cannot
-      # list them (busybox's ps rejects -A and -o and prints nothing on
-      # stdout; or there is no ps), which is not a group with no member.
-      # ps -A lists ps itself, so a run that exits 0 without a line of
-      # three fields, the first two numbers, did not list either.
-      # @return [Array<Integer>, nil]
-      def self.group_pids(pgid)
-        out = IO.popen(["ps", "-A", "-o", "pid=,pgid=,stat="], in: File::NULL, err: File::NULL, &:read)
-        rows = out.lines.map(&:split).select { |row| row.size == 3 && row[0].match?(/\A[0-9]+\z/) && row[1].match?(/\A[0-9]+\z/) }
-        return nil unless $?.success? && !rows.empty?
-
-        rows.filter_map { |pid, group, stat| pid.to_i if group.to_i == pgid && !stat.start_with?("Z") }
-      rescue SystemCallError
-        nil
-      end
-
-      # Whether group pgid has a member left: from group_pids, or, when ps
-      # cannot list (nil), from signal 0 to the group, which finds any
-      # member (EPERM: one that is someone else's). That probe counts a
-      # zombie too, whose id is still taken, so a KILL it lets through
-      # reaches no other group.
-      # @return [Boolean]
-      def self.group_member?(pgid)
-        pids = group_pids(pgid)
-        return !pids.empty? unless pids.nil?
-
-        Process.kill(0, -pgid)
-        true
-      rescue Errno::ESRCH
-        false
-      rescue Errno::EPERM
-        true
-      end
-
-      # P10: host and port as the application's config gives them, from
+      # Host and port as the application's config gives them, from
       # `bin/NAME.rb dev-address` under CRuby. bin/NAME.rb requires gen/,
       # which may be stale here (a model renamed while no server ran, gen/
       # not committed): when the first answer fails and `cybertrain build`
@@ -485,142 +435,13 @@ module Cybertrain
         [nil, [err, out].map(&:strip).reject(&:empty?).join("\n")]
       end
 
-      # The stop predicate of a run that only an exception stops: the
-      # start-up probes, which run before `serve` traps INT, TERM and HUP.
-      NEVER = -> { false }
-
       # How long a start-up probe (gen, dev-address) gets after TERM before
-      # KILL: a stopped child's grace (P11).
+      # KILL: a stopped child's grace.
       def self.probe_grace
         Processes::STOP_GRACE
       end
 
-      # Runs command in root, STDIN empty, in a process group of its own, and
-      # waits for it in slices of TICK, reading its STDOUT and STDERR as they
-      # come (a full pipe never blocks it): [STDOUT, STDERR, status] once it has
-      # exited, with merge its STDERR in its STDOUT, in order, and STDERR ""
-      # (each UTF-8, the last OWNED_OUTPUT bytes). The run is owned, so that a
-      # stop reaches it: when stopping answers true between two slices, or when
-      # this method is left by an exception (INT, TERM or HUP, which CRuby
-      # raises here until `serve` traps them; the process then ends by that
-      # signal, as it does in bounded_run), the whole group gets TERM, the
-      # leader grace seconds to end, KILL to whatever of the group is left, and
-      # the leader is reaped; status is then :stopped. What the command left
-      # running in its group is KILLed as soon as its exit is seen. A command
-      # that cannot be started raises SystemCallError.
-      # @param env [Hash{String => String}]
-      # @param command [Array<String>]
-      # @param root [String] the directory it runs in
-      # @param grace [Numeric] seconds between TERM and KILL on a stop
-      # @param merge [Boolean] STDERR into STDOUT
-      # @param stopping [Proc] true once the supervisor is stopping
-      # @return [Array(String, String, Process::Status|Symbol)]
-      def self.owned_run(env, command, root, grace, merge, stopping)
-        out = +""
-        err = +""
-        pid = nil
-        status = nil
-        out_reader, out_writer = IO.pipe
-        readers = { out_reader => out }
-        err_writer = out_writer
-        unless merge
-          err_reader, err_writer = IO.pipe
-          readers[err_reader] = err
-        end
-        begin
-          pid = Process.spawn(env, *command, chdir: root, in: File::NULL, out: out_writer, err: err_writer, pgroup: true)
-        ensure
-          [out_writer, err_writer].each { |io| io.close unless io.closed? }
-        end
-        loop do
-          _, status = Process.waitpid2(pid, Process::WNOHANG)
-          unless status.nil?
-            # What it left running in its group goes first, so that
-            # nothing writes on while the pipes are read. What it wrote
-            # is in the pipes by now and stays readable; their end is not
-            # waited for.
-            signal(-pid, :KILL)
-            readers.each { |io, sink| nil while owned_read(io, sink).is_a?(String) }
-            break
-          end
-          if stopping.call
-            status = :stopped
-            break
-          end
-          open = readers.keys.reject(&:closed?)
-          next sleep(TICK) if open.empty?
-
-          ready, = IO.select(open, nil, nil, TICK)
-          ready&.each { |io| owned_read(io, readers[io]) }
-        end
-        [owned_text(out), owned_text(err), status]
-      ensure
-        readers&.each_key { |io| io.close unless io.closed? }
-        if pid
-          if status.is_a?(Process::Status)
-            signal(-pid, :KILL)
-          else
-            stop_owned(pid, grace)
-          end
-        end
-      end
-
-      # One read from an owned run's pipe, without blocking, appended to
-      # sink: nil at the pipe's end (the pipe is closed), :wait_readable
-      # when nothing is there yet, otherwise what was read.
-      def self.owned_read(io, sink)
-        return nil if io.closed?
-
-        chunk = io.read_nonblock(65_536, exception: false)
-        if chunk.nil?
-          io.close
-        elsif chunk.is_a?(String)
-          sink << chunk
-          # Trimmed now and then rather than on every read.
-          sink.replace(sink.byteslice(-OWNED_OUTPUT, OWNED_OUTPUT)) if sink.bytesize > 2 * OWNED_OUTPUT
-        end
-        chunk
-      end
-
-      # How much of an owned run's STDOUT, and of its STDERR, is kept: the
-      # last 256 KiB, the end being where a failure says what went wrong.
-      # gen's output goes whole to the log and to the holding page; a
-      # runaway writer cannot fill the supervisor's memory (the STDERR tail
-      # kept of a child is of the same order, STDERR_LINES lines of
-      # TAIL_LINE_CHARS).
-      OWNED_OUTPUT = 256 * 1024
-
-      # sink's last OWNED_OUTPUT bytes as UTF-8 text (the pipes give bytes;
-      # a character cut by the bound or not UTF-8 is replaced).
-      def self.owned_text(sink)
-        text = sink.bytesize > OWNED_OUTPUT ? sink.byteslice(-OWNED_OUTPUT, OWNED_OUTPUT) : sink
-        text.dup.force_encoding(Encoding::UTF_8).scrub
-      end
-
-      # Stops the process group of an owned run whose leader pid has not
-      # been reaped: TERM to the group, up to grace seconds for the leader
-      # to end (ended?: a zombie counts, and until it is reaped the group's
-      # id is not given to another group), KILL to the group, then the
-      # leader is reaped. Unlike stop_group (a build), there is no step
-      # for a leader that cleans up after its children: gen and
-      # dev-address are one Ruby each. The KILL and the reap run however
-      # the wait ends: before `serve` traps the signals, a second Ctrl-C
-      # raises out of it, and the group, which the terminal's signals do
-      # not reach, would outlive the supervisor (Thread.handle_interrupt
-      # does not hold back CRuby's signal exceptions).
-      def self.stop_owned(pid, grace)
-        signal(-pid, :TERM)
-        deadline = monotonic + grace
-        begin
-          sleep 0.01 until ended?(pid) || monotonic >= deadline
-        ensure
-          signal(-pid, :KILL)
-          wait_quietly(pid)
-        end
-        nil
-      end
-
-      # What every child, gen and dev-address add to the environment (P9):
+      # What every child, gen and dev-address add to the environment:
       # development unless CYBERTRAIN_ENV is set (no_preview_reason sends
       # any other value to the compiled loop).
       # @return [Hash{String => String}]
@@ -630,7 +451,7 @@ module Cybertrain
         env
       end
 
-      # `ruby -E UTF-8 -I<dir>...` (P9, P19): `-E UTF-8` whatever the
+      # `ruby -E UTF-8 -I<dir>...`: `-E UTF-8` whatever the
       # locale, since the application's sources and templates are UTF-8, as
       # the compiled binary takes them.
       # @param load_path [Array<String>] the -I directories of `spin flags`
@@ -732,7 +553,7 @@ module Cybertrain
       end
 
       # What the children's Ruby is, asked once at start in one run of the
-      # `ruby` on PATH (P9): under a version manager it can be another CRuby
+      # `ruby` on PATH: under a version manager it can be another CRuby
       # than the one running this supervisor. Its version (for the banner)
       # and what keeps it from running the preview (no_preview_reason): nil
       # when it loads fiddle; NO_RUBY when there is no `ruby` on PATH; a
@@ -757,131 +578,6 @@ module Cybertrain
         [version, fiddle == "fiddle" ? nil : NO_FIDDLE]
       end
 
-      # How much of its STDOUT bounded_run keeps; the rest is read and
-      # dropped, so that the program never blocks on a full pipe.
-      BOUNDED_OUTPUT = 64 * 1024
-
-      # Runs command (STDIN empty, STDERR dropped) in a process group of
-      # its own, for timeout seconds at most: [its STDOUT (the first
-      # BOUNDED_OUTPUT bytes), its status] as soon as it has exited, what
-      # it wrote being in the pipe by then (a process it left in the
-      # background may hold the pipe open: its end is not waited for);
-      # ["", :missing] when there is no such program; [why, :failed] when
-      # it cannot be started otherwise (spawn_failure), or no pipe can be
-      # made; [what it printed, :timeout] when it takes longer. Its group
-      # is killed whenever this ends: after its exit (what it left
-      # running), at the bound, and on a Ctrl-C, which the group, apart
-      # from the terminal's, does not get, or a TERM or HUP, which CRuby
-      # raises as a SignalException here until `serve` traps them (the
-      # process then still ends by that signal).
-      # @param command [Array<String>]
-      # @param timeout [Numeric]
-      # @return [Array(String, Process::Status|Symbol)]
-      def self.bounded_run(command, timeout)
-        pid = nil
-        status = nil
-        begin
-          reader, writer = IO.pipe
-        rescue SystemCallError => e
-          return [errno_text(e), :failed]
-        end
-        begin
-          pid = Process.spawn(*command, in: File::NULL, out: writer, err: File::NULL, pgroup: true)
-        rescue SystemCallError => e
-          return spawn_failure(command[0], e)
-        ensure
-          writer.close
-        end
-        out = +""
-        deadline = monotonic + timeout
-        loop do
-          # Once the program has exited, what it wrote is in the pipe:
-          # that is read without waiting for the pipe's end, which
-          # something it left running in the background can hold open
-          # until the deadline.
-          _, status = Process.waitpid2(pid, Process::WNOHANG) if status.nil?
-          unless status.nil?
-            nil while bounded_read(reader, out).is_a?(String) && monotonic < deadline
-            break
-          end
-          left = deadline - monotonic
-          break if left <= 0
-          # Short waits, so that the program's exit is seen while the pipe
-          # stays open.
-          next if IO.select([reader], nil, nil, [left, BOUNDED_POLL].min).nil?
-          break if bounded_read(reader, out).nil?
-        end
-        loop do
-          break if status
-
-          _, status = Process.waitpid2(pid, Process::WNOHANG)
-          break if status || monotonic >= deadline
-
-          sleep 0.01
-        end
-        [out, status || :timeout]
-      ensure
-        reader&.close
-        # The whole group, also after the program itself ended: what it
-        # started in the background must not outlive the probe. The
-        # group's id is not given to another group while one of its
-        # members runs, and a group with none left answers ESRCH.
-        signal(-pid, :KILL) if pid
-        wait_quietly(pid) if pid && status.nil?
-      end
-
-      # How often bounded_run looks for its program's exit while the pipe
-      # is open.
-      BOUNDED_POLL = 0.05
-
-      # One read from bounded_run's pipe, without blocking, kept within
-      # BOUNDED_OUTPUT: nil at the pipe's end, :wait_readable when nothing
-      # is there yet, otherwise what was read.
-      def self.bounded_read(reader, out)
-        chunk = reader.read_nonblock(65_536, exception: false)
-        out << chunk.byteslice(0, BOUNDED_OUTPUT - out.bytesize) if chunk.is_a?(String) && out.bytesize < BOUNDED_OUTPUT
-        chunk
-      end
-
-      # bounded_run's answer when program could not be started: :missing
-      # only when PATH holds no file of that name. A file that is there
-      # gets ["FILE: why", :failed]: CRuby passes over one that is not
-      # executable and answers ENOENT, as it does for a script whose #!
-      # interpreter is missing; EACCES is an interpreter (or a mount) that
-      # cannot be executed.
-      # @return [Array(String, Symbol)]
-      def self.spawn_failure(program, error)
-        found = on_path(program)
-        return ["", :missing] if error.is_a?(Errno::ENOENT) && found.nil?
-
-        why = errno_text(error)
-        if error.is_a?(Errno::ENOENT)
-          why = File.executable?(found) ? "its #! interpreter is missing (#{why})" : "it is not executable"
-        end
-        ["#{found || program}: #{why}", :failed]
-      end
-
-      # The file PATH gives for program: the first executable one, else
-      # the first one; nil when there is none.
-      def self.on_path(program)
-        return (File.file?(program) ? program : nil) if program.include?("/")
-
-        files = ENV["PATH"].to_s.split(File::PATH_SEPARATOR).map { |dir| File.join(dir.empty? ? "." : dir, program) }
-                           .select { |path| File.file?(path) }
-        files.find { |path| File.executable?(path) } || files.first
-      end
-
-      # "Permission denied", without the " - ruby" CRuby adds.
-      def self.errno_text(error)
-        error.message.sub(/ - .*\z/m, "")
-      end
-
-      def self.wait_quietly(pid)
-        Process.waitpid(pid)
-      rescue SystemCallError
-        nil
-      end
-
       # [PORT] after "server": "" or a valid port string. --spinel never
       # reaches here (exe/cybertrain sends it to CLI.run).
       def self.parse(argv)
@@ -890,241 +586,6 @@ module Cybertrain
         raise Failure, "unexpected argument '#{argv[2]}'" if argv.size > 2
 
         port
-      end
-
-      # Whether pid names a running process. Signal 0 probes without
-      # delivering anything; EPERM means it exists but is someone else's.
-      # @param pid [Integer]
-      # @return [Boolean]
-      def self.alive?(pid)
-        Process.kill(0, pid)
-        true
-      rescue Errno::ESRCH
-        false
-      rescue Errno::EPERM
-        true
-      end
-
-      def self.read_pid(path)
-        text = File.read(path).strip
-        text.match?(/\A[0-9]+\z/) ? text.to_i : nil
-      rescue SystemCallError
-        nil
-      end
-
-      # The process's arguments, [] when they cannot be read: from
-      # /proc/PID/cmdline where it exists (Linux), exactly, spaces included;
-      # elsewhere from ps (ps_command_line).
-      # @param pid [Integer]
-      # @return [Array<String>]
-      def self.command_line(pid)
-        proc_args(pid) || ps_command_line(pid)
-      end
-
-      # The arguments in /proc/PID/cmdline, or nil where there is no /proc
-      # (or no such process). [] when it cannot be read.
-      # @return [Array<String>, nil]
-      def self.proc_args(pid)
-        path = "/proc/#{pid}/cmdline"
-        return nil unless File.exist?(path)
-
-        File.binread(path).force_encoding(Encoding.find("filesystem")).split("\0")
-      rescue SystemCallError
-        []
-      end
-
-      # The `ps -ww -o args=` line split at spaces (an argument with a
-      # space in it comes out as two).
-      # @param pid [Integer]
-      # @return [Array<String>]
-      def self.ps_command_line(pid)
-        ps_line(pid).split
-      end
-
-      # The process's arguments joined by spaces, as `ps -ww -o args=`
-      # prints them; "" when ps cannot tell. -ww, which procps and BSD ps
-      # both take, keeps ps from cutting the line at $COLUMNS or at the
-      # terminal's width.
-      # @param pid [Integer]
-      # @return [String]
-      def self.ps_line(pid)
-        IO.popen(["ps", "-ww", "-o", "args=", "-p", pid.to_s], in: File::NULL, err: File::NULL, &:read).strip
-      rescue SystemCallError
-        ""
-      end
-
-      # The process's working directory, or nil where the system does not
-      # show it (only Linux's /proc is read).
-      def self.process_cwd(pid)
-        File.readlink("/proc/#{pid}/cwd")
-      rescue SystemCallError, NotImplementedError
-        nil
-      end
-
-      # Ruby's options that take the next argument as their value (each
-      # also takes it in the same word: -Idir, --disable=gems).
-      RUBY_VALUE_OPTIONS = ["-C", "-E", "-I", "-r", "--encoding", "--external-encoding", "--internal-encoding",
-                            "--enable", "--disable", "--dump"].freeze
-
-      # The program a command line runs and its arguments: the first word,
-      # or for a ruby interpreter the script it is given (after its options;
-      # none with -e). [nil, []] when there is none.
-      # @param args [Array<String>]
-      # @return [Array(String, Array<String>)]
-      def self.program(args)
-        return [nil, []] if args.empty?
-        return [args[0], args[1..]] unless File.basename(args[0]).match?(/\Aruby[0-9.]*\z/)
-
-        index = 1
-        while index < args.size
-          arg = args[index]
-          return [nil, []] if arg.start_with?("-e")
-
-          if arg == "--"
-            index += 1
-            break
-          elsif RUBY_VALUE_OPTIONS.include?(arg)
-            index += 2
-          elsif arg.start_with?("-") && arg != "-"
-            index += 1
-          else
-            break
-          end
-        end
-        index < args.size ? [args[index], args[(index + 1)..]] : [nil, []]
-      end
-
-      # Whether path, an argument of process pid, names root's relative
-      # file: an absolute path is compared as it is; a relative one is
-      # resolved against the process's working directory where that can be
-      # read, and elsewhere must be written as the supervisor spawns it
-      # (relative to root, from root).
-      def self.names?(pid, path, root, relative)
-        return File.expand_path(path) == File.join(root, relative) if path.start_with?("/")
-
-        cwd = process_cwd(pid)
-        cwd.nil? ? path == relative : File.expand_path(path, cwd) == File.join(root, relative)
-      end
-
-      # P14's identity of a child: the program (a ruby interpreter's script,
-      # or the executable itself) is this application's bin/NAME.rb or
-      # build/bin/NAME, whole paths. An editor with the file open, another
-      # application's bin/NAME.rb, or build/bin/NAMEx is not. Without /proc
-      # the arguments come from ps, joined by spaces, which a directory may
-      # hold too: the line must then be the one the supervisor spawns
-      # (spawned_child_line?).
-      # @param pid [Integer]
-      # @param root [String] the application's directory, a real path
-      # @param name [String]
-      # @param load_path [Array<String>] the -I directories of `spin flags`
-      # @return [Boolean]
-      def self.application_child?(pid, root, name, load_path = [])
-        args = proc_args(pid)
-        return spawned_child_line?(ps_line(pid), name, load_path) if args.nil?
-
-        program, = program(args)
-        return false if program.nil?
-
-        names?(pid, program, root, "bin/#{name}.rb") || names?(pid, program, root, "build/bin/#{name}")
-      end
-
-      # The CRuby child's arguments after the interpreter, but for the port
-      # (P9): Processes#child_command spawns `ruby` with these.
-      # @param load_path [Array<String>] the -I directories of `spin flags`
-      # @param name [String]
-      # @return [Array<String>]
-      def self.cruby_child_args(load_path, name)
-        ["-E", "UTF-8"] + load_path.map { |dir| "-I#{dir}" } + ["-r", "cybertrain/preview", "bin/#{name}.rb"]
-      end
-
-      # Whether line, a command line as ps prints it, is one the supervisor
-      # spawns from root: `build/bin/NAME PORT` whole, or a program
-      # followed by cruby_child_args and the port. The program is whatever
-      # came first (a version manager's shim runs ruby by its full path,
-      # spaces and all); the -I directories, this application's own among
-      # them, make it this application's.
-      # @param line [String]
-      # @param name [String]
-      # @param load_path [Array<String>]
-      # @return [Boolean]
-      def self.spawned_child_line?(line, name, load_path)
-        return true if line.match?(%r{\Abuild/bin/#{Regexp.escape(name)} [0-9]+\z})
-
-        tail = cruby_child_args(load_path, name).join(" ")
-        line.match?(/\A.+ #{Regexp.escape(tail)} [0-9]+\z/m)
-      end
-
-      # P14's identity of a build: the program is spin (the one on PATH,
-      # so by name) with exactly the arguments Processes#build_command
-      # gives it, in this application's directory where /proc shows it.
-      # @param pid [Integer] the group's leader
-      # @return [Boolean]
-      def self.application_build?(pid, root, name)
-        program, rest = program(command_line(pid))
-        return false if program.nil? || File.basename(program) != "spin"
-        return false unless [["build", name], ["build", name, "--", "--incremental"]].include?(rest)
-
-        in_root?(pid, root)
-      end
-
-      # A `cybertrain server` command line: a word named cybertrain...
-      # (exe/cybertrain, or the gem's wrapper) followed by `server`.
-      def self.supervisor?(args)
-        args.each_cons(2).any? { |word, after| File.basename(word).start_with?("cybertrain") && after == "server" }
-      end
-
-      # Whether the process works in root, where the system shows it (only
-      # Linux's /proc is read; elsewhere this answers true). A PID reused by
-      # another application's `cybertrain server` or build is not this
-      # application's.
-      def self.in_root?(pid, root)
-        cwd = process_cwd(pid)
-        cwd.nil? || cwd == root
-      end
-
-      # Gone, or a zombie, without reaping it (a leftover is not this
-      # process's child, and the build's leader must stay unreaped until
-      # stop_group is done). The state comes from /proc/PID/stat where it
-      # exists, else from ps. When neither tells (no ps, or a busybox ps that
-      # rejects -p and prints nothing) a process that kill(0) still finds
-      # is not known to have ended: answering "ended" would skip the
-      # cleanup wait and the TERM, and KILL a build at once.
-      def self.ended?(pid)
-        return true unless alive?(pid)
-
-        state = proc_state(pid)
-        state = ps_state(pid) if state.nil?
-        state.start_with?("Z") || state.start_with?("X")
-      end
-
-      # The state letter of /proc/PID/stat (after the parenthesised command
-      # name, which may hold spaces and parentheses itself; Z a zombie, X
-      # dead), "X" for a process that has gone since (ENOENT, ESRCH). nil,
-      # so that the caller asks ps, where there is no /proc, where the file
-      # cannot be read otherwise (EACCES or EPERM under hidepid or a
-      # container's restricted /proc, for a process that may well run), or
-      # where its text has no state letter after a ")".
-      # @param proc_dir [String] the /proc to read (a test gives its own)
-      # @return [String, nil]
-      def self.proc_state(pid, proc_dir = "/proc")
-        return nil unless File.directory?("#{proc_dir}/self")
-
-        stat = File.read("#{proc_dir}/#{pid}/stat")
-        close = stat.rindex(")")
-        return nil if close.nil?
-
-        stat[(close + 1)..].strip[0]
-      rescue Errno::ENOENT, Errno::ESRCH
-        "X"
-      rescue SystemCallError
-        nil
-      end
-
-      # The `ps -o stat=` letters; "" when ps cannot tell.
-      def self.ps_state(pid)
-        IO.popen(["ps", "-o", "stat=", "-p", pid.to_s], in: File::NULL, err: File::NULL, &:read).strip
-      rescue SystemCallError
-        ""
       end
 
       def self.signal(pid, name)

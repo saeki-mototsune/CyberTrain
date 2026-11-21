@@ -1,6 +1,5 @@
 ok   the checked-in gen/models files match the emitter (fixture stale otherwise)
 ok   scan_dir finds Comment and Post, Post's summary view method and both declarations
-ok   write_all writes every model file under gen/models
 ok   create and find through the generated classes
 ok   column defaults become initial values and reach the database
 ok   validations from app/models/post.rb apply to the generated class
@@ -38,4 +37,4 @@ ok   upsert and increment refuse an encrypted column; upsert casts by column typ
 ok   a nullable binary column stores the bytes of a Blob or a String, and nil as NULL
 ok   a stored payload made with another key raises Encryptor::Error on read
 ok   unique_value_taken? on an encrypted column raises, case-sensitive or not
-40 tests, 315 assertions, 0 failures
+39 tests, 312 assertions, 0 failures

@@ -15,6 +15,7 @@ require "cybertrain/error_reporter"
 require "cybertrain/middleware/request_id"
 require "cybertrain/middleware/host_authorization"
 require "cybertrain/test"
+require_relative "support/file_tree"
 
 # Keep the error log out of the snapshot.
 Cybertrain.logger = Cybertrain::Logger.new(StringIO.new)
@@ -384,16 +385,6 @@ test "a toolchain that refuses --incremental gets the plain build at once, and f
   ["#{root}/tmp", "#{root}/build", bin, root].each { |d| Dir.rmdir(d) if File.directory?(d) }
 end
 
-def remove_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| remove_tree("#{path}/#{child}") }
-    Dir.rmdir(path)
-  elsif File.exist?(path)
-    File.delete(path)
-  end
-  nil
-end
-
 GEN_ROOT = File.expand_path("tmp/dev_error_page_gen_root")
 GEN_CALLS = "#{GEN_ROOT}/calls"
 GEN_BINARY = "#{GEN_ROOT}/build/bin/gen"
@@ -423,7 +414,7 @@ end
 # a partial file and fails, and while check-unreadable exists it leaves a
 # directory. Returns the PATH to restore.
 def fake_spin_app
-  remove_tree(GEN_ROOT)
+  FileTree.remove(GEN_ROOT)
   Dir.mkdir("tmp") unless File.directory?("tmp")
   ["", "/fakebin", "/config", "/build", "/build/bin"].each { |d| Dir.mkdir("#{GEN_ROOT}#{d}") }
   File.write("#{GEN_ROOT}/config/routes.rb", "# routes\n")
@@ -471,7 +462,7 @@ end
 
 def finish_fake_spin_app(path)
   ENV["PATH"] = path
-  remove_tree(GEN_ROOT)
+  FileTree.remove(GEN_ROOT)
 end
 
 COMPILE_GEN = "SPIN_DEBUG=1 spin run gen\nspin build server -- --incremental\n"
@@ -893,7 +884,7 @@ test "shell_quote escapes single quotes" do
   assert_equal "'it'\\''s'", Cybertrain::Shell.quote("it's")
 end
 
-# ---- What development reports (Task 9; spec section 13.2, plan D6/D7) -------
+# ---- What development reports (docs/design.md D88) -------------------------
 
 def no_report_context
   h = { "" => "" }

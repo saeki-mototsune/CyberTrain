@@ -1,5 +1,5 @@
 ---
-source_sha256: 5eebbff21f9a12ce6f7a0fe38f032a5fdbda83819e1b6f62cbad52711cfc8ddd
+source_sha256: c6a6fbebb6ac3e6e10a08124e20ba6b77fa34985f1f6601156f5e32b5f2ae280
 ---
 # Справочник по языку шаблонов Cybertrain
 
@@ -11,7 +11,7 @@ source_sha256: 5eebbff21f9a12ce6f7a0fe38f032a5fdbda83819e1b6f62cbad52711cfc8ddd
 
 Шаблоны **не** являются Ruby. В Spinel (AOT-компиляторе Ruby от Matz, на который нацелен cybertrain) нет `eval`, поэтому вариант «интерпретировать собственный Ruby представления во время запроса» даже не рассматривался (D9 в `docs/design.md`); вместо этого выполняется небольшая замкнутая грамматика, которая лишь внешне похожа на синтаксис ERB/Ruby. Внутри тега нет произвольного Ruby — только то, что `ExprParser` (`parser.rb`) распознаёт как инструкцию или выражение. Нет `eval`, `send`, `instance_eval`, определений методов/классов/модулей, `require`, исключений (`begin/rescue`), диапазонов, регулярных выражений и множественного присваивания. Блоки есть только там, где их перечисляет этот документ: циклы `each`/`each_with_index`/`each_slice`, фиксированный набор методов Array и Hash (`map`, `select`, `sum`, `group_by` ... — см. [Блоки](#blocks)), вызовы хелперов (`form_with(...) do |f| ... end`) и построитель `tag`. Каждый вызов метода (`recv.name`) разрешается написанными вручную таблицами диспетчеризации `case` в `interpreter.rb` по классу Ruby получателя во время выполнения; имя, которого нет в таблице этого типа, приводит к `RuntimeError` — нет ни `method_missing`, ни рефлексии, и (согласно `Interpreter#call_method`) именно отсутствие `send` в Spinel объясняет, почему это `case`, а не поиск через метапрограммирование. Шаблон может делать только то, что описано в этом документе.
 
-<details><summary>Где это находится в исходниках — восемь файлов конвейера шаблонов</summary>
+<details><summary>Где это находится в исходниках — файлы конвейера шаблонов</summary>
 
 Конвейер находится в `cybertrain/template/`:
 
@@ -25,6 +25,9 @@ source_sha256: 5eebbff21f9a12ce6f7a0fe38f032a5fdbda83819e1b6f62cbad52711cfc8ddd
 | `helpers.rb` | `link_to`, `form_with`, `render`, `pluralize`, ... — всё, что шаблон вызывает без получателя |
 | `form_builder.rb` | `f`, передаваемый в `form_with(...) do \|f\| ... end` |
 | `engine.rb` | Загружает исходники `.html.erb` — с диска из корневого каталога или из встроенной таблицы `gen/views.rb` (`Engine.embedded`), — разбирает их (и при необходимости кэширует), отрисовывает с макетом |
+| `limits.rb` | `MAX_RENDER_DEPTH`, предел вложенности отрисовки по умолчанию |
+| `helper_object.rb` | `HelperObject`, основа объекта-хелпера подсистемы (построитель `turbo_stream`) |
+| `turbo_stream_builder.rb`, `stream_helpers.rb` | Загружаются `cybertrain/streams`: построитель `turbo_stream`, а также `turbo_stream_from`, `signed_stream_name`, `stream_source_path` |
 
 </details>
 
@@ -244,7 +247,7 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 
 1. Пять встроенных, доступных всегда: `id`, `persisted?`, `new_record?`, `to_param` (`id.to_s`), `errors` (`Errors`, [Таблица методов по типам](#per-type-method-table)).
 2. `read_attribute(:name)` — сгенерированный столбец.
-3. `read_association(:name)` — сгенерированная ассоциация `has_many`/`belongs_to`.
+3. `read_association(:name)` — сгенерированная ассоциация `has_many`, `has_one` или `belongs_to`.
 4. `call_view_method(:name)` — написанный вручную `def` без аргументов, который генератор моделей нашёл в `app/models/**/*.rb` (никогда с аргументами).
 
 ```erb
@@ -262,7 +265,7 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 
 ## Хелперы и построитель форм
 
-Каждый вызов без получателя идёт в `Helpers#helper_call` (`helpers.rb`), который сопоставляет его с одним из встроенных хелперов ниже; внутри шаблона [компонента](#components) затем пробует методы представления этого компонента; считает имя, оканчивающееся на `_path`/`_url`, сгенерированным хелпером маршрута (через `Cybertrain::Views.url_resolver`, возбуждая `"no routes"`, пока приложение его не установит); затем пробует [хелперы приложения](#application-helpers); или возбуждает `"undefined helper 'name'"`.
+Каждый вызов без получателя идёт в `Helpers#helper_call` (`helpers.rb`), который пробует по порядку: встроенные хелперы ниже; хелперы загруженной подсистемы (`turbo_stream_from`, `turbo_stream`, `signed_stream_name` и `stream_source_path` существуют при `require "cybertrain/streams"`); внутри шаблона [компонента](#components) — методы представления этого компонента (для вызова без аргументов и без блока); в запросе — методы контроллера, объявленные через `helper_method` ([Concerns и `helper_method`](requests.md#concerns-and-helper_method)); имя, оканчивающееся на `_path`/`_url`, как сгенерированный хелпер маршрута (через `Cybertrain::Views.url_resolver`, возбуждая `"no routes"`, пока приложение его не установит); [хелперы приложения](#application-helpers); иначе возбуждает `"undefined helper 'name'"`.
 
 | Хелпер | Сигнатура | Примечания / пример |
 | --- | --- | --- |
@@ -288,6 +291,7 @@ method arg1, key: value  # тот же вызов без скобок («ком�
 | `number_to_currency` | `number_to_currency(n, unit: "$", precision: 2, format: "%u%n")` | `1234.5` → `"$1,234.50"`; отрицательное число пишет `-` перед форматом |
 | `number_to_human_size` | `number_to_human_size(n)` | `1234` → `"1.21 KB"` (основание 1024); `1` → `"1 Byte"` |
 | `time_ago_in_words` | `time_ago_in_words(time)` | интервалы в стиле Rails, без точности до секунд: `"less than a minute"` … `"about 1 hour"` … `"3 days"` … `"about 1 year"`, из `datetime.distance_in_words` локали (по-японски `"2分"`) |
+| `distance_of_time_in_words` | `distance_of_time_in_words(from_time, to_time)` (без именованных аргументов) | те же интервалы между двумя Time, в любом порядке: два часа разницы → `"about 2 hours"` |
 | `content_for` / `content_for?` | `content_for(:key) do...end`, `content_for(:key, "text")`, `content_for?(:key)` | см. [Макеты, `yield`, `content_for`, партиалы](#layouts-yield-content_for-partials) |
 | `csrf_meta_tags` / `csrf_token` | | пусто / отсутствует без сессии контроллера |
 | `csp_meta_tag` / `content_security_policy_nonce` | | `<meta name="csp-nonce" content="...">` / сам nonce — nonce [Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts) этого запроса; `""`, когда политика не действует |
@@ -419,7 +423,7 @@ end
 - Шаблон видит переменные экземпляра компонента как локальные (`title`), его публичные методы без параметров по имени (`value_text`) и `content` — то, что вывел блок `do` (`""` без него). Он отрисовывается без макета, может отрисовывать партиалы и другие компоненты и учитывается в `max_render_depth`, как партиал. Партиал, который он отрисовывает, методов компонента не видит. Имя партиала без каталога в шаблоне компонента (`render "chip"`) ищется в `app/components/` (`app/components/_chip.html.erb`); имя с каталогом (`render "shared/note"`) — в `app/views/`, как обычно.
 - Компонент называют по его имени в snake_case без `_component`, как партиал называют по пути: `"card"` для `CardComponent`, `"admin/user_row"` для `Admin::UserRowComponent` (`app/components/admin/user_row_component.rb`). Шаблоны не могут называть константы.
 - `spin run gen` пишет `gen/components.rb` по лексическому разбору, как для хелперов: строка класса, присваивания `@x =`, `def` без параметров и ключи `initialize`. `initialize` принимает только именованные аргументы (из них не больше трёх необязательных), и его шаблон должен существовать; отсутствующий или неизвестный ключ — это `ArgumentError` при отрисовке. Неизвестный компонент — `Cybertrain::Component::Unknown`: `` "no component 'crad' (app/components/crad_component.rb, then `spin run gen`)" ``. Имя `content` зарезервировано: ключ `initialize` или переменная экземпляра `@content` с этим именем были бы перезаписаны выводом блока, поэтому `spin run gen` отказывается от них, называя файл и строку. `app/views/components/` остаётся обычным каталогом представлений (например, для `ComponentsController`); зарезервирован только `app/views/__components/` — имена, под которыми хранятся шаблоны компонентов.
-- `cybertrain generate component card title value:integer` пишет класс, его шаблон и тест, который отрисовывает его через `Cybertrain::Test.render_component`.
+- `cybertrain generate component card title value:integer` пишет класс, его шаблон и тест, который отрисовывает его через `render_inline` и проверяет через `assert_select` ([Тестирование потоков и компонентов](testing.md#testing-streams-and-components)).
 
 ### Отрисовка вне запроса
 
@@ -522,7 +526,7 @@ end
 | Строгие локальные переменные принимают `name: default_expr` (Rails 7.1) | Только голое `name:` (обязательное); запись со значением по умолчанию — `SyntaxError` |
 | Неопределённая переменная экземпляра/локальная разрешается через Ruby / методы контекста представления | `@x` — простой, никогда не падающий поиск в окружении; голая неопределённая локальная — явная попытка вызова хелпера из замкнутого набора (`"undefined helper"`, если совпадения нет) |
 | `case/when` с `===` (диапазоны, классы, регулярные выражения) | `case/when` только с `==` (числа по значению) |
-| `and`/`or`/`not`, диапазоны, регулярные выражения, множественное присваивание — всё работает | Ничего этого нет; зарезервированные слова дают конкретное сообщение «not supported in templates», а не общую ошибку разбора |
+| `and`/`or`/`not`, диапазоны, регулярные выражения, множественное присваивание — всё работает | Ничего этого нет; зарезервированное слово в начале выражения даёт конкретное сообщение «not supported in templates» (`<%= not x %>`), а после выражения — сообщение разборщика `unexpected 'and' in 'a and b'` |
 | Числовые литералы: шестнадцатеричные, восьмеричные, двоичные, экспоненты, рациональные | Только десятичные целые/дробные с необязательными разделителями `_` |
 | `:"quoted symbol"`, символы-операторы `:+` | Символы состоят только из символов идентификатора |
 | `foo (x)`, `foo [x]` (пробел допускается, иногда с предупреждением) | Оба — жёсткие `SyntaxError`: никаких пробелов перед `(` вызова или `[` индекса |

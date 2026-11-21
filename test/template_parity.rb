@@ -108,8 +108,6 @@ def parity_engine(mode)
   Cybertrain::Views.configured_engine
 end
 
-MODES = ["development", "test", "production"]
-
 def parity_render(mode, page)
   engine = parity_engine(mode)
   engine.render_with_layout(page, "layouts/application", parity_env, Cybertrain::Template::Helpers.new(nil)).to_s

@@ -2,8 +2,7 @@ require "cybertrain/test"
 require "cybertrain/db"
 require "cybertrain/model"
 
-# Task 10 of phase 2: insert_all, insert_all! and upsert_all
-# (docs/superpowers/specs/2026-11-06-phase2-data-layer-design.md section 6)
+# insert_all, insert_all! and upsert_all (docs/design.md D46)
 # -- multi-row INSERTs with RETURNING, chunked by SQLite's variable limit,
 # all chunks in one transaction, timestamps filled once per call, values
 # cast by column type as a save casts them. SQLite is FFI, so the snapshot
@@ -101,7 +100,7 @@ class Item < Cybertrain::Model
   def read_association(name) = nil
 end
 
-# A model whose table has an encrypted column (Task 14 fills the constant
+# A model whose table has an encrypted column (the generator fills the constant
 # from `encrypts`): bulk writes refuse it.
 class Secret < Cybertrain::Model
   def self.table_name = "secrets"

@@ -415,6 +415,52 @@ test "the production banner, and EOF ends with status 0" do
   assert out.end_with?("Cybertrain console (production). Type help for commands, exit to quit.\n>> \n")
 end
 
+# The message of what the block raises. A yielding method with its own
+# rescue, whose value is the block's when nothing is raised: given a block
+# that only raises, the call still has a value where it is written.
+def message_raised
+  yield
+rescue StandardError => e
+  e.message
+end
+
+# The same method again, for blocks that only raise and nothing else: the
+# call's value is then the rescue's alone.
+def message_of_raise
+  yield
+rescue StandardError => e
+  e.message
+end
+
+# No attributes, typed as the Hash a create_builder takes.
+def no_attributes
+  out = { id: [nil, 0, 0.0, "", true][0] }
+  out.delete(:id)
+  out
+end
+
+# The raising helpers and the default builders as the blocks of one
+# rescuing method, each call's value appended. unknown_model and
+# unknown_record are typed as what the real builders return, so every
+# block here has a builder's type or only raises (NOTES rule 124).
+test "an unknown model or record raises through a rescuing caller, which answers with the message" do
+  out = Array.new(0) { "" }
+  out << message_raised { Cybertrain::Console.unknown_model("Nope") }
+  out << message_raised { Cybertrain::Console.unknown_record("Nope") }
+  out << message_raised { Cybertrain::Console.no_scope_builder.call("Article") }
+  out << message_raised { Cybertrain::Console.no_create_builder.call("Article", no_attributes) }
+  out << message_raised { raise Cybertrain::Console::UnknownModel, "raised in the block" }
+  out << message_raised { raise "a block that only raises" }
+  nope = "no model \"Nope\" (models: Article, Photo)"
+  article = "no model \"Article\" (models: Article, Photo)"
+  out << message_of_raise { raise "nothing but a raise" }
+  assert_equal [nope, nope, article, article, "raised in the block", "a block that only raises", "nothing but a raise"], out
+  assert_raises("Cybertrain::Console::UnknownModel") { Cybertrain::Console.scope_builder.call("Nope") }
+  assert_raises("Cybertrain::Console::UnknownModel") { Cybertrain::Console.create_builder.call("Photo", no_attributes) }
+  assert_equal "0|#{BANNER}>> UnknownModel: no model \"Photo\" (models: Article, Photo)\n>> \n",
+               session("Photo.create(name: \"n\")\n")
+end
+
 test "templates still refuse constants" do
   message = assert_raises("SyntaxError") do
     Cybertrain::Template::Parser.parse_statement("Article.count", "t", 1)

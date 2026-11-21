@@ -1,5 +1,5 @@
-# Gen::FixtureScan -- reads test/fixtures/*.yml at build time (spec section
-# 7, plan decision D8) into one FixtureRow per label: the table, Rails' id
+# Gen::FixtureScan -- reads test/fixtures/*.yml at build time
+# (docs/design.md D83) into one FixtureRow per label: the table, Rails' id
 # for the label (or its `id:`), and the INSERT's columns and SQL literals.
 #
 #   rows = Gen::FixtureScan.scan(root, Cybertrain::Schema.current, ModelScan.scan_dir("#{root}/app/models"))
@@ -179,7 +179,7 @@ module Cybertrain
         rows = Array.new(0) { FixtureScan.empty_row }
         label = ""
         label_line = 0
-        keys = Array.new(0) { LocaleEntry.new("", "", Array.new(0) { "" }, false, "", 0) }
+        keys = LocaleYaml.no_locale_entries
         entries.each do |entry|
           key = entry.entry_key
           dot = key.index(".")
@@ -189,7 +189,7 @@ module Cybertrain
             rows << FixtureScan.build_row(path, table, info, label, label_line, keys) unless label.empty?
             label = key
             label_line = entry.entry_line
-            keys = Array.new(0) { LocaleEntry.new("", "", Array.new(0) { "" }, false, "", 0) }
+            keys = LocaleYaml.no_locale_entries
             next
           end
           owner = key[0, dot].to_s
@@ -199,7 +199,7 @@ module Cybertrain
             rows << FixtureScan.build_row(path, table, info, label, label_line, keys) unless label.empty?
             label = owner
             label_line = mappings.key?(owner) ? mappings[owner] : entry.entry_line
-            keys = Array.new(0) { LocaleEntry.new("", "", Array.new(0) { "" }, false, "", 0) }
+            keys = LocaleYaml.no_locale_entries
           end
           keys << LocaleEntry.new(column, entry.entry_text, Array.new(0) { "" }, false, path, entry.entry_line, entry.entry_null)
         end

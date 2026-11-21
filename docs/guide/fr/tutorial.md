@@ -1,5 +1,5 @@
 ---
-source_sha256: c1895cc4136cae8dc4584f4daf3a4cfc94afa499a6c7aafc1e623b014b04f754
+source_sha256: 681c0c56292faa833d075a15bf5a613dd7445b19901fd654fe35f4145c959f79
 path: tutorial.html
 title: "Premiers pas&nbsp;: le blog"
 description: "Construisez le blog du guide Getting Started de Rails, des articles avec commentaires, avec CyberTrain&nbsp;: générez un scaffold, migrez, imbriquez les routes, diffusez les commentaires en direct avec Turbo, mettez un job en file, testez avec Cybertrain::Test et compilez pour le déploiement avec cybertrain build."
@@ -278,7 +278,7 @@ Les autres validateurs (`format`, `inclusion`, `numericality`, ...) sont dans
 class ArticlesController < ApplicationController
   before_action :set_article, only: [:show, :edit, :update, :destroy]
 
-  def new_action   # a `new` method would shadow ArticlesController.new
+  def new_action   # the `new` action: the generated routes call new_action
     @article = Article.new
   end
 
@@ -304,12 +304,14 @@ class ArticlesController < ApplicationController
 end
 ```
 
-> [!RULE] Règle Spinel&nbsp;: new_action
+> [!RULE] new_action
 > ### `new_action`, pas `new`
 >
-> Une méthode nommée littéralement `new` masquerait
-> `ArticlesController.new(ctx)`, que le framework utilise pour construire le
-> contrôleur. La route `GET /articles/new` y mène toujours&nbsp;; vous renommez
+> L’action `new` s’écrit `new_action`&nbsp;: les routes générées l’appellent
+> sous ce nom. Le renommage date du moment où il était consigné que Spinel ne
+> compilait pas une méthode d’instance nommée `new` à côté de
+> `ArticlesController.new(ctx)`&nbsp;; des programmes réduits de cette forme
+> compilent avec la version épinglée, et le nom reste l’API. La route `GET /articles/new` y mène toujours&nbsp;; vous renommez
 > seulement la méthode. La vue reste `new.html.erb` et `render :new` ne change
 > pas.
 
@@ -461,8 +463,8 @@ suivante remplace.
 Cybertrain::Routes.draw do
   root "articles#index"
 
-  # A nested block takes the mapper explicitly (Spinel's instance_eval
-  # trampoline only rewires `self` for the outermost block): `articles.resources`.
+  # A nested block takes the mapper as its argument: `articles.resources`,
+  # not Rails' bare `resources`.
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end
@@ -470,12 +472,15 @@ Cybertrain::Routes.draw do
 end
 ```
 
-> [!RULE] Règle Spinel&nbsp;: mapper explicite
+> [!RULE] Mapper explicite
 > ### Les blocs imbriqués reçoivent le mapper explicitement
 >
 > Écrivez `resources :articles do |articles|` et `articles.resources :comments`,
-> pas un simple `resources :comments`. Le trampoline `instance_eval` de Spinel
-> ne redirige `self` que pour le bloc le plus externe.
+> pas un simple `resources :comments`. Cette forme a été introduite quand il
+> était consigné que Spinel ne compilait pas un appel sans receveur dans un
+> bloc imbriqué dans `instance_eval`&nbsp;; un programme réduit de cette forme
+> compile avec la version épinglée, et le mapper explicite reste la forme
+> documentée, celle qu’écrivent les générateurs et les tests.
 
 <!-- step 10 #comments-controller stage: Vous écrivez · `app/controllers/` -->
 ## Le contrôleur CommentsController
@@ -518,18 +523,19 @@ class CommentsController < ApplicationController
 end
 ```
 
-Ajoutez ensuite des validations au modèle de commentaire&nbsp;:
+Le scaffold a écrit le modèle de commentaire avec `belongs_to :article` et un
+contrôle de présence sur `commenter`, son premier champ de type chaîne&nbsp;;
+ajoutez-en un pour le corps&nbsp;:
 
 ```ruby app/models/comment.rb
 class Comment
+  belongs_to :article
   validates :commenter, presence: true
   validates :body, presence: true
-
-  belongs_to :article
 end
 ```
 
-La déclaration `belongs_to` rend aussi invalide un commentaire sans article
+Le `belongs_to` que le scaffold a déclaré rend aussi invalide un commentaire sans article
 («&nbsp;Article can't be blank&nbsp;»), avant que la base ne le refuse.
 
 > [!NOTE]
@@ -880,7 +886,8 @@ cybertrain generate job notify_comment --retry StandardError:30:3
 
 Elle écrit `app/jobs/notify_comment_job.rb`, avec la ligne `retry_on` que
 demandait l’option et un `perform` vide, ainsi qu’un test, et ajoute
-`require "cybertrain/jobs"` à `bin/blog.rb` et `bin/db.rb`. Complétez
+`require "cybertrain/jobs"` à `bin/blog.rb` et `bin/db.rb`, et décommente le
+rôle `worker` de `config/deploy.yml` ([étape 19](#ship)). Complétez
 `perform`&nbsp;; celui-ci se contente de journaliser, là où une vraie
 application enverrait un e-mail&nbsp;:
 
@@ -935,9 +942,10 @@ qui l’a mis en file&nbsp;:
   d’un job, celui-ci est exécuté de nouveau)&nbsp;: écrivez donc `perform` de
   sorte qu’il puisse être répété sans risque.
 - Les jobs en échec se listent, se réessaient et s’abandonnent avec
-  `./blog jobs`, ou sur la page que monte la ligne `jobs_page` de
-  `config/routes.rb` une fois décommentée (les routes des étapes 04 et 09
-  la gardent)
+  `./blog jobs`, ou sur la page des jobs, à `/admin/jobs`&nbsp;: la ligne
+  `jobs_page` commentée de `config/routes.rb` nomme `require_admin`, une
+  méthode qu’écrit le générateur de l’[étape 17](#authentication), et c’est ce
+  générateur qui monte la page pour vous
   ([La page des jobs](background-and-operations.md#the-jobs-page-and-the-jobs-command)).
 
 > [!RULE] Règle Spinel&nbsp;: les politiques des jobs sont lues comme du texte
@@ -1032,8 +1040,9 @@ et `comment_test.rb` (« the fixture is valid »), et
 `test/helpers/comments_helper_test.rb`, l’étape 14
 `test/jobs/notify_comment_job_test.rb`, et `cybertrain new` a écrit
 `test/test_helper.rb`, que chaque fichier charge, et
-`test/integration/health_test.rb`, une requête vers `/up`. Trois d’entre eux doivent
-suivre le blog tel qu’il a grandi depuis.
+`test/integration/health_test.rb`, une requête vers `/up`. Quatre d’entre eux doivent
+suivre le blog tel qu’il a grandi depuis&nbsp;: la fixture des articles, les
+deux tests de contrôleur et le test du composant.
 
 ### Des fixtures qui passent les validations
 
@@ -1155,8 +1164,8 @@ cybertrain test -n /comment/
 ```
 
 La première exécution compile tous les tests en un seul programme, ce qui
-prend des minutes (les 149 tests d’examples/blog en ont pris environ neuf
-sur une machine cloud à 4 vCPU)&nbsp;; une exécution sans changement ne recompile pas le programme de
+prend des minutes (les tests d’examples/blog, 149 lors de la mesure du 2026-11-13, en ont pris
+environ neuf sur une machine cloud à 4 vCPU)&nbsp;; une exécution sans changement ne recompile pas le programme de
 test&nbsp;: elle peut reconstruire gen une fois (`build gen`, quelques
 secondes), puis démarre en bien moins d’une seconde. Un fichier ou `-n` choisit quels tests s’exécutent, pas ce qui est
 compilé&nbsp;: modifier n’importe quel test recompile le programme. Chaque
@@ -1186,7 +1195,7 @@ cybertrain generate authentication
 cybertrain db migrate    # crée les tables users et sessions
 ```
 
-Il écrit les migrations et les modèles `users` et `sessions`, le concern `Authentication`, qu’il inclut dans `ApplicationController`, les contrôleurs et les vues de la connexion, de l’inscription, de la réinitialisation du mot de passe et de la page de compte, un mailer, la commande `./blog user`, et des tests. Il ajoute aussi les routes, un partial `sessions/_nav` en haut du layout, et un réglage `base_url` dans `config/app.rb`, par lequel commencent les liens des courriels. Il ajoute enfin à `bin/blog.rb` et `bin/db.rb` les lignes des sous-systèmes que son code utilise : `cybertrain/jobs` (la page des jobs et le thread qui envoie les courriels), `cybertrain/mailer`, `cybertrain/mailer/later` (les courriels partent avec `deliver_later`) et `cybertrain/rate_limit` (les tentatives de connexion sont limitées, plus bas). Chaque fichier est listé dans [Authentification](authentication.md#generating-it).
+Il écrit les migrations et les modèles `users` et `sessions`, le concern `Authentication`, qu’il inclut dans `ApplicationController`, les contrôleurs et les vues de la connexion, de l’inscription, de la réinitialisation du mot de passe et de la page de compte, un mailer, la commande `./blog user`, et des tests. Il ajoute aussi les routes (dont la page des jobs à `/admin/jobs`, pour les administrateurs), un partial `sessions/_nav` en haut du layout, et un réglage `base_url` dans `config/app.rb`, par lequel commencent les liens des courriels. Il ajoute enfin à `bin/blog.rb` et `bin/db.rb` les lignes des sous-systèmes que son code utilise : `cybertrain/jobs` (la page des jobs et le thread qui envoie les courriels), `cybertrain/mailer`, `cybertrain/mailer/later` (les courriels partent avec `deliver_later`) et `cybertrain/rate_limit` (les tentatives de connexion sont limitées, plus bas). Chaque fichier est listé dans [Authentification](authentication.md#generating-it).
 
 ```ruby app/controllers/concerns/authentication.rb (extrait)
 module Authentication
@@ -1238,12 +1247,13 @@ Démarrez le serveur et ouvrez `http://127.0.0.1:3000/sign_up` pour créer le pr
 
 La page de connexion renvoie aussi vers une réinitialisation du mot de passe par courriel, et la navigation vers une page de compte&nbsp;; le guide [Authentification](authentication.md) les décrit, avec le verrouillage, «&nbsp;rester connecté&nbsp;», `--confirmable` et les administrateurs. Un courriel de réinitialisation a besoin des réglages SMTP et, en production, de `BLOG_BASE_URL` ([Liens dans les courriels](authentication.md#links-in-mails)).
 
-> [!RULE] Règle Spinel&nbsp;: has_secure_password
+> [!RULE] has_secure_password est écrit en toutes lettres
 > ### `has_secure_password` est écrit en toutes lettres
 >
-> Spinel ne peut pas définir de méthodes à l’exécution, donc le modèle `User`
-> écrit lui-même ce que `has_secure_password` définirait&nbsp;: `password=`,
-> `authenticate` et `User.authenticate_by(email_address:, password:)`. Les mots
+> CyberTrain n’a pas de macro `has_secure_password`. Le générateur écrit ce
+> qu’elle définirait dans le modèle `User`, comme du code qui appartient à
+> l’application&nbsp;: `password=`, `authenticate` et
+> `User.authenticate_by(email_address:, password:)`. Les mots
 > de passe sont hachés par `Cybertrain::Password`, du PBKDF2-HMAC-SHA256 en
 > Ruby, 100&nbsp;000 itérations par défaut (environ 0,2&nbsp;s une fois
 > compilé)&nbsp;: bcrypt demanderait que le binaire lie une bibliothèque C.
@@ -1400,12 +1410,12 @@ d’envoi, et l’image à la page d’affichage, juste après le `<h1>`&nbsp;:
 > `show`, il ne touche pas à cette ligne, et sans `:cover` à cet endroit
 > l’image exige une connexion.
 
-> [!RULE] Règle Spinel&nbsp;: has_one_attached
+> [!RULE] has_one_attached est écrit en toutes lettres
 > ### `has_one_attached` est écrit en toutes lettres
 >
-> Spinel ne peut pas définir de méthodes à l’exécution (pas de `define_method`),
-> donc il n’y a ni `has_one_attached` ni table d’attachements partagée. Le
-> générateur écrit en toutes lettres ce qu’il définirait, sous forme de méthodes
+> Il n’y a ni `has_one_attached` ni table d’attachements partagée&nbsp;: les
+> types admis, les tailles et qui peut télécharger diffèrent d’une application
+> à l’autre, donc le générateur écrit les méthodes en toutes lettres,
 > nommées d’après le champ, dans `Article`, et place les métadonnées dans cinq
 > colonnes de `articles`. Elles sont `NOT NULL`, avec `""` et `0` pour dire
 > «&nbsp;rien d’attaché&nbsp;»&nbsp;: des colonnes nullables coûteraient à
@@ -1558,7 +1568,10 @@ copie `dist/` dans une étape allégée de la même version, qui applique les
 migrations au démarrage puis écoute sur `0.0.0.0:3000`. À côté se trouvent
 `.dockerignore`, `config/deploy.yml` (kamal-proxy avec Let&rsquo;s Encrypt en
 façade, le contrôle de santé sur `public/up.html`, le fichier SQLite sur un
-volume monté en `/app/storage`) et `.kamal/secrets`, qui lit
+volume monté en `/app/storage`, et le rôle `worker` que l’étape 14 a
+décommenté&nbsp;: un second conteneur de la même image qui exécute
+`./blog worker`&nbsp;; le rôle web exécute aussi les jobs sauf si
+`CYBERTRAIN_WORKER` vaut 0) et `.kamal/secrets`, qui lit
 `KAMAL_REGISTRY_PASSWORD` et `CYBERTRAIN_SECRET_KEY_BASE` dans
 l’environnement. Renseignez les valeurs marquées `CHANGE ME` dans
 `config/deploy.yml`, committez, puis&nbsp;:

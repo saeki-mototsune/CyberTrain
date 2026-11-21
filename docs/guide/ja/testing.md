@@ -1,5 +1,5 @@
 ---
-source_sha256: b82aa50dc1d5b3b82ef82755517e518f5a198f17dd722dfc6ed4bdf66210d16e
+source_sha256: c6c7baa4356307f11f2c308e07938a3e30b8ffd69e4f48104a50c4eb5d8d6662
 ---
 # アプリをテストする
 
@@ -81,7 +81,9 @@ cybertrain test -n test_creates_an_article              # またはメソッド�
 cybertrain test -n /article/                            # 名前に "article" を含むテスト
 ```
 
-`cybertrain test` は `SPIN_DEBUG=1 spin run gen` を実行します（CLI のどのコマンドとも同じく、gen は spin のデバッグモードでビルドされます）。これが `gen/tests.rb`（プログラム）と、`gen/test/` 以下に各テストクラスを書き換えたコピーを書き出します。どちらも `gen/` のほかの部分と一緒にコミットします。次に、いずれかの入力がバイナリより新しければ `gen/tests.rb` を `build/test/tests` にコンパイルし（リリースビルド）、実行します。`test/**/*_test.rb` のすべてと、`test/test_helper.rb` 以外の `test/*.rb` のすべてがこれに入ります。`test/support/`（ヘルパーが読み込む）と `test/fixtures/` にはテストはありません。プログラムは最初のテストの前に `storage/test.sqlite3` を削除し、新しいデータベースをマイグレートして、その上でアプリケーションを起動します（ジョブ、スケジューラー、フィードのスレッドはなし：ジョブはテストが自分で実行します）。`CYBERTRAIN_TEST_DATABASE` を設定すると代わりに別のファイルを使います。プログラムはテストに使うファイルを削除するので、自分が作るデータベースすべてに印を付け（`PRAGMA application_id`、専用の値）、既存のファイルを削除したり空にしたりするのは、その印があるとき、このアプリケーション自身の `storage/test.sqlite3`（パスの書き方は問いません）であるとき、空のファイルであるときだけです。それ以外は終了ステータス 2 で何も削除せずに拒否します：`cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`。`development.sqlite3` や `production.sqlite3` という名前のファイル（大文字小文字は問いません）、または `storage/development.sqlite3` や `storage/production.sqlite3` と同じファイルは、`cybertrain test refuses to delete <path>: it is the development database`（または `production`）で拒否されます。名前はファイルのパスでなければなりません：`:memory:` と `file:` の URI は拒否されます（`cybertrain test refuses CYBERTRAIN_TEST_DATABASE ":memory:": name the test database by its file path (not :memory: or a file: URI)`）。アップグレードのあと、以前 `CYBERTRAIN_TEST_DATABASE` で指定していたファイルには印がないので一度拒否されます：そのファイルを（`-wal` と `-shm` も）削除すれば、`cybertrain test` が印の付いたものを作ります。既定の `storage/test.sqlite3` は何もしなくてかまいません。データベースを作っている間にシンボリックリンクに変わったパスは、終了ステータス 2 で拒否されます：`cybertrain test refuses <path>: it became a symlink while the test database was created (nothing was marked or migrated); remove it and run again`。各テストの前に空にするのはメインのデータベースのテーブルだけで、同じ名前の TEMP のテーブルや attach されたテーブルには触れません。既知の制限：印はテスト用データベースを `cp` しても残るので、テスト用データベースの名前を付けたコピー（またはテストが接続したもの）は空にされます。ファイルを作ってから印を付けるまでの間に止められた実行は、指定したパスに印のないファイルを残し、次は拒否されます（削除してください）。`storage/test.sqlite3` がディレクトリだと、プログラムが削除するときに例外になります。
+`cybertrain test` は `SPIN_DEBUG=1 spin run gen` を実行します（CLI のどのコマンドとも同じく、gen は spin のデバッグモードでビルドされます）。これが `gen/tests.rb`（プログラム）と、`gen/test/` 以下に各テストクラスを書き換えたコピーを書き出します。どちらも `gen/` のほかの部分と一緒にコミットします。次に、いずれかの入力がバイナリより新しければ `gen/tests.rb` を `build/test/tests` にコンパイルし（リリースビルド）、実行します。`test/**/*_test.rb` のすべてと、`test/test_helper.rb` 以外の `test/*.rb` のすべてがこれに入ります。`test/support/`（ヘルパーが読み込む）と `test/fixtures/` にはテストはありません。プログラムは最初のテストの前に `storage/test.sqlite3` を削除し、新しいデータベースをマイグレートして、その上でアプリケーションを起動します（ジョブ、スケジューラー、フィードのスレッドはなし：ジョブはテストが自分で実行します）。このファイルの扱いは[テスト用データベース](#the-test-database)にあります。
+
+テストのプログラムは、`bin/<app>.rb` が何を require していても、`cybertrain`、つまりすべてのサブシステムを require します。そのため `perform_enqueued_jobs`、`assert_emails`、`assert_broadcasts`、`Test::SentryReceiver` は `cybertrain/core` のアプリケーションでも動きます。一方、サブシステムをその行なしで名指しするコードは、テストには通り、`spin build` で止まります（[サブシステム](how-it-works.md#subsystems)）。
 
 プログラムは、`config/app.rb` が自分で同じことを設定していない限り、Rails と同じようにテスト環境を整えます：リクエスト偽造対策は無効、リクエストのログは出さず（レベル `:none`。エラーの行は出ます）、ログの行はテキスト（エクスポートされた `CYBERTRAIN_LOG_FORMAT` は読みません）、エラー報告は Sentry に送らず（エクスポートされた `CYBERTRAIN_SENTRY_DSN` は空にします）、メールは `Mailer.deliveries` に保持し（`:test`）、`force_ssl` は無効（テストでは変数 `CYBERTRAIN_MAIL_DELIVERY_METHOD` と `CYBERTRAIN_FORCE_SSL` は、不正な値でも読まれません）、アップロードは `tmp/test_uploads/` に書かれて実行のたびに空になり、ホストの検査は行いません（`CYBERTRAIN_HOSTS` を export しても有効になりません）。`*_url` ヘルパーのホストである `www.example.com` は常に許可されたホストです。
 
@@ -103,6 +105,20 @@ test/models/article_test.rb
 **変更にかかる手間。** ファイルの引数と `-n` は、どのテストを実行するかを選ぶもので、何をコンパイルするかは変えません。プログラムは常にすべてのテストを含むので、絞り込みを変えてもバイナリはそのまま使われます。一方、どれか 1 つのテスト（あるいはプログラムを作るほかの何か）を編集すると、先に `bin/gen` をビルドし直したうえで、プログラム全体をコンパイルし直します。2026-11-12 と 2026-11-13 に、共有の 4 vCPU のクラウドマシンで測った値です（手元のマシンでは違います）：examples/blog の 21 ファイル 149 テストは、初回のコンパイルに約 527 秒かかり（初回の実行全体で 656 秒、バイナリは 10.2 MB）、そのあと何も変えずに `cybertrain test test/controllers` を実行すると、バイナリをそのまま使って約 1 秒で始まりました（ブログ自身の実行、2026-11-13）。ブログのアプリケーションに 3 つのテストファイル（8 テスト）を入れたものは、最大約 2.2 GB のメモリで 162〜233 秒かけてコンパイルされ、8.1 MB のバイナリになりました（2026-11-12）。テストはいくつか書いてからまとめて実行し、1 つのテストに取り組む間は、ビルドではなく実行のほうを絞り込んでください。
 
 2 つのテストファイルやサポートファイルが同じトップレベルのメソッドや定数を定義していると（1 つのプログラムの中では 1 つになってしまいます：共有するヘルパーは `test/support/` か、クラスの中に移してください）、`gen/tests.rb` は拒否され、`cybertrain test` はコンパイルせずに理由を出して 1 で終わります。[テストクラスで gen が拒否するもの](#what-gen-refuses-in-a-test-class)のほかの場合も同じです。
+
+### テスト用データベース
+
+テストは `storage/test.sqlite3` の上で動き、プログラムは実行のたびにこのファイルを削除してマイグレートし直します。`CYBERTRAIN_TEST_DATABASE` を設定すると代わりに別のファイルを使います。エクスポートされた `CYBERTRAIN_ENV` と `CYBERTRAIN_DATABASE` は読みません：プログラムは常にテスト環境で動き、`CYBERTRAIN_DATABASE` でファイルが決まることはありません。プログラムはテストに使うファイルを削除するので、自分が作るデータベースすべてに印を付け（`PRAGMA application_id`、専用の値）、既存のファイルを削除したり空にしたりするのは、その印があるとき、このアプリケーション自身の `storage/test.sqlite3`（パスの書き方は問いません）であるとき、空のファイルであるときだけです。それ以外は終了ステータス 2 で何も削除せずに拒否します：`cybertrain test refuses to delete <path>: not a database cybertrain test created; delete it yourself or name another file`。
+
+ほかに次の 3 つも拒否されます：
+
+- `development.sqlite3` や `production.sqlite3` という名前のファイル（大文字小文字は問いません）、または `storage/development.sqlite3` や `storage/production.sqlite3` と同じファイルは、`cybertrain test refuses to delete <path>: it is the development database`（または `production`）で拒否されます。
+- 名前はファイルのパスでなければなりません：`:memory:` と `file:` の URI は拒否されます（`cybertrain test refuses CYBERTRAIN_TEST_DATABASE ":memory:": name the test database by its file path (not :memory: or a file: URI)`）。
+- データベースを作っている間にシンボリックリンクに変わったパスは、終了ステータス 2 で拒否されます：`cybertrain test refuses <path>: it became a symlink while the test database was created (nothing was marked or migrated); remove it and run again`。
+
+アップグレードのあと、以前 `CYBERTRAIN_TEST_DATABASE` で指定していたファイルには印がないので一度拒否されます：そのファイルを（`-wal` と `-shm` も）削除すれば、`cybertrain test` が印の付いたものを作ります。既定の `storage/test.sqlite3` は何もしなくてかまいません。
+
+各テストの前に空にするのはメインのデータベースのテーブルだけで、同じ名前の TEMP のテーブルや attach されたテーブルには触れません。既知の制限：印はテスト用データベースを `cp` しても残るので、テスト用データベースの名前を付けたコピー（またはテストが接続したもの）は空にされます。ファイルを作ってから印を付けるまでの間に止められた実行は、指定したパスに印のないファイルを残し、次は拒否されます（削除してください）。`storage/test.sqlite3` がディレクトリだと、プログラムが削除するときに例外になります。
 
 ## フィクスチャ
 
@@ -339,7 +355,7 @@ class SignupHookTest < ActiveSupport::TestCase
 end
 ```
 
-`HttpReceiver.new` は用意する `status:`、`headers:`、`body:`、`chunked:` を取ります（`respond_with` でリクエストの間に変えられます）。リクエストは `ReceivedRequest` として返ります（`http_method`、`http_target`、`http_path`、小文字の名前の `http_headers`、`http_header(name)`、chunked の本文をデコードした `http_body`）。`SmtpReceiver` は 220、EHLO（`eight_bit_mime: false` でなければ 8BITMIME 付き、`auth: true` で AUTH PLAIN 付き）、MAIL、RCPT、DATA、QUIT を演じます。`reject:` は `:greeting`、`:ehlo`、`:mail`、`:rcpt`、`:data`、`:message` のどれでも、指定した返事で失敗させます。`ReceivedMessage` には `envelope_from`、`envelope_recipients`、`message_data`（ドットスタッフィングを戻したもの）、`message_header(name)`、`message_body`、コマンドの `transcript` があり、HTML のメッセージなら `message_parts` が `"subject"`、`"text"`、`"html"` にデコードします。どちらも `max:` で増やさない限り 1 つの接続を受け付けます（`received_requests` / `received_messages` がすべてを返します）。待ちにはすべて上限があります：受信者は接続がないまま `accept_window:`（10 秒）が過ぎるとあきらめ、黙ったクライアントは `read_timeout:`（5 秒）で切り、`stop`（2 回呼んでも安全）はスレッドを終わらせてポートを閉じるので、受信者があとのテストの接続を取ることはありません。テストの外で（ファイルの先頭で）起動した受信者は、自動では止められません。
+`HttpReceiver.new` は用意する `status:`、`headers:`、`body:`、`chunked:`、`gzip:`（本文を gzip でエンコードし、`Content-Encoding: gzip` を付けて送ります）を取ります（`respond_with` でリクエストの間に変えられます）。リクエストは `ReceivedRequest` として返ります（`http_method`、`http_target`、`http_path`、小文字の名前の `http_headers`、`http_header(name)`、chunked の本文をデコードした `http_body`）。`SmtpReceiver` は 220、EHLO（`eight_bit_mime: false` でなければ 8BITMIME 付き、`auth: true` で AUTH PLAIN 付き）、MAIL、RCPT、DATA、QUIT を演じます。`reject:` は `:greeting`、`:ehlo`、`:mail`、`:rcpt`、`:data`、`:message` のどれでも、指定した返事で失敗させます。`ReceivedMessage` には `envelope_from`、`envelope_recipients`、`message_data`（ドットスタッフィングを戻したもの）、`message_header(name)`、`message_body`、コマンドの `transcript` があり、HTML のメッセージなら `message_parts` が `"subject"`、`"text"`、`"html"` にデコードします。どちらも `max:` で増やさない限り 1 つの接続を受け付けます（`received_requests` / `received_messages` がすべてを返します）。待ちにはすべて上限があります：受信者は接続がないまま `accept_window:`（10 秒）が過ぎるとあきらめ、黙ったクライアントは `read_timeout:`（5 秒）で切り、`stop`（2 回呼んでも安全）はスレッドを終わらせてポートを閉じるので、受信者があとのテストの接続を取ることはありません。テストの外で（ファイルの先頭で）起動した受信者は、自動では止められません。
 
 フィードも同じように、`127.0.0.1` 上の台本どおりに動く WebSocket サーバー `Cybertrain::Test::WebSocketReceiver` でテストします：各接続は `Cybertrain::Test::WsStep` のリスト（`"accept"`、`"send_text"`、`"expect"`、`"silent"`、`"close"`、`"drop"`、`"echo_until_close"` など）を演じ、クライアントが送ったフレームはマスクを外して `ws_received` から返ります。
 
@@ -377,7 +393,7 @@ end
 
 ## ログとエラー報告のテスト
 
-レスポンスの `X-Request-Id` がリクエストの ID です。ログの行を読むには、テストが見たい処理の間だけ `Cybertrain.logger` に `StringIO` を渡し、後でロガーを戻します。これは専用のメソッドの中で行います（`yield` を囲む `rescue` や `ensure` は、Spinel では素のメソッドに置きます）：
+レスポンスの `X-Request-Id` がリクエストの ID です。ログの行を読むには、テストが見たい処理の間だけ `Cybertrain.logger` に `StringIO` を渡し、後で `ensure` の中でロガーを戻します。これはブロックを取らない専用のヘルパーメソッドの中で行います（フレームワークは `rescue` と `ensure` を、yield するメソッドには置きません：spikes/NOTES.md のルール 45 と 50 で、以前の Spinel で記録されたものであり、ピン留めされたリリースでは確かめ直していません）：
 
 ```ruby test/integration/logging_test.rb
 require "test_helper"
@@ -502,20 +518,9 @@ Cybertrain::Test.run!
 
 トップレベルの `setup do` と `teardown do` は、そのファイルの各テストの前後に実行されます。`cybertrain spin test` は各 `test/*.rb` を別々のプログラムにコンパイルし、出力を `test/<name>.rb.expected` と比べます。そこではテーブルを空にすることもフィクスチャもなく（どちらも gen のテーブルの一覧が要ります）、`Cybertrain::Test.run!` がファイルのテストを実行します。`cybertrain test` では、ファイルのテストはテーブルを空にしてフィクスチャを入れたあとにほかのテストと一緒に実行され、`run!` は何もしません。`spin test` ではそのファイルのためにアプリケーションを起動するものがないので、そのようなファイルは 0.4 のサポートファイル（`AppTest.boot`、`BlogTest.boot`）がしていたように自分で起動し、フィクスチャは使いません。`Cybertrain::Test::Client` は cookie jar を持ち、CSRF も含めてアプリケーションを操作します（`client.get`、`client.post(path, fields, headers)`、`client.follow_redirect!`、`client.response`、引数 2 つの `assert_response res, :ok` と `assert_redirected_to res, path`）。SQLite に触れるテストのスナップショットはコンパイル済みのバイナリから取ります：フレームワークのチェックアウトでは `script/regen-snapshot test/<name>.rb`、または `rm -f build/test/<name>; cybertrain spin test test/<name>.rb; ./build/test/<name> > test/<name>.rb.expected 2>&1`。
 
-## 0.4 からのアップグレード
+## アップグレード
 
-- 上のとおりに `test/test_helper.rb` を加え、サポートファイルが読み込み時にしていたこと（`AppTest.boot`、`BlogTest.boot`、データベースのマイグレート）をそこから外してください：テストプログラムは最初のテストの前に新しいデータベースで起動し、2 回目の起動は時間がかかるだけです。
-- CI のステップを `spin test` から `cybertrain test` に変えてください。
-- 同じトップレベルのヘルパーや定数を定義する 2 つのファイル（0.4 のジェネレーターが書いたように、それぞれにある `new_client`）は一緒に拒否されます：ヘルパーを `test/support/` に移すか、どちらかの名前を変えてください。
-- 各テストの前にすべてのテーブルが空になるので、あとのテストが前のテストの作った行に頼ることはもうできません：そのようなデータはフィクスチャか `setup` に移してください。
-- 時計の差し込み口はなくなりました：`Cybertrain::Cache.clock=`、`Cache.system_clock`、`RateLimit.current_time=`、`SessionStore#fixed_now=`、`Application.status_now=`、`Background.supervisor_clock=`。`travel_to`、`travel`、`freeze_time` を使ってください。ブロックの形なら、自分で `ensure` を書かなくても時刻が戻ります。
-- テストのメールは `Cybertrain::Mailer.deliveries` に保持されます。`Test::SmtpReceiver` でメールを読むテストは、先に `Cybertrain.config.mail_delivery_method = :smtp` を設定します。
-- 0.4 の `generate helper` が書いたヘルパーのテストはトップレベルの `render_inline(source)` を定義しており、これはフレームワークのものとぶつかります：そのファイルの中で、呼び出しも含めて `render_helper_template` に名前を変えてください。
-- `1.month.ago` は `Time.current.months_ago(1)` と書きます。
-- `assert_equal` は Minitest の 2 行のテキストで失敗します。通るテストのスナップショットは変わりません。
-- `cybertrain generate authentication` をもう一度実行すると、クラスの形のテストを書き出し、それらが置き換える古いファイル（`test/authentication.rb`、`test/support/app_test.rb` など）をそれぞれ示します。`--force` でそれらを削除します。
-- 角括弧のレベルで始まるログの行を丸ごと探していたテストは、レベルとメッセージを別々に探します（`" ERROR "` と `"password reset mail not sent: "`）。行はいまは時刻で始まり、リクエストの ID を持つことがあります（[ログ](background-and-operations.md#logs)）。
-- エクスポートされた `CYBERTRAIN_LOG_FORMAT` や `CYBERTRAIN_SENTRY_DSN` はテストに届かなくなりました。それらでテストするには、`config/app.rb` で設定するか、テストで DSN を代入します。
+アプリケーションのテストについてリリースが変えることは、[アップグレード](upgrading.md#notes-by-version) にバージョンごとに載っています。
 
 ## 継続的インテグレーション
 

@@ -1,4 +1,4 @@
-# Phase 5a spike, pre-flight R12 / N39: assert_select's polymorphic
+# Phase 5a spike: assert_select's polymorphic
 # arguments. The positional `equality` is a String (the text), an Integer
 # (the count), true / false (present or absent) or nil; `text:` is a String
 # or a Regexp. One method takes them all; the matching is a toy over a list

@@ -3,12 +3,12 @@ require "cybertrain/logger"
 require "cybertrain/test"
 require_relative "support/log_capture"
 
-# The log line (spec sections 12.1 and 12.5, plan D2 and D3): the time in
+# The log line (docs/design.md D86): the time in
 # UTC with milliseconds, taken from the Clock so that it follows a test's
 # travel, the level in capitals, the tags, the message; or one JSON object
-# per line. Runs under CRuby and compiled. Byte checks instead of regexps
-# (pre-flight ruling G5); restores go through plain helpers' `ensure`
-# (ruling G4).
+# per line. Runs under CRuby and compiled. Byte checks instead of regexps;
+# restores go through plain helpers' `ensure` (spikes/NOTES.md rules 32
+# and 45).
 
 SINK = StringIO.new
 

@@ -9,7 +9,7 @@ require "cybertrain/test/jobs"
 require "cybertrain/test/websocket_receiver"
 require_relative "support/log_capture"
 
-# The log tags of work that runs outside a request (spec section 12.3):
+# The log tags of work that runs outside a request (docs/design.md D86):
 # a job's lines carry `[<kind> <id>]`, and the id of the request that
 # enqueued it (recorded in cybertrain_jobs.request_id) when log_tags
 # shows request ids; a scheduled task's carry `[schedule:<name>]`; a feed

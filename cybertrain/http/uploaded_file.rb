@@ -9,12 +9,12 @@
 # by {UploadedFile#detected_content_type}, which looks at the magic numbers
 # and never decodes the file, so there is no image-parser attack surface here.
 #
-# All of the byte work below is byte loops over getbyte/byteslice. Under
-# Spinel a String is a character string (NOTES rule 27), a String built by
-# appending `n.chr` stays tagged UTF-8 and is invalid for bytes >= 0x80, and
-# regexps are avoided on anything that can hold arbitrary bytes (rule 49), so
+# All of the byte work below is byte loops over getbyte/byteslice, and
 # results are only ever built by appending byteslices of the input or of a
-# literal table into a `+""` buffer.
+# literal table into a `+""` buffer: an offset is a byte whatever encoding
+# the String is tagged with (NOTES rule 27, whose status says which reads
+# answer byte Strings and which character Strings under Spinel), and no
+# regexp runs over text that can hold arbitrary bytes.
 require "digest"
 
 module Cybertrain
@@ -33,6 +33,8 @@ module Cybertrain
   class UploadedFile
     # The only detected types that may be shown inline in a browser. SVG and
     # HTML are never detected, so they can never be on this list.
+    # @return [Array<String>]
+    # @api public
     INLINE_SAFE_TYPES = ["image/png", "image/jpeg", "image/gif", "image/webp"]
     # The longest display name kept, in bytes (a file system limit).
     MAX_FILENAME_BYTES = 255

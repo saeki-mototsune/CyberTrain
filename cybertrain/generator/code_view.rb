@@ -159,7 +159,7 @@ module Cybertrain
             next
           end
           if !@kinds.empty? && @kinds.last == 1
-            i = string_char(cs, out, i, ch, nxt)
+            i = string_char(out, i, ch, nxt)
             next
           end
           if ch == "#"
@@ -244,7 +244,7 @@ module Cybertrain
       end
 
       # A character inside a string-like literal; answers the next index.
-      def string_char(cs, out, i, ch, nxt)
+      def string_char(out, i, ch, nxt)
         if ch == "\\"
           out << " "
           if nxt != "" && nxt != "\n" && nxt != "\r"

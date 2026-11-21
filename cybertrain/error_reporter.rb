@@ -1,5 +1,5 @@
-# Cybertrain.error -- error reporting shaped like Rails.error (spec section
-# 13): `report` records an exception the application rescued, `handle`
+# Cybertrain.error -- error reporting shaped like Rails.error
+# (docs/design.md D88): `report` records an exception the application rescued, `handle`
 # runs a block and reports what it raised, `subscribe` adds a
 # Cybertrain::ErrorSubscriber, `add_filter` an ErrorReporter::Filter that
 # may change or drop an event before it is handed on. The framework reports what ends a request,
@@ -9,7 +9,7 @@
 # caller's thread, from the exception (its class name, message and
 # backtrace), the thread's log Scope (the request id, method, path,
 # `where` and context) and the configuration (env, release), so that it
-# can cross threads (spec section 13.1). It is put on a bounded queue
+# can cross threads. It is put on a bounded queue
 # ({ErrorReporter::QUEUE_LIMIT}); one delivery thread, started on the
 # first queued event, runs the filters over each event, then hands it to
 # every subscriber and then to the sender (the Sentry sender,
@@ -43,7 +43,7 @@ require "cybertrain/http/stream_failure"
 module Cybertrain
   # One error report as a subscriber receives it: Strings (and a Boolean,
   # a Hash of Strings, an Array of Strings and a Time), so that it is a
-  # value that crosses threads (spec section 13.3). Every reader carries
+  # value that crosses threads. Every reader carries
   # the `error_` prefix, so that no model column or other method of the
   # same name has another return type (spikes/NOTES.md rules 10 and 34).
   # @api public
@@ -181,6 +181,8 @@ module Cybertrain
     # The events waiting for the delivery thread, at most.
     QUEUE_LIMIT = 100
     # An event like one queued this many seconds ago or less is not queued.
+    # @return [Integer]
+    # @api public
     DEDUPE_SECONDS = 60
     # The drop count is logged at most once in this many seconds.
     DROP_LOG_SECONDS = 60
@@ -205,9 +207,7 @@ module Cybertrain
       name = error.class.name.to_s
       text = error.message.to_s
       "#{name}: #{text}"
-    rescue JSON::NestingError, JSON::ParserError, StandardError
-      error.class.name.to_s
-    rescue NotImplementedError, SystemStackError, ScriptError
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError
       error.class.name.to_s
     end
 
@@ -289,7 +289,7 @@ module Cybertrain
     # made, on the unfiltered class, message and `where`. A filter that
     # rewrites the message does not change which reports collapse, and an
     # event a filter drops still holds its dedupe slot for
-    # {ErrorReporter::DEDUPE_SECONDS} seconds (a like report in that time
+    # 60 seconds ({ErrorReporter::DEDUPE_SECONDS}; a like report in that time
     # is not queued, so no filter sees it).
     #
     # A filter that raises drops the event (fail closed: a filter exists
@@ -379,15 +379,13 @@ module Cybertrain
       scope = Logger.current_scope
       where = scope.scope_where
       enqueue_error(error, where, handled, given)
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      report_failed(e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       report_failed(e)
     end
 
-    # Runs the block and answers its value; an exception it raises
-    # (`StandardError`, `JSON::ParserError`, `JSON::NestingError`) is
-    # reported with `handled: true` and the block answers nil.
+    # Runs the block and answers its value; an exception it raises (any
+    # StandardError) is reported with `handled: true` and the block
+    # answers nil.
     # @example
     #   price = Cybertrain.error.handle(context: { "feed" => "prices" }) do
     #     parse_price(text)
@@ -400,7 +398,7 @@ module Cybertrain
       value = nil
       begin
         value = yield
-      rescue JSON::NestingError, JSON::ParserError, StandardError => e
+      rescue StandardError => e
         report(e, handled: true, context: context)
         value = nil
       end
@@ -444,9 +442,7 @@ module Cybertrain
       scope = Logger.current_scope
       at = where == "" ? scope.scope_where : where
       enqueue_error(error, at, false, given)
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      report_failed(e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       report_failed(e)
     end
 
@@ -470,9 +466,7 @@ module Cybertrain
       name = error_class.to_s
       text = message.to_s
       queue_event(name, text, Array.new(0) { "" }, at, false, given)
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      report_failed(e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       report_failed(e)
     end
 
@@ -713,9 +707,7 @@ module Cybertrain
         deliver_counted(event)
       end
       nil
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      delivery_failed(e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       delivery_failed(e)
     end
 
@@ -774,9 +766,7 @@ module Cybertrain
     # (fail closed) and is logged.
     def filter_kept?(filter, event)
       filter.filter_event(event) ? true : false
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      filter_failed(filter, e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       filter_failed(filter, e)
     end
 
@@ -791,9 +781,7 @@ module Cybertrain
     def deliver_to(subscriber, event)
       subscriber.report(event)
       nil
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      subscriber_failed(subscriber, e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       subscriber_failed(subscriber, e)
     end
 
@@ -805,13 +793,11 @@ module Cybertrain
     end
 
     # The sender (`sends?` and the send), in a plain rescuing method: a
-    # raise is logged at warn, as a failed send is (spec section 13.4).
+    # raise is logged at warn, as a failed send is.
     def send_to(sender, event)
       sender.deliver_event(event) if sender.sends?
       nil
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      sender_failed(sender, e)
-    rescue NotImplementedError, SystemStackError, ScriptError => e
+    rescue StandardError, NotImplementedError, SystemStackError, ScriptError => e
       sender_failed(sender, e)
     end
 

@@ -2,12 +2,12 @@ require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/generator"
 
-# The class-form rewrite (spec 5.2, plan decisions 18 and 20): a file of
+# The class-form rewrite (docs/design.md D82): a file of
 # test/ holding a Rails-shaped test class is copied into gen/test/ with
 # each `test "name" do` turned into a method, setup / teardown blocks into
 # per-class methods called from one setup / teardown on the class line,
-# every line kept where it was and each method ending in nil (pre-flight
-# ruling R8). Text only: CRuby-portable.
+# every line kept where it was and each method ending in nil (rule
+# 34). Text only: CRuby-portable.
 require_relative "fixtures/gen_app/config/routes"
 
 FIXTURE = "test/fixtures/gen_app"
@@ -30,58 +30,26 @@ class ProbeBase
 end
 
 require_relative "fixtures/test_rewrite/gen/probe_test"
+require_relative "support/file_tree"
 TEMP_ROOTS = Array.new(0) { "" }
-
-def copy_tree(from, to)
-  Dir.mkdir(to) unless File.directory?(to)
-  Dir.children(from).sort.each do |entry|
-    if File.directory?("#{from}/#{entry}")
-      copy_tree("#{from}/#{entry}", "#{to}/#{entry}")
-    else
-      File.write("#{to}/#{entry}", File.read("#{from}/#{entry}"))
-    end
-  end
-  nil
-end
-
-def remove_tree(dir)
-  Dir.children(dir).each do |entry|
-    path = "#{dir}/#{entry}"
-    if File.directory?(path)
-      remove_tree(path)
-    else
-      File.delete(path)
-    end
-  end
-  Dir.rmdir(dir)
-  nil
-end
-
-def make_dirs(dir)
-  return nil if File.directory?(dir)
-
-  make_dirs(File.dirname(dir))
-  Dir.mkdir(dir)
-  nil
-end
 
 # A copy of the fixture app with `files` (path => text) written into it.
 def temp_app(files)
   root = Dir.mktmpdir("cybertrain-gen-test")
   TEMP_ROOTS << root
-  copy_tree(FIXTURE, root)
-  # The fixture app's gen/test/data.rb (Task 8's fixtures) is left to a
+  FileTree.copy(FIXTURE, root)
+  # The fixture app's gen/test/data.rb (its fixtures) is left to a
   # gen that loads the schema, which this program does not: without it
   # the copies are the only files of gen/test.
-  remove_tree("#{root}/gen/test")
+  FileTree.remove("#{root}/gen/test")
   files.each do |rel, text|
-    make_dirs(File.dirname("#{root}/#{rel}"))
+    FileTree.make_dirs(File.dirname("#{root}/#{rel}"))
     File.write("#{root}/#{rel}", text)
   end
   root
 end
 
-at_exit { TEMP_ROOTS.each { |root| remove_tree(root) if File.directory?(root) } }
+at_exit { TEMP_ROOTS.each { |root| FileTree.remove(root) if File.directory?(root) } }
 
 # A double-quoted literal of s, written out by hand: String#inspect escapes
 # non-ASCII characters when the locale is not UTF-8.
@@ -177,7 +145,7 @@ end
 test "names that collide after the method-name rule, non-ASCII and quoted names" do
   assert_equal "test/x_test.rb:5: test \"a-b\" has the same method name test_a_b as test \"a b\" (line 2)", refusal(two_tests("a b", "a-b"))
   # Each non-ASCII character is _u<hex>: names in another script do not
-  # collide (ruling C-M2).
+  # collide.
   assert_equal "", refusal(two_tests("日本語", "ロシア"))
   assert_equal "", refusal(two_tests("ログインできる", "ログアウトする"))
   assert_equal "test__u65e5__u672c__u8a9e__u306e__u30c6__u30b9__u30c8_", Cybertrain::Gen::TestScan.method_name("日本語のテスト")

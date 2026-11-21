@@ -2,7 +2,7 @@ require "cybertrain/test"
 require "cybertrain/db"
 require "cybertrain/model"
 
-# i18n in models (spec 8 Models, plan Task 6, decisions D9 and D10):
+# i18n in models (docs/design.md D79):
 # validation messages looked up when the validator runs through Rails'
 # key chain, full_messages through `errors.format`, `:base` messages
 # alone, human_attribute_name and human_model_name.
@@ -149,7 +149,7 @@ test "English validation messages are unchanged" do
   assert_equal [], full_messages_of(VALID)
 
   # Every key the validators use, as 0.4 printed it (the length minimum of
-  # 1 reads "character": rails-i18n's plural, plan decision D10).
+  # 1 reads "character": rails-i18n's plural).
   assert_equal "can't be blank", I18n.error_message("post", "title", :blank)
   assert_equal "is not included in the list", I18n.error_message("post", "title", :inclusion)
   assert_equal "is reserved", I18n.error_message("post", "title", :exclusion)

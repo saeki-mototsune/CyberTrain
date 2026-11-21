@@ -118,9 +118,9 @@
 <span class="ln">                                       └─ storage/production.sqlite3</span></code></pre>
 </figure>
     <ul class="points">
-      <li><strong>Il est lié à la SQLite et à la libc du système&nbsp;:</strong> construisez-le donc sur le même OS et le même CPU que la machine qui l’exécute. Le construire dans une image Docker, comme le fait la configuration Kamal, règle la question.</li>
+      <li><strong>Il est lié à SQLite, zlib, OpenSSL et à la libc du système&nbsp;:</strong> construisez-le donc sur le même OS et le même CPU que la machine qui l’exécute. Le construire dans une image Docker, comme le fait la configuration Kamal, règle la question.</li>
       <li><strong>Il ne parle que le HTTP/1.1 simple.</strong> TLS et HTTP/2 sont l’affaire du proxy inverse. En production, le cookie de session est <code>Secure</code>&nbsp;: le site doit être servi en HTTPS, sinon les formulaires échouent avec <code>Invalid authenticity token</code>.</li>
-      <li><strong>La base de données est un seul fichier SQLite.</strong> Faites tourner un seul processus sur un seul serveur, et gardez le fichier sur un stockage qui survit à un déploiement.</li>
+      <li><strong>La base de données est un seul fichier SQLite.</strong> Faites tourner l’application sur un seul serveur, et gardez le fichier sur un stockage qui survit à un déploiement. Plusieurs processus de ce serveur peuvent le partager&nbsp;: un <code>worker</code> pour les jobs ou, sous Linux, d’autres processus serveur sur le même port.</li>
       <li><strong>Il est en production par défaut</strong> et refuse de démarrer sans <code>CYBERTRAIN_SECRET_KEY_BASE</code>. <code>./blog migrate</code> applique les migrations compilées dedans.</li>
     </ul>
   </section>
@@ -137,11 +137,11 @@
         <tr><td data-label="">Fichiers statiques</td><td data-label="Kamal">L’application sert <code>public/</code></td><td data-label="systemd et Caddy">Caddy sert lui-même <code>dist/public/</code></td></tr>
         <tr><td data-label="">Un déploiement</td><td data-label="Kamal">Le nouveau conteneur reçoit le trafic une fois son contrôle de santé réussi&nbsp;: aucune connexion n’est refusée</td><td data-label="systemd et Caddy">Un redémarrage&nbsp;: quelques secondes de 500.html servi par Caddy</td></tr>
         <tr><td data-label="">Revenir en arrière</td><td data-label="Kamal"><code>kamal rollback VERSION</code></td><td data-label="systemd et Caddy">Pointer <code>current</code> vers une version antérieure et redémarrer</td></tr>
-        <tr><td data-label="">Le serveur a besoin de</td><td data-label="Kamal">SSH et Docker (installé par <code>kamal setup</code>), plus un registre d’images</td><td data-label="systemd et Caddy">Ruby, une chaîne de compilation C, les en-têtes SQLite, la CLI <code>cybertrain</code> et Spinel</td></tr>
+        <tr><td data-label="">Le serveur a besoin de</td><td data-label="Kamal">SSH et Docker (installé par <code>kamal setup</code>), plus un registre d’images</td><td data-label="systemd et Caddy">Ruby, une chaîne de compilation C, les en-têtes de SQLite, zlib et OpenSSL, la CLI <code>cybertrain</code> et Spinel</td></tr>
       </tbody>
     </table>
     </div>
-    <p class="note">Dans les deux cas, l’application est un processus et son fichier SQLite sur un seul serveur.</p>
+    <p class="note">Dans les deux cas, l’application et son fichier SQLite sont sur un seul serveur.</p>
   </section>
 
   <section class="step" id="kamal" aria-labelledby="h-kamal">
@@ -164,7 +164,7 @@
     <ul class="points">
       <li>Chaque déploiement construit l’image (Spinel reste dans le cache de couches de Docker après la première fois), la pousse et démarre un conteneur qui exécute <code>./blog migrate</code> puis <code>exec ./blog</code> sur <code>0.0.0.0:3000</code>.</li>
       <li>kamal-proxy attend que <code>/up.html</code> réponde 200, bascule le trafic vers le nouveau conteneur, puis arrête l’ancien, qui termine ses requêtes en cours sur <code>SIGTERM</code>.</li>
-      <li>La base de données se trouve sur le volume <code>blog_storage</code>, monté en <code>/app/storage</code>&nbsp;: elle survit à chaque déploiement.</li>
+      <li>La base de données et les fichiers envoyés se trouvent sur le volume <code>blog_storage</code>, monté en <code>/app/storage</code>&nbsp;: ils survivent à chaque déploiement.</li>
       <li>Réglez <code>builder.arch</code> sur le CPU du serveur. Spinel se compile dans l’image, donc construire pour une autre architecture sous émulation est lent&nbsp;; construisez plutôt sur le serveur avec <code>builder.remote</code>.</li>
     </ul>
     <p class="note">Le guide pas à pas, sauvegardes du volume comprises, est <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><code>docs/deploy-kamal.md</code></a>. <a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><code>examples/blog</code></a> embarque la même configuration, et la CI construit et teste son image.</p>
@@ -210,7 +210,7 @@
     <table class="env">
       <thead><tr><th scope="col">Variable</th><th scope="col">En production</th></tr></thead>
       <tbody>
-        <tr><td data-label="Variable"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="En production">Obligatoire. Signe le cookie de session&nbsp;; la changer déconnecte tout le monde. Générez-la une fois avec <code>openssl rand -hex 32</code></td></tr>
+        <tr><td data-label="Variable"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="En production">Obligatoire. Chiffre le cookie de session&nbsp;; la changer déconnecte tout le monde. Générez-la une fois avec <code>openssl rand -hex 32</code> (ou <code>cybertrain secret</code>)</td></tr>
         <tr><td data-label="Variable"><code>CYBERTRAIN_DATABASE</code></td><td data-label="En production">Le fichier SQLite&nbsp;; par défaut <code>storage/production.sqlite3</code> sous le répertoire de travail. Gardez-le hors de la version déployée</td></tr>
         <tr><td data-label="Variable"><code>CYBERTRAIN_HOST</code></td><td data-label="En production"><code>127.0.0.1</code> par défaut, ce qui convient derrière un proxy sur la même machine&nbsp;; <code>0.0.0.0</code> dans un conteneur</td></tr>
         <tr><td data-label="Variable"><code>PORT</code></td><td data-label="En production"><code>3000</code> par défaut&nbsp;; là où le proxy transmet</td></tr>
@@ -218,7 +218,7 @@
       </tbody>
     </table>
     </div>
-    <p class="note">L’étape <a href="tutorial.html#ship">Compiler pour le déploiement</a> du tutoriel liste toutes les variables et l’attribut <code>config/app.rb</code> correspondant.</p>
+    <p class="note">Toutes les variables et l’attribut <code>config/app.rb</code> correspondant&nbsp;: <a href="guide/configuration.html#configuration-and-environment-variables">Configuration</a>.</p>
   </section>
 
   <section class="step" id="operate" aria-labelledby="h-operate">
@@ -229,6 +229,7 @@
       <li><strong>Sauvegardez avec <code>.backup</code> de SQLite,</strong> pas en copiant le fichier&nbsp;: la copie est cohérente même pendant que l’application écrit.</li>
       <li><strong>Revenir en arrière par-delà une migration</strong> implique de ramener aussi la base, avec <code>db rollback</code> depuis la version la plus récente, avant de basculer.</li>
       <li><strong>L’arrêt est en douceur&nbsp;:</strong> sur <code>SIGTERM</code>, le serveur cesse d’accepter, termine les requêtes en cours et quitte, au bout de 10 secondes au plus.</li>
+      <li><strong>Un binaire, plusieurs rôles.</strong> Avec le sous-système des jobs, <code>./blog worker</code> exécute les jobs et les tâches planifiées sans HTTP&nbsp;; avec celui des feeds, <code>./blog feeds</code> gère les abonnements WebSocket. <code>GET /up</code> répond 503 quand la base de données, le worker ou un feed n’est pas en bon état. <a href="guide/background-and-operations.html#process-roles">Rôles des processus</a>.</li>
     </ul>
   </section>
 

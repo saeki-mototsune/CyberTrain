@@ -1,4 +1,4 @@
-# The Content Security Policy (spec C-5): Config#content_security_policy,
+# The Content Security Policy: Config#content_security_policy,
 # ContentSecurityPolicyHeader with a fresh nonce per response, the
 # report-only header, a controller's own policy, and the template helpers
 # csp_meta_tag, javascript_tag(nonce: true) and content_security_policy_nonce

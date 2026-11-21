@@ -1,7 +1,7 @@
 require "cybertrain/test"
 require "cybertrain/token"
 
-# Cybertrain::Token (plan D15): "<id>--<expires epoch>--<64 hex>", the hex
+# Cybertrain::Token: "<id>--<expires epoch>--<64 hex>", the hex
 # an HMAC-SHA256 of "<purpose>:<id>:<expires>:<bound_to>" keyed with
 # Crypto.derive_key(Cybertrain.config.secret_key_base, "cybertrain token").
 # Runs under CRuby too (`ruby -I. test/token.rb`).

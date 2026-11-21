@@ -1,4 +1,4 @@
-# Cybertrain::Background's feed supervisor (spec section 9): one thread
+# Cybertrain::Background's feed supervisor (docs/design.md D56): one thread
 # per process that runs feeds, started by Background.start_all /
 # start_only when a service with feeds (cybertrain/websocket.rb) started,
 # and stopped first by Background.stop_all, so a feed that is being
@@ -23,7 +23,7 @@
 #    the `cybertrain_feeds` rows).
 #
 # The backoff, the window and the publish interval are measured on the
-# monotonic clock (Process::CLOCK_MONOTONIC, as Job and Scheduler do), so
+# monotonic clock ({Clock.monotonic}, as Job and Scheduler do), so
 # a step of the wall clock neither delays a restart nor miscounts the
 # window; the rows' `updated_at` is epoch seconds from {Clock.now}
 # (a test moves it with `travel_to`). The state below is written by the
@@ -95,7 +95,7 @@ module Cybertrain
     # Whole seconds on the monotonic clock: the backoff, the window and
     # the publish interval.
     def self.monotonic_seconds
-      Process.clock_gettime(Process::CLOCK_MONOTONIC).to_i
+      Clock.monotonic.to_i
     end
 
     @supervising = false
@@ -263,7 +263,7 @@ module Cybertrain
 
     # A dead feed: its first sighting schedules the restart (or gives up),
     # a later one past the due time restarts it. True when the process
-    # gives up. The give-up is reported too (spec section 13.2), with no
+    # gives up. The give-up is reported too (docs/design.md D88), with no
     # exception object: its class is named
     # "Cybertrain::Background::FeedFailed" (a name only, never raised), its
     # message is the FATAL line's, and its `where` `feed:<name>` is given,

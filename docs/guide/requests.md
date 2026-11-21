@@ -200,11 +200,10 @@ gen expands them itself instead: it writes each concern to
 `gen/concerns/<path under app/>` with the two blocks blanked (the
 application's files load those copies), and `gen/concerns.rb` reopens every
 including class with the spliced declarations and a forwarder per
-`class_methods` method. Two rules follow. A `class_methods` method may not
-share its name with an instance method of the concern, of an including
-class or of its ancestors (Spinel would define both as instance methods,
-spikes/NOTES.md rule 93); gen refuses it, naming both places (`file:line`
-of the instance method). And an `include` of a module that is not a concern
+`class_methods` method. Such a method may share its name with an instance
+method of the concern, of an including class or of its ancestors: the
+forwarder is a class method, and the copy gen writes defines no instance
+method for it. An `include` of a module that is not a concern
 (`include Comparable`, a name with no file under `app/*/concerns`) is left
 to Ruby as it is, so a misspelt concern name is a `NameError` when the
 application loads, not a gen message. gen looks a name up as Ruby does, the
@@ -217,8 +216,8 @@ would be lost.
 Model concerns live in `app/models/concerns/` and work the same way: their
 `included` block may hold any of the model's class-level declarations
 (`validates`, `validate`, `scope`, `belongs_to`, `has_many`, `has_one`,
-`encrypts`, callbacks, `normalizes`), treated as written in the model at
-the `include`. A concern's callbacks run after the model's own of the same
+`encrypts`, the callbacks), treated as written in the model at the
+`include`. A concern's callbacks run after the model's own of the same
 kind, and an `include` inside a model concern's `included` block brings that
 concern in. A model concern's `class_methods` name may not be a scope of
 the model or a class method every model has (`recent` beside `scope :recent`,
@@ -451,7 +450,7 @@ end
 
 `c.log_tags` chooses what each line shows, and the job's lines and error
 reports carry the id of the request that enqueued it
-([Request ids](background-and-operations.md#request-ids)).
+([Request ids](logs-and-errors.md#request-ids)).
 
 ## Content Security Policy, `force_ssl` and hosts
 
@@ -548,9 +547,10 @@ the credential from `request.header("authorization")`. Design:
 
 ## Query strings and bodies
 
-`Query.parse`, `Query.value_of`, `Query.decode` and `request.form_value` /
-`query_value` raise `Cybertrain::QueryMalformed` (a `StandardError` under
-`Cybertrain::QueryInvalid`, not an `ArgumentError`), answered 400, on:
+A request's parameters are decoded before its action runs, and
+`Query.parse` decodes text the same way. Both raise
+`Cybertrain::QueryInvalid` (a `StandardError`, not an `ArgumentError`),
+answered 400, on:
 
 - a malformed percent-escape, on both runtimes;
 - an invalid UTF-8 byte sequence, raw (whatever the String's tag) or
@@ -559,11 +559,9 @@ the credential from `request.header("authorization")`. Design:
 - a raw byte that only an escape would complete (`a=\xC3%A9`).
 
 `Cookies.parse` keeps such a value raw instead. A path with an invalid
-sequence (raw, or percent-decoded in a segment) is a 400 as well
-(`request.path_segments`); a malformed escape in a path stays literal, a 404
-by non-match. Request parameters nest at most 32 levels and 4096 pairs, and
-are a 400 past that. Upgrade note: app code that rescued `ArgumentError`
-around these calls should rescue `Cybertrain::QueryInvalid` instead.
+sequence (raw, or percent-decoded in a segment) is a 400 as well; a
+malformed escape in a path stays literal, a 404 by non-match. Request
+parameters nest at most 32 levels and 4096 pairs, and are a 400 past that.
 
 The request keeps no parameter tree of its own (the Router builds `params`,
 the middleware read one key); an app that wants the whole tree parses it
@@ -578,67 +576,7 @@ than gzip/identity is `Cybertrain::BodyUndecodable`, one that would inflate
 past the limit `Cybertrain::BodyTooLarge`, both `QueryInvalid`s answered 400.
 `request.body` stays the bytes as sent.
 
-## Upgrading an application from 0.4
+## Upgrading
 
-What changes for an application written for 0.4 (the full list is section
-14 of [the design](../superpowers/specs/2026-11-10-phase4-web-layer-design.md)):
-
-- Every session ends once: the encrypted cookie does not read the old
-  signed one, so users sign in again. Code that calls `Session.load` or
-  `Session.dump` passes the derived key, `Crypto.derive_key(secret,
-  SessionStore::SESSION_KEY_LABEL)`; the raw secret raises
-  `Encryptor::Error`.
-- Every application links OpenSSL ([Installing](install.md#requirements));
-  a Dockerfile `cybertrain new` wrote earlier needs `libssl-dev` in its
-  build stage and `libssl3t64` in its runtime stage.
-- A dynamic segment no longer captures a `.` in a route that takes a
-  format: an id with dots needs `format: false` on its route.
-- A hand-written `url_resolver` lambda takes three arguments, `->(name,
-  args, options)`; one that passes `Gen::Routes.url_resolver` needs only
-  `spin run gen`.
-- `params.permit` returns `Hash{String => Object}`: call `Cast.str` or
-  `.to_s` on a value before using it as a String.
-- `rate_limit` counts in the cache: `store: :memory` keeps the old
-  per-process counter, two limits in one controller need their own
-  `name:`, a `by:` method answering nil or `""` raises, and a `with:`
-  method that renders nothing is followed by the 429.
-- The number helpers raise for a value that is not a number (nil renders
-  `""` in a template, as before), and for a precision outside 0 to 100.
-- `include A, B` in a controller or model includes B first, as Ruby does; an
-  `include` of a module that is not a concern is left to Ruby.
-- Every ETag changes once (it now holds the request's format and a build
-  digest), a response negotiated by `Accept` sends `Vary: Accept`, and the
-  html fallback covers any `Accept` that lists `text/html` or `*/*`. A
-  request that may fall back to html (`application/json, text/html`) has
-  an ETag of its own, apart from the one of a request for that format
-  alone; `text/html;q=0` in `Accept` gets no html fallback (406 where the
-  action has only html), also beside `*/*`; and `If-None-Match: *` gets a
-  304 from a response validated by `last_modified:` alone.
-- `permit` and `expect` raise `ArgumentError` for a filter that is not an
-  Array; a `layout` that names a missing layout raises `MissingTemplate`
-  (the default `application` layout stays optional); a jar cookie over 4096
-  bytes raises `Session::CookieOverflow`.
-- `public/style.css` keeps working; moving it to `app/assets/stylesheets/`
-  is optional ([Assets](assets.md#moving-publicstylecss)).
-- Validation messages come from the bundled dictionary
-  ([Internationalization](i18n.md#models-and-validation-messages)), with
-  the same English text except three: a message on `:base` is no longer
-  prefixed "Base", an attribute ending in `_id` is named without "id"
-  ("Article can't be blank", not "Article id can't be blank"), and a
-  length limit of 1 reads "1 character". Tests that compare these
-  messages change.
-- `time_tag` without `format:`, or with a format name, formats through
-  `I18n.l` (the same English text as before in an English page).
-- gen writes `gen/locales.rb` (empty without `config/locales/`) and loads
-  `app/mailers/**/*.rb`; `cybertrain new` writes `config/locales/en.yml`,
-  which an older application can add.
-- `allow_unauthenticated_access` is a framework method now; the one 0.4's
-  generator wrote into `ApplicationController` keeps working and takes
-  precedence. Running `cybertrain generate authentication` again adds
-  password reset, lockout, remember me, the account page and admin users,
-  and prints diffs for the files 0.4 wrote
-  ([Upgrading from 0.4](authentication.md#upgrading-from-04)).
-- Every response the application answers carries `X-Request-Id` (not the
-  server's own 400 and 413 for a request it cannot read), and a proxy's `X-Request-Id` is
-  used only when the proxy is trusted; every log line changes shape
-  ([Upgrading logs and error reports from 0.4](background-and-operations.md#upgrading-logs-and-error-reports-from-04)).
+What a release changes in routing, controllers and the rest of the web
+layer is listed by version in [Upgrading](upgrading.md#notes-by-version).

@@ -43,7 +43,7 @@ skip config/deploy.yml (no commented worker role to uncomment; the web role runs
 manual  app/models/user.rb: apply this diff by hand, or re-run with --force to overwrite the file
 --- a/app/models/user.rb
 +++ b/app/models/user.rb
-@@ -1,6 +1,7 @@
+@@ -1,23 +1,26 @@
 -# Columns (email_address, password_digest), the Cybertrain::Model
 -# superclass and `sessions` (from the sessions table's foreign key) come
 -# from gen/models/user.rb, generated from db/schema.rb by `spin run gen`.
@@ -54,7 +54,14 @@ manual  app/models/user.rb: apply this diff by hand, or re-run with --force to o
  #
  # Written by `cybertrain generate authentication`; it is yours to change.
  # The password is hashed by Cybertrain::Password (PBKDF2-HMAC-SHA256) into
-@@ -13,11 +14,13 @@
+ # password_digest; the plain text lives only in @password until the
+ # record is saved. `password=` and `authenticate` are what Rails'
+-# `has_secure_password` would define (Spinel cannot define methods at
+-# run time, so they are written out).
++# `has_secure_password` would define (CyberTrain has no such macro:
++# they are written out here).
+ class User
+   MIN_PASSWORD_LENGTH = 8
  
    validates :email_address, presence: true
  
@@ -266,7 +273,7 @@ manual  app/models/session.rb: apply this diff by hand, or re-run with --force t
 manual  app/controllers/sessions_controller.rb: apply this diff by hand, or re-run with --force to overwrite the file
 --- a/app/controllers/sessions_controller.rb
 +++ b/app/controllers/sessions_controller.rb
-@@ -2,11 +2,10 @@
+@@ -2,14 +2,13 @@
  class SessionsController < ApplicationController
    allow_unauthenticated_access only: [:new, :create]
    # Ten sign-in attempts per client address every three minutes, then
@@ -281,7 +288,11 @@ manual  app/controllers/sessions_controller.rb: apply this diff by hand, or re-r
 +  rate_limit to: 10, within: 3 * 60, only: [:create], with: :rate_limited
  
    # GET /session/new
-   # (named new_action: a `new` method would shadow SessionsController.new)
+-  # (named new_action: a `new` method would shadow SessionsController.new)
++  # (named new_action: the generated routes call the `new` action by that name)
+   def new_action
+   end
+ 
 @@ -17,10 +16,10 @@
    def create
      user = User.authenticate_by(email_address: params[:email_address].to_s, password: params[:password].to_s)

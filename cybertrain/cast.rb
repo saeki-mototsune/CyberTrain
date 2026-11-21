@@ -12,6 +12,11 @@ module Cybertrain
   module Cast
     TRUE_STRINGS = ["1", "true", "t", "on", "yes"]
 
+    # `v` as an Integer: an Integer as it is, a Float truncated, a String
+    # through `to_i`, true as 1; false, nil and anything else 0.
+    # @param v [Object]
+    # @return [Integer]
+    # @api public
     def self.int(v)
       case v
       when Integer then v
@@ -22,7 +27,12 @@ module Cybertrain
       end
     end
 
-    # nil and "" (an empty form field) mean "no value".
+    # {Cast.int} for a nullable column: nil and "" (an empty form field)
+    # mean "no value" and are nil; an Integer as it is, a Float truncated,
+    # any other String through `to_i`, true/false as 1/0; anything else nil.
+    # @param v [Object]
+    # @return [Integer, nil]
+    # @api public
     def self.int_or_nil(v)
       case v
       when nil then nil
@@ -35,6 +45,11 @@ module Cybertrain
       end
     end
 
+    # `v` as a String: nil is `""`, a String itself, a Time its ISO 8601
+    # text ({Cast.iso8601}), anything else `to_s`.
+    # @param v [Object]
+    # @return [String]
+    # @api public
     def self.str(v)
       case v
       when nil then ""
@@ -44,6 +59,10 @@ module Cybertrain
       end
     end
 
+    # {Cast.str} for a nullable column: nil stays nil; `""` stays `""`.
+    # @param v [Object]
+    # @return [String, nil]
+    # @api public
     def self.str_or_nil(v)
       case v
       when nil then nil
@@ -83,6 +102,11 @@ module Cybertrain
       end
     end
 
+    # `v` as a Float: a Float as it is, an Integer or a String through
+    # `to_f`; nil and anything else 0.0.
+    # @param v [Object]
+    # @return [Float]
+    # @api public
     def self.float(v)
       case v
       when Float then v
@@ -92,6 +116,11 @@ module Cybertrain
       end
     end
 
+    # {Cast.float} for a nullable column: nil and "" are nil; a Float as it
+    # is, an Integer or any other String through `to_f`; anything else nil.
+    # @param v [Object]
+    # @return [Float, nil]
+    # @api public
     def self.float_or_nil(v)
       case v
       when nil then nil
@@ -102,7 +131,13 @@ module Cybertrain
       end
     end
 
-    # true/false, 1/0 (SQLite), "1"/"0", "true"/"false", "on" (checkbox), "".
+    # `v` as true or false: true/false as they are; an Integer is true
+    # unless it is 0 (SQLite stores 1/0); a String is true when it is "1",
+    # "true", "t", "on" (a checkbox) or "yes" in any letter case, and false
+    # otherwise ("0", "false", ""); nil and anything else false.
+    # @param v [Object]
+    # @return [Boolean]
+    # @api public
     def self.bool(v)
       case v
       when true then true
@@ -113,6 +148,10 @@ module Cybertrain
       end
     end
 
+    # {Cast.bool} for a nullable column: nil and "" are nil.
+    # @param v [Object]
+    # @return [Boolean, nil]
+    # @api public
     def self.bool_or_nil(v)
       case v
       when nil then nil
@@ -141,8 +180,7 @@ module Cybertrain
     # The value to bind for a column: a Time in the storage format
     # ({Cast.sql_datetime}), a Date as `YYYY-MM-DD`, a Hash as its JSON
     # text ({Cast.json_text}), booleans as 1/0; nil, Integer, Float and
-    # String pass through. `when Time` comes before the container branch
-    # (NOTES rule 8).
+    # String pass through.
     # @param v [Object]
     # @return [Object]
     # @api public
@@ -351,13 +389,12 @@ module Cybertrain
 
     # {Cast.date} for a nullable column: a Date as is, `YYYY-MM-DD` text
     # (strict: no other shape, valid month and day) as that Date, nil for
-    # anything else. `when Time` first (NOTES rule 8): a Time is not a Date.
+    # anything else (a Time is not a Date).
     # @param v [Date, String, nil]
     # @return [Date, nil]
     # @api public
     def self.date_or_nil(v)
       case v
-      when Time then nil
       when Date then v
       when String then parse_date(v.to_s)
       else nil
@@ -433,9 +470,21 @@ module Cybertrain
     # @return [Array<Object>]
     # @api public
     def self.binds(*values)
+      out = empty_binds
+      values.each { |v| out << to_sql(v) }
+      out
+    end
+
+    # A fresh empty bind Array, typed for every value a bind holds (nil,
+    # Integer, Float, String, DB::Blob): seeded with one of each and
+    # cleared, so it is the polymorphic Array even when every value pushed
+    # later has the same type (NOTES rule 9). What Relation, Model and the
+    # migration DSL start their bind lists from.
+    # @return [Array<Object>]
+    # @api private
+    def self.empty_binds
       out = [nil, 0, 0.0, "", DB::Blob.new("")]
       out.clear
-      values.each { |v| out << to_sql(v) }
       out
     end
 
@@ -496,8 +545,7 @@ module Cybertrain
     # that empty Hash when `v` is not a Hash. A copy, not `v` itself: the
     # copy is typed `Hash[String, untyped]` for the compiler, where handing
     # back the boxed `v` leaves every later call on it on the slow path.
-    # It is shallow (nested containers are shared). `when Time` comes
-    # before the container branches (NOTES rule 8).
+    # It is shallow (nested containers are shared).
     # @example
     #   doc = Cybertrain::Cast.hash(JSON.parse(body))
     #   tags = Cybertrain::Cast.array(doc["tags"])
@@ -507,7 +555,6 @@ module Cybertrain
     def self.hash(v)
       out = empty_hash
       case v
-      when Time then nil
       when Hash then v.each { |k, x| out[k.to_s] = x }
       end
       out
@@ -525,7 +572,6 @@ module Cybertrain
     def self.hash_or_nil(v)
       case v
       when nil then nil
-      when Time then hash(v)
       when String
         text = v.to_s
         text.empty? ? nil : hash(parse_json(text))
@@ -533,13 +579,12 @@ module Cybertrain
       end
     end
 
-    # JSON.parse of `text`, nil when it is not JSON. NestingError is named
-    # first (NOTES rule 61).
+    # JSON.parse of `text`, nil when it is not JSON or is nested too
+    # deeply: StandardError includes JSON::ParserError and
+    # JSON::NestingError (test/cast_types.rb sends both through).
     def self.parse_json(text)
       JSON.parse(text)
-    rescue JSON::NestingError
-      nil
-    rescue JSON::ParserError
+    rescue StandardError
       nil
     end
 
@@ -551,17 +596,15 @@ module Cybertrain
     def self.json_text(v)
       case v
       when nil then nil
-      when Time then JSON.generate(hash(v))
       when Hash then JSON.generate(v)
       else JSON.generate(hash(v))
       end
     end
 
     # A decimal value rounded to the column's scale: `v` as a Float, rounded
-    # half away from zero on its decimal digits ({Cast.round_digits}); a
-    # negative scale (none declared) and a non-finite value (`"1e999"`) are
-    # left as they are. The contract of a decimal column is docs/design.md
-    # D73.
+    # half away from zero on its decimal digits; a negative scale (none
+    # declared) and a non-finite value (`"1e999"`) are left as they are.
+    # The contract of a decimal column is docs/design.md D73.
     # @example
     #   Cast.round_scale("1.005", 2)  # => 1.01
     #   Cast.round_scale(2.6, 0)      # => 3.0
@@ -612,7 +655,6 @@ module Cybertrain
     # its Hash and an array or scalar root, invalid JSON or `""` is `{}`
     # (a corrupt cell does not take the row down); anything else is `{}`.
     # {Cast.hash} alone would read the stored text as `{}`.
-    # `when Time` first (NOTES rule 8).
     # @example
     #   meta = Cybertrain::Cast.json_hash(row["meta"])
     # @param v [String, Hash, nil]
@@ -620,7 +662,6 @@ module Cybertrain
     # @api public
     def self.json_hash(v)
       case v
-      when Time then empty_hash
       when String
         text = v.to_s
         text.empty? ? empty_hash : hash(parse_json(text))
@@ -636,7 +677,6 @@ module Cybertrain
     def self.array(v)
       out = empty_array
       case v
-      when Time then nil
       when Array then v.each { |x| out << x }
       end
       out

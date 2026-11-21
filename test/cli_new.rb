@@ -2,26 +2,17 @@ require "tmpdir"
 require "cybertrain/cli"
 require "cybertrain/test"
 require "cybertrain/generator/locale_yaml"
+require_relative "support/file_tree"
 
 # Every path below is relative to a fresh temp dir so the output (and the
 # `create <path>` lines the generator prints) is the same on every machine.
 TMP = Dir.mktmpdir("cybertrain-cli-new")
 Dir.chdir(TMP)
 
-# Removes a generated tree (files, dot-files and directories).
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 # Test.run! exits the process, so the temp tree is removed at exit.
 at_exit do
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 EXPECTED_FILES = [
@@ -54,10 +45,10 @@ test "spin.toml names the package and references the framework" do
     [package]
     name = "blog"
     version = "0.1.0"
-    # jemalloc is a faster malloc for a server: 1.1 to 1.4 times the
-    # requests per second on examples/blog (docs/benchmark.md). Building then
-    # needs its development package (libjemalloc-dev on Debian/Ubuntu,
-    # `brew install jemalloc` on macOS).
+    # jemalloc is another malloc for a server: between no gain and 1.4 times
+    # the requests per second on examples/blog, depending on the run
+    # (docs/benchmark.md). Building then needs its development package
+    # (libjemalloc-dev on Debian/Ubuntu, `brew install jemalloc` on macOS).
     # allocator = "jemalloc"
 
     [dependencies]
@@ -183,7 +174,7 @@ test "application_controller.rb and config/app.rb are ready to edit" do
   assert_includes read("blog/.gitignore"), "/storage/*.sqlite3*"
   assert_includes read("blog/.gitignore"), "/storage/uploads/\n"
   assert_includes read("blog/.gitignore"), "/dist/"
-  # gen's list of kept digests (spec 7.4): local state, never committed.
+  # gen's list of kept digests: local state, never committed.
   assert_includes read("blog/.gitignore"), "/public/assets/\n"
 end
 
@@ -240,6 +231,10 @@ test "config/deploy.yml and .kamal/secrets configure Kamal for the app" do
   secrets = read("blog/.kamal/secrets")
   assert_includes secrets, "KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD\n"
   assert_includes secrets, "CYBERTRAIN_SECRET_KEY_BASE=$CYBERTRAIN_SECRET_KEY_BASE\n"
+  # The encryption key, needed only once a model declares `encrypts`:
+  # commented in both files, like .env.example's line.
+  assert_includes deploy, "    # - CYBERTRAIN_ENCRYPTION_KEY\n"
+  assert_includes secrets, "\n# CYBERTRAIN_ENCRYPTION_KEY=$CYBERTRAIN_ENCRYPTION_KEY\n"
   assert_includes read("blog/public/up.html"), "OK"
   assert_includes read("blog/README.md"), "kamal setup"
 end

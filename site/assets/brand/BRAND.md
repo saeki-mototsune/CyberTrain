@@ -31,7 +31,7 @@
 ## Which file where
 | use | file |
 |---|---|
-| README header (GitHub, dark and light) | `lockup-dark.svg` + `lockup-light.svg` in a `<picture>` with `prefers-color-scheme` |
+| README header (GitHub, dark and light) | `lockup-stacked-dark.svg` + `lockup-stacked-light.svg` in a `<picture>` with `prefers-color-scheme` |
 | site header (inline, inherits `color`) | `lockup.svg` (or `wordmark.svg` in tight bars) |
 | hero / splash / about page | `lockup-stacked.svg` (or `-dark` / `-light`) |
 | browser tab | `favicon.svg` (`<link rel="icon" type="image/svg+xml">`), with `favicon-32.png` and `favicon-16.png` as PNG fallbacks |

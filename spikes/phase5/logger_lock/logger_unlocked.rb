@@ -1,4 +1,4 @@
-# Phase 5b spike, item 9: cybertrain/logger.rb (at 19668bc) with `log`
+# Phase 5b spike: cybertrain/logger.rb (at 19668bc) with `log`
 # writing each line once, as logger_locked.rb does, but with no lock (the
 # baseline). run.sh copies this file over cybertrain/logger.rb in a copy of
 # the framework. A record, not the framework's code.

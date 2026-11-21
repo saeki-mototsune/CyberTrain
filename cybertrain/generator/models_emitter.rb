@@ -31,14 +31,6 @@ module Cybertrain
       def self.ivar_name(column_name) = ModelNaming.ivar_name(column_name)
       def self.shadow_note(what, name) = ModelNaming.shadow_note(what, name)
 
-      # The view methods ModelScan found for `class_name` (empty when its
-      # app/models file is missing or defines none).
-      def self.view_methods_for(class_name, infos) = ModelValidation.view_methods_for(class_name, infos)
-
-      # The scopes ModelScan found for `class_name` (empty when its
-      # app/models file is missing or declares none).
-      def self.scopes_for(class_name, infos) = ModelValidation.scopes_for(class_name, infos)
-
       # { "gen/models/post.rb" => source, ... } for every modelled table, by
       # table name.
       def self.outputs(definition, infos)
@@ -51,21 +43,6 @@ module Cybertrain
         out.delete("")
         validated.each { |v| out["gen/models/" + file_name(v.source_table.name)] = emit_validated(v) }
         out
-      end
-
-      # Writes every gen/models file under `root`; returns the relative paths.
-      # (Gen::Runner does not use this: it goes through `outputs` + sync_file
-      # so unchanged files keep their mtime and --check works. Kept for
-      # test/gen_models_compiles.rb.)
-      def self.write_all(root, definition, infos)
-        Dir.mkdir(root + "/gen") unless Dir.exist?(root + "/gen")
-        Dir.mkdir(root + "/gen/models") unless Dir.exist?(root + "/gen/models")
-        written = Array.new(0) { "" }
-        outputs(definition, infos).each do |path, source|
-          File.write(root + "/" + path, source)
-          written << path
-        end
-        written
       end
 
       # emit_model without any app/models declarations: the associations
@@ -102,7 +79,7 @@ module Cybertrain
         src
       end
 
-      # The validation hooks Cybertrain::Model stubs (spec section 9):
+      # The validation hooks Cybertrain::Model stubs (docs/design.md D48):
       # unique_value_taken? for every model, then validation_condition? (a
       # `case` over the if: / unless: names of the model file's `validates`
       # lines) and run_custom_validations (its `validate` lines) when the
@@ -231,7 +208,7 @@ module Cybertrain
       def self.emit_relation(model, table, scopes, plans, encrypted)
         src = +""
         src << "class #{model}Relation < Cybertrain::Relation\n"
-        # The records `preloaded` keeps (includes, spec section 8), seeded
+        # The records `preloaded` keeps (includes, docs/design.md D47), seeded
         # with the model's type (NOTES rule 9).
         src << "  def initialize(table)\n"
         src << "    super(table)\n"
@@ -541,7 +518,7 @@ module Cybertrain
         src << "  def self.column_names = [\"id\", #{quoted}]\n"
         src << "  def model_name = \"#{model}\"\n"
         # Rails' Post.human_attribute_name(:title), through the model's
-        # dictionary key (plan decision D9).
+        # dictionary key.
         src << "  def self.human_attribute_name(attr, options = {}) = I18n.human_attribute_name(\"#{Inflector.underscore(model)}\", attr)\n"
         src << "\n"
         # Plain attr_accessor, on purpose: not typed `def x=(v)` writers.
@@ -667,7 +644,7 @@ module Cybertrain
       # upsert_all, each one call of Cybertrain::Model.insert_all_into, and
       # upsert, one call of Cybertrain::Model.upsert_into with the same
       # constants (so it casts by type and refuses an encrypted column)
-      # (spec section 6). The empty containers come from typed helpers
+      # (docs/design.md D46). The empty containers come from typed helpers
       # (NOTES rule 9).
       def self.emit_bulk_writes(table, encrypted)
         src = +""

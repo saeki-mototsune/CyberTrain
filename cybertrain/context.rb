@@ -11,7 +11,7 @@ module Cybertrain
   # socket by the Server once the stack returns.
   class Context
     attr_reader :request, :response
-    attr_accessor :params, :route_params, :route_name
+    attr_accessor :params, :route_params
     attr_accessor :session, :flash   # set by SessionStore; nil when the middleware is absent
     # The request's cookies (CookieJar), set by SessionStore; nil without it
     # (Controller#cookies then builds one over the Cookie header).
@@ -35,7 +35,6 @@ module Cybertrain
       @response = Response.new
       @params = Params.new
       @route_params = {}
-      @route_name = ""
       @session = nil
       @flash = nil
       @cookie_jar = nil

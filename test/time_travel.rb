@@ -2,8 +2,9 @@ require "cybertrain"
 require "cybertrain/test"
 require "cybertrain/test/time_now"
 
-# Spec section 2.4 with spike item 1's verdict (PASS): a test program that
-# requires cybertrain/test/time_now has Time.now answer Cybertrain::Clock.now,
+# docs/design.md D81, with spikes/phase5/time_now.rb's verdict (PASS): a
+# test program that requires cybertrain/test/time_now has Time.now answer
+# Cybertrain::Clock.now,
 # so during a travel Time.now, and every framework or library call that reads
 # it, follows the clock. A production binary never requires that file. The
 # whole framework is required so the override is compiled beside every

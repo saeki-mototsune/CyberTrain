@@ -4,8 +4,7 @@ module Cybertrain
   module Gen
     # Cybertrain::Gen::ViewRequires -- `spin run gen` refuses a view that
     # calls a helper of a subsystem bin/NAME.rb does not require
-    # (docs/superpowers/specs/2026-11-13-optional-subsystems-design.md,
-    # section 5). Without the line the helper is not compiled in, and the
+    # (docs/design.md D85, "What a missing line does"). Without the line the helper is not compiled in, and the
     # page would fail only when rendered; gen says it first:
     #
     #   app/views/articles/show.html.erb:3: turbo_stream_from needs require "cybertrain/streams" in bin/blog.rb

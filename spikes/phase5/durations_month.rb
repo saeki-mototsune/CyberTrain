@@ -1,5 +1,5 @@
 # Phase 5a spike, item 2's second program: `1.month`, which phase 5a does
-# not define (spec section 17), in a program where ZonedTime#month and
+# not define, in a program where ZonedTime#month and
 # Integer's duration methods exist. Is it refused at build, or does it
 # raise NoMethodError when reached? A record, not a test.
 #
@@ -16,7 +16,7 @@
 #   spinel: 1 refusal, nothing written
 # Verdict: the refusal holds only while no class defines `month`. Phase 5a
 # gives ZonedTime#month, so in an application `1.month` builds and raises
-# NoMethodError when reached (spec section 16's run-time fallback).
+# NoMethodError when reached (a run-time failure, not a build refusal).
 require "standins/clock"
 
 puts "before: #{5.minutes}"

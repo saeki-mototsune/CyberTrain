@@ -1,5 +1,5 @@
 ---
-source_sha256: f33d41101fb56e6a4ccb2fd65374062a590ba781adb2baf79d57aef2a6aefb2c
+source_sha256: a77a19e2278cd27bc36e8e45fce99f4e163be63214923bc644316b2566560c97
 ---
 # Assets
 
@@ -46,7 +46,7 @@ Le chemin est résolu par rapport au répertoire **logique** de la feuille de st
 <%= asset_path "logo.svg" %>                    <%# /assets/logo-8177afd7.svg %>
 ```
 
-`stylesheet_link_tag` ajoute `.css` et `javascript_include_tag` `.js` quand le nom n’en a pas&nbsp;; les deux prennent `nonce: true`, et `stylesheet_link_tag` prend `media:`. Une URL avec un schéma (ou `//`, `data:`) est écrite telle quelle, de même qu’un chemin qui commence par `/`. Un nom logique inconnu lève `Cybertrain::Assets::UnknownAsset` en développement et en test (`asset "logo.png" is not in app/assets, app/javascript or vendor/javascript (run spin run gen)`)&nbsp;; la production le journalise une fois et écrit `/assets/<nom>`. Les signatures complètes sont dans [le langage de templates](template-language.md#helpers-and-the-form-builder).
+`stylesheet_link_tag` ajoute `.css` et `javascript_include_tag` `.js` quand le nom n’en a pas&nbsp;; les deux prennent `nonce: true`, et `stylesheet_link_tag` prend `media:`. Une URL avec un schéma (ou `//`, `data:`) est écrite telle quelle, de même qu’un chemin qui commence par `/`. Un nom logique inconnu lève `Cybertrain::Assets::UnknownAsset` hors production (`asset "logo.png" is not in app/assets, app/javascript or vendor/javascript (run spin run gen)`)&nbsp;; la production le journalise une fois et écrit `/assets/<nom>`. Les signatures complètes sont dans [le langage de templates](template-language.md#helpers-and-the-form-builder).
 
 ## L’import map
 

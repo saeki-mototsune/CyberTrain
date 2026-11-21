@@ -2,15 +2,16 @@
 # requires (as Rails' rails/test_help): the harness and its assertions,
 # the request client, the job helpers, the views helper, the receivers'
 # base and the Sentry receiver, the test base classes and the Time.now
-# override (spec section 5.1), and the reset hooks every test runs before
-# its setup (spec section 5.3, step 3).
+# override, and the reset hooks every test runs before its setup (step 3
+# of the order in cybertrain/test.rb).
 #
 # It loads the helpers of every subsystem too (cybertrain/test/jobs,
 # test/mail, test/broadcasts, and rate_limit's reset), each in that
 # subsystem's file: the program that requires it, gen/tests.rb, requires
 # all of cybertrain whatever bin/<app>.rb requires (docs/design.md D85).
 #
-# Later features append their require or hook here, one line each.
+# The reset hooks run before each test's setup in the order registered
+# below.
 require "cybertrain/test"
 require "cybertrain/test/client"
 require "cybertrain/test/jobs"
@@ -22,6 +23,11 @@ require "cybertrain/test/time_now"
 require "cybertrain/rate_limit"
 require "cybertrain/i18n"
 require "cybertrain/test/integration"
+require "cybertrain/error_reporter"
+require "cybertrain/test/database"
+require "cybertrain/test/select"
+require "cybertrain/test/mail"
+require "cybertrain/test/broadcasts"
 
 module Cybertrain
   module Test
@@ -40,17 +46,7 @@ module Cybertrain
           nil
         }
       end
-    end
-  end
-end
 
-Cybertrain::Test.on_reset(Cybertrain::Test::Help.rate_limit_reset)
-Cybertrain::Test.on_reset(Cybertrain::Test::Help.locale_reset)
-require "cybertrain/error_reporter"
-
-module Cybertrain
-  module Test
-    module Help
       # Cybertrain.error: the previous test's reports delivered (up to 2
       # seconds), no dedupe or drop count carried over, and only the
       # subscribers added at boot (config/app.rb) kept.
@@ -60,17 +56,7 @@ module Cybertrain
           nil
         }
       end
-    end
-  end
-end
-Cybertrain::Test.on_reset(Cybertrain::Test::Help.error_reporter_reset)
-require "cybertrain/test/database"
-require "cybertrain/test/select"
-require "cybertrain/test/mail"
 
-module Cybertrain
-  module Test
-    module Help
       # The mail stored by the delivery method :test (Mailer.deliveries).
       def self.deliveries_reset
         -> {
@@ -81,8 +67,11 @@ module Cybertrain
     end
   end
 end
+
+Cybertrain::Test.on_reset(Cybertrain::Test::Help.rate_limit_reset)
+Cybertrain::Test.on_reset(Cybertrain::Test::Help.locale_reset)
+Cybertrain::Test.on_reset(Cybertrain::Test::Help.error_reporter_reset)
 Cybertrain::Test.on_reset(Cybertrain::Test::Help.deliveries_reset)
-require "cybertrain/test/broadcasts"
 # The messages table's largest id when each test begins (what
 # assert_broadcasts without a block counts from).
 Cybertrain::Test.on_reset(Cybertrain::Test::Broadcasts.floor_reset)

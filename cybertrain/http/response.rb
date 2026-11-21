@@ -60,10 +60,11 @@ module Cybertrain
     DEFAULT_NOSNIFF = "nosniff"
     DEFAULT_FRAME_OPTIONS = "SAMEORIGIN"
 
-    # The Permissions-Policy every response carries unless it sets its own
-    # (spec C-11): camera, microphone and geolocation off. Application#boot
+    # The Permissions-Policy every response carries unless it sets its own:
+    # camera, microphone and geolocation off. Application#boot
     # installs Config#permissions_policy here; "" sends none.
-    @default_permissions_policy = "camera=(), microphone=(), geolocation=()"
+    DEFAULT_PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=()"
+    @default_permissions_policy = DEFAULT_PERMISSIONS_POLICY
 
     # @return [String] the default Permissions-Policy, "" for none
     # @api public
@@ -97,7 +98,7 @@ module Cybertrain
 
     # Sets the body. A body replaces a stream: an action that called
     # Controller#stream and then render or head answers with the body, so
-    # the writer is dropped, as {#redirect} and an error reset drop it.
+    # the writer is dropped, as a redirect and an error reset drop it.
     # @param text [String]
     # @api public
     def body=(text)
@@ -154,7 +155,7 @@ module Cybertrain
 
     # The thread's log Scope when the writer was set ({#body_writer=},
     # {#upgrade!}): the request's, whose id and tags the lines logged while
-    # the body is written carry (spec section 12.2: the request lasts until
+    # the body is written carry (docs/design.md D86: the request lasts until
     # its body is written). The Server swaps it in around the writer
     # ({BodyWriter.write_scoped}) and back after it. {Logger::NO_SCOPE}
     # when there is no writer: a body, a redirect or an error reset that
