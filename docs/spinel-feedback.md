@@ -286,7 +286,7 @@ the cell names another build.
 | rule 14 | bug | 14 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
 | rule 15 | bug | 15 | not re-checked on the pin (last: seen on 2026.09.12 and not tried since) |  |
 | rule 16 | record | 16 | settled: ordinary Ruby (1.4) |  |
-| rule 17 | record | 17 | settled: ordinary Ruby for a constant assigned with `=` (rechecks/constant_order.rb matches on the pin); a class used above its definition was not re-checked on the pin (last: prints `hi` on 2026.11.04.7026 where CRuby raises NameError) |  |
+| rule 17 | bug | 17 | open (status 17): a class used above its definition runs compiled where CRuby raises NameError. A constant assigned with `=` and read before its assignment raises NameError as under CRuby (rechecks/constant_order.rb matches on the pin). Nothing in the framework is written around it: the rule's advice is to keep an order CRuby accepts |  |
 | rule 18 | bug | 18 | probe matches on the pin (rechecks/value_shapes.rb), workaround kept |  |
 | rule 19 | bug | 19 | probe matches on the pin (rechecks/io_shapes.rb), workaround kept |  |
 | rule 20 | bug | 20 | probe matches on the pin (rechecks/socket_bare_readpartial.rb), workaround kept either way: its nil return is the idle timeout |  |
@@ -524,7 +524,7 @@ They are listed so that they are not mistaken for the rows above.
 | No `fork`: a compiled `fork` is `NameError` (checked 2026-11-13) | Several processes share a port with `SO_REUSEPORT` (`CYBERTRAIN_REUSE_PORT`, D35) instead of a prefork server; jobs run on threads of a `worker` process |
 | No tz database, `IPAddr` or asynchronous resolver (`Marshal` was listed here until 2026-11-20: a `Marshal.dump` / `Marshal.load` round trip of a Hash holding an Array compiles and prints CRuby's result on the pin, docs/design.md D54); the `zlib` package inflates in one shot with no ceiling; `bigdecimal` has no `to_s("F")`, `to_d` or construction from a Float (rule 100) | `TimeZone` reads TZif files (D19); byte-scanned addresses (net/address.rb, http/ip_address.rb); cache values are Strings; `GzipFFI` streams through the system zlib under a limit (http/gzip_ffi.rb); decimals are Floats rounded on their digits (D73) |
 | Tests: no reflection to find test methods (rule 23); a test requires `cybertrain/test` itself (rule 24); a C file Spinel wrote is refused inside a package (rule 98) | Tests are programs compared with a snapshot (test.rb, D13); probe output is kept outside the package |
-| Rules 13, 16, 17 and 38: frozen String literals, `Class#name` and `case rec when Post`, constants read before their definition, a protected method called from a class method | Ordinary Ruby, recorded so that nobody takes them for a Spinel rule |
+| Rules 13, 16 and 38: frozen String literals, `Class#name` and `case rec when Post`, a protected method called from a class method | Ordinary Ruby, recorded so that nobody takes them for a Spinel rule. Rule 17 (constants read before their definition) was in this row until 2026-11-21. Only its half about a constant assigned with `=` is ordinary Ruby; a class used above its definition runs compiled where CRuby raises NameError, on this section's pin and on 2026.11.15.7033, so rule 17 is an open item of kind bug ("Item register"; "Status by rule", row 17) |
 | Rule 99: `dup` of a user-defined object is a shallow copy | The generated `<Model>Relation#dup` copies its Arrays (D72). CRuby's `dup` is shallow in the same way, and the pin calls `initialize_copy` as CRuby does (probe, 2026-11-13: both print `2 2 0 5` and `1 2`), so this is ordinary Ruby, not a Spinel behaviour |
 | Rules 85, 87, 95: `Queue#pop(timeout:)`, class methods added to `Time`, `binding.local_variable_get` for a keyword named `if` | Used as they are (stream/hub.rb, time_ext.rb, rate_limit.rb and generator/routes_dsl.rb) |
 | Rules 102, 103, 106, 111, 113, 119, 121 (forms that work), 115 (a measurement), 118 (how a thread test is written), 105, 114, 120 (compiler, scheduler and tool behaviour, not defects) | Recorded in spikes/NOTES.md so that nobody takes them for defects; nothing is asked |
@@ -604,6 +604,7 @@ not by design. Costs are in 2; what is by design is in 1.4.
 | X | Type inference does not converge in examples/blog's generator | Not reduced | No |
 | AA | Closure cells allocated on method entry (a cost, listed here because 2026.09.12 allocated none for the same source) | Not reduced | No |
 | Rule 36 | Requiring a middleware whose `#call` is never reached miscompiles unrelated files | Not reduced; the one recorded shape compiles in a probe on the pin ("Status by rule", row 36 on 2026.11.04.7026) | No |
+| Rule 17 | A class used above its definition runs, where CRuby raises NameError (added 2026-11-21; listed under 1.4 until then) | 2 lines ("Status by rule", row 17 of both tables) | No |
 | 7 | A `Mutex` on the request path stalls for seconds at two workers | Not reduced; not retried since 2026.09.12 | No |
 | 5 (a) | At one worker 83% of collections are full | Measured, under 5 | No |
 
@@ -911,6 +912,7 @@ rule".
 | AS. `ENV[name]` with a key held in a variable can answer the key | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-15, in a program that requires two framework files; rule 123) |
 | AT. `File#stat` on an open File stats its path, not the descriptor | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5b, 2026-11-13; rule 112) |
 | AU. `String#strip` on a String with an invalid byte returns it | yes (rule 52) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-15 and 2026-11-19; rule 52) |
+| Rule 17. A class used above its definition runs, where CRuby raises NameError | yes (rule 17, recorded for constants read before their definition) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** for a class name (2026-11-15); a constant assigned with `=` raises NameError as under CRuby |
 
 ## Status by rule
 
@@ -974,13 +976,14 @@ Only the rows that were **Still there** on 2026.11.04.7026, and rule 112,
 were re-checked; the rules that were seen only in the whole framework (94,
 96, 97) are left to that pin's `spin test` and examples/blog run.
 
-Rows 52 (its `strip` half), 122, 123 and the last row were added on
+Rows 17, 52 (its `strip` half), 122, 123 and the last row were added on
 2026-11-21 from runs on another machine; each names its platform and its
 CRuby.
 
 | Rule | On 2026.11.15.7033 |
 | --- | --- |
 | 2 | **Still there**, as on 2026.11.04.7026. A block stored in a module's Array and run with `C.new.instance_exec(&b)` compiles on both pins and raises "instance_exec of a proc whose self spinel cannot rebind (NotImplementedError)" when reached; CRuby prints `7`. A proc held in a local and passed straight to `instance_exec` prints `7` on both pins. |
+| 17 | **Still there** for a class name, run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6, not on the machine of the rows below: the two lines `puts Later.new.hi` and `class Later; def hi = "hi"; end` print `hi` compiled, where CRuby raises "uninitialized constant Later (NameError)". 2026.11.04.7026 printed `hi` in the same run. The half about a constant assigned with `=`, which raises NameError as under CRuby, is rechecks/constant_order.rb (the last row). |
 | 25 | **Still there**, by design (docs/spinel-feedback.md D): `"99999999999999999999".to_i` raises "RangeError: integer overflow parsing "99999999999999999999"" on both pins; CRuby 4.0.7 returns the Bignum. |
 | 49 | Reduced program passes (docs/spinel-feedback.md AC): decoding e-acute + 50,000 / 100,000 / 200,000 bytes takes `0 0 0` ms (`0 0 1` in one run of three), against `76 384 2435`, `84 447 2470` and `88 389 2513` on 2026.11.04.7026; CRuby prints `0 0 0`. |
 | 52 | Reduced program passes (docs/spinel-feedback.md AD): `"a=1&\x81b=2".byteindex("b", 4)` raises IndexError, as under CRuby; 2026.11.04.7026 prints `5`. The `strip` half of the rule was not run for this row. Run on 2026-11-21 (Linux x86_64, gcc 13.3.0, CRuby 3.3.6, `-O 0`; rechecks/differing/invalid_utf8.rb): both `byteindex` lines raise IndexError, as under CRuby, and `" x\x81 ".strip` is **still there** (docs/spinel-feedback.md AU): it returns `"x\x81"` where CRuby raises Encoding::CompatibilityError. 2026.11.04.7026 printed `5`, `3` and `"x\x81"` in the same run. |
@@ -1012,7 +1015,7 @@ CRuby.
 | 117 | Reduced program passes (spikes/phase5/queue_in_array.rb): prints `"hello"` and `"direct"`, as under CRuby; 2026.11.04.7026 raises "no implicit conversion of Hash into Integer (TypeError)". |
 | 122 | **Still there** (docs/spinel-feedback.md AR), run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6, not on the machine of the rows above: with rechecks/differing/require_in_regex.rb, `--strict-require` stops the build ("cannot load such file", naming the text of the regex), and without the flag the build warns that the require is ignored and the program prints `no match`, where CRuby prints `db`. 2026.11.04.7026 did the same in the same run. |
 | 123 | **Still there** (docs/spinel-feedback.md AS), run on 2026-11-21 on the same Linux machine and tools as row 122: rechecks/differing/env_nonliteral_key.rb, built with `spinel -I .` from the repository root (the framework at 79b38b68), prints `set: CYBERTRAIN_RECHECK_HOST` and `unset: default`, as 2026.11.04.7026 did in the same run; the value, `0.0.0.0`, was expected. Not reduced. |
-| 1, 3 to 24, 26 to 48, 50, 51, 53, 55 to 77, 84, 85, 87, 95, 98, 99, 102, 103, 105, 106, 108, 111, 113 to 115, 118 to 121 | Not re-checked on this pin with a program of their own. Their status on 2026.11.04.7026 is in the next section, "On 2026.11.04.7026"; it is not carried over. The saved probes that hold a shape of some of them were run on 2026-11-21: the last row. |
+| 1, 3 to 16, 18 to 24, 26 to 48, 50, 51, 53, 55 to 77, 84, 85, 87, 95, 98, 99, 102, 103, 105, 106, 108, 111, 113 to 115, 118 to 121 | Not re-checked on this pin with a program of their own. Their status on 2026.11.04.7026 is in the next section, "On 2026.11.04.7026"; it is not carried over. The saved probes that hold a shape of some of them were run on 2026-11-21: the last row. |
 | rechecks/run.sh | Run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`, CRuby 3.3.6): all nineteen programs of rechecks/ compiled and printed their `.expected`. That is a **Probe passes** for each section's own small shape, with the limits spikes/rechecks/README.md states, for the shapes of rules 1 to 12, 14, 17 to 21, 26 to 35, 37, 39 to 48, 50 to 55, 60 to 62, 69, 72, 86 and 104 that those programs hold (for 2, 17, 27, 52, 54, 72, 86 and 104 only the half that already matched CRuby on 2026.11.04.7026). 2026.11.04.7026 was not run beside it that day. |
 
 ### On 2026.11.04.7026

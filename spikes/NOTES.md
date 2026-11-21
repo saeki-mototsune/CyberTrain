@@ -420,10 +420,10 @@ Read each record together with its status in docs/spinel-feedback.md
 text gives a newer date, the failure narrative describes the original
 2026.09.12 observation. Imperative workarounds stay in force only within the
 affected shape; they do not turn historical symptoms into universal Ruby rules.
-Records 13, 16-17, 23-24, 38, 76, 84-85, 87, 95, 98, 99, 102-103, 105-106,
+Records 13, 16, 23-24, 38, 76, 84-85, 87, 95, 98, 99, 102-103, 105-106,
 108, 111, 113-115 and 118-121 are language or tool behaviour, supported
 capabilities, test-writing advice or measurements rather than compiler
-defects, and 107 and 112 record such behaviour together with a difference
+defects, and 17, 107 and 112 record such behaviour together with a difference
 from CRuby that is still there (its last line and the status tables of
 docs/spinel-feedback.md classify each); record 22 is a measured tuning
 decision, and 77 explicitly retires a workaround.
@@ -520,8 +520,7 @@ decision, and 77 explicitly retires a workaround.
     Retry::BACKOFF`, `puts EARLY`) and read before its assignment raises
     NameError compiled too, at top level, in a module body and in a class
     body (status 17). The advice is unchanged.
-    Not a Spinel item (docs/spinel-feedback.md 1.4): ordinary Ruby; kept as
-    the record the code cites.
+    Kept until docs/spinel-feedback.md rule 17 is closed.
 18. A module-level `@@class_variable` assigned inside `module Cybertrain`
     miscompiles once an earlier required file has already opened the module
     (C error "incompatible pointer to integer conversion"). Use a module-level

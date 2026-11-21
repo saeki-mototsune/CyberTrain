@@ -29,7 +29,7 @@ none of them.
 | `decimal.rb` | not a Spinel item: a probe for docs/design.md D42 | | while D42 stands |
 | `dispatch_shapes.rb` | rule 1 to rule 6, rule 30, rule 31, rule 40, rule 42 | 1 to 6, 30, 31, 40, 42 | each is closed; the sections of rules 1, 2 and 5 (constraints) are permanent |
 | `type_shapes.rb` | rule 7 to rule 11, rule 14, rule 26, rule 29, rule 34, rule 35, rule 37, rule 39, rule 41, rule 43, rule 46 | 7 to 11, 14, 26, 29, 34, 35, 37, 39, 41, 43, 46 | each is closed |
-| `constant_order.rb` | rule 17 (a record: ordinary Ruby) | 17 | permanent |
+| `constant_order.rb` | rule 17 (the half that matches CRuby: a constant assigned with `=`) | 17 | rule 17 is closed |
 | `io_shapes.rb` | rule 19, rule 28 | 19, 28 | each is closed |
 | `socket_shapes.rb` | rule 21, rule 27 | 21, 27 | rule 21 is closed; the section of rule 27 (a constraint) is permanent |
 | `socket_bare_readpartial.rb` | rule 20 | 20 | rule 20 is closed |
