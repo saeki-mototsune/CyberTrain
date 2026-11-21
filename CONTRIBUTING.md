@@ -490,8 +490,8 @@ only when two checks have passed on its latest commit:
   documentation pull request would wait for ever for a job that never
   starts. `required` covers only what did start, which for a documentation
   change is the Gate, about a minute. It is written afresh, in a few
-  seconds, whenever one of those workflows is requested or finishes, a
-  re-run included, so it holds no runner while it waits. It knows those
+  seconds, whenever one of those workflows is requested, starts or
+  finishes, a re-run included, so it holds no runner while it waits. It knows those
   workflows by name: a new workflow a pull request starts goes into the
   list at the top of `required.yml`. On a draft it stays in progress.
 

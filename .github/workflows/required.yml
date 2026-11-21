@@ -19,13 +19,15 @@
 # account's 20 concurrent runners all that time while the jobs it waited
 # for queued behind it (docs/design.md, D34, the status of 2026-11-21). Now
 # it runs for a few seconds each time one of the workflows below is
-# requested or completes, and the last of those runs leaves the answer.
+# requested, starts or completes, and the last of those runs leaves the answer.
 # A workflow that a pull request starts and that is not listed below is
 # NOT waited for: add it here when you add one.
 #
 # A draft pull request starts no job of CI or the image workflows
 # (ci.yml), so its check stays in progress, saying so, until it is marked
-# ready and those runs finish.
+# ready and those runs finish. Marking it ready starts the Gate again
+# (gate.yml), so that even a pull request that starts nothing else
+# reaches this workflow.
 #
 # `workflow_run` runs this file as it is on the default branch, with a
 # token that can write checks, also for a pull request from a fork; it
@@ -36,7 +38,9 @@ name: Required
 on:
   workflow_run:
     workflows: [Gate, CI, Playground image, Blog image]
-    types: [requested, completed]
+    # in_progress too: a re-run sends no `requested`, and the check must
+    # leave success while it runs.
+    types: [requested, in_progress, completed]
 
 permissions:
   actions: read
