@@ -675,9 +675,9 @@ module Cybertrain
     # about 14 ms of the worker's time (the inflate runs in C and does not
     # yield), which is the cost a hostile client can impose per request.
     #
-    # `require "cybertrain"` installs the inflater. A program that loads only
-    # the HTTP layer answers every gzip body as undecodable (a 400) until it
-    # requires `cybertrain/http/gzip_ffi` and calls {GzipFFI.install!}.
+    # {GzipFFI.install!} (`cybertrain/http/gzip_ffi`) installs the
+    # inflater; until a program requires that file and calls it, every gzip
+    # body is answered as undecodable (a 400).
     # @example
     #   JSON.parse(request.decoded_body)
     #   request.decoded_body(52_428_800)   # an endpoint that takes bodies up to 50 MiB
