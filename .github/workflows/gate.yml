@@ -10,7 +10,11 @@ name: Gate
 on:
   push:
     branches: [main]
+  # ready_for_review: marking a draft ready must start at least one of the
+  # workflows required.yml listens to, or its check stays "draft" on a
+  # pull request that starts nothing else (documentation only).
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   # For a merge queue on main, which is not turned on (docs/design.md, D34,
   # the status of 2026-11-11): the queue waits for the required checks on a
   # `merge_group` event. Until it is on, nothing sends the event.
