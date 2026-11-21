@@ -70,3 +70,5 @@ test "a multipart file and text field under one key: upload? sees the file, perm
   assert params.nested("user").upload?("avatar")
   assert_equal({ "name" => "ann" }, params.nested("user").permit(:name))
 end
+
+Cybertrain::Test.run!
