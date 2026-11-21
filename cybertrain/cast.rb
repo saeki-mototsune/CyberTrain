@@ -579,13 +579,12 @@ module Cybertrain
       end
     end
 
-    # JSON.parse of `text`, nil when it is not JSON. NestingError is named
-    # first (NOTES rule 61).
+    # JSON.parse of `text`, nil when it is not JSON or is nested too
+    # deeply: StandardError includes JSON::ParserError and
+    # JSON::NestingError (test/cast_types.rb sends both through).
     def self.parse_json(text)
       JSON.parse(text)
-    rescue JSON::NestingError
-      nil
-    rescue JSON::ParserError
+    rescue StandardError
       nil
     end
 
