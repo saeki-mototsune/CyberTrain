@@ -1,7 +1,6 @@
 require "cybertrain/middleware"
 require "cybertrain/crypto"
 require "cybertrain/session"
-require "cybertrain/http/query"
 
 module Cybertrain
   # Verifies a per-session CSRF token on every state-changing request.
@@ -23,13 +22,6 @@ module Cybertrain
     def initialize(app, exempt_prefixes = Array.new(0) { "" })
       super(app)
       @exempt_prefixes = exempt_prefixes
-    end
-
-    # Returns the session's CSRF token, minting and storing one the first
-    # time it is asked for. Delegates to the typed Session instance method
-    # -- see Session#csrf_token! for why this isn't done inline here.
-    def self.token_for(session)
-      session.csrf_token!
     end
 
     def call(ctx)

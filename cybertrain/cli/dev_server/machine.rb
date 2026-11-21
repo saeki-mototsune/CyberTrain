@@ -106,8 +106,7 @@ module Cybertrain
         def start
           @pending = true
           if @runner.build_locked?
-            @runner.hold("cybertrain build in progress", "the server starts when it finishes")
-            @serving = :holding
+            hold_for_build_lock
             log_lock_once
             sync
             return
@@ -225,8 +224,7 @@ module Cybertrain
           if @runner.build_locked?
             log_lock_once
             if @serving == :none
-              @runner.hold("cybertrain build in progress", "the server starts when it finishes")
-              @serving = :holding
+              hold_for_build_lock
               sync
             end
           else
@@ -258,8 +256,7 @@ module Cybertrain
           if @runner.build_locked?
             log_lock_once
             if first
-              @runner.hold("cybertrain build in progress", "the server starts when it finishes")
-              @serving = :holding
+              hold_for_build_lock
             end
             sync
             return
@@ -273,8 +270,7 @@ module Cybertrain
           # stops nothing, so its check above is directly before the start.
           if ok && !first && @runner.build_locked?
             log_lock_once
-            @runner.hold("cybertrain build in progress", "the server starts when it finishes")
-            @serving = :holding
+            hold_for_build_lock
             @build = :idle
             sync
             return
@@ -289,10 +285,7 @@ module Cybertrain
             leave_holding
             @runner.start_child(:cruby, @generation)
             @serving = :cruby
-            @build = :building
-            @output = ""
-            @runner.start_build(@generation)
-            @runner.log("=> spinel: building (log: tmp/rebuild.log)")
+            start_fresh_build
           else
             @runner.hold("gen failed", out)
             @serving = :holding
@@ -318,8 +311,7 @@ module Cybertrain
             return
           end
           if @runner.build_locked?
-            @runner.hold("cybertrain build in progress", "the server starts when it finishes")
-            @serving = :holding
+            hold_for_build_lock
             @build = :idle
             @recover = :rebuild
             log_lock_once
@@ -348,6 +340,13 @@ module Cybertrain
           @runner.start_child(:cruby, @generation)
           @serving = :cruby
           start_fresh_build
+        end
+
+        # What every round shows while `cybertrain build` holds the lock and
+        # nothing serves: the holding page that says so.
+        def hold_for_build_lock
+          @runner.hold("cybertrain build in progress", "the server starts when it finishes")
+          @serving = :holding
         end
 
         def start_fresh_build

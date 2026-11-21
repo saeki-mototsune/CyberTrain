@@ -1,6 +1,6 @@
 require "test_helper"
 
-# Broadcasts and Turbo Stream answers (spec section 9.3): creating an
+# Broadcasts and Turbo Stream answers: creating an
 # article appends its title to every page subscribed to "articles", and a
 # form Turbo submits is answered with the same append.
 class ArticleStreamsTest < ActionDispatch::IntegrationTest

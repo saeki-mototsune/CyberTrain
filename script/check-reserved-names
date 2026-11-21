@@ -203,9 +203,9 @@ fixtures_missing = fixture_taken - Cybertrain::Gen::FixtureScan::TAKEN_NAMES
 # One return type per method name across the program (spikes/NOTES.md
 # rules 10, 34 and 41): a name that more than one class defines, or that a
 # later phase gives a new home, has a row here naming every file allowed to
-# `def` it (instance or `def self.`), today's definers and the homes the
-# phase 4a and 4b plans give it (seeded once per phase, so tasks running in
-# parallel never edit the table; a name the plan did not foresee is added
+# `def` it (instance or `def self.`), today's definers and the homes
+# phases 4a and 4b gave it (seeded once per phase, so tasks running in
+# parallel never edit the table; a name the seeding did not foresee is added
 # by its task). A
 # `def` of a listed name in any other file under cybertrain/ fails the
 # check, as does an emitted `def` line (a String in
@@ -219,7 +219,7 @@ NAME_HOMES = {
   # module; compiled beside Request#format (a Symbol) in test/main.rb.
   "format" => %w[cybertrain/console/printer.rb cybertrain/http/request.rb cybertrain/dev/state_file.rb],
   "expect" => %w[cybertrain/mailer.rb cybertrain/params.rb],
-  "select" => %w[cybertrain/template/form_builder.rb],
+  "select" => %w[],
   # cli/templates.rb's is `def self.layout` (the generated layout's text);
   # active_support.rb's, like the other declarations below, is the no-op
   # that lets a concern's never-run `included` block compile
@@ -235,7 +235,7 @@ NAME_HOMES = {
   "rescue_from" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "helper_method" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   # What gen/concerns.rb calls around a model concern's spliced `included`
-  # body (spec 4.2); both return nil.
+  # body; both return nil.
   "model_concern_insert_at" => %w[cybertrain/model.rb],
   "model_concern_insert_done" => %w[cybertrain/model.rb],
   # Controller#cookies is the CookieJar; Response#cookies the Set-Cookie
@@ -288,14 +288,14 @@ NAME_HOMES = {
   # Controller#send_data(data, filename:, ...) answers a download; the
   # Mailer's SMTP connection writes raw bytes with its own send_data(data).
   "send_data" => %w[cybertrain/controller.rb cybertrain/mailer.rb],
-  # Phase 4b (plan decision R5): i18n. A String lookup and an Array lookup
+  # Phase 4b: i18n. A String lookup and an Array lookup
   # are separate names (I18n.t / translate -> String, translate_list ->
   # Array<String>; Gen::Locales.lookup -> String or nil, lookup_list ->
   # Array<String>). I18n.t and Controller#t both answer a String.
   # `locale_available?` (and `admin?` below) have no row: the `def` line
-  # pattern stops before a `?` name, so a row would check nothing (phase
-  # 4b pre-flight finding 21). If Task 4 takes spike 6c's fallback
-  # (Controller#locale), it adds cybertrain/controller.rb to `locale`.
+  # pattern stops before a `?` name, so a row would check nothing. The
+  # locale is a thread-local, not a Controller method (docs/design.md
+  # D79), so `locale` needs no cybertrain/controller.rb.
   "t" => %w[cybertrain/i18n.rb cybertrain/controller.rb],
   "translate" => %w[cybertrain/i18n.rb cybertrain/controller.rb],
   "l" => %w[cybertrain/i18n.rb],
@@ -317,7 +317,7 @@ NAME_HOMES = {
   "remember" => %w[],
   # Mailer.deliver_later and MailMessage#deliver_later both answer the
   # job's id (an Integer).
-  "deliver_later" => %w[cybertrain/mailer/later.rb cybertrain/mail_message.rb],
+  "deliver_later" => %w[cybertrain/mailer/later.rb],
   # The Controller class method, and the 0.4 block's own copy inside
   # cli/authentication.rb's ApplicationController text.
   "allow_unauthenticated_access" => %w[cybertrain/controller.rb cybertrain/cli/authentication.rb],
@@ -342,7 +342,7 @@ NAME_HOMES = {
   "reset" => %w[cybertrain/cli/authentication.rb],
   # Every CLI generator's `generate` answers the paths it created
   # (Array<String>). A generator that needs to answer more takes a new
-  # name, as phase 4b's do (pre-flight finding 3): the signed token is
+  # name, as phase 4b's do: the signed token is
   # Token.issue (cybertrain/token.rb), and the authentication generator's
   # GenerateResult comes from Authentication.generate_with_result, which
   # cli.rb calls, beside Authentication.generate.
@@ -371,8 +371,8 @@ NAME_HOMES = {
   # Interpreter#call_helper answers a template value; the feature registry's
   # dispatch to a subsystem's helper is Features.feature_helper_call.
   "call_helper" => %w[cybertrain/template/interpreter.rb],
-  # Phase 5a (plan Task 1; spike results in spec section 16, programs in
-  # spikes/phase5/): the clock, durations, the zoned time and the test
+  # Phase 5a (docs/design.md D81 to D84; the spike programs and their
+  # results are in spikes/phase5/): the clock, durations, the zoned time and the test
   # classes. Each name below was compiled beside its existing namesakes in
   # one program with the whole framework (spikes/phase5/durations.rb,
   # class_app/tests.rb) and answered correctly; a boxed receiver dispatches
@@ -392,12 +392,12 @@ NAME_HOMES = {
   # abbreviation (a String, as the builtin Time#zone).
   "zone" => %w[cybertrain/clock.rb cybertrain/zoned_time.rb],
   # Template::Parser#advance (the token cursor) and Time#advance(months: 1)
-  # (a Time). Stream::Poller's was renamed advance_to (pre-flight B1).
+  # (a Time). Stream::Poller's was renamed advance_to.
   "advance" => %w[cybertrain/template/parser.rb cybertrain/time_ext.rb],
   # Integer#seconds and the rest answer an Integer; Net::Timer's
-  # formatter was renamed format_seconds (pre-flight B1). Cron::Expression's
+  # formatter was renamed format_seconds. Cron::Expression's
   # public readers minutes / hours / days answer Array<Integer>, kept apart
-  # from Integer's by their receivers (spike item 2 compiled both).
+  # from Integer's by their receivers (spikes/phase5/durations.rb compiled both).
   "seconds" => %w[cybertrain/durations.rb],
   "minutes" => %w[cybertrain/durations.rb cybertrain/cron.rb],
   "hours" => %w[cybertrain/durations.rb cybertrain/cron.rb],
@@ -421,12 +421,12 @@ NAME_HOMES = {
   "utc_offset" => %w[cybertrain/zoned_time.rb],
   "to_time" => %w[cybertrain/zoned_time.rb],
   "to_date" => %w[cybertrain/zoned_time.rb],
-  "travel" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
+  "travel" => %w[cybertrain/test/time_helpers.rb],
   "travel_to" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
   "travel_back" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
-  "freeze_time" => %w[cybertrain/test/time_helpers.rb cybertrain/clock.rb],
+  "freeze_time" => %w[cybertrain/test/time_helpers.rb],
   # Clock.monotonic and DB::Connection.monotonic (the busy wait's deadline)
-  # both answer CLOCK_MONOTONIC seconds as a Float (Task 2; test/clock.rb
+  # both answer CLOCK_MONOTONIC seconds as a Float (test/clock.rb
   # compiles them with test.rb, test/time_travel.rb with the whole framework).
   # DevServer.monotonic (cli/dev_server.rb, the CRuby preview's supervisor,
   # never compiled) answers the same Float.
@@ -435,7 +435,7 @@ NAME_HOMES = {
   # setup / teardown blocks; Test::Base#setup / #teardown (nil) beside the
   # class methods of the same name that refuse an unrewritten file (D9).
   "setup" => %w[cybertrain/cli/toolchain.rb cybertrain/test.rb cybertrain/test/test_case.rb],
-  "teardown" => %w[cybertrain/cli/toolchain.rb cybertrain/test.rb cybertrain/test/test_case.rb],
+  "teardown" => %w[cybertrain/test.rb cybertrain/test/test_case.rb],
   "test" => %w[cybertrain/test.rb cybertrain/test/test_case.rb],
   "fixtures" => %w[cybertrain/test/test_case.rb],
   # One method for the component and the partial form (rule 34); the
@@ -451,16 +451,15 @@ NAME_HOMES = {
   # Controller's and IntegrationTest's.
   "response" => %w[cybertrain/test/client.rb cybertrain/context.rb cybertrain/controller.rb cybertrain/test/integration.rb],
   # The top-level assert_response(response, expected) beside
-  # IntegrationTest#assert_response(expected): both nil, one shared helper
-  # (pre-flight R17).
+  # IntegrationTest#assert_response(expected): both nil, one shared helper.
   "assert_response" => %w[cybertrain/test/client.rb cybertrain/test/integration.rb],
   "assert_redirected_to" => %w[cybertrain/test/client.rb cybertrain/test/integration.rb],
   # The requests: HttpClient's, the routes DSL's (gen only), Test::Client's
   # and the Router's, plus IntegrationTest's (each answers the Response).
   # delete: Session#delete, CookieJar#delete and its subclasses,
   # BlobStore.delete and Cache.delete too. head: Controller#head(status)
-  # beside IntegrationTest#head(path). Spike item 3 compiled the
-  # IntegrationTest methods beside all of them.
+  # beside IntegrationTest#head(path). spikes/phase5/class_app/tests.rb
+  # compiled the IntegrationTest methods beside all of them.
   "get" => %w[cybertrain/http_client.rb cybertrain/generator/routes_dsl.rb cybertrain/test/client.rb cybertrain/router.rb
               cybertrain/test/integration.rb],
   "post" => %w[cybertrain/http_client.rb cybertrain/generator/routes_dsl.rb cybertrain/test/client.rb cybertrain/router.rb
@@ -470,8 +469,9 @@ NAME_HOMES = {
   "delete" => %w[cybertrain/generator/routes_dsl.rb cybertrain/session.rb cybertrain/test/client.rb cybertrain/blob_store.rb
                  cybertrain/cookie_jar.rb cybertrain/cache.rb cybertrain/router.rb cybertrain/test/integration.rb],
   "head" => %w[cybertrain/controller.rb cybertrain/test/integration.rb],
-  # Phase 5b (logs and error reporting; spike items 7 to 9,
-  # spikes/phase5/error_names.rb compiled each beside its namesakes).
+  # Phase 5b (logs and error reporting): each name was compiled beside its
+  # namesakes in one program with the whole framework on 2026-11-13
+  # (spikes/phase5/error_names.rb, deleted since).
   # Logger#error and the HttpLog#error it overrides (nil), Template::Parser's
   # two private #error (raise) and Cybertrain.error (the ErrorReporter).
   "error" => %w[cybertrain/logger.rb cybertrain/http/log.rb cybertrain/template/parser.rb cybertrain/error_reporter.rb],
@@ -505,9 +505,8 @@ NAME_HOMES = {
   # one String-typed hook the boot check reads.
   "sender_name" => %w[cybertrain/error_reporter.rb cybertrain/error_reporter/sentry.rb]
 }.freeze
-# The names the phase 4a, 4b, 5a and 5b plans list as the first candidates
-# for a clash must keep a row (Global Constraints of the plans; 4b's
-# `admin?` is left out, see `t` above).
+# The names phases 4a, 4b, 5a and 5b found most likely to clash must keep
+# a row (4b's `admin?` is left out, see `t` above).
 NAME_CANDIDATES = %w[select format expect layout cookies signed encrypted permanent html json turbo_stream
                      csv xml text any permit scope t l translate localize locale remember
                      current zone advance now render_inline setup teardown response travel_to travel_back hour day
@@ -591,14 +590,9 @@ end
 # methods). A name with no single type is reserved outright instead
 # (Ident::RESERVED_COLUMN_NAMES: handle), so a name may not be in both, and
 # each typed name keeps a NAME_HOMES row, so a new file defining it fails
-# the homes check too. TYPED_NAME_PENDING lists the definers known to answer
-# another type that a change in flight renames; an entry whose `def` is
-# gone fails, so it is removed when the rename lands.
-# Empty now: BuildLock#release, which answered nil, is BuildLock#release_build_lock.
-TYPED_NAME_PENDING = {}.freeze
+# the homes check too.
 typed = Cybertrain::Ident::FRAMEWORK_METHOD_TYPES
 typed_wrong = []
-typed_pending_seen = []
 typed_problems = []
 typed.each_key do |name|
   typed_problems << "#{name} has no NAME_HOMES row" unless NAME_HOMES.key?(name)
@@ -626,10 +620,6 @@ Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
     found.uniq.each do |name|
       next unless typed.key?(name)
 
-      if TYPED_NAME_PENDING.fetch(name, []).include?(rel)
-        typed_pending_seen << [name, rel]
-        next
-      end
       block = []
       k = index - 1
       while k >= 0 && lines[k].lstrip.start_with?("#")
@@ -639,13 +629,6 @@ Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
       returns = block.join.scan(/@return \[([^\]]*)\]/).flatten
       typed_wrong << [rel, index + 1, name, returns] unless returns == [typed[name]]
     end
-  end
-end
-TYPED_NAME_PENDING.each do |name, files|
-  files.each do |rel|
-    next if typed_pending_seen.include?([name, rel])
-
-    typed_problems << "TYPED_NAME_PENDING lists #{rel} for #{name}, which no longer defines it; remove the entry"
   end
 end
 
@@ -660,8 +643,7 @@ else
          "or add the file to the row if it returns the same type"
   end
   unless home_rows_missing.empty?
-    warn "check-reserved-names: NAME_HOMES has no row for #{home_rows_missing.map(&:inspect).join(", ")} " \
-         "(a candidate name of the phase 4a or 4b plan); add one"
+    warn "check-reserved-names: NAME_HOMES has no row for #{home_rows_missing.map(&:inspect).join(", ")}; add one"
   end
   unless fixtures_missing.empty?
     warn "check-reserved-names: the test harness defines #{fixtures_missing.map(&:inspect).join(", ")} " \

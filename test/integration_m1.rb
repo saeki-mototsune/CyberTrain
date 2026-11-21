@@ -32,7 +32,6 @@ test "an App routes a request through the default stack" do
   res = client.follow_redirect!
   assert_equal "hi created", res.body
   assert_response client.get("/missing"), :not_found
-  assert_equal "/hello/x", router.path_for("hello", { "name" => "x" })
 end
 
 test "the Server serves the same App over a socket" do
@@ -79,7 +78,7 @@ class NotesController < Cybertrain::Controller
   def index
     seen = session["visits"]
     notice = flash[:notice]
-    render plain: "visits=#{seen.nil? ? "0" : seen} notice=#{notice.nil? ? "-" : notice} token=#{Cybertrain::CsrfProtection.token_for(session)}"
+    render plain: "visits=#{seen.nil? ? "0" : seen} notice=#{notice.nil? ? "-" : notice} token=#{session.csrf_token!}"
   end
 
   def create

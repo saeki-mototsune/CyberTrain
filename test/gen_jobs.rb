@@ -4,6 +4,7 @@ require "cybertrain/test"
 require "cybertrain/generator"
 require "cybertrain/generator/job_scan"
 require "cybertrain/generator/jobs_emitter"
+require_relative "support/file_tree"
 
 # The job generator as text (CRuby-portable, no database): Gen::JobScan
 # reads app/jobs/**/*.rb, Gen::JobsEmitter writes gen/jobs.rb. The
@@ -13,16 +14,7 @@ require "cybertrain/generator/jobs_emitter"
 FIXTURE = "test/fixtures/gen_app"
 TMP = Dir.mktmpdir("cybertrain-gen-jobs")
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  elsif File.exist?(path)
-    File.delete(path)
-  end
-end
-
-at_exit { rm_tree(TMP) }
+at_exit { FileTree.remove(TMP) }
 
 # A fresh app tree under TMP with `files` ({ "app/jobs/x_job.rb" => source }).
 def app_tree(files)
@@ -87,14 +79,12 @@ test "the fixture's jobs: WelcomeJob and Admin::ReportJob with their policies in
   assert_equal 1, welcome.concurrency_to
   assert_equal "user_id", welcome.concurrency_key
   assert welcome.has_perform
-  assert welcome.has_exhausted_hook
   report = infos[0]
   assert_equal ["retry", "discard"], report.policies.map { |p| p.policy_kind }
   assert_equal ["StandardError", "ArgumentError"], report.policies.map { |p| p.exception_class }
   assert_equal [0, true, 20], [report.policies[0].wait_base, report.policies[0].polynomial, report.policies[0].attempts]
   assert_equal 0, report.concurrency_to
   assert_equal "", report.concurrency_key
-  refute report.has_exhausted_hook
 end
 
 test "WelcomeJob's run_job: the retry arm with the hook behind OUTCOME_FAILED, then the discard arm" do

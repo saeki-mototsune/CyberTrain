@@ -1,7 +1,7 @@
 #!/bin/sh
 # Which CI jobs a change needs: reads the changed paths, one a line, on
-# stdin and prints `framework=true|false`, `cruby_preview=true|false` and
-# `preview_e2e=true|false`. The `changes` job of .github/workflows/ci.yml
+# stdin and prints `framework=true|false`, `cruby_preview=true|false`,
+# `preview_e2e=true|false`, `macos=true|false` and `setup_action=true|false`. The `changes` job of .github/workflows/ci.yml
 # runs it. The jobs that compile (the framework tests, the end-to-end jobs,
 # the setup-cybertrain action's) run only on `framework=true`; the
 # cruby-preview job only on `cruby_preview=true`; the preview-e2e job only
@@ -38,6 +38,39 @@
 # framework's tests (test/**) included. For script/preview-e2e alone it is
 # the only job that runs.
 #
+# macos (the macOS legs of the test, cruby-preview and setup-cybertrain
+# jobs) and setup_action (the setup-cybertrain job) narrow a pull request
+# only: the `changes` job sets both to true on every other event (main, a
+# release, a merge group) and when the pull request has the label
+# `ci:macos` (macos alone), so main still runs everything after the merge
+# (docs/design.md, D34). macOS runners are the scarcest (five at a time
+# for the account), so a pull request runs them only where the two systems
+# have been seen to differ: the CLI and its toolchain (processes, file
+# locks, OpenSSL linking), the development server and the CRuby preview
+# (/proc, `ps`, `.dylib`), sockets and the server roles, the pins, the
+# actions and the scripts the macOS job runs, and the tests of those
+# (a `.darwin` snapshot anywhere). setup_action is what the job reads:
+# the action, `cybertrain new` and its templates (the CLI and the
+# generator), the pins and the gem's files; a change elsewhere in the
+# framework compiles in the `test` job's applications already.
+#
+#   macos        cybertrain/cli/**, cybertrain/cli.rb, exe/**,
+#                cybertrain/shell.rb, cybertrain/version.rb,
+#                cybertrain/dev/**, cybertrain/dev.rb, cybertrain/preview/**,
+#                cybertrain/preview.rb, cybertrain/http/**, cybertrain/net/**,
+#                cybertrain/roles/**, cybertrain/runtime.rb, spin.toml,
+#                cybertrain.gemspec, test/cli_*, test/server*, test/dev_*,
+#                test/cruby/**, test/db_sqlite*, test/job_threads*, *.darwin,
+#                .github/actions/**, ci.yml, script/ci-changes,
+#                script/test-cruby, script/auth-e2e, script/test-command-e2e,
+#                script/generators-e2e
+#   setup_action .github/actions/setup-cybertrain/**, cybertrain/cli/**,
+#                cybertrain/cli.rb, exe/**, cybertrain/generator/**,
+#                cybertrain/generator.rb, cybertrain/version.rb,
+#                cybertrain/app_name.rb, cybertrain/ident.rb,
+#                cybertrain/shell.rb, spin.toml, cybertrain.gemspec, ci.yml,
+#                script/ci-changes
+#
 # One path that says true is enough. A path this file does not know says
 # true, and so does one git printed quoted (an unusual character in the
 # name): the jobs run when in doubt.
@@ -49,12 +82,29 @@ decide() {
   framework=false
   cruby=false
   e2e=false
+  macos=false
+  setup_action=false
   while IFS= read -r path; do
     case "$path" in
       cybertrain/* | cybertrain.rb | test/* | script/preview-parity | script/test-cruby | .github/workflows/ci.yml | script/ci-changes | .github/actions/setup-cybertrain/* | \"*) cruby=true ;;
     esac
     case "$path" in
       cybertrain/* | cybertrain.rb | exe/* | examples/blog/* | spin.toml | script/preview-e2e | .github/actions/setup-spinel/* | .github/workflows/ci.yml | script/ci-changes | \"*) e2e=true ;;
+    esac
+    case "$path" in
+      cybertrain/cli/* | cybertrain/cli.rb | exe/* | cybertrain/shell.rb | cybertrain/version.rb | \
+        cybertrain/dev/* | cybertrain/dev.rb | cybertrain/preview/* | cybertrain/preview.rb | \
+        cybertrain/http/* | cybertrain/net/* | cybertrain/roles/* | cybertrain/runtime.rb | \
+        spin.toml | cybertrain.gemspec | test/cli_* | test/server* | test/dev_* | test/cruby/* | \
+        test/db_sqlite* | test/job_threads* | *.darwin | .github/actions/* | .github/workflows/ci.yml | \
+        script/ci-changes | script/test-cruby | script/auth-e2e | script/test-command-e2e | \
+        script/generators-e2e | \"*) macos=true ;;
+    esac
+    case "$path" in
+      .github/actions/setup-cybertrain/* | cybertrain/cli/* | cybertrain/cli.rb | exe/* | \
+        cybertrain/generator/* | cybertrain/generator.rb | cybertrain/version.rb | \
+        cybertrain/app_name.rb | cybertrain/ident.rb | cybertrain/shell.rb | spin.toml | \
+        cybertrain.gemspec | .github/workflows/ci.yml | script/ci-changes | \"*) setup_action=true ;;
     esac
     case "$path" in
       "") ;;
@@ -67,35 +117,27 @@ decide() {
   echo "framework=$framework"
   echo "cruby_preview=$cruby"
   echo "preview_e2e=$e2e"
+  echo "macos=$macos"
+  echo "setup_action=$setup_action"
 }
 
-# expect WANT PATH...: decide on the paths and compare `framework`;
-# expect_cruby does the same for `cruby_preview`, expect_e2e for
-# `preview_e2e`.
-expect() {
-  want="framework=$1"
-  shift
-  got=$(printf '%s\n' "$@" | decide | grep '^framework=')
+# expect_key KEY WANT PATH...: decide on the paths and compare the output
+# line KEY with KEY=WANT. expect WANT PATH... does it for `framework`,
+# expect_cruby for `cruby_preview`, expect_e2e for `preview_e2e`.
+expect_key() {
+  key=$1
+  want="$key=$2"
+  shift 2
+  got=$(printf '%s\n' "$@" | decide | grep "^$key=")
   if [ "$got" = "$want" ]; then return 0; fi
   echo "script/ci-changes: $* gave $got, expected $want" >&2
   failed=1
 }
-expect_cruby() {
-  want="cruby_preview=$1"
-  shift
-  got=$(printf '%s\n' "$@" | decide | grep '^cruby_preview=')
-  if [ "$got" = "$want" ]; then return 0; fi
-  echo "script/ci-changes: $* gave $got, expected $want" >&2
-  failed=1
-}
-expect_e2e() {
-  want="preview_e2e=$1"
-  shift
-  got=$(printf '%s\n' "$@" | decide | grep '^preview_e2e=')
-  if [ "$got" = "$want" ]; then return 0; fi
-  echo "script/ci-changes: $* gave $got, expected $want" >&2
-  failed=1
-}
+expect() { expect_key framework "$@"; }
+expect_cruby() { expect_key cruby_preview "$@"; }
+expect_e2e() { expect_key preview_e2e "$@"; }
+expect_macos() { expect_key macos "$@"; }
+expect_setup() { expect_key setup_action "$@"; }
 
 if [ "${1:-}" = "--self-test" ]; then
   failed=0
@@ -159,6 +201,44 @@ if [ "${1:-}" = "--self-test" ]; then
   # preview job.
   expect false script/preview-e2e
   expect_cruby false script/preview-e2e
+  # macOS on a pull request: where the systems differ, not the whole framework.
+  expect_macos true cybertrain/cli/toolchain.rb
+  expect_macos true cybertrain/cli.rb
+  expect_macos true exe/cybertrain
+  expect_macos true cybertrain/version.rb
+  expect_macos true cybertrain/dev/watcher.rb
+  expect_macos true cybertrain/preview/ffi.rb
+  expect_macos true cybertrain/http/server.rb
+  expect_macos true cybertrain/roles/server.rb
+  expect_macos true test/cli_toolchain.rb
+  expect_macos true test/server.rb.expected
+  expect_macos true test/cruby/dev_server.rb.expected.darwin
+  expect_macos true test/job_threads.rb
+  expect_macos true spin.toml
+  expect_macos true .github/actions/setup-spinel/action.yml
+  expect_macos true .github/workflows/ci.yml
+  expect_macos true script/auth-e2e
+  expect_macos true '"cybertrain/caf\303\251.rb"'
+  expect_macos true cybertrain/router.rb cybertrain/cli/new_app.rb
+  expect_macos false cybertrain/router.rb
+  expect_macos false cybertrain/model.rb test/model.rb test/model.rb.expected
+  expect_macos false examples/blog/app/models/article.rb
+  expect_macos false cybertrain/generator/scaffold.rb
+  # The CRuby preview's macOS leg runs script/test-cruby.
+  expect_macos true script/test-cruby
+  expect_macos false docs/api/README.md site/index.html README.md
+  # The setup-cybertrain job: the action and what `cybertrain new` writes.
+  expect_setup true .github/actions/setup-cybertrain/action.yml
+  expect_setup true cybertrain/cli/templates.rb
+  expect_setup true cybertrain/generator/scaffold.rb
+  expect_setup true cybertrain/version.rb
+  expect_setup true spin.toml
+  expect_setup true .github/workflows/ci.yml
+  expect_setup true '"cybertrain/caf\303\251.rb"'
+  expect_setup false cybertrain/router.rb test/router.rb
+  expect_setup false .github/actions/setup-spinel/action.yml
+  expect_setup false examples/blog/app/models/article.rb
+  expect_setup false docs/api/README.md
   if [ "$failed" = 0 ]; then echo "script/ci-changes: self-test passed"; fi
   exit "$failed"
 fi

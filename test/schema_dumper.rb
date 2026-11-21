@@ -7,8 +7,6 @@ require "cybertrain/test"
 # snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
 
 class CreatePosts < Cybertrain::Migration::Base
-  version "20260101000000"
-
   def change
     create_table "posts" do |t|
       t.string "title", null: false, limit: 120
@@ -25,8 +23,6 @@ class CreatePosts < Cybertrain::Migration::Base
 end
 
 class CreateComments < Cybertrain::Migration::Base
-  version "20260101000100"
-
   def change
     create_table "comments" do |t|
       t.references :post
@@ -98,15 +94,15 @@ test "dump reproduces indexes and foreign keys" do
   assert_equal "index_comments_on_post_id", comments.indexes[0].name
   assert_equal ["post_id"], comments.indexes[0].columns
   refute comments.indexes[0].unique
-  assert_equal 1, comments.references.size
-  assert_equal "post_id", comments.references[0].column
-  assert_equal "posts", comments.references[0].to_table
+  assert_equal 1, comments.foreign_keys.size
+  assert_equal "post_id", comments.foreign_keys[0].column
+  assert_equal "posts", comments.foreign_keys[0].to_table
 
   posts = definition.table("posts")
   assert_equal 1, posts.indexes.size
   assert posts.indexes[0].unique
   assert_equal ["slug"], posts.indexes[0].columns
-  assert_equal 0, posts.references.size
+  assert_equal 0, posts.foreign_keys.size
   connection.close
 end
 
@@ -190,8 +186,6 @@ test "the dumped schema loads back into an identical dump" do
 end
 
 class CreateTrades < Cybertrain::Migration::Base
-  version "20260101000200"
-
   def change
     create_table "trades" do |t|
       t.decimal "price", precision: 18, scale: 8, null: false, default: "0"

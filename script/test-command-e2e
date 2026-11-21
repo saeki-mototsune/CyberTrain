@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Drives `cybertrain test` from end to end (spec section 8, acceptance 5) on
+# Drives `cybertrain test` from end to end (docs/design.md D83) on
 # test/fixtures/test_app, copied to a scratch directory with its spin.toml
 # pointed at this checkout. Each run's stdout is compared with
 # test/fixtures/test_app.expected/<variant>.out and its exit status with
@@ -127,7 +127,8 @@ same_binary() {
 }
 
 # all: the first compile, under a development environment and an exported
-# database path (decision 19).
+# database path (docs/design.md D83: the program forces the test
+# environment and drops an inherited CYBERTRAIN_DATABASE).
 printf 'development bytes\n' > "$APP/storage/development.sqlite3"
 printf 'other bytes\n' > "$APP/tmp/other.sqlite3"
 cp "$APP/storage/development.sqlite3" "$WORK/development.copy"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The tests the generators write, run (spec section 11, acceptance 9): a new
+# The tests the generators write, run: a new
 # application in a scratch directory, with this checkout as its framework,
 # gets
 #

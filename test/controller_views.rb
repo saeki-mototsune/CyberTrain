@@ -269,7 +269,6 @@ test "controller_path and view_env" do
   extra["x"] = 1
   env = c.view_env(extra)
   assert_equal "posts", env["__template_dir"]
-  assert_equal "posts", env["__controller_path"]
   assert_equal 1, env["x"]
   assert env.key?("post")
   assert_equal 0, Cybertrain::Controller.new(build_ctx).view_assigns.size

@@ -3,8 +3,6 @@ require "cybertrain/db/sqlite_ddl"
 require "cybertrain/test"
 
 class CreatePosts < Cybertrain::Migration::Base
-  version "20260101000000"
-
   def change
     create_table "posts" do |t|
       t.string "title", null: false
@@ -16,8 +14,6 @@ class CreatePosts < Cybertrain::Migration::Base
 end
 
 class AddCommentsTable < Cybertrain::Migration::Base
-  version "20260102000000"
-
   def change
     create_table "comments" do |t|
       t.references :post
@@ -27,8 +23,6 @@ class AddCommentsTable < Cybertrain::Migration::Base
 end
 
 class DropsATable < Cybertrain::Migration::Base
-  version "20260103000000"
-
   def change
     drop_table "widgets"
   end
@@ -169,11 +163,6 @@ test "register/all order migrations by version regardless of registration order"
   assert_equal [], Cybertrain::Migration.all
 end
 
-test "self.version / self.version_string are per-subclass" do
-  assert_equal "20260101000000", CreatePosts.version_string
-  assert_equal "20260102000000", AddCommentsTable.version_string
-end
-
 test "up resets operations, so calling it twice does not duplicate them" do
   migration = CreatePosts.new
   migration.up
@@ -305,8 +294,6 @@ test "add_reference with Symbol arguments folds its foreign key into the ADD COL
 end
 
 class ReversibleSteps < Cybertrain::Migration::Base
-  version "20260104000000"
-
   def change
     add_column "posts", "slug", :string
     reversible do |dir|
@@ -317,8 +304,6 @@ class ReversibleSteps < Cybertrain::Migration::Base
 end
 
 class ReversibleWithSchemaStep < Cybertrain::Migration::Base
-  version "20260104000100"
-
   def change
     reversible do |dir|
       dir.up { add_column "posts", "slug", :string }
@@ -444,8 +429,6 @@ test "reversible records the up block as :reversible_up and the down block as :r
 end
 
 class TwoStepDown < Cybertrain::Migration::Base
-  version "20260104000200"
-
   def change
     reversible do |dir|
       dir.up do

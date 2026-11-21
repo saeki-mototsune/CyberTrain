@@ -1,5 +1,5 @@
 ---
-source_sha256: c1895cc4136cae8dc4584f4daf3a4cfc94afa499a6c7aafc1e623b014b04f754
+source_sha256: 681c0c56292faa833d075a15bf5a613dd7445b19901fd654fe35f4145c959f79
 path: tutorial.html
 title: "入门：博客"
 description: "用 CyberTrain 构建 Rails 入门指南中的博客（带评论的文章）：生成脚手架、执行迁移、嵌套路由、用 Turbo 实时推送评论、把作业加入队列、用 Cybertrain::Test 测试，并用 cybertrain build 为部署而构建。"
@@ -185,7 +185,7 @@ end
 class ArticlesController < ApplicationController
   before_action :set_article, only: [:show, :edit, :update, :destroy]
 
-  def new_action   # a `new` method would shadow ArticlesController.new
+  def new_action   # the `new` action: the generated routes call new_action
     @article = Article.new
   end
 
@@ -211,10 +211,10 @@ class ArticlesController < ApplicationController
 end
 ```
 
-> [!RULE] Spinel 规则：new_action
+> [!RULE] new_action
 > ### `new_action`，而不是 `new`
 >
-> 名字恰好叫 `new` 的方法会遮蔽 `ArticlesController.new(ctx)`，而框架要用它来构造控制器。路由 `GET /articles/new` 仍然映射到这个方法；你只需重命名方法。视图仍然是 `new.html.erb`，`render :new` 也保持不变。
+> `new` 动作写作 `new_action`：生成的路由就是用这个名字调用它的。改名发生在 Spinel 被记录为无法编译与 `ArticlesController.new(ctx)` 并存的、名为 `new` 的实例方法的时候；同样形状的精简程序在固定的发行版上可以编译，而这个名字作为 API 保留了下来。路由 `GET /articles/new` 仍然映射到这个方法；你只需重命名方法。视图仍然是 `new.html.erb`，`render :new` 也保持不变。
 
 > [!RULE] Spinel 规则：回调
 > ### 回调显式接收控制器
@@ -313,8 +313,8 @@ cybertrain db migrate    # 脚手架已为 comments 表写好了迁移
 Cybertrain::Routes.draw do
   root "articles#index"
 
-  # A nested block takes the mapper explicitly (Spinel's instance_eval
-  # trampoline only rewires `self` for the outermost block): `articles.resources`.
+  # A nested block takes the mapper as its argument: `articles.resources`,
+  # not Rails' bare `resources`.
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end
@@ -322,10 +322,10 @@ Cybertrain::Routes.draw do
 end
 ```
 
-> [!RULE] Spinel 规则：显式接收 mapper
+> [!RULE] 显式接收 mapper
 > ### 嵌套块显式接收 mapper
 >
-> 要写 `resources :articles do |articles|` 和 `articles.resources :comments`，而不是直接写 `resources :comments`。Spinel 的 `instance_eval` 蹦床（trampoline）只会为最外层的块重新绑定 `self`。
+> 要写 `resources :articles do |articles|` 和 `articles.resources :comments`，而不是直接写 `resources :comments`。这种写法是在 Spinel 被记录为无法编译嵌套在 `instance_eval` 内的块中不带接收者的调用时引入的；同样形状的精简程序在固定的发行版上可以编译，而显式的 mapper 仍是文档规定的写法，生成器和测试写的都是它。
 
 <!-- step 10 #comments-controller stage: 你编写 · `app/controllers/` -->
 ## CommentsController
@@ -367,18 +367,17 @@ class CommentsController < ApplicationController
 end
 ```
 
-然后给评论模型添加验证：
+脚手架写出的评论模型已经有 `belongs_to :article`，以及对它的第一个字符串字段 `commenter` 的存在性检查；再给正文加一条：
 
 ```ruby app/models/comment.rb
 class Comment
+  belongs_to :article
   validates :commenter, presence: true
   validates :body, presence: true
-
-  belongs_to :article
 end
 ```
 
-声明的 `belongs_to` 还会让没有文章的评论在数据库拒绝之前就无效（“Article can't be blank”）。
+脚手架声明的 `belongs_to` 还会让没有文章的评论在数据库拒绝之前就无效（“Article can't be blank”）。
 
 > [!NOTE]
 > `Article#comments` 是评论的 relation，所以 Rails 的 `@article.comments.find(params[:id])` 在 `destroy` 中可以原样使用，不属于该文章的评论会返回 404。
@@ -648,7 +647,7 @@ require "cybertrain/streams"
 cybertrain generate job notify_comment --retry StandardError:30:3
 ```
 
-它会写出 `app/jobs/notify_comment_job.rb`，其中有该选项所要求的 `retry_on` 行和一个空的 `perform`，另外还有一个测试，并向 `bin/blog.rb` 和 `bin/db.rb` 添加 `require "cybertrain/jobs"`。把 `perform` 填上；这里它只写一条日志，真实的应用会在这里发送邮件：
+它会写出 `app/jobs/notify_comment_job.rb`，其中有该选项所要求的 `retry_on` 行和一个空的 `perform`，另外还有一个测试，并向 `bin/blog.rb` 和 `bin/db.rb` 添加 `require "cybertrain/jobs"`，还会取消 `config/deploy.yml` 中 `worker` 角色的注释（[第 19 步](#ship)）。把 `perform` 填上；这里它只写一条日志，真实的应用会在这里发送邮件：
 
 ```ruby app/jobs/notify_comment_job.rb
 class NotifyCommentJob < Cybertrain::Job::Base
@@ -686,7 +685,7 @@ end
 - 作业是 `cybertrain_jobs` 中的行，由提供服务的进程的三个作业线程运行，或者由用 `./blog worker` 启动的单独进程的作业线程运行（[进程角色](background-and-operations.md#process-roles)）。
 - `retry_on StandardError, wait: 30, attempts: 3` 会在 30 秒后把失败的运行重新入队，总共尝试三次；此后这一行变为 `failed` 并保留下来（[重试与丢弃](background-and-operations.md#retries-and-discards)）。
 - 作业可能运行不止一次（进程在运行某个作业的中途死掉时，该作业会再运行一次），所以要把 `perform` 写成可以安全重复执行的。
-- 失败的作业用 `./blog jobs` 列出、重试和丢弃，也可以在 `config/routes.rb` 中被注释掉的 `jobs_page` 那一行在取消注释后挂载的页面（步骤 04 和 09 的路由保留了这一行）上操作（[作业页面](background-and-operations.md#the-jobs-page-and-the-jobs-command)）。
+- 失败的作业用 `./blog jobs` 列出、重试和丢弃，也可以在 `/admin/jobs` 的作业页面上操作：`config/routes.rb` 中被注释掉的 `jobs_page` 那一行指定了 `require_admin`，这个方法由[第 17 步](#authentication)的生成器写出，页面也由那个生成器替你挂载（[作业页面](background-and-operations.md#the-jobs-page-and-the-jobs-command)）。
 
 > [!RULE] Spinel 规则：作业策略作为文本读取
 > ### 作业策略作为文本读取
@@ -751,7 +750,7 @@ $ curl http://127.0.0.1:3000/articles.json
 
 ### 生成器写了什么
 
-步骤 03 和 08 的脚手架写出了 Rails 的脚手架测试：`test/fixtures/articles.yml` 和 `comments.yml`（每个测试开始时就有的 `one` 和 `two` 两行）、`test/models/article_test.rb` 和 `comment_test.rb`（“the fixture is valid”），以及 `test/controllers/articles_controller_test.rb` 和 `comments_controller_test.rb`（每个动作一个请求）。步骤 12 写出了 `test/components/comment_component_test.rb` 和 `test/helpers/comments_helper_test.rb`，步骤 14 写出了 `test/jobs/notify_comment_job_test.rb`，`cybertrain new` 写出了每个文件都会加载的 `test/test_helper.rb`，以及请求 `/up` 的 `test/integration/health_test.rb`。其中三个需要跟上博客此后的变化。
+步骤 03 和 08 的脚手架写出了 Rails 的脚手架测试：`test/fixtures/articles.yml` 和 `comments.yml`（每个测试开始时就有的 `one` 和 `two` 两行）、`test/models/article_test.rb` 和 `comment_test.rb`（“the fixture is valid”），以及 `test/controllers/articles_controller_test.rb` 和 `comments_controller_test.rb`（每个动作一个请求）。步骤 12 写出了 `test/components/comment_component_test.rb` 和 `test/helpers/comments_helper_test.rb`，步骤 14 写出了 `test/jobs/notify_comment_job_test.rb`，`cybertrain new` 写出了每个文件都会加载的 `test/test_helper.rb`，以及请求 `/up` 的 `test/integration/health_test.rb`。其中四个需要跟上博客此后的变化：文章的 fixture、两个控制器测试和组件测试。
 
 ### 通过验证的夹具
 
@@ -851,7 +850,7 @@ cybertrain test test/controllers/comments_controller_test.rb
 cybertrain test -n /comment/
 ```
 
-第一次运行会把所有测试编译成一个程序，需要几分钟（examples/blog 的 149 个测试在一台 4 vCPU 的云机器上用了大约九分钟）；没有改动时再次运行不会重新编译测试程序：它可能会重新构建一次 gen（`build gen`，几秒钟），之后不到一秒就开始。文件或 `-n` 选择运行哪些测试，而不是编译什么：修改任何测试都会重新编译程序。每个文件输出一个标题，每个测试一行（`ok`，或带着测试的行号和消息的 `FAIL` 和 `ERR`），最后是合计，其间还夹着被测代码自己输出的内容（例如某个命令的输出行）；有测试失败时退出状态为 1。2026-11-13 测得，教程的博客在这一步有 17 个测试、25 个断言。
+第一次运行会把所有测试编译成一个程序，需要几分钟（examples/blog 的测试在 2026-11-13 测量时有 149 个，在一台 4 vCPU 的云机器上用了大约九分钟）；没有改动时再次运行不会重新编译测试程序：它可能会重新构建一次 gen（`build gen`，几秒钟），之后不到一秒就开始。文件或 `-n` 选择运行哪些测试，而不是编译什么：修改任何测试都会重新编译程序。每个文件输出一个标题，每个测试一行（`ok`，或带着测试的行号和消息的 `FAIL` 和 `ERR`），最后是合计，其间还夹着被测代码自己输出的内容（例如某个命令的输出行）；有测试失败时退出状态为 1。2026-11-13 测得，教程的博客在这一步有 17 个测试、25 个断言。
 
 > [!NOTE]
 > 每个测试之前所有表都会被清空并重新插入夹具，所以测试之间互不依赖。`gen/tests.rb` 和 `gen/test/` 是生成的：和 `gen/` 的其余部分一起提交。
@@ -867,7 +866,7 @@ cybertrain generate authentication
 cybertrain db migrate    # 创建 users 和 sessions 表
 ```
 
-它写出 `users` 和 `sessions` 的迁移与模型、被它包含进 `ApplicationController` 的 `Authentication` 关注点、用于登录、注册、重置密码和账户页面的控制器与视图、一个邮件程序、`./blog user` 命令，以及测试。它还会添加路由、布局顶部的 `sessions/_nav` 局部模板，以及 `config/app.rb` 中的 `base_url` 设置，邮件中的链接以它开头。最后，它会向 `bin/blog.rb` 和 `bin/db.rb` 添加其代码用到的子系统的行：`cybertrain/jobs`（作业页面和发送邮件的线程）、`cybertrain/mailer`、`cybertrain/mailer/later`（邮件通过 `deliver_later` 发送）和 `cybertrain/rate_limit`（登录尝试有速率限制，见下文）。每个文件都列在 [认证](authentication.md#generating-it) 中。
+它写出 `users` 和 `sessions` 的迁移与模型、被它包含进 `ApplicationController` 的 `Authentication` 关注点、用于登录、注册、重置密码和账户页面的控制器与视图、一个邮件程序、`./blog user` 命令，以及测试。它还会添加路由（其中包括面向管理员的 `/admin/jobs` 作业页面）、布局顶部的 `sessions/_nav` 局部模板，以及 `config/app.rb` 中的 `base_url` 设置，邮件中的链接以它开头。最后，它会向 `bin/blog.rb` 和 `bin/db.rb` 添加其代码用到的子系统的行：`cybertrain/jobs`（作业页面和发送邮件的线程）、`cybertrain/mailer`、`cybertrain/mailer/later`（邮件通过 `deliver_later` 发送）和 `cybertrain/rate_limit`（登录尝试有速率限制，见下文）。每个文件都列在 [认证](authentication.md#generating-it) 中。
 
 ```ruby app/controllers/concerns/authentication.rb（节选）
 module Authentication
@@ -910,10 +909,10 @@ class ArticlesController < ApplicationController
 
 登录页面还链接到通过邮件重置密码，nav 链接到账户页面；[认证](authentication.md) 指南介绍了它们，以及锁定、“保持登录”、`--confirmable` 和管理员用户。重置邮件需要 SMTP 设置，在生产环境中还需要 `BLOG_BASE_URL`（[邮件中的链接](authentication.md#links-in-mails)）。
 
-> [!RULE] Spinel 规则：has_secure_password
+> [!RULE] has_secure_password 被逐一写出
 > ### `has_secure_password` 被逐一写出
 >
-> Spinel 无法在运行时定义方法，所以 `User` 模型直接写出了 `has_secure_password` 本该定义的方法：`password=`、`authenticate` 和 `User.authenticate_by(email_address:, password:)`。密码由 `Cybertrain::Password` 做哈希：它是用 Ruby 实现的 PBKDF2-HMAC-SHA256，默认迭代 10 万次（编译后约 0.2 秒）；bcrypt 则需要让二进制链接一个 C 库。可以在 `config/app.rb` 里用 `Cybertrain::Password.iterations = 600_000` 提高成本，`User#authenticate` 会在每个用户登录时重新计算哈希。
+> CyberTrain 没有 `has_secure_password` 宏。生成器把它本该定义的方法写进 `User` 模型，成为应用自己拥有的代码：`password=`、`authenticate` 和 `User.authenticate_by(email_address:, password:)`。密码由 `Cybertrain::Password` 做哈希：它是用 Ruby 实现的 PBKDF2-HMAC-SHA256，默认迭代 10 万次（编译后约 0.2 秒）；bcrypt 则需要让二进制链接一个 C 库。可以在 `config/app.rb` 里用 `Cybertrain::Password.iterations = 600_000` 提高成本，`User#authenticate` 会在每个用户登录时重新计算哈希。
 
 ### 更新测试
 
@@ -1014,10 +1013,10 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 > [!NOTE]
 > 生成器会把 `show` 的访问规则复制到下载上，但只复制它能读懂的那些，也就是回调。如果除 `set_article` 之外还有一个 `before_action` 列出了 `:show` 却没有列出新动作，它会以 `cannot preserve show's authorization for :cover` 停止，什么也不写。`def show` 中的代码检查的是什么，它读不出来，所以才有那条警告。`show` 为空时，只要 `allow_unauthenticated_access` 列出了 `:show`，它就会自行把 `:cover` 加进去；`show` 中有代码时，它不改动这一行，而这一行里没有 `:cover` 的话，图片需要登录才能看到。
 
-> [!RULE] Spinel 规则：has_one_attached
+> [!RULE] has_one_attached 被逐一写出
 > ### `has_one_attached` 被逐一写出
 >
-> Spinel 无法在运行时定义方法（没有 `define_method`），所以没有 `has_one_attached`，也没有共享的附件表。生成器把它本会定义的东西逐一写出，成为以字段命名的方法，放在 `Article` 中，并把元数据放进 `articles` 的五个列里。这些列都是 `NOT NULL`，用 `""` 和 `0` 表示“没有附件”：可为空的列会让 Spinel 失去类型推断。SQLite 只保存元数据（文本值遇到 NUL 字节就会截断）；字节保存在文件里。
+> 没有 `has_one_attached`，也没有共享的附件表：允许的类型、大小以及谁可以下载，每个应用都不一样，所以生成器把这些方法逐一写出，以字段命名，放在 `Article` 中，并把元数据放进 `articles` 的五个列里。这些列都是 `NOT NULL`，用 `""` 和 `0` 表示“没有附件”：可为空的列会让 Spinel 失去类型推断。SQLite 只保存元数据（文本值遇到 NUL 字节就会截断）；字节保存在文件里。
 
 ### 文件如何提供
 
@@ -1095,7 +1094,7 @@ end
 - `SIGTERM` 会让服务器停止接受新连接，让正在处理的请求完成，并在它们完成后退出，或在服务器的 `drain_timeout`（10 秒）之后退出。
 - 监视器、CRuby 预览和重新构建循环永远不会在生产环境中运行。正在运行的 `cybertrain server` 在 `cybertrain build` 持有 `tmp/cybertrain-build.lock` 期间不会重新生成，也不会重启任何东西。
 
-`cybertrain new` 还会写出一套 [Kamal 2](https://kamal-deploy.org) 配置。`Dockerfile` 在 Ubuntu 构建阶段运行 `cybertrain setup` 和 `cybertrain build`，再把 `dist/` 复制到同一发行版的精简阶段；该镜像启动时先执行迁移，然后在 `0.0.0.0:3000` 上提供服务。此外还有 `.dockerignore`、`config/deploy.yml`（前端是带 Let&rsquo;s Encrypt 的 kamal-proxy，健康检查使用 `public/up.html`，SQLite 文件放在挂载于 `/app/storage` 的卷上），以及从环境变量读取 `KAMAL_REGISTRY_PASSWORD` 和 `CYBERTRAIN_SECRET_KEY_BASE` 的 `.kamal/secrets`。填好 `config/deploy.yml` 中标为 `CHANGE ME` 的值，提交，然后运行：
+`cybertrain new` 还会写出一套 [Kamal 2](https://kamal-deploy.org) 配置。`Dockerfile` 在 Ubuntu 构建阶段运行 `cybertrain setup` 和 `cybertrain build`，再把 `dist/` 复制到同一发行版的精简阶段；该镜像启动时先执行迁移，然后在 `0.0.0.0:3000` 上提供服务。此外还有 `.dockerignore`、`config/deploy.yml`（前端是带 Let&rsquo;s Encrypt 的 kamal-proxy，健康检查使用 `public/up.html`，SQLite 文件放在挂载于 `/app/storage` 的卷上，还有第 14 步取消了注释的 `worker` 角色：用同一个镜像运行 `./blog worker` 的第二个容器；除非 `CYBERTRAIN_WORKER` 为 0，web 角色也会运行作业），以及从环境变量读取 `KAMAL_REGISTRY_PASSWORD` 和 `CYBERTRAIN_SECRET_KEY_BASE` 的 `.kamal/secrets`。填好 `config/deploy.yml` 中标为 `CHANGE ME` 的值，提交，然后运行：
 
 ```shell 终端 — blog/
 kamal setup    # 首次：在服务器上安装 Docker 和 kamal-proxy，构建、推送并启动

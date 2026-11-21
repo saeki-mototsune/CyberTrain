@@ -1,0 +1,22 @@
+true
+ok   a job thread's claim survives a StandardError through its Exception arm
+queued JSON::ParserError
+queued JSON::NestingError
+queued JSON::ParserError
+ok   a JSON error raised by a job handler is the attempt's error
+0
+2
+true
+true
+ok   a JSON error raised by a scheduled task is logged and the pass goes on
+JSON::ParserError
+JSON::NestingError
+ok   rescue StandardError alone, inline in a block
+std JSON::ParserError | std JSON::NestingError | exc JSON::ParserError | exc JSON::NestingError
+ok   JSON errors on plain threads are caught by StandardError and by Exception
+queued JSON::ParserError
+queued JSON::NestingError
+2
+false
+ok   JSON errors raised by handlers on real job threads
+6 tests, 6 assertions, 0 failures

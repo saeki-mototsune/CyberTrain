@@ -2,7 +2,7 @@ require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/controller"
 
-# `render component:` (spec 3.2): component classes and the Gen::Components
+# `render component:` (docs/design.md D38): component classes and the Gen::Components
 # table hand-written in the shape gen/components.rb emits, templates in a
 # temporary app/views + app/components tree.
 #

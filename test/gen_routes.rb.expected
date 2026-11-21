@@ -23,7 +23,7 @@ ok   emitted source for a small route set
 ok   emitted source with no named routes still parses
 ok   Gen.param and Gen.segment turn helper arguments into path segments
 ok   a segment named options leaves the helper's options Hash another name
-ok   Gen.with_options appends format, query and anchor (spec 2.6, plan decision 14)
+ok   Gen.with_options appends format, query and anchor
 ok   jobs_page draws the six jobs routes to CybertrainJobsController
 ok   jobs_page without before_action: records an open page
 ok   a second jobs_page raises naming the first path

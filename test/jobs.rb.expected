@@ -4,7 +4,6 @@ ok   a job that sets the locale does not leave it for the next job on the same t
 ok   a failing job is retried with the backoff, counting attempts, until it is failed
 ok   NotImplementedError and SystemStackError from a job take the default retry, as a StandardError does
 ok   a job that fails and then succeeds ends done
-ok   the backoff list is 1, 5, 15 and then 60 minutes
 ok   a job of a kind with no handler is failed at once, with last_error
 ok   last_error is bounded
 ok   recover! requeues rows a dead process left running once their heartbeat is stale
@@ -38,4 +37,4 @@ ok   the unkeyable-row warnings list at most 20 ids and count the rest
 ok   recovery requeues a stale running row with its key in the same statement
 ok   an upgrade adds the column and the index to an existing table
 ok   schema dumps leave the jobs table out
-40 tests, 326 assertions, 0 failures
+39 tests, 321 assertions, 0 failures

@@ -178,15 +178,13 @@ test "cache off re-reads a template after a rewrite" do
   assert_equal "version two 8", engine.render("page", new_env, helpers)
 end
 
-test "cache on keeps the first parse until clear_cache!" do
+test "cache on keeps the first parse" do
   path = File.join(ROOT, "cached.html.erb")
   File.write(path, "one")
   engine = Engine.new(ROOT)
   assert_equal "one", engine.render("cached", new_env, helpers)
   File.write(path, "two!")
   assert_equal "one", engine.render("cached", new_env, helpers)
-  engine.clear_cache!
-  assert_equal "two!", engine.render("cached", new_env, helpers)
 end
 
 test "errors name the template file and line" do

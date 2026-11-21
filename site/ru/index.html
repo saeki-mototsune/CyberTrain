@@ -18,20 +18,20 @@
 <meta property="og:locale:alternate" content="zh_CN">
 <meta property="og:locale:alternate" content="fr_FR">
 <meta property="og:site_name" content="CyberTrain">
-<meta property="og:url" content="https://saeki-mototsune.github.io/CyberTrain/ru/">
-<meta property="og:image" content="https://saeki-mototsune.github.io/CyberTrain/assets/og/ru/index.png">
+<meta property="og:url" content="https://www.cybertrain.dev/ru/">
+<meta property="og:image" content="https://www.cybertrain.dev/assets/og/ru/index.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="CyberTrain: веб-приложения в духе Rails, скомпилированные в один нативный бинарный файл">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="canonical" href="https://saeki-mototsune.github.io/CyberTrain/ru/">
-<link rel="alternate" hreflang="en" href="https://saeki-mototsune.github.io/CyberTrain/">
-<link rel="alternate" hreflang="ja" href="https://saeki-mototsune.github.io/CyberTrain/ja/">
-<link rel="alternate" hreflang="zh-Hans" href="https://saeki-mototsune.github.io/CyberTrain/zh/">
-<link rel="alternate" hreflang="ru" href="https://saeki-mototsune.github.io/CyberTrain/ru/">
-<link rel="alternate" hreflang="fr" href="https://saeki-mototsune.github.io/CyberTrain/fr/">
-<link rel="alternate" hreflang="x-default" href="https://saeki-mototsune.github.io/CyberTrain/">
+<link rel="canonical" href="https://www.cybertrain.dev/ru/">
+<link rel="alternate" hreflang="en" href="https://www.cybertrain.dev/">
+<link rel="alternate" hreflang="ja" href="https://www.cybertrain.dev/ja/">
+<link rel="alternate" hreflang="zh-Hans" href="https://www.cybertrain.dev/zh/">
+<link rel="alternate" hreflang="ru" href="https://www.cybertrain.dev/ru/">
+<link rel="alternate" hreflang="fr" href="https://www.cybertrain.dev/fr/">
+<link rel="alternate" hreflang="x-default" href="https://www.cybertrain.dev/">
 <script src="../assets/site.js" defer></script>
 
 <title>CyberTrain · Веб-приложения в духе Rails, скомпилированные в один нативный бинарный файл</title>
@@ -96,10 +96,10 @@
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
-<span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000</span></span>
+<span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000/articles</span></span>
 <span class="ln cmd">cybertrain build             <span class="c"># продакшен: dist/blog, dist/public/, dist/storage/, dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
 </figure>
-        <p class="term-note">Нужен Ruby&nbsp;3.2+ — для команды <code>cybertrain</code> и для CRuby-превью в режиме разработки (превью также загружает <code>fiddle</code>; в продакшене Ruby не нужен), а также <code>git</code>, <code>make</code>, <code>curl</code>, компилятор C и заголовки SQLite&nbsp;3: см. <a href="guide/install.html#requirements">перед началом</a>. Запускайте сборку командой <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code> с заданной переменной <code>CYBERTRAIN_SECRET_KEY_BASE</code>.</p>
+        <p class="term-note">Нужен Ruby&nbsp;3.2+ — для команды <code>cybertrain</code> и для CRuby-превью в режиме разработки (превью также загружает <code>fiddle</code>; в продакшене Ruby не нужен), а также <code>git</code>, <code>make</code>, <code>curl</code>, компилятор C и заголовки SQLite&nbsp;3, zlib и OpenSSL: см. <a href="guide/install.html#requirements">перед началом</a>. Запускайте сборку командой <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code> с заданной переменной <code>CYBERTRAIN_SECRET_KEY_BASE</code>.</p>
       </div>
     </div>
   </div>
@@ -133,7 +133,7 @@
     <div class="sec-full look">
       <ul class="look-notes" aria-label="Правила Spinel по слоям">
         <li data-note="0"><p class="look-k">Маршруты</p><p>Вложенные блоки <code>resources</code> получают маппер явно: <code>articles.resources :comments</code>.</p></li>
-        <li data-note="1"><p class="look-k">Контроллеры</p><p><code>new</code> пишется как <code>new_action</code>: метод с именем <code>new</code> затенил бы <code>Klass.new(ctx)</code>.</p></li>
+        <li data-note="1"><p class="look-k">Контроллеры</p><p><code>new</code> пишется как <code>new_action</code>: сгенерированные маршруты вызывают действие под этим именем.</p></li>
         <li data-note="2"><p class="look-k">Представления</p><p>В режиме разработки шаблоны читаются с диска, поэтому правка представления не требует пересборки; <code>cybertrain build</code> встраивает их в бинарный файл. Это замкнутая грамматика, а не произвольный Ruby.</p></li>
         <li data-note="3"><p class="look-k">Модели</p><p><code>class Article</code> объявляет валидации; столбцы, finder-методы и ассоциации генерируются из <code>db/schema.rb</code>.</p></li>
       </ul>
@@ -164,7 +164,7 @@
 <span class="ln"><span class="k">class</span> <span class="t">ArticlesController</span> &lt; <span class="t">ApplicationController</span></span>
 <span class="ln">  before_action <span class="y">:set_article</span>, <span class="y">only:</span> [<span class="y">:show</span>, <span class="y">:edit</span>, <span class="y">:update</span>, <span class="y">:destroy</span>]</span>
 <span class="ln"></span>
-<span class="ln">  <span class="k">def</span> new_action   <span class="c"># a `new` method would shadow ArticlesController.new</span></span>
+<span class="ln">  <span class="k">def</span> new_action   <span class="c"># the generated routes call the `new` action by this name</span></span>
 <span class="ln">    <span class="v">@article</span> = <span class="t">Article</span>.new</span>
 <span class="ln">  <span class="k">end</span></span>
 <span class="ln"></span>
@@ -230,12 +230,16 @@
     <ul class="features sec-full">
       <li class="feature"><span class="feat-idx" aria-hidden="true">01</span><h3>Нативный HTTP-сервер</h3><p>HTTP/1.1-сервер на обычном Ruby: один зелёный поток на соединение, типизированные запросы и ответы. Слоя Rack нет; для TLS поставьте перед ним nginx или Caddy.</p><p class="feat-ref"><code>TCPServer#accept</code></p></li>
       <li class="feature"><span class="feat-idx" aria-hidden="true">02</span><h3>Маршрутизация и контроллеры</h3><p><code>resources</code>, вложенные маршруты, <code>before_action</code>, <code>after_action</code> и <code>rescue_from</code> на этапе сборки генерируются в обычный Ruby. Strong params и связка «flash, затем редирект» работают как в Rails.</p><p class="feat-ref"><code>config/routes.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">03</span><h3>Сессии, flash, CSRF</h3><p>Сессии в cookie с подписью HMAC, flash-сообщения и защита от CSRF включены по умолчанию. Формы передают токен автоматически; на поддельные POST-запросы приходит 403.</p><p class="feat-ref"><code>_cybertrain_session</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">03</span><h3>Сессии, flash, CSRF</h3><p>Сессии в зашифрованной cookie (AES-256-GCM), flash-сообщения и защита от CSRF включены по умолчанию. Формы передают токен автоматически; на поддельные POST-запросы приходит 403.</p><p class="feat-ref"><code>_cybertrain_session</code></p></li>
       <li class="feature"><span class="feat-idx" aria-hidden="true">04</span><h3>Шаблоны в стиле ERB</h3><p>Представления выглядят как Rails ERB: макеты, партиалы, <code>form_with</code> и <code>link_to</code>. В режиме разработки они читаются с диска, поэтому правки не требуют пересборки. <code>cybertrain build</code> встраивает их в бинарный файл.</p><p class="feat-ref"><code>app/views/**/*.html.erb</code></p></li>
       <li class="feature"><span class="feat-idx" aria-hidden="true">05</span><h3>Модели на SQLite</h3><p>Валидации, колбэки и ассоциации, выведенные из внешних ключей. Работа с SQLite идёт через FFI Spinel с пулом соединений; все запросы используют связанные параметры.</p><p class="feat-ref"><code>ffi_func · ffi_lib</code></p></li>
       <li class="feature"><span class="feat-idx" aria-hidden="true">06</span><h3>Миграции и скаффолды</h3><p><code>cybertrain generate scaffold</code> создаёт миграцию, модель, контроллер и пять представлений. <code>cybertrain db migrate</code> выполняет генерацию, применяет миграции, перезаписывает <code>db/schema.rb</code> и генерирует снова.</p><p class="feat-ref"><code>db/migrate/*.rb</code></p></li>
       <li class="feature"><span class="feat-idx" aria-hidden="true">07</span><h3>Живой цикл разработки</h3><p><code>cybertrain server</code> следит за вашим кодом: после правки Ruby быстрее чем за секунду отвечает CRuby-превью, пока Spinel собирает бинарный файл в фоне; затем скомпилированный бинарный файл забирает тот же порт. При неудачной сборке продолжает работать превью и показывает вывод компилятора.</p><p class="feat-ref"><code>X-Cybertrain-Runtime: cruby|spinel</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">08</span><h3>Встроенное тестирование</h3><p>Пишите тесты с <code>Cybertrain::Test</code> и прогоняйте всё приложение внутри процесса с помощью клиента с хранилищем cookie. <code>cybertrain spin test</code> компилирует каждый тест и сравнивает его вывод с эталоном.</p><p class="feat-ref"><code>test/&lt;name&gt;.rb.expected</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">08</span><h3>Тесты</h3><p>Тестовые классы в стиле Rails (<code>ActiveSupport::TestCase</code>, <code>ActionDispatch::IntegrationTest</code>) с фикстурами; их пишут генераторы. <code>cybertrain test</code> компилирует их в одну программу и запускает её.</p><p class="feat-ref"><code>test/**/*_test.rb</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">09</span><h3>Фоновые задания</h3><p>Классы заданий с повторами, расписаниями cron и страницей заданий, хранящиеся в базе SQLite приложения. <code>./blog worker</code> выполняет их в отдельном процессе.</p><p class="feat-ref"><code>app/jobs/*.rb</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">10</span><h3>Turbo Streams</h3><p><code>turbo_stream_from</code> в представлении и <code>broadcast_append_to</code> из действия или задания, через Server-Sent Events или WebSocket.</p><p class="feat-ref"><code>require "cybertrain/streams"</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">11</span><h3>Вход и загрузка файлов</h3><p><code>cybertrain generate authentication</code> (регистрация или вход только по приглашениям, сброс пароля, подтверждение адреса) и <code>cybertrain generate attachment</code> пишут код, который принадлежит вам и который можно править.</p><p class="feat-ref"><code>cybertrain generate</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">12</span><h3>Только то, что используется</h3><p>Задания, Turbo Streams, фиды, почта, кэш и ограничение частоты запросов — по одной строке <code>require</code> на каждое; новое приложение компилирует только ядро.</p><p class="feat-ref"><code>require "cybertrain/core"</code></p></li>
     </ul>
   </div></div>
 </section>
@@ -251,18 +255,18 @@
       <article class="part" aria-labelledby="part-fw">
         <div class="part-head"><p class="part-k">Пакет Spinel</p><h3 id="part-fw">Фреймворк</h3></div>
         <p class="part-what">Библиотека, на которой построено ваше приложение.</p>
-        <div class="part-fact"><p class="fact-k">Что внутри</p><p>HTTP-сервер, маршрутизация и контроллеры, сессии и защита от CSRF, интерпретатор шаблонов, модели и миграции SQLite, а также генератор кода, стоящий за <code>spin run gen</code>.</p></div>
+        <div class="part-fact"><p class="fact-k">Что внутри</p><p>HTTP-сервер, маршрутизация и контроллеры, сессии и защита от CSRF, интерпретатор шаблонов, модели и миграции SQLite, необязательные подсистемы (задания, Turbo Streams, почта, кэш), тестовый фреймворк, а также генератор кода, стоящий за <code>spin run gen</code>.</p></div>
         <div class="part-fact"><p class="fact-k">Как получить</p><p>Устанавливать его не нужно. В <code>spin.toml</code> вашего приложения указан релизный тег этого репозитория, соответствующий вашей команде <code>cybertrain</code>, а <code>spin lock</code> загружает его в кэш spin и фиксирует коммит в <code>spin.lock</code>. В ваше приложение ничего не копируется.</p></div>
       </article>
       <article class="part" aria-labelledby="part-cli">
         <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli">Команда <code>cybertrain</code></h3></div>
         <p class="part-what">Инструмент, который создаёт, собирает и запускает ваше приложение.</p>
-        <div class="part-fact"><p class="fact-k">Что внутри</p><p>Только команда <code>cybertrain</code>: <code>new</code>, <code>generate scaffold</code>, <code>db migrate</code>, <code>server</code>, <code>build</code>, <code>spin</code>, <code>setup</code> и <code>doctor</code>. Ни фреймворка, ни Spinel в геме нет.</p></div>
+        <div class="part-fact"><p class="fact-k">Что внутри</p><p>Только команда <code>cybertrain</code>: <code>new</code>, <code>generate</code> (scaffold, authentication, attachment, job, component, helper), <code>db</code>, <code>server</code>, <code>build</code>, <code>test</code>, <code>secret</code>, <code>spin</code>, <code>setup</code> и <code>doctor</code>. Ни фреймворка, ни Spinel в геме нет.</p></div>
         <div class="part-fact"><p class="fact-k">Как получить</p><p><code>gem install cybertrain</code>. При первом использовании она собирает зафиксированный релиз Spinel в <code>~/.cybertrain</code>, если этот релиз ещё не доступен в вашем <code>PATH</code>.</p></div>
       </article>
     </div>
     <div class="sec-full">
-      <p class="footnote">Обе части выпускаются из одного тега, поэтому их версии совпадают. <a href="guide/install.html#moving-an-app-to-a-new-release">Как приложение переходит на новый релиз</a> — в руководстве по установке.</p>
+      <p class="footnote">Обе части выпускаются из одного тега, и команда отказывается собирать приложение, фреймворк которого относится к другому релизу. <a href="guide/install.html#moving-an-app-to-a-new-release">Как приложение переходит на новый релиз</a> — в руководстве по установке.</p>
     </div>
   </div></div>
 </section>
@@ -310,14 +314,14 @@
           <tr><th scope="col" class="cmp-topic"><span class="sr-only">Тема</span></th><th scope="col" class="cmp-rails">Rails</th><th scope="col" class="cmp-ct"><svg class="cmp-mark" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 104 104"><path fill="currentColor" fill-rule="evenodd" d="M94 44.14L94 30L76 12L28 12L10 30L10 44.14ZM84 34.14L20 34.14L32.14 22L71.86 22ZM94 56L10 56L24 70L80 70ZM14.93 80L7.93 80L7.93 85L9.93 85L2.93 92L10 92L17 85L87 85L94 92L101.07 92L94.07 85L96.07 85L96.07 80L89.07 80L82.07 73L75 73L82 80L22 80L29 73L21.93 73Z"/><path fill="#C8A96A" d="M94 47.07L10 47.07L10 53.07L94 53.07Z"/></svg><span>CyberTrain</span></th></tr>
         </thead>
         <tbody>
-          <tr><th scope="row"><span class="cmp-n">01</span>Консоль</th><td data-label="Rails"><code>rails console</code></td><td data-label="CyberTrain">Консоли нет — в Spinel нет <code>eval</code></td></tr>
+          <tr><th scope="row"><span class="cmp-n">01</span>Консоль</th><td data-label="Rails"><code>rails console</code>, <code>rails dbconsole</code></td><td data-label="CyberTrain"><code>./blog console</code> вычисляет выражения языка шаблонов над моделями (в Spinel нет <code>eval</code>, поэтому это не Ruby); <code>./blog dbconsole</code> открывает <code>sqlite3</code></td></tr>
           <tr><th scope="row"><span class="cmp-n">02</span>Перезагрузка</th><td data-label="Rails">Правите код — запущенное приложение подхватывает изменения</td><td data-label="CyberTrain">Изменения Ruby видны сразу через CRuby-превью; скомпилированный бинарный файл забирает порт, когда его сборка завершится (<code>cybertrain server</code>)</td></tr>
-          <tr><th scope="row"><span class="cmp-n">03</span>Действие new</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code> (<code>new</code> затенил бы <code>Klass.new(ctx)</code>)</td></tr>
+          <tr><th scope="row"><span class="cmp-n">03</span>Действие new</th><td data-label="Rails"><code>def new</code></td><td data-label="CyberTrain"><code>def new_action</code> (сгенерированные маршруты вызывают его под этим именем)</td></tr>
           <tr><th scope="row"><span class="cmp-n">04</span>Колбэки</th><td data-label="Rails"><code>before_action { do_thing }</code> (неявный <code>self</code>)</td><td data-label="CyberTrain"><code>before_action { |c| c.do_thing }</code> — для сохранённого блока нет <code>instance_exec</code>, поэтому колбэки получают контроллер/запись явно</td></tr>
           <tr><th scope="row"><span class="cmp-n">05</span>Вложенные маршруты</th><td data-label="Rails"><code>resources :posts do resources :comments end</code></td><td data-label="CyberTrain"><code>resources :posts do |posts| posts.resources :comments end</code> — вложенные блоки получают маппер явно</td></tr>
-          <tr><th scope="row"><span class="cmp-n">06</span>Сессии</th><td data-label="Rails">Сессия хранит любой сериализуемый через Marshal объект</td><td data-label="CyberTrain">Значения сессии — только строки (String), cookie с подписью HMAC</td></tr>
+          <tr><th scope="row"><span class="cmp-n">06</span>Сессии</th><td data-label="Rails">Сессия хранит любой сериализуемый через Marshal объект</td><td data-label="CyberTrain">Значения сессии — только строки (String), cookie зашифрована AES-256-GCM</td></tr>
           <tr><th scope="row"><span class="cmp-n">07</span>База данных</th><td data-label="Rails">Множество адаптеров баз данных</td><td data-label="CyberTrain">Только SQLite, через FFI</td></tr>
-          <tr><th scope="row"><span class="cmp-n">08</span>Тесты</th><td data-label="Rails">minitest / RSpec</td><td data-label="CyberTrain"><code>Cybertrain::Test</code> — раннеры на основе рефлексии не могут работать при AOT-компиляции</td></tr>
+          <tr><th scope="row"><span class="cmp-n">08</span>Тесты</th><td data-label="Rails">minitest / RSpec</td><td data-label="CyberTrain">Тестовые классы в стиле Rails и фикстуры, которые <code>cybertrain test</code> компилирует в одну программу, — раннеры на основе рефлексии не могут работать при AOT-компиляции</td></tr>
         </tbody>
       </table>
       <div class="cmp-foot">
@@ -333,7 +337,7 @@
     <div class="sec-head"><span class="sec-num" aria-hidden="true">06</span><p class="sec-label">Производительность</p></div>
     <div class="sec-body">
       <h2 id="perf-h">На одном ядре — в 2,2–8,8 раза больше запросов, чем у&nbsp;Rails.</h2>
-      <p class="lead"><code>examples/blog</code> против того же блога на Rails 8.1: те же представления, маршруты, модели и схема SQLite. Оба работают в production-режиме на одних и тех же ядрах CPU одной машины, под одинаковой нагрузкой от wrk. Второе ядро больше помогает Rails: Puma добавляет целый процесс, а второй рабочий поток CyberTrain добавляет 0–19%, поэтому на двух ядрах разрыв — 1,1–4,4 раза.</p>
+      <p class="lead"><code>examples/blog</code>, каким он был 2026-11-05, против того же блога на Rails 8.1: те же представления, маршруты, модели и схема SQLite (с тех пор пример вырос). Оба работают в production-режиме на одних и тех же ядрах CPU одной машины, под одинаковой нагрузкой от wrk. Второе ядро больше помогает Rails: Puma добавляет целый процесс, а второй рабочий поток CyberTrain добавляет 0–19%, поэтому на двух ядрах разрыв — 1,1–4,4 раза.</p>
     </div>
     <div class="sec-full">
       <figure class="perf-fig">
@@ -361,7 +365,7 @@
         <li><p class="perf-k">Что нужно на сервере</p><p class="perf-v">4,0&nbsp;МБ</p><p class="perf-d">Один бинарник. Rails: 121&nbsp;МБ — Ruby, 69 gem-пакетов и приложение.</p></li>
         <li><p class="perf-k">Цена: сборка</p><p class="perf-v">50&nbsp;с</p><p class="perf-d">на компиляцию бинарника командой <code>cybertrain build</code>. Rails запускает исходники как есть.</p></li>
       </ul>
-      <p class="footnote">Медианы трёх 10-секундных прогонов после разогрева на облачной ВМ с 4 vCPU: CyberTrain на коммите 0d8a942, собранный зафиксированным релизом Spinel, против Rails 8.1.4 на Ruby 3.4.6 с YJIT и Puma 8.0. Методика, все числа и как повторить замер: <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/benchmark.md" rel="noopener">docs/benchmark.md</a>.</p>
+      <p class="footnote">Медианы трёх 10-секундных прогонов после разогрева на облачной ВМ с 4 vCPU: CyberTrain на коммите 0d8a942, собранный зафиксированным релизом Spinel, против Rails 8.1.4 на Ruby 3.4.6 с YJIT и Puma 8.0. Методика, все числа и что с тех пор изменилось в примере: <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/benchmark.md" rel="noopener">docs/benchmark.md</a>.</p>
     </div>
   </div></div>
 </section>

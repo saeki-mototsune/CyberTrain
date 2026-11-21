@@ -1,4 +1,4 @@
-# Link rewriting for the generated guide pages (the spec's step 4). A link
+# Link rewriting for the generated guide pages. A link
 # in a source, as written for GitHub, becomes:
 #   other.md, other.md#a   the target source's page in the same language,
 #                          relative to this page; the anchor must be one of

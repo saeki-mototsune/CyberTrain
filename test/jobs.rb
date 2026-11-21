@@ -341,14 +341,6 @@ test "a job that fails and then succeeds ends done" do
   assert_equal "", job_error(id)
 end
 
-test "the backoff list is 1, 5, 15 and then 60 minutes" do
-  assert_equal 60, Job.backoff(1)
-  assert_equal 300, Job.backoff(2)
-  assert_equal 900, Job.backoff(3)
-  assert_equal 3600, Job.backoff(4)
-  assert_equal 3600, Job.backoff(9)
-end
-
 test "a job of a kind with no handler is failed at once, with last_error" do
   fresh_db
   Job.install!
@@ -363,7 +355,7 @@ test "last_error is bounded" do
   fresh_db
   id = Job.enqueue("long", "", run_at: Time.at(1000))
   assert Job.work_one(1000)
-  assert_equal Job::MAX_ERROR_LENGTH, job_error(id).size
+  assert_equal Job::RetryPolicy::MAX_ERROR_LENGTH, job_error(id).size
 end
 
 test "recover! requeues rows a dead process left running once their heartbeat is stale" do
@@ -421,7 +413,7 @@ test "a claim writes claimed_by and heartbeat_at; heartbeat! touches only the jo
   assert_equal 1000, job_heartbeat(mine)
   assert_equal 1000, job_heartbeat(theirs)
   assert_equal 1000, job_heartbeat(done)
-  assert_equal 0, Job.in_flight_ids.size
+  assert_equal 0, Job::Executor.in_flight_claims.size
 end
 
 test "an outcome write that keeps failing leaves the row to staleness recovery" do
@@ -429,7 +421,7 @@ test "an outcome write that keeps failing leaves the row to staleness recovery" 
   id = Job.enqueue("record", "lost", run_at: Time.at(1000))
   # Every try of the outcome write raises (a database locked past its busy
   # timeout).
-  Job.fail_outcome_writes(Job::OUTCOME_TRIES)
+  Job.fail_outcome_writes(Job::Executor::OUTCOME_TRIES)
   assert Job.work_one(1000)
   assert_equal "lost", SEEN.join(",")
   assert_equal "running", job_state(id)

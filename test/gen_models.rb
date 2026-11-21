@@ -1350,7 +1350,7 @@ test "flags emits exactly the Flag shape of test/model.rb" do
   assert_equal EXPECTED_FLAG, emit_for("flags")
 end
 
-# ---- the lines named by the plan ----------------------------------------
+# ---- the emitted lines, one by one --------------------------------------
 
 test "model_name and column_names lines" do
   post = emit_for("posts", ["summary"])
@@ -2485,8 +2485,8 @@ test "view_methods_for picks the scanned methods of one model" do
     Cybertrain::Gen::ModelInfo.empty("comment.rb", "Comment", ["short"]),
     Cybertrain::Gen::ModelInfo.empty("post.rb", "Post", ["summary"])
   ]
-  assert_equal ["summary"], Cybertrain::Gen::ModelsEmitter.view_methods_for("Post", list)
-  assert_equal [], Cybertrain::Gen::ModelsEmitter.view_methods_for("Tag", list)
+  assert_equal ["summary"], Cybertrain::Gen::ModelValidation.view_methods_for("Post", list)
+  assert_equal [], Cybertrain::Gen::ModelValidation.view_methods_for("Tag", list)
 end
 
 test "outputs maps gen/models paths to sources for every table" do
@@ -2583,8 +2583,8 @@ end
 
 test "scopes_for picks the scopes of one model" do
   infos = scoped_infos
-  assert_equal ["recent", "min_views", "window", "titled"], Cybertrain::Gen::ModelsEmitter.scopes_for("Post", infos).map { |s| s.name }
-  assert_equal [], Cybertrain::Gen::ModelsEmitter.scopes_for("Comment", infos)
+  assert_equal ["recent", "min_views", "window", "titled"], Cybertrain::Gen::ModelValidation.scopes_for("Post", infos).map { |s| s.name }
+  assert_equal [], Cybertrain::Gen::ModelValidation.scopes_for("Comment", infos)
   outputs = Cybertrain::Gen::ModelsEmitter.outputs(model_spec_schema, infos)
   assert_includes outputs["gen/models/post.rb"], "  def self.recent = all.recent\n"
   assert_equal EXPECTED_COMMENT, outputs["gen/models/comment.rb"]
@@ -3290,7 +3290,7 @@ test "a column named like an association cache ivar fails" do
                "rename the column", msg
 end
 
-# ---- validations (spec section 9) -------------------------------------------
+# ---- validations (docs/design.md D48) ---------------------------------------
 
 VALIDATED_MODEL_SOURCE = <<~'RUBY'
   class Post
@@ -3479,7 +3479,7 @@ test "a condition or validate method the model file does not define raises with 
                   "when :title then self.title ? true : false"
 end
 
-# `encrypts` (spec section 10): the scan reads the names, the emitter
+# `encrypts` (docs/design.md D49): the scan reads the names, the emitter
 # decrypts in load_row and encrypts in to_row, fills ENCRYPTED_COLUMNS and
 # answers encrypted_column? on the Relation (where / update_all refuse it).
 def encrypted_emit(line)

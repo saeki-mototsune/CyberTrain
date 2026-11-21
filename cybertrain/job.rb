@@ -189,17 +189,6 @@ module Cybertrain
     # @api public
     OUTCOME_STALE = :stale
 
-    # Seconds to wait before the retry after the 1st, 2nd, 3rd and every
-    # later failed attempt.
-    BACKOFF = RetryPolicy::BACKOFF
-
-    # last_error keeps at most this many characters of the message.
-    MAX_ERROR_LENGTH = RetryPolicy::MAX_ERROR_LENGTH
-
-    # How many times an outcome write is tried before the row is left to
-    # staleness recovery.
-    OUTCOME_TRIES = Executor::OUTCOME_TRIES
-
     # Job.work_due's default bound: a SQLite call holds its OS worker until
     # it returns, so an unbounded drain could keep requests waiting.
     JOBS_PER_POLL = 20
@@ -476,7 +465,7 @@ module Cybertrain
     # once at warn with its id. {Job.start!} calls it after {Job.recover!};
     # a second call finds nothing to key.
     # @param now [Integer] epoch seconds (the start's clock; the rows'
-    #   updated_at is left as it is, as the spec's UPDATE writes only the key)
+    #   updated_at is left as it is: the UPDATE writes only the key)
     # @return [Integer] how many rows were keyed
     # @api public
     def self.backfill_keys(now)
@@ -560,9 +549,9 @@ module Cybertrain
     # process lives. And only the attempts in flight here: a row recovered
     # and claimed again by this process is kept alive by its new attempt,
     # not by an older one that is still running (the heartbeat is fenced
-    # by the attempt number, as the outcome is). Judgement call: the spec's
-    # statement was `WHERE state = 'running' AND claimed_by = ?`; this adds
-    # the (id, attempts) of each claim in flight.
+    # by the attempt number, as the outcome is): the statement is
+    # `WHERE state = 'running' AND claimed_by = ?` narrowed to the
+    # (id, attempts) of each claim in flight.
     # @param now [Integer] epoch seconds
     # @return [Integer] how many rows it touched
     # @api public
@@ -576,11 +565,6 @@ module Cybertrain
     # thread's is while its pool is the live one and no stop was requested.
     def self.claim_open?(ticket)
       ticket < 0 || Worker.pool_live?(ticket)
-    end
-
-    # A copy of the ids of the jobs in flight in this process.
-    def self.in_flight_ids
-      Executor.in_flight_ids
     end
 
     # How many jobs of `kind` are `running` now, in every process sharing
@@ -604,7 +588,8 @@ module Cybertrain
     end
 
     # Claims and runs the oldest due job, if there is one, and records the
-    # outcome: `done`; `queued` again with `run_at` pushed back by {BACKOFF}
+    # outcome: `done`; `queued` again with `run_at` pushed back (by 60, 300,
+    # 900, then 3600 seconds, or as a `retry_on` of the job class says)
     # after a failure; `failed` once {Config#job_max_attempts} attempts have
     # failed, or at once when no handler is registered for its kind. The
     # worker calls it; tests call it with a fixed `now` instead of waiting.
@@ -683,13 +668,6 @@ module Cybertrain
     # @api public
     def self.prune_finished(before)
       Store.prune_finished(before)
-    end
-
-    # Seconds to wait after the attempts-th failed attempt (1-based).
-    # @param attempts [Integer]
-    # @return [Integer]
-    def self.backoff(attempts)
-      RetryPolicy.default_wait(attempts)
     end
 
     # Writes the outcome of a failed attempt for a retry policy (the code

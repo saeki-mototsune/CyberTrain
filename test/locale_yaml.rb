@@ -1,9 +1,9 @@
 require "cybertrain/test"
 require "cybertrain/generator/locale_yaml"
 
-# Gen::LocaleYaml.parse reads the YAML subset of spec section 8 that gen uses
+# Gen::LocaleYaml.parse reads the YAML subset (docs/design.md D79) that gen uses
 # for config/locales/**/*.yml, and refuses the rest with "path:line: problem".
-# Every scalar is kept as its text (D4): `3` is "3", `no` is "no", `~` is "".
+# Every scalar is kept as its text: `3` is "3", `no` is "no", `~` is "".
 
 def entries(yaml) = Cybertrain::Gen::LocaleYaml.parse(yaml, "config/locales/x.yml")
 def entry_of(yaml, key) = entries(yaml).find { |e| e.entry_key == key }

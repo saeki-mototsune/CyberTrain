@@ -19,7 +19,7 @@
 #                   (each handler INSERTs one business row)
 #   cache=2         threads doing a Cache.write and then a Cache.read
 #   rate=2          threads counting a request as `rate_limit` does (the
-#                   Cache.increment of Controller#run_rate_limit, same key)
+#                   Cache.increment of Controller#apply_rate_limit, same key)
 #   broadcasters=1  threads calling Stream.broadcast; the real poller hands
 #                   the rows to one subscriber
 #   think_ms=2      the pause after each write, read, cache or rate operation
@@ -316,7 +316,7 @@ rescue JSON::NestingError, JSON::ParserError, StandardError => e
   error_code(e.message)
 end
 
-# What Controller#run_rate_limit does for `store: :cache`: one
+# What Controller#apply_rate_limit does for `store: :cache`: one
 # Cache.increment on the client's row of the current window.
 def safe_rate(slot, seq)
   now = Cache.now

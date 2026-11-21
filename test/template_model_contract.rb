@@ -6,6 +6,7 @@ require "cybertrain/db"
 require "cybertrain/model"
 require "cybertrain/schema"
 require "cybertrain/encryptor"
+require_relative "support/schema_tables"
 
 # What a template may read from a record (docs/design.md D71): the generated
 # models answer attribute_or_method? for their columns, associations and
@@ -23,34 +24,9 @@ require_relative "fixtures/gen_app/gen/concerns/models/concerns/visible"
 require_relative "fixtures/gen_app/app/models/comment"
 require_relative "fixtures/gen_app/app/models/post"
 
-def sql_type(column)
-  case column.type
-  when :integer, :boolean then "INTEGER"
-  when :float then "REAL"
-  when :decimal then "DECIMAL"
-  else "TEXT"
-  end
-end
-
-def create_tables_sql(definition)
-  sql = +""
-  definition.tables.each do |table|
-    parts = ["id INTEGER PRIMARY KEY AUTOINCREMENT"]
-    table.columns.each do |c|
-      part = +"\"#{c.name}\" #{sql_type(c)}"
-      part << " NOT NULL" unless c.null
-      default = c.default
-      part << " DEFAULT #{default}" unless default.nil?
-      parts << part
-    end
-    sql << "CREATE TABLE \"#{table.name}\" (#{parts.join(", ")});"
-  end
-  sql
-end
-
 Cybertrain.config.encryption_key = "8f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
 Cybertrain::DB.connect(":memory:", size: 1)
-Cybertrain::DB.with { |c| c.exec_script(create_tables_sql(Cybertrain::Schema.current)) }
+Cybertrain::DB.with { |c| c.exec_script(SchemaTables.create_sql(Cybertrain::Schema.current)) }
 
 # A hand-written model that does not declare its names: the base
 # attribute_or_method? (true) keeps every unanswered name a nil.

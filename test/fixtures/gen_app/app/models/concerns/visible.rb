@@ -1,4 +1,4 @@
-# A model concern (spec 4.2): spliced into Post at the `include` (between
+# A model concern: spliced into Post at the `include` (between
 # the title presence rule and the rules below it); visible? is a Post view
 # method, and its before_save runs after Post's own, unlike Rails.
 module Visible
@@ -11,4 +11,10 @@ module Visible
   end
 
   def visible? = hidden == 0
+
+  # Post.summary beside Post#summary: a class method named like an
+  # instance method of the including model.
+  class_methods do
+    def summary = "posts"
+  end
 end

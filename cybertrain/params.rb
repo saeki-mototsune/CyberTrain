@@ -193,6 +193,18 @@ module Cybertrain
       ParameterFilter.filter?(key) ? ParameterFilter::FILTERED.inspect : text
     end
 
+    # A new Array holding a copy of each String of arr (Array#dup alone
+    # shares the elements). A while loop, no block.
+    def self.copy_strings(arr)
+      copy = []
+      i = 0
+      while i < arr.length
+        copy << arr[i].dup
+        i += 1
+      end
+      copy
+    end
+
     protected
 
     # #permit's work, on the filters as one Array (Symbols, Strings and

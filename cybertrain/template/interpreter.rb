@@ -129,7 +129,7 @@ module Cybertrain
 
       # The name of the template rendering now ("posts/_form.html.erb",
       # "__components/card_component.html.erb"; "" outside a render): the
-      # template `t` helper's lazy lookup scope (plan decision D8).
+      # template `t` helper's lazy lookup scope.
       # @return [String]
       def current_template_name = @name
 
@@ -218,7 +218,7 @@ module Cybertrain
         if k == INode::K_CALL then eval_call(n, env)
         elsif k == INode::K_LVAR
           v = env[n.istr]
-          return v unless v.nil? && !key_in?(env, n.istr)
+          return v unless v.nil? && !env.key?(n.istr)
 
           call_helper(n.istr, eval_args(n, env), eval_kwargs(n, env), nil, n, env)
         elsif k == INode::K_IVAR then env[n.istr]
@@ -329,8 +329,8 @@ module Cybertrain
         when Symbol
           return recv.to_s if name_sym == :to_s
           undefined(node, name_str, "Symbol")
-        # Time before Array: a Time in a polymorphic slot also matches Array
-        # (spikes/NOTES.md rule 8).
+        # Time before Array, the order spikes/NOTES.md rule 8 asks for (seen
+        # on Spinel 2026.09.12; status 8 has its probe on the pinned build).
         when Time then time_method(recv, name_sym, name_str, args, node)
         when Array then array_method(recv, name_sym, name_str, args, node)
         when Hash then hash_method(recv, name_sym, name_str, args, node)
@@ -448,7 +448,6 @@ module Cybertrain
         saved = save_locals(env, names)
         fresh = fresh_locals(env, n.ipairs)
         case coll
-        when Time then undefined(n, "each", "Time")
         when Array
           i = 0
           while i < coll.size
@@ -503,7 +502,7 @@ module Cybertrain
         i = 0
         while i < names.size
           name = names[i]
-          saved[name] = env[name] if key_in?(env, name)
+          saved[name] = env[name] if env.key?(name)
           i += 1
         end
         saved
@@ -531,7 +530,7 @@ module Cybertrain
       def fresh_locals(env, names)
         return names if names.empty?
 
-        names.reject { |name| key_in?(env, name) }
+        names.reject { |name| env.key?(name) }
       end
 
       def reset_locals(env, fresh)
@@ -687,7 +686,6 @@ module Cybertrain
         when false then true
         when SafeString then v.to_s.strip.empty?
         when String then v.strip.empty?
-        when Time then false
         when Array then v.empty?
         when Hash then v.empty?
         when Cybertrain::Errors then v.empty?
@@ -719,17 +717,6 @@ module Cybertrain
         end
         fail_at(node, "'#{name}' expects an Integer, got #{type_name(a)}")
         0
-      end
-
-      # Hash#key? on a polymorphic receiver mis-dispatches under Spinel once
-      # a user class (Errors, Params) defines key?: it consults only user
-      # classes and answers false for every Hash. Look the key up instead.
-      def key_in?(hash, key)
-        return true unless hash[key].nil?
-
-        found = false
-        hash.each_key { |k| found = true if k == key }
-        found
       end
 
       # --- operators --------------------------------------------------------
@@ -808,7 +795,6 @@ module Cybertrain
 
       def index(recv, key, node)
         case recv
-        when Time then undefined(node, "[]", "Time")
         when Array
           case key
           when Integer then return recv[key]
@@ -868,9 +854,7 @@ module Cybertrain
         when :to_i then s.to_i
         when :html_safe then SafeString.of(s.to_s)
         when :html_safe? then false
-        # String#include? with a polymorphic argument mis-dispatches once
-        # SafeString exists (spikes/NOTES.md rule 29): go through #index.
-        when :include? then !s.index(string_arg(args, 0, node, name)).nil?
+        when :include? then s.include?(string_arg(args, 0, node, name))
         when :start_with? then s.start_with?(string_arg(args, 0, node, name))
         when :end_with? then s.end_with?(string_arg(args, 0, node, name))
         else undefined(node, name, "String")
@@ -996,7 +980,6 @@ module Cybertrain
           fail_at(node, "wrong number of arguments for 'zip'") if args.empty?
           other = args[0]
           case other
-          when Time then fail_at(node, "'zip' expects an Array, got Time")
           when Array then return zip_values(a, other)
           end
           fail_at(node, "'zip' expects an Array, got #{type_name(other)}")
@@ -1078,9 +1061,8 @@ module Cybertrain
       # The block's value for every item, in order. Block parameters shadow
       # outer names for the call and are restored after it, as each's are.
       # A block that raises still restores them (and the output buffer):
-      # the console keeps one environment from line to line. Plain methods,
-      # not yielding ones, so the rescue is allowed (spikes/NOTES.md rules
-      # 32 and 45).
+      # the console keeps one environment from line to line. The cleanup is
+      # an `ensure` in a plain method, not a yielding one, as in render.
       def block_values(block, env, items, name, node)
         names = block.inames
         saved = save_locals(env, names)
@@ -1093,14 +1075,11 @@ module Cybertrain
             out << block_value(block, env, fresh, items[i], name, node)
             i += 1
           end
-        rescue StandardError => e
+        ensure
           @out = saved_out
           restore_locals(env, names, saved)
           drop_locals(env, fresh)
-          raise e
         end
-        restore_locals(env, names, saved)
-        drop_locals(env, fresh)
         out
       end
 
@@ -1118,14 +1097,11 @@ module Cybertrain
             found = i if truthy?(block_value(block, env, fresh, items[i], name, node)) == want
             i += 1
           end
-        rescue StandardError => e
+        ensure
           @out = saved_out
           restore_locals(env, names, saved)
           drop_locals(env, fresh)
-          raise e
         end
-        restore_locals(env, names, saved)
-        drop_locals(env, fresh)
         found
       end
 
@@ -1136,11 +1112,7 @@ module Cybertrain
       def block_value(block, env, fresh, item, name, node)
         names = block.inames
         if names.size > 1
-          # Time before Array (spikes/NOTES.md rule 8).
           case item
-          when Time
-            env[names[0]] = item
-            env[names[1]] = nil
           when Array
             env[names[0]] = item[0]
             env[names[1]] = item[1]
@@ -1338,7 +1310,6 @@ module Cybertrain
       def flatten_into(out, a)
         a.each do |x|
           case x
-          when Time then out << x
           when Array then flatten_into(out, x)
           else out << x
           end
@@ -1390,11 +1361,11 @@ module Cybertrain
           h[hash_key(args[0])]
         when :key?
           fail_at(node, "wrong number of arguments for 'key?'") if args.empty?
-          key_in?(h, hash_key(args[0]))
+          h.key?(hash_key(args[0]))
         when :fetch
           fail_at(node, "wrong number of arguments for 'fetch'") if args.empty?
           key = hash_key(args[0])
-          return h[key] if key_in?(h, key)
+          return h[key] if h.key?(key)
           return args[1] if args.size > 1
           fail_at(node, "key not found: #{inspect_value(args[0])}")
         when :size, :length, :count then h.size

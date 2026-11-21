@@ -18,6 +18,7 @@ ok   if: and unless: go through validation_condition?
 ok   one validates line for two attributes, under if:
 ok   run_custom_validations runs after the declared rules with the context
 ok   an unknown option, a lambda condition and an on: other than :create or :update raise ArgumentError
+ok   a Time is neither a list for in: nor a member of one
 ok   model_concern_insert_at puts a concern's validates calls after the model's own call of that index
 ok   the default messages come from the dictionary of the current locale, message: still wins
-22 tests, 114 assertions, 0 failures
+23 tests, 121 assertions, 0 failures

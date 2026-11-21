@@ -1,6 +1,7 @@
 require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/main"
+require_relative "support/file_tree"
 
 # Cybertrain::Main's console and dbconsole words. `console` reads the
 # terminal, so the console cases run this same binary again as a child with
@@ -13,16 +14,10 @@ require "cybertrain/main"
 # It links SQLite through FFI, so it cannot run under CRuby: its snapshot
 # comes from the compiled binary (spikes/NOTES.md rule 23).
 
-def no_views
-  none = { "" => "" }
-  none.delete("")
-  none
-end
-
 def resolver = ->(name, args, options) { "/" }
 
 def run(argv)
-  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: no_views)
+  Cybertrain::Main.run("blog", argv, router: Cybertrain::Router.new, url_resolver: resolver, views: Cybertrain::Application.no_views)
 end
 
 exit(run(["console"])) if ENV["MAIN_CONSOLE_CHILD"] == "1"
@@ -33,16 +28,7 @@ PATH_BEFORE = ENV["PATH"].to_s
 ENV["CYBERTRAIN_ENV"] = "test"
 ENV["CYBERTRAIN_DATABASE"] = "#{TMP}/console.sqlite3"
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
-at_exit { rm_tree(TMP) }
+at_exit { FileTree.remove(TMP) }
 
 # The child's output for `input` on its standard input, and its status.
 def console_child(input)

@@ -29,15 +29,14 @@ of those lines are contracts and how each is held.
 | `where(col: a..b)` | any Range | Integer Ranges; a Time or Date range is `where_between` | D43 | test/relation_where.rb |
 | `order(...)` | any SQL string | `column [ASC\|DESC]` lists only; raw SQL is `order_sql`, request data goes through an allowlist | models guide, "Ordering" | test/query_extras.rb |
 | `before_action { ... }`, `before_save { ... }` | the block runs with `self` as the controller or record | the block takes it: `before_action { \|c\| c.authenticate }` | how-it-works; D8 | test/controller.rb, test/controller_order.rb, test/model.rb |
-| `def new` in a controller | an action | `def new_action` (`new` would shadow the constructor) | how-it-works | test/gen_routes.rb, test/controller.rb |
+| `def new` in a controller | an action | `def new_action` (the generated routes call the action by that name) | how-it-works | test/gen_routes.rb, test/controller.rb |
 | `layout "x"` declared twice | the last wins | the first declaration that applies wins | template language, "Per-controller layouts" | test/controller_views.rb |
 | `session[:key] = value` | any marshalled object | Strings only | requests guide, "Cookies and the session" | test/session.rb |
-| `rescue StandardError` | catches a bad `JSON.parse` | does not: `rescue JSON::NestingError, JSON::ParserError, StandardError` | how-it-works; NOTES rules 33, 61 | test/server.rb, test/client_error.rb |
 | `config.filter_parameters` | Symbols, Regexps, lambdas | Strings matched by substring, case-insensitively | configuration guide | test/middleware.rb |
 | `skip_forgery_protection` | per controller | CSRF runs before routing: exempt by path with `csrf_exempt_prefixes` | configuration guide | test/csrf.rb, test/csrf_chain.rb |
 | `Rails.cache.fetch` | any object | Strings; `fetch_hash`, `fetch_array`, `fetch_int` for the rest | operations guide, "The cache store"; D54 | test/cache.rb |
 | `perform_later(args)` | any serializable arguments, GlobalID | one Hash of JSON values; delivered at least once | operations guide; D28, D51, D68 | test/jobs.rb, test/job_threads.rb |
-| Concerns | included at run time | expanded by `spin run gen` into the including classes | requests guide, "Concerns"; D60 | test/gen_concerns.rb, test/gen_model_concerns.rb |
+| Concerns | included at run time | expanded by `spin run gen` into the including classes | requests guide, "Concerns and `helper_method`"; D60 | test/gen_concerns.rb, test/gen_model_concerns.rb |
 | ERB | Ruby | a template language with ERB's tags (below) | template language reference; D9 | test/template_*.rb |
 
 A row is added when a new API takes a Rails name with a different meaning,
@@ -119,8 +118,12 @@ header, the stream protocol).
    (0.x.y to 0.x.y+1) carries none. The release notes are generated from
    pull request titles, so the title says "compatibility:" or names the
    change plainly.
-4. **The guides get an "Upgrading from 0.x" entry** (as the models and
-   requests guides have for 0.4), with the steps in the order to run them.
+4. **The upgrading guide gets the entry.** The release's section under
+   "Notes by version" in [docs/guide/upgrading.md](guide/upgrading.md) says
+   what changed and what to do, by topic, with the steps in the order to
+   run them (as "From 0.4 to 0.5" does). The
+   procedure on that page names no release and does not change; the guide
+   of the topic describes the new behaviour only.
 5. **Where it is possible, the old meaning is announced before it goes.**
    A change that can be detected at build time is a generator diagnostic
    first; one that can only be seen at run time is a boot-log warning for

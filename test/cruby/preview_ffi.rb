@@ -138,7 +138,7 @@ test "a failing rename is reported as itself" do
   end
 end
 
-# The cache's ownership check (decision P26): a library is code loaded into
+# The cache's ownership check: a library is code loaded into
 # the developer's process, so the directory and the file must be this
 # user's alone.
 def mode_of(path)

@@ -1,6 +1,7 @@
 require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/cli"
+require_relative "support/file_tree"
 
 # cybertrain build without spin: the command list and the dist/ assembly
 # from a fake build/bin/<name>. CRuby-portable.
@@ -22,18 +23,9 @@ end
 ROOT = Dir.mktmpdir("cybertrain-cli-build")
 Dir.chdir(ROOT)
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(ROOT)
+  FileTree.remove(ROOT)
 end
 
 def make_app
@@ -153,7 +145,6 @@ end
 
 test "build embeds the views, builds, then restores the empty table" do
   assert_equal ["SPIN_DEBUG=1 spin run gen -- --embed-views", "spin build blog", "SPIN_DEBUG=1 spin run gen"], Cybertrain::CLI::Build.commands("blog")
-  assert_equal ["SPIN_DEBUG=1 spin run gen", "SPIN_DEBUG=1 spin run db -- migrate", "SPIN_DEBUG=1 spin run gen"], Cybertrain::CLI::Build.migration_commands
   assert_equal "'a'\\''b'", Cybertrain::Shell.quote("a'b")
 end
 
@@ -291,7 +282,7 @@ test "build runs the three steps under tmp/cybertrain-build.lock, then assembles
   refute File.exist?("tmp/cybertrain-build.lock")
   assert_equal "#!/bin/sh\necho built\n", File.read("dist/blog")
   assert File.directory?("dist/public")
-  rm_tree("dist")
+  FileTree.remove("dist")
 end
 
 test "a failed spin build still restores gen/views.rb, skips assemble and exits 1" do
@@ -437,11 +428,6 @@ end
 
 def open_descriptors
   File.directory?("/dev/fd") ? Dir.children("/dev/fd").size : 0
-end
-
-test "Build.lock_path names the lock BuildLock takes" do
-  assert_equal "/apps/blog/tmp/cybertrain-build.lock", Cybertrain::CLI::Build.lock_path("/apps/blog")
-  assert_equal Cybertrain::CLI::BuildLock.new("/apps/blog").lock_path, Cybertrain::CLI::Build.lock_path("/apps/blog")
 end
 
 test "the build lock is created holding this process's PID when it is free" do
@@ -591,7 +577,7 @@ test "releasing the build lock leaves a lock another taker holds at the path" do
   assert_equal 0, Cybertrain::CLI::Build.run(".", "blog", runner)
   assert_equal OTHER_LIVE_PID, File.read(LOCK)
   runner.other.release_build_lock
-  rm_tree("dist")
+  FileTree.remove("dist")
   clear_lock
 end
 
@@ -638,7 +624,7 @@ test "a long cybertrain build keeps its lock held however old the file gets" do
   assert_equal 3, runner.log.size
   refute runner.free_seen
   refute File.exist?(LOCK)
-  rm_tree("dist")
+  FileTree.remove("dist")
 end
 
 test "assemble copies the binary and public/ into dist/ and keeps storage/ and tmp/" do
@@ -704,11 +690,11 @@ def stale_touch(path, offset)
   nil
 end
 
-# The test's rm_tree follows symlinks: the link goes first.
+# The link goes first, so the walk below never meets it.
 def stale_cleanup
   File.delete("#{STALE_APP}/app/linked") if File.symlink?("#{STALE_APP}/app/linked")
-  rm_tree(STALE_APP) if File.exist?(STALE_APP)
-  rm_tree(STALE_OUTSIDE) if File.exist?(STALE_OUTSIDE)
+  FileTree.remove(STALE_APP) if File.exist?(STALE_APP)
+  FileTree.remove(STALE_OUTSIDE) if File.exist?(STALE_OUTSIDE)
   nil
 end
 

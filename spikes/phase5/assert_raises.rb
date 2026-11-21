@@ -1,4 +1,4 @@
-# Phase 5a spike, item 4 (spec section 16): assert_raises given a class,
+# Phase 5a spike, item 4: assert_raises given a class,
 # beside today's String form, matched by class name (rules 46, 47); and a
 # top-level method called both with a block and without one (the shape of
 # perform_enqueued_jobs and assert_broadcasts). A record, not a test.
@@ -25,8 +25,9 @@
 # The first version walked `superclass` to the top and the compiled program
 # stopped with "undefined method 'superclass' for module RuntimeError
 # (NoMethodError)": Ruby's own exception classes answer no superclass under
-# Spinel (a user class does, up to its first builtin ancestor). Hence
-# BUILTIN_PARENTS. One parameter takes a Class or a String (boxed), and
+# Spinel in a program that defines a module, as this one does (a user class
+# answers its whole chain, built-in ancestors included; NOTES rule 104).
+# Hence BUILTIN_PARENTS. One parameter takes a Class or a String (boxed), and
 # `case expected when String` / `is_a?(String)` tell them apart.
 # Verdict: PASS with the parents table (Minitest's subclass match);
 # a top-level method with and without a block (block_given?): PASS.

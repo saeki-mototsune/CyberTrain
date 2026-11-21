@@ -10,7 +10,7 @@ require "build"
 
 class BuildTest < Minitest::Test
   FIXTURE = File.expand_path("fixtures/pages", __dir__)
-  BASE = "https://saeki-mototsune.github.io/CyberTrain/"
+  BASE = "https://www.cybertrain.dev/"
 
   def setup
     @root = Dir.mktmpdir

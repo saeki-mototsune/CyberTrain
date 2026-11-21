@@ -687,7 +687,7 @@ module Cybertrain
     end
 
     # The writer with its rescue, in a plain method (spikes/NOTES.md rules
-    # 32/45); JSON::NestingError named first (rule 61). False when it raised.
+    # 32/45). False when it raised.
     # Either arm logs the `stream error:` line; a failure is then told to
     # {Cybertrain.stream_failure} (reported, once cybertrain/error_reporter
     # is loaded), under the request's log context (run_writer_scoped). A client
@@ -699,7 +699,7 @@ module Cybertrain
       @logger.error("stream error: #{e.class.name}: #{e.message}")
       sink.sink_close!
       false
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+    rescue StandardError => e
       @logger.error("stream error: #{e.class.name}: #{e.message}")
       sink.sink_close!
       Cybertrain.stream_failure.stream_failed(e)
@@ -709,10 +709,11 @@ module Cybertrain
     # The handler's Response, or the error response for what it raised.
     def handle(request)
       @handler.call(request)
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      # JSON::ParserError is not a StandardError under Spinel (NOTES rule
-      # 33); named here so an action's bad JSON.parse is a 500 and not the
-      # end of the connection thread. SystemStackError / NoMemoryError are
+    rescue StandardError => e
+      # StandardError includes JSON::ParserError and JSON::NestingError on
+      # the pinned Spinel (test/server.rb's /json and /deep hold that), so
+      # an action's bad JSON.parse is a 500 and not the end of the
+      # connection thread. SystemStackError / NoMemoryError are
       # not named: nothing proves Spinel's exception table has them (a
       # stack overflow is a SIGSEGV there anyway); the depth limits in Query
       # and the template Interpreter are the guard against those.

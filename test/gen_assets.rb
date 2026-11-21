@@ -3,8 +3,9 @@ require "digest"
 require "cybertrain/test"
 require "cybertrain/generator"
 require_relative "fixtures/assets_app/gen/assets"
+require_relative "support/file_tree"
 
-# Assets at gen time (spec section 7.1, 7.3): digests, CSS url() rewriting,
+# Assets at gen time (docs/design.md D63): digests, CSS url() rewriting,
 # three kept versions under public/assets, the import map and gen/assets.rb.
 # Runs on a copy of test/fixtures/assets_app in a temporary directory, so
 # public/assets and the edited sources never touch the checked-in fixture.
@@ -25,17 +26,7 @@ SOURCES = [
  "vendor", "vendor/javascript", "config"].each { |d| Dir.mkdir("#{TMP}/#{d}") }
 SOURCES.each { |f| File.write("#{TMP}/#{f}", File.read("#{FIXTURE}/#{f}")) }
 
-def remove_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| remove_tree("#{path}/#{child}") }
-    Dir.rmdir(path)
-  elsif File.exist?(path)
-    File.delete(path)
-  end
-  nil
-end
-
-at_exit { remove_tree(TMP) }
+at_exit { FileTree.remove(TMP) }
 
 def scan_now
   Cybertrain::Gen::AssetScan.scan(TMP)
@@ -105,8 +96,8 @@ test "a logical path under two roots is refused" do
   assert_equal "asset application.js is both app/javascript/application.js and vendor/javascript/application.js", message
 end
 
-# url() resolves against the CSS file's logical directory (Propshaft; ruling
-# F28): from application.css, "logo.svg" and "/logo.svg" are the image, and
+# url() resolves against the CSS file's logical directory (Propshaft):
+# from application.css, "logo.svg" and "/logo.svg" are the image, and
 # "../images/logo.svg" climbs out of the logical root, so it is not an asset.
 test "url() suffixes, quotes and non-asset references" do
   css, warnings = rewrite(%(a{b:url("logo.svg")} c{d:url(x.woff2?v=3#iefix)} e{f:url(data:image/png;base64,AA)} g{h:url(https://cdn/x.png)} i{j:url(#clip)} k{l:url(missing.png)} m{n:url( '/logo.svg' )} o{p:url(%23x)} q{r:url(//cdn/y.png)}))
@@ -202,7 +193,7 @@ test "an asset root that is itself a symlink stops gen" do
   message = assert_raises("ArgumentError") { scan_now }
   File.delete("#{TMP}/vendor/javascript")
   File.rename("#{TMP}/vendor/javascript.real", "#{TMP}/vendor/javascript")
-  remove_tree("#{TMP}/elsewhere")
+  FileTree.remove("#{TMP}/elsewhere")
   assert_equal "vendor/javascript is a symlink; asset directories are never followed, so make it a real directory", message
   assert_equal "chart.js", asset("chart.js").logical_path
 end

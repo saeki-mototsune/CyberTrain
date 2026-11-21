@@ -5,8 +5,6 @@ require "cybertrain/test"
 # snapshot comes from the compiled binary (spikes/NOTES.md rule 23).
 
 class CreatePosts < Cybertrain::Migration::Base
-  version "20260101000000"
-
   def change
     create_table "posts" do |t|
       t.string "title", null: false
@@ -16,8 +14,6 @@ class CreatePosts < Cybertrain::Migration::Base
 end
 
 class CreateComments < Cybertrain::Migration::Base
-  version "20260101000100"
-
   def change
     create_table "comments" do |t|
       t.references :post

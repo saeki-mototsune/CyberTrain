@@ -1,5 +1,5 @@
 rails-i18n's English and Japanese dictionaries, vendored unchanged as test
-fixtures (phase 4b, plan decision R3; spec section 12 item 6).
+fixtures (phase 4b; docs/design.md D79).
 
 Repository: svenfuchs/rails-i18n (https://github.com/svenfuchs/rails-i18n)
 Commit:     f5c999b88935d4c1389a1ffe8a00f29b43e10366 (the head of master
@@ -31,5 +31,5 @@ for `---`):
   CRuby's YAML.safe_load refuses (Psych::DisallowedClass: Symbol); the
   locale reader keeps them as the text ":year".
 - Unquoted YAML 1.1 scalars that Psych would type: `precision: 3`,
-  `significant: false` (kept as the text "3", "false"; plan decision D4).
+  `significant: false` (kept as the text "3", "false").
 - No block scalar (`|`, `>`), no flow collection, no `\u` escape.

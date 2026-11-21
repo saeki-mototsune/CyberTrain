@@ -6,7 +6,7 @@ module Cybertrain
   # requests; anything that is not a readable file falls through to the next
   # app. A directory serves its index.html. A file under /assets whose name
   # carries a digest gen wrote (Assets.kept_file?) is cached for a year as
-  # immutable (spec 7.4): its name changes with its content, so it is never
+  # immutable: its name changes with its content, so it is never
   # rewritten in place and needs no ETag. Everything else, an undigested
   # file under public/assets included, is cached for an hour. A file whose
   # realpath leaves the root's (a symlink out of public/) is not served: a

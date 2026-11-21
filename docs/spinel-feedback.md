@@ -1,10 +1,34 @@
 # Feedback for Spinel
 
-What building and speeding up CyberTrain found in Spinel itself, written so
-each item can become an issue upstream. Each says what happens, how it was
-seen, what CyberTrain does about it today, and what would fix it in Spinel.
+This document is the one record of what Spinel does that CyberTrain has had
+to know about, and of where each behaviour stands: what happens, the
+program that shows it, what it did on each build tried, what is asked of
+Spinel, and whether it is closed. Each behaviour is an item whose
+identifier never changes: a digit (1 to 7), a letter (A to AZ so far; the
+next is BA) or, for a behaviour first written as a rule of spikes/NOTES.md
+and never lettered, "rule N". "Item register" lists them all.
 
-Nine builds are covered, and the source of one more was read:
+[spikes/](../spikes/README.md) is the other half and does not say where a
+behaviour stands on the pin.
+It holds the programs, and [spikes/NOTES.md](../spikes/NOTES.md), the
+numbered rules that say how CyberTrain's code is written because of an
+item. Each rule and each program names its item here and is kept until
+that item is closed. For how the framework is written, the rule and the
+code are the authority, and the "What CyberTrain does" columns here are a
+summary for a reader upstream, as of their section's date. For what Spinel
+does on a build, this document is the authority, and NOTES points here.
+
+"The pin" is the present pin, 2026.11.15.7033, in three places only: "Item
+register", the "On 2026.11.15.7033" table of "Status by rule" and "Written
+up on 2026-11-21". Everywhere else it is the pin of the time the passage
+was written, and for everything written from 2026-11-04 on that is
+2026.11.04.7026, the passages dated 2026-11-15 to 2026-11-20 included: the
+pin moved on 2026-11-15, but the runs those passages record used
+2026.11.04.7026, and what they say of "the pin" is not all true of the
+present one (Q's "re-run of 2026-11-15 on the pin" is an example: "Status
+by rule", row 86 on 2026.11.15.7033).
+
+These builds are covered, and the source of one more was read:
 
 - **2026.09.12** (112bae85c1a2), matz/spinel's release, which CyberTrain
   was pinned to until 2026-10-26. Items 1 to 7 and the tables were found on
@@ -57,8 +81,8 @@ Nine builds are covered, and the source of one more was read:
   fails on it as on 2026.10.27.7020. Nothing else was checked on it.
 - **2026.11.04.7026** (a2d06115f, `spinel 2026.11.04.7026 (a2d06115)`),
   the fork's release tag carrying matz/spinel master up to #10959, and the
-  build CyberTrain is pinned to now (`Cybertrain::SPINEL_TAG`,
-  `Cybertrain::SPINEL_REPOSITORY`; since 2026-11-04, CyberTrain 0.4.1).
+  build CyberTrain was pinned to from 2026-11-04 to 2026-11-15
+  (CyberTrain 0.4.1).
   It carries #10525 (the refusal under C) and #10524 (the run-time
   `TypeError` beside it), and #10735 and #10786 (I). Checked on 2026-11-04 with the toolchain `cybertrain setup`
   builds from that tag: `spin test` passes 106 of 106; examples/blog's
@@ -93,7 +117,9 @@ Nine builds are covered, and the source of one more was read:
   it for that reading. It was built once after that, on 2026-11-12, as
   the base of the pull requests for Q, R and S: Q's first program, R's
   first two and S's were run on it and answered as on the pin, except
-  that Q's String Range was matched and nothing raised at construction.
+  that nothing raised at construction (Q's String Range was matched
+  there; a re-run on 2026-11-15 found it matched on the pin as well, see
+  Q).
   Those runs are named where they are used (the Q, R and S rows of "What
   can go upstream" and the Q and R sections); every other mention of
   494deaac is the reading. It is in no fork tag.
@@ -106,19 +132,250 @@ Nine builds are covered, and the source of one more was read:
   #11683 (U). The programs of K, N, Q, R (all three), S, T, U and rule 79
   print CRuby's result on it; Y's and Z's fail as on the pin; M's, O's,
   P's and J's were not run (see "What is asked of Spinel now").
+- **2026.11.15.7033** (a2f3bfaaf), the fork's release tag CyberTrain is
+  pinned to since 2026-11-15 (`Cybertrain::SPINEL_TAG`,
+  `Cybertrain::SPINEL_REPOSITORY`). What was run on it, on 2026.11.14.7031
+  and on 2026.11.15.7032, and why those two were not pinned, is under
+  "Status by rule", "On 2026.11.15.7033". Apart from the three places
+  named above, the sections below were not brought up to it, whatever
+  their date.
 
-The pinned 2026.11.04.7026 was used once more on 2026-11-13, for the
-inventory below: forty small programs built with it on Linux x86_64
+2026.11.04.7026, the pin at the time, was used once more on 2026-11-13,
+for the inventory below: forty small programs built with it on Linux x86_64
 (`spinel prog.rb -o prog`, gcc 13.3.0) and run beside CRuby 3.3.6, and
 examples/blog's program of main 34c9b7e written out as C. Nothing else
 was built for it: `spin test` was not run, and no other build was tried.
 
-The evidence is in [spikes/NOTES.md](../spikes/NOTES.md) (rules 22, 56 to
-59, 62, 64 to 66, 70, 72, 77 to 79, 81 to 84, 86 and 88 to 97, and since
-the inventory every other rule that describes a Spinel behaviour),
-[benchmark.md](benchmark.md) and [performance-next.md](performance-next.md).
+The programs are under [spikes/](../spikes/README.md); the rules the
+framework follows are in [spikes/NOTES.md](../spikes/NOTES.md); the
+measurements are in [benchmark.md](benchmark.md) and
+[performance-next.md](performance-next.md).
+
+## Item register
+
+One row per item, with where it stands on the pinned build. An item is a
+digit, a letter or "rule N", as the top of this document says; the "Rules"
+column gives the rules of spikes/NOTES.md that exist because of it. Which
+program shows an item is in the READMEs under
+[spikes/](../spikes/README.md), not here.
+
+An item is **closed** by one pull request of its own that does these three
+things together, and the row then names the date, the pull request and
+the test:
+
+1. it removes the workaround from the framework and names a compiled test
+   (`test/`) of the framework's own shape written the plain way, or the
+   row says the item never had a workaround;
+2. it sets the last line of each of the item's rules in spikes/NOTES.md to
+   "Closed (docs/spinel-feedback.md X): kept for its number.";
+3. it sets the item's row here to `closed`.
+
+It can do so once the item's program prints CRuby's result on the pinned
+build ("Status by rule" names the program and the run), or once the item
+is withdrawn as not a Spinel behaviour. Until then "passes on the pin" is
+not closed: a passing probe is not a licence to drop an active workaround
+(spikes/NOTES.md, "Maintaining this inventory"). Items of kind
+"constraint" and "refusal by design" (how Spinel is; nothing is asked) and
+the records that are not Spinel items are never closed, and their rules
+are permanent.
+
+Once an item is closed, that pull request or a later one may delete the
+item's programs under spikes/ and cut the body of its rule in
+spikes/NOTES.md down to the "Closed" line, after rewriting every comment
+under cybertrain/, test/, script/, docs/ and examples/ that gives "rule N"
+as a present reason. The rule number and the item's identifier are never
+reused, and the item's section here stays as the record.
+
+The rows closed before 2026-11-21 were closed by the pin moving to a build
+with the fix; "Closed by" names that build, and the test where there is
+one.
+
+Kinds: **bug** (differs from CRuby or stops a build, and is not by
+design), **cost** (time or memory, not a wrong result), **refusal by
+design**, **constraint** (how Spinel or its tools are) and **record** (not
+a Spinel item: ordinary Ruby, a form that works, a measurement or advice
+on writing tests, kept in spikes/NOTES.md as a rule the code cites).
+
+States:
+
+- `open`: a program that stands on its own differs from CRuby on the pin,
+  or does not compile there.
+- `open, not reduced`: seen in the framework only; on the pin it is
+  covered by `spin test` and examples/blog, with the workaround in place.
+- `fixed upstream, not in the pin`.
+- `passes on the pin, workaround kept`: the item's reduced program prints
+  CRuby's result on the pin, and the framework is still written around
+  it.
+- `passes on the pin, no workaround left`: the same, and nothing in the
+  framework is written around it any more. These are the candidates for a
+  closing pull request. No row is in this state since 2026-11-21: rules 33
+  and 61 were, and were closed that day; rule 79 was listed with them and was
+  closed later that day, once the typed value in cybertrain/console.rb
+  that cited it was found to answer another failure, AY.
+- `probe matches on the pin`: for a "rule N" item that was never reduced,
+  its section of a saved program printed CRuby's output when
+  `spikes/rechecks/run.sh` was run on the pin (Linux x86_64, 2026-11-21;
+  the last row of "Status by rule", "On 2026.11.15.7033"). This does not
+  show that the behaviour is gone.
+- `not re-checked on the pin (last: ...)`: nobody has tried it on the pin;
+  the last recorded state and its build follow. Not a claim either way.
+- `closed`, as defined above.
+- `settled`: a constraint, a refusal by design or a record; nothing is
+  asked and nothing is re-checked.
+
+"(status N)" is row N of "Status by rule", "On 2026.11.15.7033", unless
+the cell names another build.
+
+| Item | Kind | Rules | State on the pin (2026.11.15.7033) | Closed by |
+| --- | --- | --- | --- | --- |
+| 1 | constraint | 58, 65 | settled: accepted on 2026-10-28 ("Accepted as Spinel constraints"); not re-checked on the pin |  |
+| 2 | bug | 56 | closed; the callers' `x.to_s` stays as rule 56's guidance for speed | 2026.10.27.7020: `Html.escape`'s `case` is dropped; 106 of 106 tests and examples/blog pass without it |
+| 3 | bug |  | closed | 2026.10.26.7019 (#10257); never had a workaround |
+| 4 | cost |  | closed | 2026.10.27.7020 (#8702, #10024); never had a workaround |
+| 5 (a) | cost |  | not re-checked on the pin (last: open, 83% of collections full on 2026.11.04.7026, 2026-11-05) |  |
+| 5 (b) | cost |  | not re-checked on the pin (last: fixed on matz/spinel master, #11646, in no fork tag on 2026-11-13) |  |
+| 6 | cost |  | not re-checked on the pin (last: jemalloc measured on 2026.11.04.7026, section 2 of "Everything on main") |  |
+| 7 | cost | 57 | not re-checked on the pin (last: not seen since the lock left the request path; not retried since 2026.09.12) |  |
+| A | bug |  | closed | 2026.10.26.7019 (#10254); never had a workaround |
+| B | constraint | 59 | settled: accepted on 2026-10-28 ("Accepted as Spinel constraints") |  |
+| C | bug |  | closed | 2026.10.26.7019 (#10258, #10259) and, for the refusal under it, 2026.11.04.7026 (#10525, #10524): test/template_engine.rb is back in its earlier form |
+| D | constraint | 25 | settled: by design; still raises RangeError on the pin (status 25) |  |
+| E | cost |  | not re-checked on the pin (last: no change against 2026.10.27.7020 on 2026.11.04.7026, 2026-11-05) |  |
+| F | bug |  | closed | 2026.10.26.7019 (#10260); never had a workaround |
+| G | bug |  | closed | 2026.10.26.7019 (#10262); never had a workaround |
+| H | bug | 77 | closed | 2026.10.27.7020 (#10415); test/db_with_value.rb covers the plain form. The body of rule 77 was cut on 2026-11-21, and what only it held is in H |
+| I | bug |  | closed | 2026.11.04.7026 (#10735, #10786); never had a workaround |
+| J | bug |  | not re-checked on the pin (last: fails with `SPINEL_GC_SLAB=0` on 2026.11.04.7026, 3 runs of 3; the default is unknown) |  |
+| K | bug | 78 | passes on the pin, workaround kept (status 78) |  |
+| L | constraint | 22 | settled: documented upstream (da4485a5) |  |
+| M | bug | 83 | passes on the pin, workaround kept (status 83) |  |
+| N | bug |  | not re-checked on the pin (last: fails on 2026.11.04.7026; fixed on matz/spinel master, #11184 and #11219); no workaround in the framework (Daicho's `n.to_i`) |  |
+| O | bug | 72 | not re-checked on the pin (last: `connect_timeout:` ignored on 2026.11.04.7026, 2026-11-19; fixed on matz/spinel master, #11183) |  |
+| P | bug |  | not re-checked on the pin (last: does not return on 2026.11.04.7026; fixed on matz/spinel master, dcc46945c) |  |
+| Q | bug | 86 | passes on the pin, workaround kept (status 86) |  |
+| R | bug | 70, 81, 89 | passes on the pin for 81 and 89, workaround kept (status 81 and 89); 70's aliased name was not re-run |  |
+| S | bug | 90 | passes on the pin, workaround kept (status 90) |  |
+| T | bug | 91 | passes on the pin, workaround kept (status 91) |  |
+| U | bug | 93 | passes on the pin, workaround kept (status 93) |  |
+| V | bug | 96 | open, not reduced (status 96) |  |
+| W | bug | 97 | open, not reduced (status 97) |  |
+| X | bug | 94 | open, not reduced (status 94) |  |
+| Y | bug | 82 | passes on the pin, workaround kept (status 82) |  |
+| Z | bug | 88 (111 narrows it) | passes on the pin, workaround kept (status 88) |  |
+| AA | cost |  | not re-checked on the pin (last: in the generated C of main on 2026.11.04.7026, 2026-11-13; not reduced) |  |
+| AB | bug | 80 | open (status 80: `blocking: true` and no option still hold the worker; the pin adds `offload: true`) |  |
+| AC | bug | 49 | passes on the pin, workaround kept (status 49) |  |
+| AD | bug | 52 | passes on the pin, workaround kept (status 52: `byteindex`; `strip` is AU) |  |
+| AE | bug | 47, 53, 54 | passes on the pin, workaround kept (status 54; 47 and 53 match in rechecks/exception_shapes.rb) |  |
+| AF | bug | 100 | passes on the pin, workaround kept (status 100) |  |
+| AG | bug |  | not re-checked on the pin (last: fails on 2026.11.04.7026, 2026-11-13) |  |
+| AH | bug |  | no workaround and no rule; not re-checked on the pin as a program; the difference recorded was with CRuby 3.3, and CRuby 4.0.7 writes these Floats as Spinel does (status 100) |  |
+| AI | cost | 101 | open (status 101: still one C function; the time was not reproduced on macOS) |  |
+| AJ | bug | 104 | passes on the pin, workaround kept (status 104) |  |
+| AK | cost |  | not re-checked on the pin (last: seen on 2026.11.04.7026, 2026-11-12) |  |
+| AL | cost | 108 | not re-checked on the pin (last: seen on 2026.11.04.7026, 2026-11-12) |  |
+| AM | bug | 107 | open (status 107) |  |
+| AN | bug | 109 | passes on the pin, workaround kept (status 109) |  |
+| AO | bug | 110 | open (status 110) |  |
+| AP | bug | 117 | passes on the pin, workaround kept (status 117) |  |
+| AQ | bug | 116 | open (status 116) |  |
+| AR | bug | 122 | open (status 122) |  |
+| AS | bug | 123 | open, not reduced (status 123) |  |
+| AT | bug | 112 | open (status 112) |  |
+| AU | bug | 52 | open (status 52) |  |
+| AV | bug | 17 | open (status 17): a class used above its definition runs compiled where CRuby raises NameError (rechecks/differing/class_before_definition.rb). A constant assigned with `=` and read before its assignment raises NameError as under CRuby (rechecks/constant_order.rb matches on the pin). Nothing in the framework is written around it: the rule's advice is to keep an order CRuby accepts |  |
+| AW | bug | 27 | open (status 27) for an append of socket bytes to a UTF-8 String that holds non-ASCII, which appends where CRuby raises; passes on the pin for `IO#gets` on a socket, which answers a byte String as CRuby does (Linux, 2026-11-21), and `readpartial`, `read(n)` and `read_nonblock` match on the pin (rechecks/socket_shapes.rb). Closed once both lines of rechecks/differing/socket_bytes.rb, `gets` and `append`, print CRuby's result on the pin. Framing by byte is no workaround to remove: it is right under both runtimes and stays in rule 27 as advice after AW is closed |  |
+| AX | bug |  | open ("Status by rule", row AX): `JSON.parse` does not count an innermost empty Array or Object against the nesting limit, so 101 nested Arrays with nothing inside parse where CRuby raises JSON::NestingError, and one level deeper with `max_nesting:` too (rechecks/differing/json_parse_nesting.rb). Documents that hold a value raise at the depth and with the class and message CRuby gives. No workaround and no rule: nothing in the framework depends on where the limit falls |  |
+| AY | bug | 124 | open (status 124): a rescuing method given, as blocks, a method that only raises and the call of a lambda that ends in it does not compile, "incompatible types when assigning to type 'sp_RbVal' from type 'const char *'" at the method's `yield` (rechecks/differing/raising_helper_beside_lambda.rb; 2026.11.04.7026 the same). Workaround kept: `Console.unknown_model` and `unknown_record` (cybertrain/console.rb) name a typed value after their `raise`. Closed once that program prints CRuby's line on the pin and test/console.rb's case "an unknown model or record raises through a rescuing caller" passes compiled with the two values removed |  |
+| AZ | bug |  | open, not reduced: the cause of AS, seen with Query and Config required together (`Config.env_or` answers the variable's name). Not worked around: cybertrain/context.rb, not cybertrain/params.rb, registers ParameterMissing with ClientError, so the programs that load Config without the rest do not load Query |  |
+| rule 1 | constraint | 1 | settled (1.4: no run-time code); the probes of a computed `send` and of reflection with a non-literal name match on the pin (rechecks/dispatch_shapes.rb) |  |
+| rule 2 | constraint | 2 | settled (1.4); a stored block handed to `instance_exec` still raises when reached on the pin (status 2) |  |
+| rule 3 | bug | 3 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
+| rule 4 | bug | 4 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
+| rule 5 | constraint | 5 | settled (1.4: one static return type per method) |  |
+| rule 6 | bug | 6 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
+| rule 7 | bug | 7 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
+| rule 8 | bug | 8 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept; retired in part on 2026-11-15 (1.5) |  |
+| rule 9 | bug | 9 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
+| rule 10 | bug | 10 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
+| rule 11 | cost | 11 | the probe's output matches on the pin (rechecks/type_shapes.rb); the cost the rule is about was not looked at on the pin |  |
+| rule 12 | bug | 12 | probe matches on the pin (rechecks/value_shapes.rb), workaround kept |  |
+| rule 13 | record | 13 | settled: ordinary Ruby (1.4) |  |
+| rule 14 | bug | 14 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
+| rule 15 | bug | 15 | not re-checked on the pin (last: seen on 2026.09.12 and not tried since) |  |
+| rule 16 | record | 16 | settled: ordinary Ruby (1.4) |  |
+| rule 17 | bug | 17 | see AV: rule 17's open difference was given that letter on 2026-11-21, and its state is in AV's row |  |
+| rule 18 | bug | 18 | probe matches on the pin (rechecks/value_shapes.rb), workaround kept |  |
+| rule 19 | bug | 19 | probe matches on the pin (rechecks/io_shapes.rb), workaround kept |  |
+| rule 20 | bug | 20 | probe matches on the pin (rechecks/socket_bare_readpartial.rb), workaround kept either way: its nil return is the idle timeout |  |
+| rule 21 | bug | 21 | probe matches on the pin (rechecks/socket_shapes.rb), workaround kept |  |
+| rule 23 | constraint | 23 | settled (1.4: tests) |  |
+| rule 24 | constraint | 24 | settled (1.4: tests) |  |
+| rule 26 | bug | 26 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
+| rule 27 | bug | 27 | see AW: rule 27's differences were given that letter on 2026-11-21, and their state is in AW's row |  |
+| rule 28 | bug | 28 | probe matches on the pin (rechecks/io_shapes.rb), workaround kept |  |
+| rule 29 | bug | 29 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
+| rule 30 | bug | 30 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
+| rule 31 | bug | 31 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
+| rule 32 | bug | 32 | probe matches on the pin (rechecks/rescue_shapes.rb), workaround kept |  |
+| rule 33 | bug | 33 | closed (status 33) | 2026-11-21, by the change that set this row: no rescue under `cybertrain/` names a JSON class (the three-class clause went on 2026-11-20, `Cast.parse_json`'s two arms on 2026-11-21); test/server.rb's `/json` case, test/json_rescue_background.rb and test/cast_types.rb (`parse_json`) raise a `JSON::ParserError` into a plain `rescue StandardError` and pass compiled on 2026.11.15.7033. The body of rule 33 is not cut: test/server.rb and test/json_rescue_background.rb cite it |
+| rule 34 | bug | 34 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
+| rule 35 | bug | 35 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
+| rule 36 | bug | 36 | not re-checked on the pin (last: a probe of the one recorded shape passes on 2026.11.04.7026, 2026-11-19; never reduced) |  |
+| rule 37 | cost | 37 | the probe's output matches on the pin (rechecks/type_shapes.rb); the cost the rule is about was not looked at on the pin |  |
+| rule 38 | record | 38 | settled: ordinary Ruby (1.4) |  |
+| rule 39 | bug | 39 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
+| rule 40 | bug | 40 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
+| rule 41 | bug | 41 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
+| rule 42 | bug | 42 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
+| rule 43 | bug | 43 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
+| rule 44 | bug | 44 | probe matches on the pin (rechecks/rescue_shapes.rb), workaround kept |  |
+| rule 45 | bug | 45 | probe matches on the pin (rechecks/rescue_shapes.rb), workaround kept |  |
+| rule 46 | bug | 46 | probe matches on the pin (rechecks/exception_shapes.rb and rechecks/type_shapes.rb), workaround kept; the depth at which nested renders overflow a thread stack was not re-measured |  |
+| rule 48 | bug | 48 | probe matches on the pin (rechecks/json_error_shapes.rb, and status 48 for `rescue_from` on the framework's Controller); never had a workaround, only the statement that an application cannot register `rescue_from JSON::ParserError` |  |
+| rule 50 | bug | 50 | probe matches on the pin (rechecks/rescue_shapes.rb), workaround kept |  |
+| rule 51 | bug | 51 | probe matches on the pin (rechecks/container_shapes.rb), workaround kept |  |
+| rule 55 | bug | 55 | probe matches on the pin (rechecks/container_shapes.rb), workaround kept |  |
+| rule 60 | bug | 60 | probe matches on the pin (rechecks/value_shapes.rb), workaround kept |  |
+| rule 61 | bug | 61 | closed (status 61) | 2026-11-21, by the change that set this row: no rescue under `cybertrain/` names `JSON::NestingError`; test/server.rb's `/deep` case, test/json_rescue_background.rb and test/cast_types.rb (`parse_json`) raise a `JSON::NestingError` into a plain `rescue StandardError` and pass compiled on 2026.11.15.7033. The body of rule 61 is not cut: cybertrain/error_reporter.rb, test/server.rb and test/json_rescue_background.rb cite it |
+| rule 62 | bug | 62 | probe matches on the pin (rechecks/openssl_dispatch.rb), workaround kept |  |
+| rule 63 | bug | 63 | not re-checked on the pin (last: seen on 2026.09.12 and not tried since) |  |
+| rule 64 | bug | 64 | not re-checked on the pin (last: marked as a GC root on 2026.11.04.7026 in the shape checked) |  |
+| rule 66 | bug | 66 | not re-checked on the pin (last: the buffer-append program passes on 2026.11.04.7026; the `name` collision was not re-checked) |  |
+| rule 67 | bug | 67 | not re-checked on the pin (last: probe passes on 2026.11.04.7026) |  |
+| rule 68 | bug | 68 | not re-checked on the pin (last: probe passes on 2026.11.04.7026) |  |
+| rule 69 | bug | 69 | probe matches on the pin (rechecks/block_call_shapes.rb), workaround kept |  |
+| rule 71 | bug | 71 | not re-checked on the pin (last: as recorded on 2026.11.04.7026, 2026-11-15: an inference fact, not a miscompile) |  |
+| rule 72 | bug | 72 | probe matches on the pin for the parts in rechecks/outbound_socket_shapes.rb (Linux), workaround kept; `Socket#bind(sockaddr)` and the openssl package notes were not tried since 2026.09.12; `connect_timeout:` is O |  |
+| rule 73 | bug | 73 | not re-checked on the pin (last: reduced program passes on 2026.11.04.7026) |  |
+| rule 74 | bug | 74 | not re-checked on the pin (last: reduced program passes on 2026.11.04.7026) |  |
+| rule 75 | bug | 75 | closed | 2026.11.04.7026: `Process.spawn` and `Process.wait` work; test/rate_limit_store.rb uses them. The body of rule 75 was cut on 2026-11-21, and what it held is under "Rule 75" |
+| rule 76 | constraint | 76 | settled (1.4: a constant resolves as in CRuby) |  |
+| rule 79 | bug | 79 | closed (status 79) | 2026-11-21, by the change that set this row, with 99505559 before it on the same branch. rechecks/2026.11.15.7033/r79_raise_block.rb prints `["b"]` on 2026.11.15.7033 as under CRuby. The one workaround that was rule 79's went in 99505559: test/test_lifecycle.rb's three bodies that appended a step before they raised only raise now. The rule's shape written the plain way passes compiled on 2026.11.15.7033 in test/console.rb, "an unknown model or record raises through a rescuing caller": `out << message_raised { raise "a block that only raises" }` and, with a method none of whose blocks has a value, `out << message_of_raise { raise "nothing but a raise" }`. Both tests build with 2026.11.04.7026 too, where the reduced program does not, so the program is kept as the one that shows the failure. The typed value after the `raise` in cybertrain/console.rb, which cited rule 79, is AY's (rule 124), and "Tied to a build" no longer names rule 79 beside rules 32, 45, 67 and 69. The body of rule 79 is not cut: rules 32 and 103 of spikes/NOTES.md, spikes/phase4b/dictionary_lambda.rb and spikes/rechecks/rescue_shapes.rb cite it |
+| rule 84 | refusal by design | 84 | settled ("A refusal of a never-reached class-method call") |  |
+| rule 85 | record | 85 | settled: a form that works (1.4) |  |
+| rule 87 | record | 87 | settled: a form that works (1.4) |  |
+| rule 92 | refusal by design | 92 | settled ("A refusal inside a block that never runs"); on the pin the program whose `included` drops its block builds, and the one that keeps it is still refused (status 92) |  |
+| rule 95 | record | 95 | settled: a form that works (1.4) |  |
+| rule 98 | constraint | 98 | settled (1.4: tool behaviour) |  |
+| rule 99 | record | 99 | settled: ordinary Ruby (1.4) |  |
+| rule 102 | record | 102 | settled: a form that works (1.4) |  |
+| rule 103 | record | 103 | settled: a form that works (1.4) |  |
+| rule 105 | constraint | 105 | settled (1.4: compiler behaviour, the instance-method counterpart of rule 84) |  |
+| rule 106 | record | 106 | settled: a form that works (1.4) |  |
+| rule 111 | record | 111 | settled: a form that works (1.4); it narrows Z |  |
+| rule 113 | record | 113 | settled: a form that works (1.4) |  |
+| rule 114 | constraint | 114 | settled (1.4: how green threads are scheduled at one worker) |  |
+| rule 115 | record | 115 | settled: a measurement (1.4) |  |
+| rule 118 | record | 118 | settled: how a thread test is written (1.4) |  |
+| rule 119 | record | 119 | settled: a form that works (1.4) |  |
+| rule 120 | constraint | 120 | settled (1.4: tool behaviour, spin's freshness check) |  |
+| rule 121 | record | 121 | settled: a form that works (1.4) |  |
 
 ## Everything on main, in one place
+
+The pin of this section is 2026.11.04.7026, the pin when it was written.
+Where an item stands on the present pin is in "Item register".
 
 Written on 2026-11-13 against main 34c9b7e (cybertrain 0.4.1, pinned to
 Spinel 2026.11.04.7026). The sections after this one are in the order
@@ -134,7 +391,8 @@ comment in `cybertrain/`, `test/`, `script/` and `examples/` that names
 Spinel, so it also holds what had only ever been a comment in the code.
 Each named workaround was looked for in main's source and is there.
 
-Three words are used for the pin's state, as in spikes/NOTES.md:
+Three words are used for the pin's state, close to those of "Status by
+rule":
 
 - **fails**: a program that stands on its own differs from CRuby on the
   pin. "(2026-11-13)" marks one run for this inventory; its program is
@@ -147,28 +405,48 @@ Three words are used for the pin's state, as in spikes/NOTES.md:
 - **not re-checked**: nobody has tried it on the pin. Not a claim either
   way.
 
-Letters are the items of this document (AA to AH are new, written up at
-the end; AI, phase 4b's, AJ to AO, phase 5a's, and AP and AQ, phase 5b's, were merged in after the inventory); numbers
-after "rule" are spikes/NOTES.md's.
+Letters are the items of this document (AA to AH are new, written up
+under "Written up on 2026-11-13"; AI, phase 4b's, AJ to AO, phase 5a's,
+AP and AQ, phase 5b's, AR, the follow-ups', AS, found in the clean-up
+of 2026-11-15, and AZ, found in the spinel-http extraction, were merged
+in after the inventory); numbers after "rule"
+are spikes/NOTES.md's.
+
+The items stand where they were found, so the letters do not run in order
+through the document. 1 to 3 are under "Correctness" and 4 to 7 under
+"Runtime cost"; A to J and L under "Regressions in newer packages"; K, M
+and rules 64, 65, 75 and 79 under "From spikes/NOTES.md, not written up
+before"; N, O and P under "Found by Daicho"; Q, then R to T, then U to X
+under the sections of phases 2, 3 and 4a; Y and Z under "Re-checked on
+2026-11-11"; AA to AH under "Written up on 2026-11-13"; AI, AJ to AO, AP
+and AQ, and AR under the sections of phases 4b, 5a and 5b and the phase 5b
+follow-ups; AS under "Found in the clean-up of 2026-11-15"; AT, AU, AV
+and AW, written up from rules 112, 52, 17 and 27 on 2026-11-21, and AX
+and AY, found that day, are the next section; AZ, found in the
+spinel-http extraction the same day, is the last.
 
 ### 1. What CyberTrain does today because of Spinel
 
 #### 1.1 Needed on the pin: the behaviour is confirmed there
 
+"The pin" here is 2026.11.04.7026. On 2026.11.15.7033 the reduced programs
+of K, rule 79, M, Q, R, S, T, U, Y, Z, AC, AD, AE, AF, AJ, AN and AP print
+CRuby's result; "Item register" has the state of every row.
+
 | Item | What Spinel does | What CyberTrain does about it, and where | Upstream |
 | --- | --- | --- | --- |
-| Z (rule 88) | A stored block called with a base-class receiver runs the base class's method, not the subclass's override | No method that only stored blocks call has a stub on its base class (the generated `counter_cache_*`, a job's `run_job`); `respond_to`, `content_security_policy` and the Turbo Stream builder run their block at once instead of storing it (format_collector.rb, controller.rb, template/turbo_stream_builder.rb, generator/jobs_emitter.rb, mailer/later.rb) | Open: fails on master 1c0cc5e35 too; not reported |
-| Y (rule 82) | A lambda literal written into a module-body ivar keeps Integer parameters, and is called with garbage | Every lambda kept in module state comes from a method: `Views.default_helpers_builder`, `Assets.empty_resolver`, `Cache.system_clock` (views.rb, assets.rb, cache.rb) | Open: fails on master 1c0cc5e35 too; not reported |
+| Z (rule 88) | A stored block called with a base-class receiver runs the base class's method, not the subclass's override, when the block stands before the override's `def` in the subclass body | No method that only stored blocks call has a stub on its base class (the generated `counter_cache_*`, a job's `run_job`); `respond_to`, `content_security_policy` and the Turbo Stream builder run their block at once instead of storing it (format_collector.rb, controller.rb, template/turbo_stream_builder.rb, generator/jobs_emitter.rb, mailer/later.rb) | Open: fails on master 1c0cc5e35 too; not reported |
+| Y (rule 82) | A lambda literal written into a module-body ivar keeps Integer parameters, and is called with garbage | Every lambda kept in module state comes from a method: `Views.default_url_resolver`, `Views.default_helpers_builder`, `Views.default_component_builder` and `Assets.empty_resolver` (views.rb, assets.rb) | Open: fails on master 1c0cc5e35 too; not reported |
 | S (rule 90) | A `yield` passed as an argument runs the block twice when blocks differ in type | `computed = yield` before the cast in `Cache.fetch`, `fetch_hash`, `fetch_array` and `fetch_int` (cache.rb) | Fixed, matz/spinel#11643; in no fork tag |
 | R (rules 81, 89; 70) | A `rescue` arm Spinel cannot resolve matches by its last segment, or the whole `begin` swallows the exception | A rescued class is spelt from the top (`rescue Cybertrain::Template::SyntaxError`, console.rb); the generated `run_job` names only classes the program defines (generator/job_scan.rb, jobs_emitter.rb); the "uninitialized constant" warning on a `rescue` line is treated as an error | Fixed, #11650 (and #11689, #11690); in no fork tag |
-| U (rule 93) | A `def` inside a block that never runs defines the method on the code around it | gen writes a concern's `class_methods` as `def self.x` plus a forwarder and refuses a name an instance method already has (`ConcernScan::RULE_93`, generator/concern_scan.rb, concerns_emitter.rb) | Fixed, #11683; in no fork tag |
+| U (rule 93) | A `def` inside a block that never runs defines the method on the code around it | gen writes a concern's `class_methods` as `def self.x` plus a forwarder, from a copy of the concern whose block is blank (generator/concerns_emitter.rb); gen refused such a name until 2026-11-21, when each shape was shown compiled with Spinel 2026.11.15.7033 to answer as under CRuby (test/gen_concerns.rb, test/gen_model_concerns.rb): the copy in gen/concerns/ has the block blank, so the compiler never sees the `def` | Fixed, #11683; in no fork tag |
 | Rule 92 | A block that never runs is compiled, and an implicit-self call in it is refused | `ActiveSupport::Concern` defines a no-op for each declaration (active_support.rb); gen loads each concern from a copy in `gen/concerns/` with its `included` and `class_methods` blocks blanked (generator/concerns_emitter.rb, D60) | By design; nothing asked |
-| V (rule 96) | `strftime` with a pattern built at run time returns the pattern | `Template::Helpers.time_tag_strftime` calls `strftime` with a literal per directive (template/helpers.rb) | Open; not reduced, not reported |
+| V (rule 96) | `strftime` with a pattern built at run time returns the pattern | `Strftime.walk` calls `strftime` with a literal per directive, for `time_tag`'s `format:` and `I18n.l` (strftime.rb; `Template::Helpers.time_tag_strftime`) | Open; not reduced, not reported |
 | W (rule 97) | An ivar String passed to a stored lambda is refused | `Component` passes `"#{@name}"`, a fresh local (component.rb) | Open; not reduced, not reported |
 | X (rule 94) | Type inference does not converge in examples/blog's generator | Each emitter scans `app/controllers` for itself (`Runner.controllers_source`, `concerns_source`, generator/runner.rb) | Open; not reduced, not reported |
 | Q (rule 86) | A Range holds Integer ends only: Time and Date ends raise, a boxed Float Range is not a Range | `where(col: a..b)` takes Integer ends and other bounds go through `where_between`; `inclusion:` / `exclusion:` take an Integer Range or an Array (relation.rb, validator.rb, model.rb) | Fixed, #10998 and #11639; in no fork tag |
 | T (rule 91) | `exit` on a thread other than main ends only that thread | The feed supervisor sets `Background.feeds_failed?` and the `feeds` role's main thread returns the status (background/supervisor.rb, roles/feeds.rb) | Fixed on master; in no fork tag |
-| K (rule 78) | `puts` on a nil-only receiver does not compile with the TLS layer in the program | `Logger#log` calls `@io.write` (logger.rb) | Fixed, #11129; in no fork tag |
+| K (rule 78) | `puts` on a nil-only receiver does not compile with the TLS layer in the program | `Logger#write_now` calls `@io.write` (logger.rb) | Fixed, #11129; in no fork tag |
 | M (rule 83) | `gets` on STDIN does not show a partial STDOUT line first | `Console.run` flushes after the banner and every prompt (console.rb) | Fixed, #11193; in no fork tag |
 | O (rule 72) | `TCPSocket.new` ignores `connect_timeout:` | `Net::TcpStream` connects with `connect_nonblock`, `wait_writable` and `SO_ERROR` (net/socket.rb); kept after a fix, for the deadline | Fixed, #11183; in no fork tag |
 | P | Net::HTTP's TLS handshake and reads are not bounded by its timeouts | `HttpClient` does the handshake and every read itself, with bounded waits (http_client.rb, net/tls.rb); kept after a fix | Fixed, dcc46945c; in no fork tag |
@@ -183,12 +461,16 @@ after "rule" are spikes/NOTES.md's.
 | AG | `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED`: fails (2026-11-13); a privileged port refused to a non-root user raised the same class | `Server#bind_listener` turns both into `PortInUse`, and `privileged_denied?` tells them apart by the port number and the user (http/server.rb) | Open; not reported |
 | AA | A method that holds a block allocates a heap cell for each captured local when it is entered | `while` loops in `Interpreter#eval_expr` and `Helpers#nested_url`, and `Response#respell_header` as a method of its own (template/interpreter.rb, template/helpers.rb, http/response.rb) | Open; not reduced, not reported |
 | AI (rule 101) | A large Hash literal constant is one long C function that cc takes some 13 s to build (a cost, not a wrong result) | gen/locales.rb and cybertrain/locales/bundled.rb fill their Hash through methods of at most 50 stores (generator/locales_emitter.rb, phase 4b) | Not reported |
-| AJ (rule 104) | `Class#superclass` on Ruby's own exception classes is NoMethodError: fails (2026-11-12) | `assert_raises(Class)` reads the chain above the first built-in class from `Test::BUILTIN_PARENTS` (test/assertions.rb, phase 5a) | Open; not reported |
+| AJ (rule 104) | `Class#superclass` on Ruby's own exception classes is NoMethodError once the program requires json, uri or stringio, or defines a module: fails (2026-11-15; the same lines alone pass) | `assert_raises(Class)` reads the chain above the first built-in class from `Test::BUILTIN_PARENTS` (test/assertions.rb, phase 5a) | Open; not reported |
 | AK | The C of a very large program (87.6 MB, 196 test programs bundled) needs more than 9.7 GB to compile at -O2 (a cost, not a wrong result) | The framework's suite stays one program per file; only applications bundle their tests (`cybertrain test`, D83) | Not reported |
 | AL (rule 108) | `spin run gen` rebuilds `bin/gen` when any `.rb` of the package is newer, test files included (spin, a cost) | Accepted: `cybertrain test` pays about 55 s on each edit of a test | Not reported |
 | AM (rule 107) | A release build's `e.backtrace` is empty; only `--debug` gives frames | A failing test is named by its `test` line; reports carry class, message and where | Open; not reported |
 | AN (rule 109) | A parameter defaulting to nil that a caller gives a plain Time is compiled as a non-nullable Time; the defaulted call crashes (SIGSEGV): fails (2026-11-13) | `Cookies.serialize`'s `expires:` defaults to the sentinel `Cookies::NO_EXPIRES`; framework callers pass `Cast.time_or_nil(...)` (http/cookies.rb, phase 5a) | Open; not reported |
 | AO (rule 110) | A statement `case` on a plain Integer, compiled after a statement `case` on a nullable Integer in another method, can take its temporary number and not compile (`'_oN' undeclared`): fails (2026-11-13) | `HtmlReader.parse` uses an `if` chain; shared framework code avoids statement `case` on a plain Integer (cybertrain/test/html_reader.rb) | Open; not reported |
+| AP (rule 117) | `pop(timeout:)` on a Queue that was put in an Array is compiled as `Array#pop`: fails (2026-11-14) | No Queue is kept in an Array; a test passes each Queue as a local or a parameter (test/logger_scope.rb) | Open; not reported |
+| AQ (rule 116) | Threads on several workers writing one StringIO with no lock corrupt the heap: fails (2026-11-14) | Every Logger writes under `Logger::LOCK` (logger.rb; test/logger_threads.rb) | Open; not reported |
+| AR (rule 122) | A regex literal holding a require-shaped text is read as a require; without `--strict-require` it is dropped with a warning: fails (2026-11-15) | A program that scans source for requires builds the keyword from pieces (test/gen_jobs.rb's `core_closure`) | Open; not reported |
+| AS (rule 123) | `ENV[name]` with a key held in a variable answers the key in a program that requires two framework files: fails (2026-11-15) | Nothing; the four reads with such a key (config.rb, dev/supervision.rb) stay, `Config.env_or` answered the value in the programs tried that require `cybertrain/core`, and no new one is added | Open; not reduced, not reported |
 
 #### 1.2 Kept, though a small program of the shape now passes on the pin
 
@@ -199,7 +481,7 @@ Spinel changes"). Until then new code follows the rule.
 | Rule or comment | What was seen, and on which build | What CyberTrain does, and where | On the pin |
 | --- | --- | --- | --- |
 | 1 (rules 58, 65) | A generated `new` frees a String only its argument holds; a call's result is not rooted while a later argument allocates (2026.09.12) | `SafeString.of`; the String bound to a local before `new` (html.rb, mailer.rb, cli/toolchain.rb and others) | Accepted as a constraint; rooted in the shape checked, no AddressSanitizer run |
-| Rules 33, 61, 48 | `JSON::ParserError` is not a `StandardError`, `JSON::NestingError` is not caught by its parent's arm, the constant is not a value | `rescue JSON::NestingError, JSON::ParserError, StandardError`, in that order (http/server.rb, db/connection.rb, session.rb, console.rb, middleware/error_pages.rb, application.rb) | Probe passes for all three (33 on 2026-11-13: `rescue StandardError` catches `JSON.parse("{")`'s error) |
+| Rules 33, 61, 48 | `JSON::ParserError` is not a `StandardError`, `JSON::NestingError` is not caught by its parent's arm, the constant is not a value | None left under `cybertrain/` since 2026-11-20: every `rescue JSON::NestingError, JSON::ParserError, StandardError` is `rescue StandardError` ("Status by rule", row 33 on 2026.11.04.7026, lists the changes and their compiled tests). `Cast.parse_json` named the two JSON classes in two arms until 2026-11-21, and is `rescue StandardError` since, on 2026.11.15.7033 (test/cast_types.rb); 33 and 61 were closed that day ("Item register"). 48 never had a workaround, only the statement that an application cannot register `rescue_from JSON::ParserError` | Probe passes for all three (33 on 2026-11-13: `rescue StandardError` catches `JSON.parse("{")`'s error; 48 on 2026-11-20 on the framework's Controller, spikes/rechecks/differing/rescue_from_json_error.rb) |
 | Rules 31, 32, 45, 50, 69 | `yield self` in a base-class method, and a `rescue` or `ensure` in a yielding method called from nested blocks, do not compile or run wrong | `begin` / `rescue` / `ensure` live in a plain method that takes the block as a Proc and calls `block.call(self)`, one level down and no further: `DB.run_transaction`, `Controller#process` / `#run_action`, the job loop, `Main.run_command` | The shape of 32 compiles and 31's probe passes (2026-11-04); probes of 45, 50 and 69 pass (2026-11-13). Rule 79 beside them still fails |
 | Rule 42 | A lambda literal passed as a keyword argument is not marked escaping and keeps Integer parameters | The application's URL resolver is returned by a method (`Gen::Routes.url_resolver`, generator/routes_emitter.rb); application.rb's header says so to applications | Probe passes (2026-11-04). Y, its cousin, still fails |
 | Rules 44, 67, 68 | A `return` in a block ends the block, not the method; a yielding method on a boxed receiver is NoMethodError; a Proc block nested two deep does not see an outer block's parameter | The block of `DB.transaction` must not `break` or `return`; a pooled connection is driven through `DB.transaction` and the plain `begin!` / `commit!` / `rollback!`, not the yielding `Connection#transaction`; `DB.with` stays a yielding method and loops are hoisted into methods (db.rb, db/connection.rb, db/pool.rb) | Probes pass (2026-11-13; 44's `break` on 2026-11-04) |
@@ -212,8 +494,9 @@ Spinel changes"). Until then new code follows the rule.
 | Rule 3 | A base-class method calling a method only subclasses define crashes the compiler | Abstract stubs on `Cybertrain::Model` and the other bases for directly dispatched hooks (not for hooks only stored blocks call: Z) | Probe passes (2026-11-13) |
 | Rule 19 | `STDOUT` and a `StringIO` cannot share one call site | `Logger` keeps `@io` nil or a StringIO and writes to the `STDOUT` constant otherwise (logger.rb) | Probe passes (2026-11-13) |
 | Rules 18, 64 | A module's `@@x` miscompiled, and was not a GC root | Module-level `@x` with `def self.x` accessors everywhere; registries are constants (D64; test/harness_gc.rb) | Reduced program passes; marked on the pin |
-| Rules 7, 8, 9, 12, 14, 26, 29, 73, 74 | A Time assigned to a nil ivar, `when Array` matching a Time, unseeded containers, `k, v = split`, `include?` on polymorphic values, `obj.attr += x` in a block, an ivar first assigned in a helper, an inherited constant | `Cast.*_or_nil`, `when Time` first, seeded containers, indexing instead of destructuring, narrowing first, the long form of `+=`, every ivar assigned in `initialize`, constants spelt with their owner | Probe or reduced program passes for each (2026-11-04) |
-| Rule 55 | An in-place `<<` on a String read out of a container does not reach the stored String | Tests do not assert it; `Params#merge!` copies per String (params.rb) | Probe passes (2026-11-13) |
+| Rules 7, 9, 12, 14, 26, 29, 73, 74 | A Time assigned to a nil ivar, unseeded containers, `k, v = split`, `include?` on polymorphic values, `obj.attr += x` in a block, an ivar first assigned in a helper, an inherited constant | `Cast.*_or_nil`, seeded containers, indexing instead of destructuring, narrowing first, the long form of `+=`, every ivar assigned in `initialize`, constants spelt with their owner | Probe or reduced program passes for each (2026-11-04) |
+| Rule 8 | `when Array` matching a Time | `when Time` first where the arm has a body of its own, and in component.rb, rendering.rb, `render` (template/helpers.rb), console/printer.rb and dev/error_page.rb, which were not re-checked | Probe passes (2026-11-04, again 2026-11-15); retired in part on 2026-11-15 (1.5) |
+| Rule 55 | An in-place `<<` on a String read out of a container does not reach the stored String | Tests do not assert it (`Params#merge!`, which copied per String, was removed on 2026-11-15) | Probe passes (2026-11-13) |
 | Rule 66 | Direct appends to a String local lose what a helper appended; a String appended to through a parameter does not reach the caller | A buffer filled through helpers is filled only through helpers; the generator's emitters build and return their own String (generator/models_emitter.rb, routes_emitter.rb) | Reduced program passes; so does an append through a parameter (2026-11-13) |
 | Comment, blob_store.rb and config/files.rb | `Dir.mkdir(dir, mode)` ignored the mode (755 under a 022 umask) | `File.chmod` after `Dir.mkdir` for a directory made for secrets or blobs | Probe passes (2026-11-13): the directory is 700 |
 | Comment, http/server.rb | Inside a `loop do` block a raised exception lost its ivars (`Rejected#status` read 0) and `return value` skipped its value | `Server#serve` is a `while true` | Probe passes (2026-11-13) |
@@ -221,27 +504,27 @@ Spinel changes"). Until then new code follows the rule.
 | Comment, generator/routes_dsl.rb | A receiverless call in a block nested inside `instance_eval` has no `self` in the C | Nested routing blocks take the mapper (`resources :articles do \|r\|`); part of the public API | Probe passes (2026-11-13); A was this call one level up |
 | Comment, generator/routes_dsl.rb | A class with an instance method named `new` does not compile | The `new` action is `def new_action` in controllers; part of the public API | Probe passes (2026-11-13) for a plain class |
 | Comment, generator/inflector.rb | Regexp objects cannot be kept in a collection | Each inflection table is written out as literal regexes | Probe passes (2026-11-13) |
-| Comment, logger.rb | `STDOUT.flush` as a method's value is typed a File and emitted as void | `Logger#log` ends in an explicit `nil` | Probe passes (2026-11-13) |
+| Comment, logger.rb | `STDOUT.flush` as a method's value is typed a File and emitted as void | `Logger#write_now` ends in an explicit `nil` | Probe passes (2026-11-13) |
 | Comment, test/cli_toolchain.rb | `File.join(Dir.pwd, *parts)` passed only the first element of the splat (2026.09.12) | The helper takes one joined argument | Probe passes (2026-11-13) |
 | Comment, stream.rb and password.rb | `Base64.urlsafe_decode64` was not relied on to take unpadded input | The text is padded back before decoding | Probe passes (2026-11-13) |
 | Comment, http/server.rb, roles/server.rb, dev/reexec.rb | A `trap` block runs inside the C signal handler, where a join, an allocation or `execv` is not safe | A handler only sets a flag (`Server#request_stop`); the stop and the re-exec run on ordinary threads | Not run. The pinned tree's lib/spinel_rt.h says a threaded program runs trap procs on a green thread of its own (`sp_sig_thread_body`), so the comment describes the unthreaded runtime; the flag is right either way |
+| Rule 36 | Requiring a middleware whose `#call` is never reached miscompiles unrelated files | Every program that requires the framework exercises the stack it requires; test/csrf_conditional.rb's header records the shape that did not compile on 2026.09.12 | Probe passes for the one recorded shape (2026-11-15, 2026-11-19, 2026-11-20; "Status by rule", row 36 on 2026.11.04.7026, has its source); seen in larger programs and never reduced, so not conclusive |
+| Rule 35 | `obj[k] = v` on an object received as a plain parameter does nothing behind a middleware chain | The mutation is a typed instance method (`Session#csrf_token!`, session.rb) | Probe passes (2026-11-15, spikes/rechecks/type_shapes.rb); seen in the whole framework and never reduced, so not conclusive |
+| Rule 4 | An inherited class method called as `self.class.foo` binds `self` to the base class | The class is passed in (`Controller.chain_for(klass)`); registries are keyed by class name | Probe passes (2026-11-15, spikes/rechecks/dispatch_shapes.rb) |
 
 #### 1.3 Kept, and not re-checked on the pin
 
 | Rule or comment | What was seen (2026.09.12 unless it says otherwise) | What CyberTrain does, and where |
 | --- | --- | --- |
 | Rule 57 (item 7) | A `Mutex#synchronize` on every request stalls requests for seconds at `SPINEL_WORKERS=2` | No lock on the request path; the template cache is filled at boot (`Engine.embedded`); development serves on one worker (`Application.serving_workers`); `TimeZone` reads its snapshot under the lock and looks up outside it |
-| Rule 36 | Requiring a middleware whose `#call` is never reached miscompiles unrelated files | Every program that requires the framework exercises the stack it requires; test/csrf_conditional.rb records the shape that still does not compile |
-| Rule 35 | `obj[k] = v` on an object received as a plain parameter does nothing behind a middleware chain | The mutation is a typed instance method (`Session#csrf_token!`, session.rb) |
-| Rule 4 | An inherited class method called as `self.class.foo` binds `self` to the base class | The class is passed in (`Controller.chain_for(klass)`); registries are keyed by class name |
 | Rules 6, 11, 37, 39, 63, 71 | A Method object in a collection; a nil-initialised local; a Symbol-keyed Integer Hash read with a polymorphic key; a `case` whose branches both build a SafeString; same-named locals in two top-level blocks; narrowing that does not type a return value | Lambdas; typed sentinels; `.to_i` on every branch; `SafeString#+` in two steps; distinct local names in tests; `Cast.hash` / `Cast.array` copy into a seeded container |
 | Rule 41 | One accessor name with two types in files that never meet stops the compiler | Each subsystem has a test that requires the whole framework (test/template_integration.rb); `script/check-reserved-names` |
 | Rule 15 | A static `ffi_buffer` out-parameter crashes under threads | A `malloc`ed scratch pointer per call (db/sqlite_ffi.rb, http/gzip_ffi.rb) |
 | Rule 46 | Thread stacks are small: about 50 nested template renders overflow one, and an overflow is a SIGSEGV, not a `SystemStackError` | The interpreter caps nesting (template/limits.rb) and `Query` caps depth; http/server.rb does not name `SystemStackError` in its rescue |
 | Rule 51 | One method called with Symbol and with String keys mis-dispatches the `key.to_s` in it | One key type per test program |
-| Rule 66, second half | An instance method named `name` on a framework class made `.class.name` fail on a boxed receiver | `TimeZone#zone_name`; no framework class defines `name` |
+| Rule 66, second half | An instance method named `name` on a framework class made `.class.name` fail on a boxed receiver | `TimeZone#zone_name`; no framework class writes `def name` (readers made by `attr_reader :name`, as in schema/table.rb and the generator's scans, are there, and the suite builds and passes with them) |
 | Rule 72, the rest | No `Addrinfo`, `IPSocket.getaddress` or `Socket#bind(sockaddr)`; in the openssl package a handshake error is raised even with `exception: false`, there is no `X509::Store`, `SSLContext` defaults to `VERIFY_PEER`, and the cipher error is `OpenSSL::CipherError` | `Socket.getaddrinfo` with destructured block parameters; `set_params` on both runtimes; `SSL_CERT_FILE` for another CA; `rescue OpenSSL::OpenSSLError` (net/socket.rb, net/tls.rb, encryptor.rb). Three parts pass a probe: an unresolvable name raises, `entry[3]` indexes, and `Errno::ENOENT::Errno` and a `SystemCallError`'s message read as CRuby's (the last two on 2026-11-13) |
-| Comment, template/form_builder.rb | A method that appends to a String it was given makes the GC write barrier run on the caller's stack slot, which later crashes a minor collection | `FormBuilder.html_attr` returns a String for the caller to append |
+| Comment, template/helpers.rb (`Helpers#hidden_fields`) | A method that appends to a String it was given makes the GC write barrier run on the caller's stack slot, which later crashes a minor collection | Tag builders append what a helper returns (`hidden_fields`, `FormBuilder.text_attr`, `FormBuilder.attrs_html`) and never pass their buffer down |
 | Comment, websocket.rb | A method that returns a value-type object from inside a `synchronize` block does not compile with the whole framework in the program | Each status field is read under the lock by its own method, and `WebSocket.feed_status` builds the `Status` outside |
 | Comment, cast.rb | An Integer multiplied in an unbounded loop is typed a Bigint | A table of powers of ten (`FRACTION_SCALE`). The value is right on the pin (probe, 2026-11-13); the type was not looked at |
 | Comment, http/uploaded_file.rb | Class names are global | `UploadedFile`, `Multipart` and `BlobStore` are reserved names for an application |
@@ -253,18 +536,19 @@ They are listed so that they are not mistaken for the rows above.
 
 | What Spinel is | What CyberTrain does |
 | --- | --- |
-| No run-time code: no `eval`, `define_method`, `method_missing` or `const_get`; `instance_exec(&stored)` is refused (rule 2, refused on 2026-11-13 as before); a computed `send` works up to the dispatch's 1024 arms (rule 1) | Models, relations, routes, helpers, components, jobs and concerns are generated Ruby; blocks take their receiver (`before_action { \|c\| ... }`); names dispatch through generated `case` tables; templates are an interpreted language of their own; the console evaluates template expressions (D3, D4, D8, D9, D41) |
+| No run-time code: no `eval` or `method_missing`, and no method defined while the program runs (`define_method` from a class body compiles, spikes/rechecks/define_method_shapes.rb, 2026-11-20; `const_get` with a non-literal name passes a probe, rule 1's status); `instance_exec(&stored)` is refused (rule 2, refused on 2026-11-13 as before); a computed `send` works up to the dispatch's 1024 arms (rule 1) | Models, relations, routes, helpers, components, jobs and concerns are generated Ruby; blocks take their receiver (`before_action { \|c\| ... }`); names dispatch through generated `case` tables; templates are an interpreted language of their own; the console evaluates template expressions (D3, D4, D8, D9, D41) |
 | One static return type per method; a base method returning `self` is typed as the base (rule 5) | `pluck_int`, `sum_float`, `Cache.fetch_hash` and the like; `DB.transaction` returns nil; a per-model Relation subclass wraps the base setters (D10, D20, D22, D43) |
 | D (rule 25): `String#to_i` raises `RangeError` past 2**63-1 in the default mode | Request numbers are length-checked first: `Request#content_length`, `Server#body_length`, `Params#int`, the session's and the configuration's Integers |
 | B (rule 59): an `ffi_source` fragment declares what it calls, with the types already emitted | `extern` declarations in db/sqlite_ffi.rb and http/gzip_ffi.rb |
-| Every String is UTF-8, a socket buffer included (rule 27) | All framing is by byte (`byteindex`, `byteslice`, `bytesize`) |
+| `IO#gets` on a socket answers a UTF-8 character String (rule 27; `readpartial`, `read(n)` and `read_nonblock` answer byte Strings on the pin, "Status by rule", row 27 on 2026.11.04.7026) | All framing is by byte (`byteindex`, `byteslice`, `bytesize`). This row does not belong under 1.4 (noted 2026-11-21): the left cell is what 2026.11.04.7026 did, and on 2026.11.15.7033 `gets` on a socket answers an ASCII-8BIT String as CRuby does ("Status by rule", row 27 on 2026.11.15.7033). A build changed it, so rule 27 is an item of kind bug in "Item register", not a constraint; an append of socket bytes to a UTF-8 String still differs there. The item is AW since 2026-11-21 |
 | A constant resolves as in CRuby (rule 76); a class method no class defines is refused at compile time, reached or not (rule 84) | Code outside `module Cybertrain` writes `Cybertrain::DB`; a program requires every file whose class methods it names |
 | No `fork`: a compiled `fork` is `NameError` (checked 2026-11-13) | Several processes share a port with `SO_REUSEPORT` (`CYBERTRAIN_REUSE_PORT`, D35) instead of a prefork server; jobs run on threads of a `worker` process |
-| No tz database, `IPAddr`, `Marshal` or asynchronous resolver; the `zlib` package inflates in one shot with no ceiling; `bigdecimal` has no `to_s("F")`, `to_d` or construction from a Float (rule 100) | `TimeZone` reads TZif files (D19); byte-scanned addresses (net/address.rb, http/ip_address.rb); cache values are Strings; `GzipFFI` streams through the system zlib under a limit (http/gzip_ffi.rb); decimals are Floats rounded on their digits (D73) |
+| No tz database, `IPAddr` or asynchronous resolver (`Marshal` was listed here until 2026-11-20: a `Marshal.dump` / `Marshal.load` round trip of a Hash holding an Array compiles and prints CRuby's result on the pin, docs/design.md D54); the `zlib` package inflates in one shot with no ceiling; `bigdecimal` has no `to_s("F")`, `to_d` or construction from a Float (rule 100) | `TimeZone` reads TZif files (D19); byte-scanned addresses (net/address.rb, http/ip_address.rb); cache values are Strings; `GzipFFI` streams through the system zlib under a limit (http/gzip_ffi.rb); decimals are Floats rounded on their digits (D73) |
 | Tests: no reflection to find test methods (rule 23); a test requires `cybertrain/test` itself (rule 24); a C file Spinel wrote is refused inside a package (rule 98) | Tests are programs compared with a snapshot (test.rb, D13); probe output is kept outside the package |
-| Rules 13, 16, 17 and 38: frozen String literals, `Class#name` and `case rec when Post`, constants read before their definition, a protected method called from a class method | Ordinary Ruby, recorded so that nobody takes them for a Spinel rule |
+| Rules 13, 16 and 38: frozen String literals, `Class#name` and `case rec when Post`, a protected method called from a class method | Ordinary Ruby, recorded so that nobody takes them for a Spinel rule. Rule 17 (constants read before their definition) was in this row until 2026-11-21. Only its half about a constant assigned with `=` is ordinary Ruby; a class used above its definition runs compiled where CRuby raises NameError, on this section's pin and on 2026.11.15.7033, so rule 17 is an open item of kind bug ("Item register"; "Status by rule", row 17), AV since 2026-11-21 |
 | Rule 99: `dup` of a user-defined object is a shallow copy | The generated `<Model>Relation#dup` copies its Arrays (D72). CRuby's `dup` is shallow in the same way, and the pin calls `initialize_copy` as CRuby does (probe, 2026-11-13: both print `2 2 0 5` and `1 2`), so this is ordinary Ruby, not a Spinel behaviour |
-| Rules 85, 87, 95: `Queue#pop(timeout:)`, class methods added to `Time`, `binding.local_variable_get` for a keyword named `if` | Used as they are (stream/hub.rb, time_ext.rb, controller.rb) |
+| Rules 85, 87, 95: `Queue#pop(timeout:)`, class methods added to `Time`, `binding.local_variable_get` for a keyword named `if` | Used as they are (stream/hub.rb, time_ext.rb, rate_limit.rb and generator/routes_dsl.rb) |
+| Rules 102, 103, 106, 111, 113, 119, 121 (forms that work), 115 (a measurement), 118 (how a thread test is written), 105, 114, 120 (compiler, scheduler and tool behaviour, not defects) | Recorded in spikes/NOTES.md so that nobody takes them for defects; nothing is asked |
 
 #### 1.5 No longer worked around
 
@@ -274,6 +558,9 @@ They are listed so that they are not mistaken for the rows above.
 | The refusal under C | test/template_engine.rb settled the layout Hash's value types where it is built | 2026.11.04.7026 (#10525, #10524) |
 | 2 | `Html.escape` kept a `case value when String` on its parameter | 2026.10.27.7020 (the callers' `x.to_s` stays, 1.2) |
 | Rule 75 | Child processes went through `system` only | The pin: `Process.spawn` and `Process.wait` work (test/rate_limit_store.rb) |
+| Rule 8, in part | `when Time` came before `when Array` in every `case` over polymorphic values | 2026-11-15, on the pin: the arms that only repeated the fall-through are gone from cast.rb, relation.rb, validator.rb, html.rb, template/form_builder.rb, `Helpers#safe_join` and template/interpreter.rb, with a Time passed through each `case` in the tests ("Status by rule", row 8 on 2026.11.04.7026) |
+| Rules 33 and 61 | Every rescue around application code named `JSON::NestingError` and `JSON::ParserError` ahead of `StandardError` | 2026-11-21, on 2026.11.15.7033: closed ("Item register"). The clauses went on 2026-11-20 and `Cast.parse_json`'s two arms on 2026-11-21 (test/server.rb's `/json` and `/deep`, test/json_rescue_background.rb, test/cast_types.rb) |
+| Rule 79 | A test body appended a step before it raised (test/test_lifecycle.rb) | 2026-11-21, on 2026.11.15.7033: closed ("Item register"). The typed value after a `raise` in cybertrain/console.rb, which cited this rule, is kept for AY |
 | 3, A, F, G, I | Never had a workaround: CyberTrain stayed on a build without them until each was fixed | 2026.10.26.7019 and 2026.11.04.7026 |
 
 ### 2. What a change in Spinel would give CyberTrain in speed
@@ -322,16 +609,28 @@ not by design. Costs are in 2; what is by design is in 1.4.
 | AC | `URI.decode_www_form_component` is quadratic on non-ASCII text | 8 lines | No |
 | AD | `String#byteindex` accepts an offset inside a character | 5 lines | No |
 | AE | `Class#superclass` on a package's exception class is NoMethodError | 6 lines | No |
+| AJ | `Class#superclass` on a built-in exception's class is NoMethodError once a package is required or a module defined (AE on the core classes) | 6 lines | No |
 | AF | `Float#round(n)` on a Float narrowed by a `case` rounds the binary product | 12 lines | No |
 | AG | `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED` | 9 lines | No |
 | AH | `JSON.generate` writes a Float in another form than CRuby's | 2 lines | No |
+| AM | A release build's `e.backtrace` is empty | spikes/phase5/backtrace.rb | No |
+| AN | A nil-defaulted parameter given a plain Time by a caller crashes the defaulted call | 8 lines | No |
+| AO | A statement `case` on a plain Integer after one on a nullable Integer does not compile | 28 lines | No |
 | AP | `pop(timeout:)` on a Queue that was put in an Array is `Array#pop` (phase 5b) | 4 lines | No |
 | AQ | Four threads writing one StringIO with no lock crash the program (phase 5b) | 17 lines | No |
+| AR | A regex literal holding a require-shaped text is read as a require | 2 lines | No |
+| AS | `ENV[name]` with a key held in a variable answers the key | Not reduced (spikes/rechecks/differing/env_nonliteral_key.rb, against two framework files) | No |
+| AT | `File#stat` on an open File stats its path, not the descriptor | spikes/phase5/flock_fstat.rb | No |
+| AU | `String#strip` on a String with an invalid byte returns it where CRuby raises | 5 lines | No |
+| AV | A class used above its definition runs, where CRuby raises NameError (rule 17; added 2026-11-21 as "Rule 17", lettered the same day; listed under 1.4 until then) | 2 lines; spikes/rechecks/differing/class_before_definition.rb ("Status by rule", row 17 of both tables) | No |
+| AW | `IO#gets` on a socket answers a UTF-8 character String, and socket bytes append to a UTF-8 String that holds non-ASCII where CRuby raises (rule 27; added 2026-11-21 as "Rule 27", lettered the same day; listed under 1.4 until then). On 2026.11.15.7033 `gets` answers as CRuby does and the append still differs | spikes/rechecks/differing/socket_bytes.rb ("Status by rule", row 27 of both tables) | No |
+| AX | `JSON.parse` lets an empty Array or Object sit one level past the nesting limit, where CRuby raises JSON::NestingError (added 2026-11-21) | spikes/rechecks/differing/json_parse_nesting.rb ("Status by rule", row AX of both tables) | No |
+| AY | A rescuing method given, as blocks, a method that only raises and the call of a lambda that ends in it does not compile (rule 124; found 2026-11-21 under rule 79, given its own item the same day) | 23 lines; spikes/rechecks/differing/raising_helper_beside_lambda.rb ("Status by rule", row 124 of both tables) | No |
 | V | `strftime` with a built pattern returns the pattern | Not reduced | No |
 | W | An ivar String passed to a stored lambda is refused | Not reduced | No |
 | X | Type inference does not converge in examples/blog's generator | Not reduced | No |
 | AA | Closure cells allocated on method entry (a cost, listed here because 2026.09.12 allocated none for the same source) | Not reduced | No |
-| Rule 36 | Requiring a middleware whose `#call` is never reached miscompiles unrelated files | Not reduced; not re-checked on the pin | No |
+| Rule 36 | Requiring a middleware whose `#call` is never reached miscompiles unrelated files | Not reduced; the one recorded shape compiles in a probe on the pin ("Status by rule", row 36 on 2026.11.04.7026) | No |
 | 7 | A `Mutex` on the request path stalls for seconds at two workers | Not reduced; not retried since 2026.09.12 | No |
 | 5 (a) | At one worker 83% of collections are full | Measured, under 5 | No |
 
@@ -397,7 +696,7 @@ The third column is the item's program built with master 1c0cc5e35 on
 
 | Item | On master | Its program on master 1c0cc5e35 | What changes in CyberTrain once pinned to it |
 | --- | --- | --- | --- |
-| K. `puts` on a nil-only receiver does not compile with the TLS layer | #11129, merged 2026-11-06 | builds and prints `ok` | `Logger#log` goes back to `@io.puts(line)` |
+| K. `puts` on a nil-only receiver does not compile with the TLS layer | #11129, merged 2026-11-06 | builds and prints `ok` | `Logger#write_now` goes back to `@io.puts(line)` |
 | Rule 79. A rescuing method's value from a block that only raises | #11137, merged 2026-11-06 (and #11143 to #11145) | prints `["b"]` | the test idiom of rule 79 is no longer needed |
 | M. `gets` on STDIN does not show a partial STDOUT line first | #11193, merged 2026-11-06 | not run (it needs a terminal) | `Console.run`'s flushes go |
 | N. A Hash return does not follow an ivar widened late | #11184 and #11219, merged 2026-11-06 and 2026-11-07 | prints `0` | nothing here; Daicho's `n.to_i` goes |
@@ -408,7 +707,7 @@ The third column is the item's program built with master 1c0cc5e35 on
 | Q, the Float half: `when Range` misses a boxed Float Range, or a Time Range held in a Hash | #11639, merged 2026-11-12 | Q's first program prints `["1.5", "2.5"]`, `["a", "z"]` and `2` | the same look at `where(col: a..b)` and the validators covers Float ends |
 | R. A `rescue` arm Spinel does not resolve matches by its last segment, or the `begin` swallows the exception | #11650, merged 2026-11-12 (and #11689 and #11690 from its review, merged later that day and not in 1c0cc5e35) | all three programs print CRuby's result | nothing has to change; the warning on a `rescue` line (rule 89) and the spelling from the top (rule 81) stop being what keeps an exception from being lost |
 | S. A `yield` passed as an argument runs the block twice | #11643, merged 2026-11-12 | prints `one 42 a` | `Cybertrain::Cache`'s fetch family can pass `yield` to the cast again (rule 90) |
-| U. A `def` inside a block that never runs defines the method | #11683, merged 2026-11-12 | prints `false false` | gen's refusal of a `class_methods` name (`ConcernScan::RULE_93`) can be looked at again |
+| U. A `def` inside a block that never runs defines the method | #11683, merged 2026-11-12 | prints `false false` | gen's refusal of a `class_methods` name was removed on 2026-11-21 (the generated copy has the block blank; test/gen_concerns.rb and test/gen_model_concerns.rb hold the shapes compiled) |
 | 5 (b). At one worker the sweep is handed to a thread that shares the CPU | #11646, merged 2026-11-12 (and #11697, its test made stricter, 2026-11-13) | not run (the change shows on Linux held to one CPU; the pull request's figures are under 5) | nothing to change; a one-CPU deployment stops paying for the sweeper |
 
 With the tag: run each item's program, `spin test`, and examples/blog's
@@ -420,9 +719,10 @@ tag and 494deaac).
 
 On 2026-11-11 none of these had an upstream issue or a fixing commit
 (matz/spinel's issues searched by keyword, master's history from
-2026-11-04 to 494deaac by subject), and none was reported. Five of the
-eight listed then are merged since and are in the table under 1: S, R,
-U, 5 (b) and the Float half of Q. Four are left, in order of harm. The
+2026-11-04 to 494deaac by subject), and none was reported. Eight were
+listed then: S, Z, Y, R, U, J, 5 and Q. S, R, U, the Float half of Q and
+the sweeper half of 5 (5 (b)) are merged since and are in the table under
+1. Four are left, in order of harm, 5 with its first half only. The
 first two give a wrong result with no error at compile time, each has a
 workaround in the framework that an application author has to know as
 well, and both fail on master 1c0cc5e35 as on the pin (2026-11-13); neither is
@@ -447,8 +747,8 @@ reported yet.
 ### 3. Seen in the framework, not reduced yet
 
 (Since the inventory of 2026-11-13, **AA**, closure cells allocated on
-method entry, belongs here too, and since 2026-11-14 **AR**, a
-require-shaped line inside a regex literal read as a require.)
+method entry, belongs here too, and since 2026-11-15 **AS**, `ENV[name]`
+answering the key, whose generated C shows V's cause.)
 
 Nothing can be sent for these until a program stands on its own: **V**
 (`strftime` with a built pattern returns the pattern; five standalone
@@ -480,6 +780,9 @@ again since the lock left it).
   program each, ready to report; the framework works around both (no
   Queue in an Array, one lock around every log write), and nothing waits
   on them.
+- **AR** (phase 5b follow-ups, 2026-11-14, reduced 2026-11-15): a defect
+  with a two-line program, ready to report; test/gen_jobs.rb builds the
+  keyword from pieces, and nothing waits on it.
 - Fixed and carried by the pin already: 2, 3, 4, A, C and its refusal
   (#10525, #10524), F, G, H (#10415) and I (#10735, #10786); their
   workarounds are dropped where there were any (see each).
@@ -508,7 +811,7 @@ run on master 1c0cc5e35:
 
 | Item | Workaround it would remove | What can be sent |
 | --- | --- | --- |
-| K | `Logger#log`'s `@io.write` instead of `@io.puts` | **Ready**: a nine-line reduced program and a one-line fix in src/codegen_call_io.c, tested on a build of 2026.11.04.7026 (see K). **Sent and merged**: matz/spinel#11129 (2026-11-06), which reads the argument through `emit_to_s_expr` and covers `print` as well. Needs a fork tag that carries it |
+| K | `Logger#write_now`'s `@io.write` instead of `@io.puts` | **Ready**: a nine-line reduced program and a one-line fix in src/codegen_call_io.c, tested on a build of 2026.11.04.7026 (see K). **Sent and merged**: matz/spinel#11129 (2026-11-06), which reads the argument through `emit_to_s_expr` and covers `print` as well. Needs a fork tag that carries it |
 | 5 (a) | `SPINEL_GC_FULL_INTERVAL=8` in the deploy files | A change to the full-collection cadence rule (`SP_GC_PROMOTED_DEAD_CUT`), a policy change that upstream's benchmarks would have to support; not written yet |
 | 5 (b) | none (a gain of about 5% on one CPU) | Small: start no sweeper in `sp_cs_start_sweepers` (lib/sp_sched.c) when `SPINEL_GC_SWEEPERS` is unset and the process may use one CPU; not written or measured as a patch. **Sent and merged**: matz/spinel#11646 (2026-11-12), measured there on Linux/aarch64 held to one CPU (see 5), with its test made stricter by #11697 (2026-11-13). Needs a fork tag that carries it |
 | J | none | Nothing yet: where the capture struct becomes unreachable is not known |
@@ -522,16 +825,16 @@ run on master 1c0cc5e35:
 | N | none (the shape is not in the framework) | **Ready to report**: Daicho's 16-line program (CRuby prints `0`; the C does not compile on 2026.11.03.7025, 2026.11.04.7026 and master 60381c464) and the two fixes the report suggests (see N). **Sent and merged**: matz/spinel#11184 (2026-11-06) and #11219 (2026-11-07), the first of the two fixes (the return type follows the widened ivar). Needs a fork tag that carries them |
 | O | the non-blocking connect of cybertrain/net/socket.rb (rule 72), kept anyway for the deadline; a sentence in socket.rb's header and the guides | **Ready to report**: a nine-line program, and the cause named to the line: `sp_net_connect_timeout` has been in lib/sp_net.c since 59c06d979 and nothing emits a call to it (see O). **Sent and merged**: matz/spinel#11183 (2026-11-06). Needs a fork tag that carries it |
 | P | none (`HttpClient` stays for the deadline and the address policy); the header comment of cybertrain/http_client.rb and the guides describe the pinned behaviour | Nothing: fixed on matz/spinel master dcc46945c (2026-11-05). Needs a fork tag that carries it, then a `SPINEL_TAG` move and the comment revised (see P). Still in no fork tag on 2026-11-11 |
-| Q | `where(col: a..b)` (phase 2) takes Integer ends only; other bounds go through `where_between(col, from, to)`, and the validator options `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an Array | **Ready to report**: two reduced programs (see Q); the Time and Date construction error and the Float and String `when Range` miss are separate defects. The first is **fixed on master** by matz/spinel#10998 ("Ranges of Times and of the program's comparable objects", 2026-11-05; a Range of Dates is a Range of objects in docs/limitations.md). For the second, master has tests of boxed Float and String Ranges (test/float_range_boxed_methods.rb, test/boxed_range_eq_float_range.rb, "boxed Range compares by ends", e0992bb9) but no commit was matched to Q's first program: to be run on a fork tag that carries master before anything is sent. Run on master 494deaac on 2026-11-12 instead: the String Range was matched; the Float Range and a Time Range held in a Hash were not. **Sent and merged**: matz/spinel#11639 (2026-11-12), "A boxed Range of Float, Time or object ends is a Range to when, in and a class value". Needs a fork tag that carries it |
+| Q | `where(col: a..b)` (phase 2) takes Integer ends only; other bounds go through `where_between(col, from, to)`, and the validator options `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an Array | **Ready to report**: two reduced programs (see Q); the Time and Date construction error and the Float `when Range` miss are separate defects (the String Range of the first program is matched on the pin, re-run 2026-11-15). The first is **fixed on master** by matz/spinel#10998 ("Ranges of Times and of the program's comparable objects", 2026-11-05; a Range of Dates is a Range of objects in docs/limitations.md). For the second, master has tests of boxed Float and String Ranges (test/float_range_boxed_methods.rb, test/boxed_range_eq_float_range.rb, "boxed Range compares by ends", e0992bb9) but no commit was matched to Q's first program: to be run on a fork tag that carries master before anything is sent. Run on master 494deaac on 2026-11-12 instead: the String Range was matched, as on the pin; the Float Range and a Time Range held in a Hash were not. **Sent and merged**: matz/spinel#11639 (2026-11-12), "A boxed Range of Float, Time or object ends is a Range to when, in and a class value". Needs a fork tag that carries it |
 | R | none needed: the generator of `run_job` names only classes the program defines (phase 3, spikes/NOTES.md rule 89) | **Ready to report**: the reduced programs in R (CRuby raises NameError; the compiled programs match by the last segment or swallow the exception), and a third added on 2026-11-11 from rule 81, where every class exists and the `begin` still swallows the exception. **Asked**: not reported upstream yet, and no issue or commit found for it; 24d05c78 (2026-11-07) changed how a `rescue` arm finds its class, so the three programs are to be run on master first. Run on master 494deaac on 2026-11-12: the first two answered as on the pin. **Sent and merged**: matz/spinel#11650 (2026-11-12), "A rescue clause naming a path that fails past its first name raises NameError when reached", with #11689 and #11690 from its review. All three programs print CRuby's result on master 1c0cc5e35; which commit fixed the third was not looked for. Needs a fork tag that carries them |
 | S | `computed = yield` before `Cast.str(computed)` in cybertrain/cache.rb's fetch family (spikes/NOTES.md rule 90) | **Ready to report**: the reduced program in S (CRuby runs the block once; the compiled program runs it twice). No fix written. **Asked**: not reported upstream yet, and no issue or commit found for it on master 494deaac (test/yield_argument_diverging_block_types.rb, already in the pinned tree, covers this shape's TypeError and not how often the block runs). Run on master 494deaac on 2026-11-12: `one 42 a,a`, as on the pin. **Sent and merged**: matz/spinel#11643 (2026-11-12), which also fixes a method called again from its own block reading the outer call's arguments. Needs a fork tag that carries it |
 | T | the feed supervisor sets `Background.feeds_failed?` and the `feeds` role's main thread returns the exit status (spikes/NOTES.md rule 91) | **Ready to report**: the six-line program in T (CRuby exits 1; the compiled program goes on and exits 0). **Fixed on master**: test/thread_exit_raises_in_main.rb ("`exit` in a thread other than main ended that thread and nothing else ... CRuby raises the SystemExit in the main thread") is in master since before #11035 (2026-11-05) and not in the pinned tree. Needs a fork tag that carries it; nothing in CyberTrain has to change with it |
-| U | gen writes a concern's `class_methods` as `def self.x` on the concern plus a forwarder, and refuses a `class_methods` name an instance method of the concern or an including class has (phase 4a, spikes/NOTES.md rule 93) | **Ready to report**: the reduced program in U (CRuby prints `false false`; the compiled program `true false`). No fix written. **Asked**: not reported upstream yet, and no commit found for it on master 494deaac; the open proposals matz/spinel#9898 ("definitions at their point") and #10866 (method cells) are where a fix would belong. **Sent and merged**: matz/spinel#11683 (2026-11-12), "A block a class body hands to a method that never uses its block defines nothing"; it leaves the block's body out, so a call of a method only such a block defined is refused at build time (see U). Needs a fork tag that carries it |
-| V | `Template::Helpers.time_tag_strftime` calls `strftime` with a literal pattern per directive (spikes/NOTES.md rule 96) | Nothing yet: seen in the framework, the cause read from the generated C, no reduced program written: five standalone programs tried on 2026-11-11 all format correctly (see V). Not reported upstream yet |
+| U | gen writes a concern's `class_methods` as `def self.x` on the concern plus a forwarder (phase 4a, spikes/NOTES.md rule 93); gen refused such a name until 2026-11-21, when each shape was shown compiled with Spinel 2026.11.15.7033 to answer as under CRuby (test/gen_concerns.rb, test/gen_model_concerns.rb): the copy in gen/concerns/ has the block blank, so the compiler never sees the `def` | **Ready to report**: the reduced program in U (CRuby prints `false false`; the compiled program `true false`). No fix written. **Asked**: not reported upstream yet, and no commit found for it on master 494deaac; the open proposals matz/spinel#9898 ("definitions at their point") and #10866 (method cells) are where a fix would belong. **Sent and merged**: matz/spinel#11683 (2026-11-12), "A block a class body hands to a method that never uses its block defines nothing"; it leaves the block's body out, so a call of a method only such a block defined is refused at build time (see U). Needs a fork tag that carries it |
+| V | `Strftime.walk`, reached from `Template::Helpers.time_tag_strftime` and `I18n.l`, calls `strftime` with a literal pattern per directive (spikes/NOTES.md rule 96) | Nothing yet: seen in the framework, the cause read from the generated C, no reduced program written: five standalone programs tried on 2026-11-11 all format correctly (see V). Not reported upstream yet |
 | W | `Component` passes `"#{@name}"`, a fresh local, to `Views.component_builder.call` (spikes/NOTES.md rule 97) | Nothing yet: seen only in examples/blog's program, not reduced (see W). Not reported upstream yet |
 | X | `Gen::Runner` has each emitter scan `app/controllers` for itself (spikes/NOTES.md rule 94) | Nothing yet: bisected to one change in examples/blog's generator, not reduced (see X). Not reported upstream yet |
 | M | `Console.run`'s `flush` after the banner and every prompt (rule 83) | **Sent and merged**: matz/spinel#11193 (2026-11-06), "STDOUT on a terminal is written through, as CRuby's is". Needs a fork tag that carries it |
-| Y | every stored lambda of the framework is made in a method, not written into a module-body ivar: `Views.default_helpers_builder`, `Assets.empty_resolver`, `Cache.system_clock` (spikes/NOTES.md rule 82) | **Ready to report**: the 14-line program in Y (CRuby prints `sess`; the compiled program raises NoMethodError on an Integer). No fix written. Not reported upstream yet; the same on master 1c0cc5e35 (2026-11-13) |
+| Y | every stored lambda of the framework is made in a method, not written into a module-body ivar: `Views.default_url_resolver`, `Views.default_helpers_builder`, `Views.default_component_builder` and `Assets.empty_resolver` (spikes/NOTES.md rule 82) | **Ready to report**: the 14-line program in Y (CRuby prints `sess`; the compiled program raises NoMethodError on an Integer). No fix written. Not reported upstream yet; the same on master 1c0cc5e35 (2026-11-13) |
 | Z | no method that only stored blocks call has a stub on its base class (the generated `counter_cache_*` on `Cybertrain::Model`, a job's `run_job` on `Job::Base`), and `respond_to`, a controller's `content_security_policy` and the Turbo Stream builder run a block at once instead of storing it (spikes/NOTES.md rule 88) | **Ready to report**: the 22-line program in Z (CRuby prints `"sub"`; the compiled program `""`). No fix written. Not reported upstream yet; the same on master 1c0cc5e35 (2026-11-13) |
 | AA | the `while` loops that stand in for blocks on the request path (`Interpreter#eval_expr`, `Helpers#nested_url`), and `Response#respell_header` | Nothing yet: seen in the generated C of the framework's methods, not reduced (two standalone programs allocate nothing on entry, see AA). Not reported |
 | AB | the busy handler that reports instead of waiting, and `Connection#step_waiting` (spikes/NOTES.md rule 80); kept after a fix unless a foreign call stops holding its worker | **Ready to report**: the 22-line program in AB (`ticks=1` at one worker with `blocking: true`). First to be run on master, and docs/FFI.md read for what the option promises. Not reported |
@@ -542,12 +845,16 @@ run on master 1c0cc5e35:
 | AG | `privileged_denied?` in `Server#bind_listener` | **Ready to report**: the 9-line program in AG (CRuby `Errno::EADDRINUSE`, compiled `Errno::ECONNREFUSED`). Not reported; not run on master |
 | AH | none | The 2-line program in AH. A difference in form, not in value: to be mentioned with AF rather than reported alone |
 | AI | gen/locales.rb fills its Hash through methods of at most 50 stores (spikes/NOTES.md rule 101) | **Ready to report** as a compile-time cost, not a defect: spikes/phase4b/locale_hash.rb and its generator make_keys.rb, with the `--timing` figures (see AI). Not reported upstream yet |
-| AJ | `Test::BUILTIN_PARENTS` and the `Errno::` prefix in `assert_raises` (spikes/NOTES.md rule 104) | **Ready to report**: the 5-line program in AJ. Not reported; not run on master |
+| AJ | `Test::BUILTIN_PARENTS` and the `Errno::` prefix in `assert_raises` (spikes/NOTES.md rule 104) | **Ready to report**: the 6-line program in AJ, the same defect as AE. Not reported; not run on master |
 | AK | the framework's suite kept one program per file (design D34, D83) | A measurement (spikes/phase5/bundle_suite.sh), to be mentioned as a cost, not reported alone. Not reported |
 | AL | none (the cost is paid) | A request to spin, not to Spinel. Not reported |
 | AM | the test runner names a test by its `test` line (spikes/NOTES.md rule 107) | **Ready to report**: spikes/phase5/backtrace.rb. Not reported; not run on master |
 | AN | the sentinel default `Cookies::NO_EXPIRES` (spikes/NOTES.md rule 109) | **Ready to report**: spikes/phase5/nil_default_time.rb (SIGSEGV, exit 139; CRuby `none`, `1970`). Not reported; not run on master |
 | AO | an `if` chain in `HtmlReader.parse` instead of a statement `case` (spikes/NOTES.md rule 110) | **Ready to report**: spikes/phase5/case_nullable_temp.rb (the C compile fails, `'_o1' undeclared`; CRuby `amp`, `long`). Not reported; not run on master |
+| AP | no Queue is kept in an Array (spikes/NOTES.md rule 117) | **Ready to report**: the 4-line program in AP (spikes/phase5/queue_in_array.rb). Not reported; not run on master |
+| AQ | `Logger::LOCK` around every log write (spikes/NOTES.md rule 116); kept either way if upstream documents the race instead | **Ready to report**: the 17-line program in AQ (spikes/phase5/stringio_threads.rb). Not reported; not run on master |
+| AR | test/gen_jobs.rb builds the word `require` from pieces (spikes/NOTES.md rule 122) | **Ready to report**: the 2-line program in AR. Not reported; not run on master |
+| AS | none (nothing guards the reads; spikes/NOTES.md rule 123) | Nothing yet: seen with two framework files required, the cause read from the generated C, not reduced (see AS). Not reported |
 
 The other rules of spikes/NOTES.md (cybertrain/logger.rb alone cites
 rules 18 and 19) were not re-checked on 2026.11.04.7026 when this table
@@ -556,7 +863,7 @@ was written, except 66 (its program prints CRuby's result there) and 70
 on 2026-11-11"). The inventory of 2026-11-13 went through all of them:
 the rules whose shape fits a small program were run on the pin, and
 every rule is in one of the tables of "Everything on main, in one
-place". What that added to this table is its last eight rows.
+place". What that added to this table is the rows AA to AH.
 
 ## Status at a glance
 
@@ -567,6 +874,8 @@ of Q, R and S on 2026-11-12, nor for master 1c0cc5e35, built
 on 2026-11-13 for the reduced programs only: what master has merged for K, M,
 N, O, P, Q, R, S, T, U, 5 (b) and rule 79, and what each program did on
 1c0cc5e35, is in "What is asked of Spinel now".
+2026.11.15.7033 has no column: its results are by rule, under "Status by
+rule".
 
 | Item | 2026.09.12 | 2026.10.25-7018 | 2026.10.26.7019 | master 9b9972399 | master 003ceda5d | 2026.10.27.7020 | fork master 49ccdced | 2026.11.04.7026 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -597,7 +906,7 @@ N, O, P, Q, R, S, T, U, 5 (b) and rule 79, and what each program did on
 | N. A method's return type does not follow an ivar widened through an `attr_accessor` writer | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (Daicho's report, 2026-11-05; re-checked here, and the same on 2026.11.03.7025, so not new here; still on master 60381c464 per the report) |
 | O. `TCPSocket.new` ignores `connect_timeout:` | yes (docs/design.md D24: "60 seconds or more against an unreachable address") | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (Daicho's report; re-checked here, and the same on 2026.11.03.7025; still on master 60381c464 per the report) |
 | P. Net::HTTP against a TLS peer that never answers does not return at the timeout | yes, as "the handshake and the reads are blocking C calls" (D24) | not checked | not checked | not checked | not checked | yes: returns at the timeout, but other threads stop meanwhile (the report) | not checked | **yes**: does not return at all (the report, 40 s; here it returns only when the peer closes, 30 s, the same on 2026.11.03.7025); **fixed** on matz/spinel master dcc46945c (2026-11-05), in no fork tag yet |
-| Q. A Range of Time or Date raises at construction; a Float or String Range is not a Range once boxed | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 2 spike, 2026-11-06; phase 2 routes non-Integer bounds through `where_between`) |
+| Q. A Range of Time or Date raises at construction; a Float Range is not a Range once boxed | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 2 spike, 2026-11-06; re-run 2026-11-15, when the String Range the title named until then was matched; phase 2 routes non-Integer bounds through `where_between`) |
 | R. A `rescue` arm naming an undefined qualified class matches by its last segment, or swallows every exception | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3 spike, 2026-11-09; rule 89) |
 | S. A `yield` passed as an argument runs the block twice when blocks differ in type | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3, 2026-11-09; rule 90) |
 | T. `exit` on a thread other than the main one ends only that thread | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 3, 2026-11-09; rule 91) |
@@ -617,12 +926,242 @@ N, O, P, Q, R, S, T, U, 5 (b) and rule 79, and what each program did on
 | AG. `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED` | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-13) |
 | AH. `JSON.generate` writes a Float in another form than CRuby's | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-11 and 2026-11-13) |
 | AI. A large Hash literal constant takes cc 13 s | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 4b spike, 2026-11-11; rule 101) |
-| AJ. `Class#superclass` on Ruby's own exception classes is NoMethodError | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a spike, 2026-11-12; rule 104) |
+| AJ. `Class#superclass` on Ruby's own exception classes is NoMethodError (with a package required or a module defined) | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a spike, 2026-11-12; narrowed 2026-11-15, a bare program passes; rule 104) |
 | AK. The C of a very large program needs more memory to compile than its front end | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-12) |
 | AL. `spin run gen` rebuilds the generator when a test file changes | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-12; rule 108) |
 | AM. A release build has no backtrace | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a spike, 2026-11-12; rule 107) |
 | AN. A parameter defaulting to nil, given a plain Time by a caller, is a non-nullable Time | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-13; rule 109) |
 | AO. A statement `case` on a plain Integer takes an earlier nullable case's temporary number | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5a, 2026-11-13; rule 110) |
+| AP. `pop(timeout:)` on a Queue that was put in an Array is `Array#pop` | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5b, 2026-11-13, reduced 2026-11-14; rule 117) |
+| AQ. Four threads writing one StringIO with no lock crash the program | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5b, 2026-11-13, reduced 2026-11-14; rule 116) |
+| AR. A require-shaped line inside a regex literal is read as a require | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-14, reduced 2026-11-15; rule 122) |
+| AS. `ENV[name]` with a key held in a variable can answer the key | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-15, in a program that requires two framework files; rule 123) |
+| AT. `File#stat` on an open File stats its path, not the descriptor | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5b, 2026-11-13; rule 112) |
+| AU. `String#strip` on a String with an invalid byte returns it | yes (rule 52) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-15 and 2026-11-19; rule 52) |
+| AV. A class used above its definition runs, where CRuby raises NameError (rule 17) | yes (rule 17, recorded for constants read before their definition) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** for a class name (2026-11-15); a constant assigned with `=` raises NameError as under CRuby |
+| AW. `IO#gets` on a socket answers a UTF-8 character String; socket bytes append to a UTF-8 String where CRuby raises (rule 27) | yes (rule 27, recorded for socket buffers generally) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** for `gets` and for the append (2026-11-15); `readpartial`, `read(n)` and `read_nonblock` answer byte Strings as under CRuby |
+| AX. `JSON.parse` does not count an innermost empty Array or Object against the nesting limit | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes**, and more: the limit is 200 levels for every document, `max_nesting:` changes nothing, and the error is `JSON::ParserError: nesting too deep` (run on 2026-11-21 as the control of the run on 2026.11.15.7033) |
+| AY. A rescuing method given a raising method and a raising lambda's call as blocks does not compile (rule 124) | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (run on 2026-11-21 as the control of the run on 2026.11.15.7033: the same C error) |
+
+## Status by rule
+
+What each rule's program did on a build: one table per pin, the newest
+first. The numbers are the rules of [spikes/NOTES.md](../spikes/NOTES.md);
+"Item register" says which item a rule belongs to. "Status N", in a
+comment or a document of this repository, means row N of the tables here:
+read the newest first; each row says what its build did. Paths that begin
+`rechecks/` are under `spikes/`.
+
+- **Still there**: the program still differs from CRuby or does not compile.
+- **Reduced program passes**: the rule's own reduced program prints Ruby's
+  result. The failure was not reproduced in that shape; this does not prove
+  its cause is gone in every program.
+- **Probe passes**: a small program of the shape the rule describes prints
+  Ruby's result, but the rule was seen in a larger program and never
+  reduced, so this does not show that it is gone.
+- **Not re-checked**: no one has tried it on this build. That is not a
+  claim either way.
+
+Compiler evidence and project policy are separate. A passing probe is not
+a licence to drop an active workaround: keep it until a dedicated change
+removes it with a test of the affected framework shape. Rule 77 is already
+retired; capability notes, ordinary Ruby behaviour and historical measurements
+are not blanket coding prohibitions. For a rule with several observations,
+a passing subcase does not clear the rest. See spikes/NOTES.md,
+"Maintaining this inventory", for the evidence needed to change a status.
+Every workaround of "Tied to a build" there stays in place on
+2026.11.15.7033.
+
+### On 2026.11.15.7033
+
+Checked on 2026-11-14 with Spinel 2026.11.14.7031 (2e505bd45), repeated
+on 2026-11-15 with 2026.11.15.7032 (3203cff1a) and again with
+2026.11.15.7033 (a2f3bfaaf), the pinned `Cybertrain::SPINEL_TAG`, built
+from source, by compiling each re-checked
+rule's reduced program (or, where the rule has none, a small probe of the
+shape it describes) and comparing its output with CRuby 4.0.7's
+(`LANG=en_US.UTF-8`, `TZ=UTC`; the 2026.11.04.7026 section compared with
+CRuby 3.3). Each program was also compiled with 2026.11.04.7026
+(a2d06115f), the previous pin, as a control, so that a pass on this pin is
+a change of the compiler and not of the program. All on macOS arm64
+(Darwin 27.2, Apple clang 21.0.0), `spinel prog.rb -o prog` with no flags
+unless the row says so, with the new reduced programs kept in
+`spikes/rechecks/2026.11.15.7033/` and their binaries and outputs outside
+the package (rule 98). A concurrent `spin test` kept
+the load average between 75 and 87, so the timings below are under load.
+On 2026.11.15.7032 and on 2026.11.15.7033 every program was compiled and
+run again and printed what it printed on 2026.11.14.7031, line for line
+(rule 49's timings and rule 116's runs vary from run to run, within what
+the rows give); the rows give the 2026.11.14.7031 run. 2026.11.14.7031 was
+not pinned: it refused `Date.new` with an Array element (`Date.current`,
+cybertrain/clock.rb) and resolved `Time.utc` beside test/cron.rb's
+top-level `utc` to that method, both fixed upstream (matz/spinel#11895,
+#11896). 2026.11.15.7032 was not pinned either: a method that a class
+inherits, called through a dispatch over several classes, ran the parent's
+first definition after the parent redefined it, so test/command_e2e.rb's
+`failing` app ran `Cybertrain::TestCase#setup` in place of the test's own;
+fixed upstream (matz/spinel#11919) and in 2026.11.15.7033.
+Only the rows that were **Still there** on 2026.11.04.7026, and rule 112,
+were re-checked; the rules that were seen only in the whole framework (94,
+96, 97) are left to that pin's `spin test` and examples/blog run.
+
+Rows 17, 27, 48, 52 (its `strip` half), 122, 123 and the last row, and
+the last sentences of rows 78, 86 and 104, were added on 2026-11-21 from
+runs on another machine; each names its platform and its CRuby. That day
+all seven programs then under spikes/rechecks/differing/ were built with
+2026.11.15.7033 and, as a control, with 2026.11.04.7026: three print
+CRuby's result on the pin and not on the control (rows 78, 86 and 104),
+three still differ (rows 52, 122 and 123), and the seventh needs the
+framework and was never a difference (row 48). The first three were then
+moved up into spikes/rechecks/, as spikes/rechecks/README.md says a
+program that matches CRuby is; the other four stay in differing/. Later
+that day the programs of rows 17 and 27, inline until then, were saved
+there as class_before_definition.rb and socket_bytes.rb (AV and AW), which
+makes six, and raising_helper_beside_lambda.rb (row 124) and
+json_parse_nesting.rb (row AX) were added, which makes eight.
+
+| Rule | On 2026.11.15.7033 |
+| --- | --- |
+| 2 | **Still there**, as on 2026.11.04.7026. A block stored in a module's Array and run with `C.new.instance_exec(&b)` compiles on both pins and raises "instance_exec of a proc whose self spinel cannot rebind (NotImplementedError)" when reached; CRuby prints `7`. A proc held in a local and passed straight to `instance_exec` prints `7` on both pins. |
+| 17 | **Still there** for a class name (docs/spinel-feedback.md AV), run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6, not on the machine of the rows below: the two lines `puts Later.new.hi` and `class Later; def hi = "hi"; end` print `hi` compiled, where CRuby raises "uninitialized constant Later (NameError)". 2026.11.04.7026 printed `hi` in the same run. The program was saved later that day as rechecks/differing/class_before_definition.rb, with a `begin` and `rescue NameError` around its first line so that CRuby prints a line and does not stop: run again then on the same machine and tools, CRuby printed `NameError: uninitialized constant Later` and the program built by each of the two builds printed `hi`. The half about a constant assigned with `=`, which raises NameError as under CRuby, is rechecks/constant_order.rb (the last row). |
+| 27 | **Split** (docs/spinel-feedback.md AW), run on 2026-11-21 on the same Linux machine and tools as row 17. Probe passes for `IO#gets`: the program of row 27 of the next table (a thread writes `"café 日本\n"` to an accepted socket, the client prints `line.encoding`, `line.size` and `line.bytesize` of `cl.gets`) prints `ASCII-8BIT`, `13`, `13`, as under CRuby; 2026.11.04.7026 printed `UTF-8`, `8`, `13` in the same run. **Still there** for the append: `require "socket"; srv = TCPServer.new("127.0.0.1", 0); t = Thread.new { c = srv.accept; c.write("café 日本\n"); c.close }; cl = TCPSocket.new("127.0.0.1", srv.addr[1]); buf = cl.readpartial(64); t.join; u = +"é"; begin; u << buf; puts "appended #{u.bytesize}"; rescue => e; puts "#{e.class}"; end` prints `appended 15` compiled and `Encoding::CompatibilityError` under CRuby; 2026.11.04.7026 printed `appended 15` in the same run. Neither program was saved under spikes/ for that run: both are inline, the first in the next table and the second here. Later that day the two were saved as one program, rechecks/differing/socket_bytes.rb, which prints a `gets:` line and an `append:` line: run on the same machine and tools, CRuby printed `gets: ASCII-8BIT 13 13` and `append: Encoding::CompatibilityError`, 2026.11.15.7033 `gets: ASCII-8BIT 13 13` and `append: appended 15`, and 2026.11.04.7026 `gets: UTF-8 8 13` and `append: appended 15`. `readpartial`, `read(n)` and `read_nonblock` are rechecks/socket_shapes.rb (the last row). |
+| 25 | **Still there**, by design (docs/spinel-feedback.md D): `"99999999999999999999".to_i` raises "RangeError: integer overflow parsing "99999999999999999999"" on both pins; CRuby 4.0.7 returns the Bignum. |
+| 33 | **Closed** on 2026-11-21 ("Item register"). Run that day on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6: rechecks/json_error_shapes.rb, whose first section was `JSON.parse("{")` under `rescue StandardError => e`, `JSON.parse("[1,")` under a bare `rescue => e`, and `JSON.generate` of an Array nested 150 deep under `rescue StandardError => e`, printed `caught by StandardError: JSON::ParserError`, `caught by bare rescue: JSON::ParserError` and `generate caught by StandardError: JSON::NestingError`, then the six lines of rule 48's section, under CRuby, built by 2026.11.15.7033 and built by 2026.11.04.7026 alike. The difference the rule records was seen on 2026.09.12, so the control shows no change between these two builds. In the framework: `grep -rn 'rescue.*JSON::' cybertrain` prints one line, a comment in controller.rb about `rescue_from JSON::ParserError`; `Cast.parse_json`, the last rescue that named the JSON classes, is `rescue StandardError` since that day. `spin test` of test/server.rb (the `/json` case raises `JSON::ParserError` in the app: 500, and the server keeps serving), test/json_rescue_background.rb, test/cast_types.rb and test/cache.rb passed on 2026.11.15.7033. The section of the program for 33 and 61 was then removed with its three `.expected` lines; rule 48's section stays. |
+| 48 | Probe passes for the framework's own `rescue_from JSON::ParserError`, run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`), compiled side only: rechecks/differing/rescue_from_json_error.rb, built with `spinel --strict-require -I .` from the repository root (the framework at 5261e9be), prints the five lines its header gives (`block handler: 422 bad json: JSON::ParserError`, `no error: 200 fine`, `with handler: 400 with: JSON::ParserError`, `unhandled: re-raised JSON::ParserError`, `value: JSON::ParserError`), as 2026.11.04.7026 did in the same run. The value and argument shapes of the rule are rechecks/json_error_shapes.rb (the last row). |
+| 49 | Reduced program passes (docs/spinel-feedback.md AC): decoding e-acute + 50,000 / 100,000 / 200,000 bytes takes `0 0 0` ms (`0 0 1` in one run of three), against `76 384 2435`, `84 447 2470` and `88 389 2513` on 2026.11.04.7026; CRuby prints `0 0 0`. |
+| 52 | Reduced program passes (docs/spinel-feedback.md AD): `"a=1&\x81b=2".byteindex("b", 4)` raises IndexError, as under CRuby; 2026.11.04.7026 prints `5`. The `strip` half of the rule was not run for this row. Run on 2026-11-21 (Linux x86_64, gcc 13.3.0, CRuby 3.3.6, `-O 0`; rechecks/differing/invalid_utf8.rb): both `byteindex` lines raise IndexError, as under CRuby, and `" x\x81 ".strip` is **still there** (docs/spinel-feedback.md AU): it returns `"x\x81"` where CRuby raises Encoding::CompatibilityError. 2026.11.04.7026 printed `5`, `3` and `"x\x81"` in the same run. |
+| 54 | Reduced program passes for the half that failed (docs/spinel-feedback.md AE): `e.class.superclass.name` for a rescued `JSON::ParserError` prints `JSON::JSONError`, as under CRuby; 2026.11.04.7026 raises "undefined method 'superclass' for module JSON::ParserError (NoMethodError)". The user-class half still matches: rechecks/exception_shapes.rb prints its `.expected` on both pins. |
+| 61 | **Closed** on 2026-11-21 with 33 ("Item register"), same machine, tools and day as row 33. rechecks/json_nesting_shapes.rb (`JSON.generate` of an Array nested 150 deep in a method with `rescue JSON::ParserError, StandardError`, one with `rescue StandardError`, one with `rescue JSON::ParserError`, and on a Thread with `rescue StandardError` and an `ensure`) printed `ParserError, StandardError: JSON::NestingError`, `StandardError alone: JSON::NestingError`, `ParserError alone: JSON::NestingError`, `thread: JSON::NestingError` and `thread: ensure ran` under CRuby, built by 2026.11.15.7033 and built by 2026.11.04.7026. The program was deleted after that run, as the README beside it said it would be; it is in the repository's history. test/server.rb's `/deep` case (an action whose `JSON.generate` raises `JSON::NestingError`: 500, the connection closed, and the server keeps serving) passed compiled on 2026.11.15.7033. What the rule says of a thread an exception escapes was tried once that day in a program that is not saved: a method that calls `JSON.generate` on the same Array with an `ensure` and no `rescue`, run as the body of `Thread.new`, with `report_on_exception = false` and the `join` under `rescue StandardError`. It printed `thread: ensure ran`, `join: JSON::NestingError` and `main: alive` under CRuby and on both builds. That is one small program, not the framework's request thread, where the rule was seen on 2026.09.12; the comment in cybertrain/error_reporter.rb that cites the rule for it stays. |
+| 78 | Reduced program passes (docs/spinel-feedback.md K): `@io.puts(line)` on a nil-only `@io` with `require "openssl"` builds and prints `ok`; on 2026.11.04.7026 cc stops with "incompatible pointer types passing 'sp_String *' ... to parameter of type 'const char *'" (sp_io.h). Run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`, CRuby 3.3.6): rechecks/nil_only_puts_openssl.rb builds and prints `ok`, as under CRuby; with 2026.11.04.7026 in the same run cc stops at the program's line 17 with "passing argument 2 of 'sp_File_puts_bin' from incompatible pointer type". The program matches CRuby on this pin, so on 2026-11-21 it moved up from rechecks/differing/ into rechecks/ with an `.expected` file and is run by rechecks/run.sh (the last row); the workaround stays. |
+| 79 | **Closed** on 2026-11-21 ("Item register"), at the end of what this row records. Reduced program passes (docs/spinel-feedback.md, "Rule 79"): `out << g { raise "b" }` builds and prints `["b"]`; on 2026.11.04.7026 cc stops with "variable has incomplete type 'void'" (spinel_rt.h, `SP_STR_HDL`). Run again on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`, CRuby 3.3.6): rechecks/2026.11.15.7033/r79_raise_block.rb builds and prints `["b"]`, as under CRuby; with 2026.11.04.7026 in the same run cc stops with "variable or field '_sp_fv' declared void" (spinel_rt.h, at the `SP_STR_B` expansion for line 7 and the `SP_STR_HDL` expansion for line 2). The item was not closed that day ("Item register", row rule 79, says what is missing). Later that day, same machine and tools, the workaround was tried removed in a copy of the repository ("Rule 79", "Tried without the workaround"): r79_raise_block.rb again printed `["b"]` under CRuby and built by 2026.11.15.7033, and did not build with 2026.11.04.7026 (same error). test/test_lifecycle.rb with bodies that only raise passed compiled on both builds. With the typed values after the `raise` removed from `Console.unknown_model` and `unknown_record`, `spin test` of test/console.rb (as it was), main_console.rb, main_command.rb, main.rb, config_settings.rb, gen_console.rb, gen_namespaced.rb, gen_routes_compiles.rb and gen_manifest.rb passed on 2026.11.15.7033 and `spin run gen` left examples/blog/gen identical; the case added to test/console.rb that day did not build ("incompatible types when assigning to type 'sp_RbVal' from type 'const char *'" at test/console.rb's `yield` in `message_raised`), and with the typed values in place it passes on 2026.11.15.7033 and on 2026.11.04.7026. rechecks/differing/raising_helper_beside_lambda.rb is its reduction: CRuby prints `["no a", "no b"]`, and both builds stop in cc with that error at the program's `yield`; with a typed value after the `raise` both print CRuby's line. That failure was given its own item later that day, AY (row 124), and the typed values stay for it. With them re-attributed, nothing under cybertrain/ or test/ is written around rule 79: r79_raise_block.rb, run once more, printed `["b"]` under CRuby and built by 2026.11.15.7033 and stopped in cc with 2026.11.04.7026 as before; test/console.rb, with `out << message_of_raise { raise "nothing but a raise" }` added to the case (a rescuing method whose blocks all only raise), passes compiled on 2026.11.15.7033 and matches under CRuby with the preview's shim. Built with 2026.11.04.7026 that test passes as well: in the whole program the control compiles the line that the eight-line program alone does not, so the program stays as the evidence of the failure. |
+| 80 | **Still there** for `blocking: true` and for no option (docs/spinel-feedback.md AB, the 600 ms `nanosleep` program, three runs each): at `SPINEL_WORKERS=1` it prints `ticks=1` on both pins, at `SPINEL_WORKERS=2` `ticks=10` (once `ticks=9`). The pin adds `ffi_func ... offload: true` (docs/FFI.md, "`offload: true` (Spinel's own)": the C function runs on a pool thread while the caller waits as for I/O; it implies `blocking: true`, and is refused for a variadic function or in a program with an `ffi_callback`). With `offload: true` the same program prints `ticks=10` (once `ticks=9`) at one worker and at two, and still takes 0.61 s, so the call ran its full 600 ms while the worker ran main. 2026.11.04.7026 accepts `offload: true` without a word and prints `ticks=1` at one worker. |
+| 81 | Reduced program passes (docs/spinel-feedback.md R, the third program): `rescue Inner::Oops` inside `Outer::User` prints `oops` with no warning; 2026.11.04.7026 warns "uninitialized constant Inner: defined nowhere in the program" and prints `none`. |
+| 82 | Reduced program passes (docs/spinel-feedback.md Y): a lambda literal in a module-body ivar, called through a reader with a `Ctl`, prints `sess`; 2026.11.04.7026 raises "undefined method 'session' for an instance of Integer (NoMethodError)". docs/spinel-feedback.md recorded the same failure on matz/spinel master 1c0cc5e35, so the fix is later than that commit. |
+| 83 | Reduced program passes (docs/spinel-feedback.md M), run under a pty from CRuby's `PTY.spawn`: `A> ` is shown before a line is typed and `got hi` after it, as under CRuby; 2026.11.04.7026 shows nothing until the line is typed and then `A> got hi`. |
+| 86 | Reduced program passes (docs/spinel-feedback.md Q, both programs, with a small `check` / `eq` in place of `test` / `assert_equal`): all six cases pass, as under CRuby; on 2026.11.04.7026 the boxed Float Range answers `[]`, and `t1..t2` in a Hash value and `Range.new(t1, t2)` raise "TypeError: no implicit conversion of Time into Integer". A probe of a Range of Dates (`d1..d2`, `begin`, `end`, `cover?`) prints CRuby's `2026-01-01 2026-02-01 true false`; 2026.11.04.7026 raises "no implicit conversion of Date into Integer (TypeError)". Run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`, CRuby 3.3.6): rechecks/float_range_boxed.rb prints CRuby's six lines (`literal of Time: 0`, `Range.new of Time: 100`, `Float Range from a Hash: range`, `Float Range as an argument: [1.5, 2.5]`, `Integer Range as an argument: [1, 3]`, `Array as an argument: []`); 2026.11.04.7026 in the same run printed "TypeError no implicit conversion of Time into Integer" for each of the first two, `other` and `[]` for the next two, and the last two as CRuby. The program matches CRuby on this pin, so on 2026-11-21 it moved up from rechecks/differing/ into rechecks/ with an `.expected` file and is run by rechecks/run.sh (the last row); the workaround stays. |
+| 88 | Reduced program passes (docs/spinel-feedback.md Z): a block registered in `Sub`'s body and called with `self` from `Base#run` reaches `Sub#hook` and prints `"sub"`; 2026.11.04.7026 prints `""`. docs/spinel-feedback.md recorded `""` on master 1c0cc5e35 too. Rule 111's narrowing (the block before the override's `def`) is the shape of this program. |
+| 89 | Reduced programs pass (docs/spinel-feedback.md R, the first two): `rescue Outer::Missing` beside a top-level `Missing` raises NameError from the arm (`outer NameError: uninitialized constant Outer::Missing` when wrapped), where 2026.11.04.7026 prints `rescued by Outer::Missing`; `rescue Outer::Mailer::TimeoutError` beside `Outer::Net::TimeoutError` lets the caller see `["NameError"]`, where 2026.11.04.7026 prints `[]`. Both pins still warn "uninitialized constant Outer::Mailer: defined nowhere in the program" for the second. |
+| 90 | Reduced program passes (docs/spinel-feedback.md S): `C.str(yield)` with a String block and an Integer block prints `one 42 a`; 2026.11.04.7026 prints `one 42 a,a`. |
+| 91 | Reduced program passes (docs/spinel-feedback.md T): `exit(1)` on a thread spawned through a method ends the process with status 1 and no output, as under CRuby; 2026.11.04.7026 prints `main still alive` and exits 0. |
+| 92 | **Split.** The program of the rule (`included do before_action :require_admin, only: [:index] end`, with `ActiveSupport::Concern#included(base = nil, &block)` doing nothing) builds and prints `built`; 2026.11.04.7026 refuses it ("unsupported call: ... (CallNode `before_action`) recv=-/ty-1", 1 refusal). This follows from U's fix (rule 93): a block handed to a method that never uses its block is left out. **Still there**, by design, when `included` keeps its block (`@included = block`): both pins refuse the same call. gen's blanked copies in `gen/concerns/` are unaffected either way. |
+| 93 | Reduced program passes (docs/spinel-feedback.md U): prints `false false`, as under CRuby; 2026.11.04.7026 prints `true false`. |
+| 94 | Not reduced: covered by the suite/blog run on this pin, which passes (`spin test` 239 of 239; examples/blog regenerates with no change and `cybertrain test` passes 157 tests) (examples/blog's `spin run gen`, with `Gen::Runner`'s separate scans still in place). |
+| 96 | Not reduced: covered by the suite/blog run on this pin. The framework still walks the pattern itself (`Cybertrain::Strftime.walk`), so that run does not exercise `strftime` with a built pattern. |
+| 97 | Not reduced: covered by the suite/blog run on this pin. `Component` still passes `"#{@name}"`, so that run does not exercise the ivar form. |
+| 100 | Reduced program passes (docs/spinel-feedback.md AF): `round_scale` prints `1.01`, `1.01`, `0.29`, as under CRuby; 2026.11.04.7026 prints `1.01`, `1.0`, `0.28`. spikes/decimal/float_round.rb prints CRuby 4.0.7's output line for line ("through a case/when: 1.01 1.01"); 2026.11.04.7026 still prints "1.0 1.0". CRuby 4.0.7's `JSON.generate` now writes `0.00000001` and `1e+20`, as Spinel does (AH, which CRuby 3.3 wrote `1.0e-08` and `1.0e+20`). |
+| 101 | **Still there** in the generated C: spikes/phase4b/locale_hash.rb's 1,980 pairs are still 1,980 `sp_StrStrHash_set_e` calls in one function, `_sp_main_body`. The cost was not reproduced on this machine on either pin, so it is not shown here either way: `spinel --timing` puts cc_total at 1.4 to 1.5 s (three builds) against 3.3 to 6.7 s on 2026.11.04.7026, and locale_hash_split.rb at 4.0 s and 5.0 s. The rule's 12.5 to 15.2 s were gcc on Linux; re-measure there. The binary's lookups print what CRuby prints. |
+| 104 | Reduced program passes. spikes/phase5/assert_raises.rb with `matches?` walking `superclass` to the top and no `BUILTIN_PARENTS` (the spike's first version, `--strict-require -I .`) prints CRuby's 14 lines; 2026.11.04.7026 raises "undefined method 'superclass' for module RuntimeError (NoMethodError)" after three. The spike as saved prints CRuby's lines on both pins. The six lines of docs/spinel-feedback.md AJ print `StandardError` on both pins on this machine, so they are not a control. Run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`, CRuby 3.3.6): rechecks/builtin_superclass_with_module.rb, the program with a module defined, prints CRuby's three chains (`Pkg::Mine < ArgumentError < StandardError < Exception < Object < BasicObject`, then the chains of `RuntimeError` and `ArgumentError`) and exits 0; 2026.11.04.7026 in the same run printed the first line and stopped, exit 1, with "undefined method 'superclass' for module RuntimeError (NoMethodError)". The program matches CRuby on this pin, so on 2026-11-21 it moved up from rechecks/differing/ into rechecks/ with an `.expected` file and is run by rechecks/run.sh (the last row); the workaround stays. |
+| 107 | **Still there**: with spikes/phase5/backtrace.rb (`--strict-require -I .`), a release build answers 0 frames for both raises. `-g` answers one `<main>` frame and `--debug` four for the raise three methods deep, as before, but `<main>` now carries its line (`backtrace.rb:60`, `:66`) where 2026.11.04.7026 says line 1; CRuby 4.0.7 also gives `Kernel#Integer` a frame, quotes with `'` and not a backtick. |
+| 109 | Reduced program passes (spikes/phase5/nil_default_time.rb): prints `none` and `1970`, as under CRuby; 2026.11.04.7026 dies with SIGSEGV (exit 139). nil_default_time_fixed.rb prints CRuby's three lines on both pins. |
+| 110 | **Still there**: spikes/phase5/case_nullable_temp.rb does not compile on either pin ("use of undeclared identifier '_o1'; did you mean '_t1'?" at line 65); CRuby prints `amp` and `long`. |
+| 112 | **Still there**: spikes/phase5/flock_fstat.rb prints the same lines on both pins; they differ from CRuby's only in "a.stat names the new file" (CRuby: "old"). `flock` and `IO.for_fd(...).stat` agree with CRuby. |
+| 116 | **Still there**: spikes/phase5/stringio_threads.rb (`SPINEL_WORKERS=4` set by the program) printed nothing in fourteen runs of fifteen on this pin (of the ten whose status was kept, nine exited 134 and one 133); one run printed `2432000`, CRuby's answer. 2026.11.04.7026 printed nothing in fifteen runs of fifteen (exit 134 in all ten whose status was kept). |
+| 117 | Reduced program passes (spikes/phase5/queue_in_array.rb): prints `"hello"` and `"direct"`, as under CRuby; 2026.11.04.7026 raises "no implicit conversion of Hash into Integer (TypeError)". |
+| 122 | **Still there** (docs/spinel-feedback.md AR), run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6, not on the machine of the rows above: with rechecks/differing/require_in_regex.rb, `--strict-require` stops the build ("cannot load such file", naming the text of the regex), and without the flag the build warns that the require is ignored and the program prints `no match`, where CRuby prints `db`. 2026.11.04.7026 did the same in the same run. |
+| 123 | **Still there** (docs/spinel-feedback.md AS), run on 2026-11-21 on the same Linux machine and tools as row 122: rechecks/differing/env_nonliteral_key.rb, built with `spinel -I .` from the repository root (the framework at 79b38b68), prints `set: CYBERTRAIN_RECHECK_HOST` and `unset: default`, as 2026.11.04.7026 did in the same run; the value, `0.0.0.0`, was expected. Not reduced. |
+| 124 | **Still there** (docs/spinel-feedback.md AY), found and run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6: rechecks/differing/raising_helper_beside_lambda.rb prints `["no a", "no b"]` under CRuby and does not build, exit 1: `raising_helper_beside_lambda.rb:38: error: incompatible types when assigning to type 'sp_RbVal' from type 'const char *'`, line 38 being the `yield` of `g`, then `spinel: C compilation failed`. With `Rel.new("")` as a second line of `C.unknown` it builds and prints CRuby's line, and so does either of its two `out <<` lines alone. In the framework: test/console.rb with the typed values removed from `Console.unknown_model` and `unknown_record` does not build, the same error at test/console.rb:422, the `yield` of `message_raised` (4 times, in `_proc_main_15`); with them it passes. Row 79 has what else was built without the two values that day. |
+| AX (no rule) | **Still there** for an innermost empty container, found and run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6: rechecks/differing/json_parse_nesting.rb. CRuby prints "depth 100 parses, depth 101 raises JSON::NestingError: nesting of 101 is too deep" for Arrays around `1`, for Arrays with nothing inside and for Objects around `1`; the same with 10 and 11 under `max_nesting: 10` and with 300 and 301 under `max_nesting: 300`; and "every depth up to 400 parses" under `max_nesting: 0`. Built by 2026.11.15.7033 the program prints those lines but for two: "arrays, the innermost empty: depth 101 parses, depth 102 raises JSON::NestingError: nesting of 101 is too deep", and under `max_nesting: 10` "depth 11 parses, depth 12 raises JSON::NestingError: nesting of 11 is too deep". A second program, not saved, gave the same for an empty Object: 100 Arrays around `{}`, 100 Objects around `{}` and 100 Objects around `[]` raise "nesting of 101 is too deep" under CRuby and parse on 2026.11.15.7033. This is `JSON.parse`; `JSON.generate`'s limit (rules 33 and 61, test/server.rb's `/deep`) is another matter and was not part of this run. |
+| 1, 3 to 16, 18 to 24, 26, 28 to 32, 34 to 47, 50, 51, 53, 55 to 60, 62 to 77, 84, 85, 87, 95, 98, 99, 102, 103, 105, 106, 108, 111, 113 to 115, 118 to 121 | Not re-checked on this pin with a program of their own. Their status on 2026.11.04.7026 is in the next section, "On 2026.11.04.7026"; it is not carried over. The saved probes that hold a shape of some of them were run on 2026-11-21: the last row. |
+| rechecks/run.sh | Run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`, CRuby 3.3.6): all nineteen programs of rechecks/ compiled and printed their `.expected`. That is a **Probe passes** for each section's own small shape, with the limits spikes/rechecks/README.md states, for the shapes of rules 1 to 12, 14, 17 to 21, 26 to 35, 37, 39 to 48, 50 to 55, 60 to 62, 69, 72, 86 and 104 that those programs hold (for 2, 17, 27, 52, 54, 72, 86 and 104 only the half that already matched CRuby on 2026.11.04.7026). 2026.11.04.7026 was not run beside it that day. Run again on 2026-11-21 on the same machine and tools, after rechecks/nil_only_puts_openssl.rb, rechecks/float_range_boxed.rb and rechecks/builtin_superclass_with_module.rb moved up from rechecks/differing/ (rows 78, 86 and 104): all twenty-two programs compiled and printed their `.expected`. With those three the run also holds the shape of rule 78 and the halves of 86 and 104 that failed on 2026.11.04.7026 (a Range of Dates, row 86, is not in a saved program). Run once more on 2026-11-21 on the same machine and tools, after rules 33 and 61 were closed, rechecks/json_nesting_shapes.rb was deleted and the section of 33 and 61 left rechecks/json_error_shapes.rb (rows 33 and 61): all twenty-one programs compiled and printed their `.expected`. |
+
+### On 2026.11.04.7026
+
+Checked on 2026-11-04 with Spinel 2026.11.04.7026 (a2d06115f), then the pinned
+`Cybertrain::SPINEL_TAG`, built from source, by compiling each re-checked
+rule's reduced program (or, where the rule has none, a small probe of the
+shape it describes; the rules marked "Not re-checked" were not run) and
+comparing its output with CRuby 3.3's. The recorded 2026-11-04 run passed
+106 of 106 framework programs; this is a historical count, not the current
+suite size or a new test result. Later entries state their own observation dates.
+The 2026-11-11 document audit checked all 98 rule IDs for status coverage; it
+did not re-run all 98 behaviours. Records 99 to 124 were added after that
+audit, each with its own status row. Fresh, saved probes are described in
+spikes/rechecks/README.md; the rows dated 2026-11-15 rest on the probes of
+that day, saved as described there.
+
+| Rule | On 2026.11.04.7026 |
+| --- | --- |
+| 1 | Computed `send` over 150 method names and `respond_to?` pass a probe; the compiler documentation caps such dispatch at 1024 arms. The original 128-literal limit is historical. `public_send`, `instance_variable_get` and `const_get` with a non-literal name also pass a probe (2026-11-15, rechecks/dispatch_shapes.rb: two methods, two ivars, two constants, not an application's worth); the generated-dispatch policy remains. |
+| 2 | **Still there** for a stored block (2026-11-15): `class C; def initialize; @v = 5; @blk = proc { 1 }; end; def keep(&blk); @blk = blk; end; def run = instance_exec(&@blk); end; c = C.new; c.keep { @v + 1 }; puts c.run` prints 6 under CRuby and is refused by Spinel ("unsupported call: CallNode `instance_exec`"); with `instance_eval(&@blk)` the refusal names `instance_eval`. A Proc held in a local and handed in as an ordinary argument (`def run(blk) = instance_exec(&blk)`) is refused too ("instance_exec/instance_eval of a proc parameter some call site hands a value spinel cannot trace to a proc literal"). A block parameter given a literal block at its call site (`def run(&blk) = instance_eval(&blk)`) and a literal block (`instance_exec(2) { \|x\| @v * x }`) compile and run (rechecks/dispatch_shapes.rb). The framework's callbacks are stored, so the policy is unchanged. |
+| 7, 9, 10/34, 14, 29, 31, 40, 42, 55, 67, 68 | Probe passes. 7, 9, 10/34, 14, 29, 31, 40, 42 and 55 again on 2026-11-15, now saved: rechecks/type_shapes.rb (7, 9, 10/34, 14, 29), rechecks/dispatch_shapes.rb (31, 40, 42) and rechecks/container_shapes.rb (55: an append through a reader, a list element and a narrowed boxed value reaches the stored String). |
+| 43 | Probe passes for both parts (2026-11-15): an `attr_accessor :body` writer beside another class's `def body=`, on boxed receivers, and a writer that calls a `Cast.time_or_nil`-shaped helper, given a Time and a String or only ever a Time (rechecks/type_shapes.rb, where the two writers share the helper; the probe in which nothing else called the helper was not saved). Generated models keep `attr_accessor`. |
+| 8 | Probe passes (2026-11-15, rechecks/type_shapes.rb: with `when Array`, `when Hash`, `when String` and `when Integer` first, Times taken from an Array and from a Hash's values reach `when Time`, and `Array === time` is false). **Retired in part** on this pin: the `when Time` arms that only repeated the `else` (or the no-match) result are gone from cast.rb, relation.rb and validator.rb; test/query_extras.rb and test/validators.rb pass a Time through each of those `case` statements (`when Array`, `when Hash`, `when Date`, `when Range`, the numeric arms). So are those in html.rb (`tag_attributes`, `attribute_html`, `add_class_words`), template/form_builder.rb (`text_list`, `choice_option`, `group_choices?`, `options_html`'s element test, `collection_options`), `Helpers#safe_join` and template/interpreter.rb (`exec_each`, `blank?`, `index`, `zip`, `flatten_into`); test/form_tags.rb and test/template_interpreter.rb pass a Time through each. The arms with a body of their own, and those in console/printer.rb and dev/error_page.rb, were not re-checked and stay. Two later changes took out more arms that only repeated the fall-through, and their commit messages name the compiled tests left unchanged: "Views: drop the Time guard arms that only repeat the fall-through" (2026-11-15: `render_helper`, `render_collection` and `render_records` in template/helpers.rb, `ComponentCollection#initialize`, the interpreter's `block_value`) and "Rendering: drop turbo_stream_text's Time arm" (2026-11-20). |
+| 12, 18, 26, 47, 53, 73, 74 | Reduced program passes (18: the class variable is also marked as a GC root, see 64). 47: `is_a?` on a superclass after `rescue StandardError`, with the raised class chosen at run time, passes in rechecks/exception_shapes.rb (2026-11-11), and again for the rule's own example (`QueryTooDeep` caught by `rescue StandardError`, `is_a?` its superclasses true, `KeyError#is_a?(IndexError)` true) in phase 5a (2026-11-12, Tasks 1 and 7). 47's last sentence (a `begin ... ensure ... end` ending a block) passes as a probe. 26 and both parts of 47 were run again on 2026-11-15 (rechecks/type_shapes.rb, rechecks/rescue_shapes.rb). |
+| 54 | **Split.** For user-defined classes, walking `e.class` / `.superclass` after `rescue StandardError` gives CRuby's full chain (rechecks/exception_shapes.rb, 2026-11-11). **Still there** for a package exception: `begin; JSON.parse("{"); rescue JSON::ParserError => e; puts e.class.superclass.name; end` prints `JSON::JSONError` under CRuby, but under Spinel it raises "undefined method 'superclass' for module JSON::ParserError (NoMethodError)" (checked 2026-11-11). A fallback that walks ancestor names is still unavailable for such classes. Rule 104 is the same failure for Ruby's own exception classes, and its row says in which programs it was seen. |
+| 25 | **Still there**, by design (docs/spinel-feedback.md D). |
+| 28 | Probe passes: `URI.decode_www_form_component("%ZZ")` raises ArgumentError as under CRuby; so do `a%`, `%4` and `%` (2026-11-15, rechecks/io_shapes.rb). |
+| 32 | The shape described (a yielding method with `rescue => e` called from a block nested in another block) compiles and runs, also when the inner block only raises (2026-11-15, rechecks/rescue_shapes.rb). What still fails is rule 79's narrower trigger, the value of such a call appended (`out << g { raise "b" }`). Rule 45's shape passes as a probe (2026-11-13, docs/spinel-feedback.md 1.2; again 2026-11-15, see 45). |
+| 38 | Not a Spinel rule: CRuby raises NoMethodError too (a protected method is callable only with an instance of the class as `self`, not from a class method). |
+| 44 | Probe passes for each part (2026-11-13, docs/spinel-feedback.md 1.2; again 2026-11-15, rechecks/rescue_shapes.rb): `break` out of a block whose `yield` sits inside `begin/rescue`, `return` in a block given to a user-defined yielding method (it leaves the enclosing method, as under CRuby), and `break` in a block forwarded as `&block`. `DB.transaction`'s block still must not `break` or `return`. |
+| 46 | `Class#name` now carries the namespace, as under CRuby, for a rescued `JSON::ParserError` and for user-defined nested classes (rechecks/exception_shapes.rb, 2026-11-11). A Hash literal of Strings later given an Integer and an Array works as a probe (2026-11-15, rechecks/type_shapes.rb, which also recurses 5,000 small frames deep on a Thread); the depth at which nested template renders overflow a thread stack was not re-measured. |
+| 48 | Probe passes: `klass = JSON::ParserError` is a value and `rescue klass` catches with it, and passing the constant to a registering class method from a class body works (2026-11-15, rechecks/json_error_shapes.rb). The framework's own `rescue_from(JSON::ParserError)` has no test in `test/`; on 2026-11-20 rechecks/differing/rescue_from_json_error.rb compiled and ran it on `Cybertrain::Controller`: a block handler and a `with:` handler each answer for an action's `JSON.parse("{")`, and with no handler the error is re-raised out of `process`. Three small controllers in one program, `-O 0`, compiled side only (the header says why). |
+| 49 | **Still there**: decoding e-acute + 50,000 / 100,000 / 200,000 bytes takes 224 / 855 / 3,668 ms (quadratic). |
+| 51 | Probe passes for both parts (2026-11-15 for the second; rechecks/container_shapes.rb): `Hash#keys` next to a user class's `keys` dispatches, and one class's readers doing `key.to_s` take Symbol and String keys in one program. The rule was seen in test/router.rb with the framework's `Params` and never reduced, so not conclusive. |
+| 52 | **Still there**: `"a=1&\x81b=2".byteindex("b", 4)` returns 5 where CRuby raises IndexError, and `" x\x81 ".strip` returns the String where CRuby raises Encoding::CompatibilityError (2026-11-15, rechecks/differing/invalid_utf8.rb). `split` on such a String now raises ArgumentError as under CRuby, and `index` with a String needle raises on neither (rechecks/invalid_utf8_shapes.rb). |
+| 56 | `String#to_sym` is hashed since 2026.10.25-7018 (docs/spinel-feedback.md); the rest was not re-checked. |
+| 60 | Reduced program passes (the NUL byte and what follows are kept). |
+| 61 | Probe passes: `rescue JSON::ParserError, StandardError` catches `JSON.generate`'s NestingError, and so does `rescue StandardError` alone (2026-11-15, rechecks/json_error_shapes.rb); `rescue JSON::ParserError` alone catches it too, and on a Thread it is caught and the `ensure` runs (rechecks/json_nesting_shapes.rb). **Retired** as a clause with 33 on 2026-11-20, see there; what the rule says about an escaped thread's `ensure` was not re-run. |
+| 62 | Reduced program passes: with `require "openssl"`, `getbyte` on a boxed String prints 97, and the C has no `sp_nomethod_msg("getbyte"` switch. |
+| 66 | Reduced buffer-append program passes. The separate `TimeZone#name` collision in the whole framework was not re-checked; do not treat it as cleared. |
+| 64, 65 | Marked / rooted in the shape checked (docs/spinel-feedback.md, "From spikes/NOTES.md"). |
+| 69 | Probe passes in a small program (2026-11-13, docs/spinel-feedback.md 1.2; again 2026-11-15, rechecks/block_call_shapes.rb): a `&block` method with `ensure` or `rescue` compiles and runs them, and a Proc passed two levels down is called with a user-class argument whose method the block calls. The rule was seen in the framework (DB.transaction -> Pool -> Connection), so not conclusive; the framework keeps the one-level form. |
+| 70 | Probe passes in a small program; the rule was seen only with the whole framework required, so not conclusive. The aliased short name was not run again. Seen beside it on 2026-11-20: three clauses that named `Cybertrain::DB::Error` in full ahead of `StandardError` (`Poller.tick`, `HealthCheck.feed_rows`, `FeedTableWriter#status_withdraw`) are `rescue StandardError` alone and still catch it compiled (test/health.rb and test/features_feeds.rb drop the status table and get the fail-open answer). That shows a `DB::Error` is caught as a `StandardError` there, not that a short name matches. |
+| 71 | As recorded (2026-11-15, `spinel --emit-rbs`): `case v when Hash then v else {} end` is `(untyped) -> untyped`, and the copy into a seeded Hash is `(untyped) -> Hash[String, untyped]`. An inference fact, not a miscompile. The program is short enough to stay in the rule; it is not saved, since `run.sh` compares output and not signatures. |
+| 72 | Probe passes for six parts on Linux (2026-11-15 for the last four; rechecks/outbound_socket_shapes.rb): an unresolvable name raises SocketError, `entry[3]` indexes a `getaddrinfo` entry, `IPSocket.getaddress` and `Addrinfo.tcp` exist, a second `connect_nonblock` on a refused socket raises `Errno::ECONNREFUSED` (its message has strerror text, worded "Connection refused @ connect - " where CRuby says "Connection refused - connect(2) for 127.0.0.1:1"), and `Errno::ECONNREFUSED::Errno` compiles. **Still there**: `connect_timeout:` is ignored (docs/spinel-feedback.md O; on 2026-11-19 `TCPSocket.new("127.0.0.1", port, connect_timeout: 1)` against a full `listen(0)` queue raised IO::TimeoutError after a second under CRuby and was still waiting compiled when it was killed after 20). `Socket#bind(sockaddr)`, the openssl package notes and macOS were not re-checked. |
+| 75 | Probe passes: Kernel `spawn` and `Process.spawn` compile and `Process.wait` reaps the child. `VACUUM INTO` was not re-checked. Phase 4a relies on it: test/rate_limit_store.rb spawns its own binary with `Process.spawn` and reaps it with `Process.wait(pid)` (2026-11-10). |
+| 76 | Matches CRuby: a bare `DB` outside `module Cybertrain` raises NameError, as under CRuby. The rule stays: such code must spell `Cybertrain::DB`. |
+| 77 | **Retired workaround** since 2026.10.27.7020; reduced program passes on this pin and `test/db_with_value.rb` covers both forms. |
+| 78 | **Still there** for the reduced program (docs/spinel-feedback.md K; rechecks/nil_only_puts_openssl.rb fails in the C compiler, 2026-11-15 and 2026-11-19). The framework no longer shows it: with `@io.puts(line)` put back into `Logger#write_now`, the rule's three lines and test/logger_tls.rb both compile at `-O 0`, and the test matches its snapshot (2026-11-19). So test/logger_tls.rb does not fail without the workaround today; the workaround stays because the reduced program fails. |
+| 79 | **Still there**: found on this build (its reduced program does not compile), and not new in it: the same program fails the same way on 2026.10.27.7020 and 2026.11.03.7025 (checked 2026-11-05; docs/spinel-feedback.md, "Rule 79"). |
+| 80 | **Still there**: found on this build, and re-run on 2026-11-13: at `SPINEL_WORKERS=1` a foreign call holds the worker, with or without `blocking: true` (docs/spinel-feedback.md AB). The option is no longer ignored on this build: it takes the worker out of the collector's stop for the call. |
+| 81 | **Still there**, recorded on this build in phase 1: a relative rescue path can swallow an exception; use a defined, fully qualified class. Not freshly re-run by the document audit. |
+| 82 | **Still there**: found on this build (its reduced program, a lambda literal in a module-body ivar called with an argument, prints garbage for the argument). |
+| 83 | **Still there**: found on this build (a pty shows the prompt only after the line is read; docs/spinel-feedback.md M). |
+| 84 | Compiler refusal by design, checked 2026-11-05 on this pin; not a runtime Ruby-equivalence claim. |
+| 85 | Not a defect: found on this build, `Queue#pop(timeout:)` behaves as under CRuby. |
+| 86 | **Still there** (re-run 2026-11-15, rechecks/float_range_boxed.rb): a Range of Time raises TypeError when built, and a Float Range held in a Hash value or passed through a parameter that takes other types is not matched by `when Range`. A String Range in the same two places is matched, as an Integer one is (rechecks/container_shapes.rb). Only Integer bounds go through the supported query path; other bounds use `where_between`. |
+| 87 | Supported capability on this pin: Ruby-defined class methods on `Time` are exercised by `test/time_ext.rb`; not a defect. |
+| 88 | **Still there**: found on this build (its reduced program, a block registered in a subclass calling a method the base class stubs, runs the stub). Narrowed on 2026-11-13 (rule 111): the trigger is the block being written in the subclass's body before the override's `def`; the same block at top level, after the `def`, or capturing a base-class receiver elsewhere dispatches. |
+| 89 | **Still there**: found on this build (its reduced programs, `rescue Outer::Missing` beside a top-level `Missing`, and `rescue Outer::Gone::TimeoutError` beside another `TimeoutError`, differ from CRuby). |
+| 90 | **Still there**: found on this build (its reduced program, `C.str(yield)` with a String block at one call site and an Integer block at another, runs the first block twice). |
+| 91 | **Still there**: found on this build (its reduced program, `exit(1)` on a thread spawned through a method while the main thread sleeps, prints the main thread's line and exits 0). |
+| 92 | **Still there**: found on this build (the refusal is by design, as rule 84's is). |
+| 93 | **Still there**: found on this build (its reduced program prints `true false`; CRuby prints `false false`). |
+| 94, 96, 97 | **Still there**: found on this build (phase 4a, 2026-11-10 to 2026-11-11). |
+| 95 | Works on this build: a record of a form that compiles, not of a defect. |
+| 98 | Tool behaviour, checked 2026-11-11: generated C inside a package is refused as input and can invalidate builds. Keep probe outputs outside the package. |
+| 99 | **Not a Spinel defect** (corrected 2026-11-13; recorded on 2026-11-11 as "still there", issue #188): `dup` on a user-defined class is a shallow copy that shares Array ivars, and CRuby's `dup` is shallow in the same way. A probe prints `2 2 0 5` under CRuby 3.3.6 and compiled by this build alike, and a class's `initialize_copy` is called on both (docs/spinel-feedback.md, "Written up on 2026-11-13"). The generated `<Model>Relation#dup` (D72) is what a branching relation needs under either runtime; test/relation_dup.rb fails without it. |
+| 100 | **Still there**: found on this build (2026-11-11, issue #189): `Float#round(n)` on a Float narrowed by a `case` in a method whose scale is a parameter rounds the binary product (1.005 at scale 2 is 1.0; CRuby and a Float local answer 1.01). `Cast.round_digits` (D73) rounds on the decimal digits instead; spikes/decimal/float_round.rb prints both, and test/decimal_contract.rb fails without it. |
+| 101 | **Still there**: found on this build (phase 4b spike, 2026-11-11; spikes/phase4b/locale_hash.rb). |
+| 102, 103 | Work on this build: records of forms that compile (phase 4b spike, 2026-11-11), not of defects. |
+| 104 | **Still there** in a program that defines a module (2026-11-15, rechecks/builtin_superclass_with_module.rb): with `module Pkg; end` in the program, `e.class.superclass` for a rescued `ArgumentError` or `RuntimeError` raises NoMethodError. The same program without the module line walks the chain as CRuby does (rechecks/builtin_superclass_no_module.rb). A class the program defines walks its whole chain, built-in ancestors included, in the program where the built-in start fails. spikes/phase5/assert_raises.rb holds the workaround (`BUILTIN_PARENTS`) and prints what CRuby prints; it is not the reproduction. |
+| 105 | Compiler behaviour checked on this build (phase 5a, 2026-11-12): the refusal depends on whether the name is defined anywhere; not a defect. |
+| 106 | Works on this build: a record of a form that compiles (phase 5a, 2026-11-12), not of a defect. |
+| 107 | Build-mode behaviour recorded on this build (phase 5a, 2026-11-12); the empty release backtrace is still there. |
+| 108 | Tool behaviour, checked 2026-11-12: spin's freshness check for `bin/gen` counts test files and gen's outputs as inputs. |
+| 109 | **Still there**: found on this build (phase 5a, 2026-11-13; spikes/phase5/nil_default_time.rb). |
+| 110 | **Still there**: found on this build (phase 5a, 2026-11-13; spikes/phase5/case_nullable_temp.rb does not compile). |
+| 111 | Works on this build (2026-11-13): a record of a form that compiles and dispatches, the feature registry of the optional subsystems (docs/design.md D85, cybertrain/feature.rb), not of a defect. |
+| 112 | Runtime behaviour, checked 2026-11-13 on this pin (spikes/phase5/flock_fstat.rb): `File#flock` matches CRuby; `File#stat` and `IO.for_fd` do not. |
+| 113, 119 | Work on this build (phase 5b, 2026-11-13): records of forms that compile and behave as under CRuby, not of defects. |
+| 114 | Found on this build (phase 5b spike, 2026-11-13): how green threads are scheduled at one worker, not a defect. |
+| 115 | Performance observation on this build (phase 5b spike, 2026-11-13), with the limits its entry lists; not re-measured with wrk or a slow reader. |
+| 116, 117 | **Still there**: found on this build (phase 5b, 2026-11-13) and reduced on 2026-11-14 (spikes/phase5/stringio_threads.rb, queue_in_array.rb). |
+| 118 | How a thread test is written: CRuby hides the race, not a Spinel defect (phase 5b, 2026-11-13). |
+| 120 | Tool behaviour, seen 2026-11-13: spin's freshness check for a test binary compares modification times. |
+| 121 | Works on this build: a record of a form that compiles and runs (phase 5b follow-ups, 2026-11-14; test/framework_names_compiles.rb), not of a defect. |
+| 122 | **Still there**, reduced on 2026-11-15 to three lines (in the rule; rechecks/differing/require_in_regex.rb): a require-shaped line inside a regex literal stops a `--strict-require` build, and without that flag the build passes with a warning and the match fails where CRuby's succeeds. |
+| 123 | **Still there**: found on this build (2026-11-15; rechecks/differing/env_nonliteral_key.rb, again 2026-11-19), in a program that requires two framework files; correct once cybertrain/core is required first. Not reduced (docs/spinel-feedback.md AS). |
+| 124 | **Still there** (docs/spinel-feedback.md AY): run on 2026-11-21 as the control of row 124 above, same machine and tools. rechecks/differing/raising_helper_beside_lambda.rb does not build with this build either, with the same error at the same line, and builds and prints `["no a", "no b"]` once `C.unknown` has a typed value after its `raise`. test/console.rb with the typed values in place passes built by this build; it was not built here without them in its final form. |
+| AX (no rule) | **Still there**, and differently (docs/spinel-feedback.md AX): run on 2026-11-21 as the control of the row AX above, same machine and tools. Built by this build, rechecks/differing/json_parse_nesting.rb prints "depth 200 parses, depth 201 raises JSON::ParserError: nesting too deep" for Arrays around `1` and for Objects around `1`, with no option and under `max_nesting: 10`, `max_nesting: 0` and `max_nesting: 300` alike, and "depth 201 parses, depth 202 raises JSON::ParserError: nesting too deep" for Arrays with nothing inside, with no option and under `max_nesting: 10`: a fixed limit of 200 levels, `max_nesting:` without effect, the error a ParserError, and an innermost empty Array not counted. The unsaved second program printed `ok` for its three documents. |
+| 3, 19, 20, 21, 30, 33, 45, 50 | Probe passes (2026-11-13, docs/spinel-feedback.md 1.2; again on 2026-11-15, saved in rechecks/dispatch_shapes.rb (3, 30), io_shapes.rb (19), socket_bare_readpartial.rb (20), socket_shapes.rb (21), json_error_shapes.rb (33) and rescue_shapes.rb (45, 50)). 20: at `SPINEL_WORKERS=1` another green thread keeps running while one sits in a bare `readpartial` on an idle connection; the `wait_readable` stays, since its nil return is the idle timeout. 33: `rescue StandardError` and a bare `rescue` catch `JSON::ParserError`, and `rescue StandardError` catches `JSON.generate`'s `JSON::NestingError`. 33 and 61 are **retired in part**: the change "DB: rescue StandardError alone in the data layer's rollback arms" (2026-11-15) took the three-class clause out of db.rb, db/cli.rb, db/connection.rb, db/pool.rb and model.rb, checked there with a whole-framework compiled program and the transaction tests it names; Since 2026-11-20 no file under `cybertrain/` has the three-class clause (`git grep -n 'JSON::ParserError, StandardError' cybertrain` prints nothing). Four changes of 2026-11-19 and 2026-11-20 removed it, each with compiled tests whose snapshots did not change: the scheduler, the job executor and worker and the console, with test/json_rescue_background.rb added as the regression (a job handler, scheduled tasks, job threads and plain Threads raising both errors); the HTTP server, WebSocket and ErrorReporter files, with test/server.rb's `/json` and `/deep` cases; the controller, the middleware, Session and Flash (test/controller.rb, error_pages.rb, request_id.rb, session.rb, flash.rb); and dev/error_page.rb, dev/indicator.rb and test/database.rb (test/dev_error_page.rb, dev_indicator.rb, test_database.rb). Of the tests in `test/`, json_rescue_background.rb, server.rb and dev_error_page.rb (a body that does not parse, in `ErrorPage.json_dump`) raise a JSON error into a changed clause; for the controller and middleware clauses and for `Dev::ErrorPage#call` that was shown by compiled programs that were not saved (their commits describe them). `Cast.parse_json` still names the two JSON classes, in two arms and without `StandardError`; it was not changed (it was on 2026-11-21, on 2026.11.15.7033: one `rescue StandardError`, with a case in test/cast_types.rb that sends a malformed document and one nested 300 deep through it; the same case passed compiled by this build too, in a scratch copy of the tree). All of this is as `spin test` builds a program, on Linux x86_64, without GC stress. The other workarounds of this row stay until a change removes each with a test of the framework's own shape. |
+| 4, 5, 6, 35, 39, 41 | Probe passes (2026-11-15; rechecks/dispatch_shapes.rb for 4, 5 and 6, rechecks/type_shapes.rb for 35, 39 and 41): an inherited class method called as `self.class.foo`, a base chain method returning `self` with a subclass's typed `first`, `Method` objects in an Array and a Hash, `obj[k] = v` on a parameter behind a chain of `call(env)` objects, `SafeString#+` with a constructing `case`, and an Array-valued `attr_accessor :target` beside a String `target`. 35 and 41 were seen in the whole framework and never reduced, so this is not conclusive. |
+| 11, 37 | Cost rules, not wrong results. Probe output matches CRuby (2026-11-15, rechecks/type_shapes.rb), and for 11's probe, alone and inside that program, the generated C (`spinel -c`) keeps the two nil-initialised locals typed (`sp_String *`, `sp_oint`), not boxed. 37's generated C was not read. |
+| 17 | **Split** (2026-11-15). A constant assigned with `=` and read before its assignment raises NameError compiled, as under CRuby, at top level, in a module body and in a class body (rechecks/constant_order.rb). **Still there** for a class name: `puts Later.new.hi; class Later; def hi = "hi"; end` prints `hi` compiled and raises "uninitialized constant Later (NameError)" under CRuby. |
+| 27 | **Split** (2026-11-15). `readpartial`, `read(n)` and `read_nonblock` on a socket return ASCII-8BIT byte Strings, as under CRuby (rechecks/socket_shapes.rb). **Still there** for `IO#gets`: `require "socket"; srv = TCPServer.new("127.0.0.1", 0); t = Thread.new { c = srv.accept; c.write("café 日本\n"); c.close }; cl = TCPSocket.new("127.0.0.1", srv.addr[1]); line = cl.gets; puts line.encoding, line.size, line.bytesize; t.join` prints `ASCII-8BIT`, 13, 13 under CRuby and `UTF-8`, 8, 13 compiled. One more difference was seen beside it: appending a socket's bytes (with non-ASCII in them) to a UTF-8 String that holds non-ASCII raises Encoding::CompatibilityError under CRuby and appends compiled (`u = +"é"; u << buf`, not in the saved program, which must match CRuby). Framing by byte stays. |
+| 36 | Probe passes for the one recorded shape, the one test/csrf_conditional.rb's header describes (2026-11-15, again 2026-11-19): `require "cybertrain/params"; require "cybertrain/middleware/session_store"; p = Cybertrain::Params.new; p.set_value("a", "1"); p.set_path(["b", "c"], "2"); puts p["a"].to_s; puts p.key?("a"); puts p.nested("b")["c"].to_s; puts p.int("a", default: 0, min: 0, max: 9)`, which never builds a `SessionStore`, compiles with `spinel -I . probe.rb -O 0 -o /tmp/probe` from the repository root without a diagnostic (about 16 seconds) and prints 1, true, 2, 1, as `ruby -I . probe.rb` does. The result belongs to the framework tree it was built against. The 2026.09.12 program that failed was not kept, and the rule was seen in larger programs and never reduced: not conclusive. |
+| 15, 22, 57 to 59, 63 | Not re-checked. 22 is a measurement (docs/benchmark.md). 58 and 59 are accepted as Spinel constraints (docs/spinel-feedback.md 1 and B). |
+| 13, 16, 23, 24 | Language/tool behaviour recorded in the numbered entries, not a newly re-checked compiler defect. The other such records (38, 76, 84, 85, 87, 95, 98, 99, 102, 103, 105 to 108, 111 to 115, 118 to 121) have their own rows. |
 
 ## What CyberTrain still works around
 
@@ -656,8 +1195,8 @@ CyberTrain moved to 2026.10.27.7020, which carries it (issue #90):
 | test/template_engine.rb settles the layout Hash's value types where it is built (`layout_env`) | refusal under C | the earlier form, through a local, is still refused | still refused at line 49, with #10316 merged; still refused on 2026.10.27.7020 (see "The refusal in test/template_engine.rb") | not needed: the earlier form (`git show 81778ea^:test/template_engine.rb`) passes (#10525). Dropped: the test is back in that form, and `layout_env` is gone |
 | `DB.with`'s comment, and test/db_with_value.rb: an application object computed in a DB.with block goes through a local declared before it (rule 77) | H | required: the block's own value raises NoMethodError on a method call | required: both programs of H still raise `NoMethodError`; fixed on master 003ceda5d (#10415). Dropped on 2026.10.27.7020: `DB.with`'s comment no longer asks for the local, and test/db_with_value.rb also covers the block's own value | dropped (test/db_with_value.rb passes) |
 | `SafeString.of` and binding arguments to locals (rule 58) | 1 | not re-checked, kept | not reproduced in the shapes checked, which 2026.09.12 roots as well (see 1); kept | not re-checked (accepted) |
-| `Logger#log` writes with `@io.write` instead of `@io.puts` (cybertrain/logger.rb, rule 78) | K | required: `@io.puts` does not compile with the TLS layer in the program | not checked | required: `@io.puts` still does not compile. Fixed on master (#11129); goes with the pin's move |
-| `Application#serve` sets `SPINEL_WORKERS` to `workers + 1` when `workers > 1` (`Application.spinel_workers`, cybertrain/application.rb) | L | not checked | not checked | required: `SPINEL_WORKERS=2` starts one helper, which main does not help. Upstream documents `N+1` for such a program (da4485a5), so this row is how Spinel is used, not a debt |
+| `Logger#write_now` writes with `@io.write` instead of `@io.puts` (cybertrain/logger.rb, rule 78) | K | required: `@io.puts` does not compile with the TLS layer in the program | not checked | the nine-line reduced program still does not compile; test/logger_tls.rb builds with `@io.puts` put back (2026-11-19, again 2026-11-20). Fixed on master (#11129); goes with the pin's move |
+| The `server`, `worker` and `feeds` roles set `SPINEL_WORKERS` to `workers + 1` when `workers > 1` (`Application.spinel_workers_for`, cybertrain/application.rb; cybertrain/roles/*.rb) | L | not checked | not checked | required: `SPINEL_WORKERS=2` starts one helper, which main does not help. Upstream documents `N+1` for such a program (da4485a5), so this row is how Spinel is used, not a debt |
 | `Console.run` flushes after the banner and after every prompt (cybertrain/console.rb, rule 83) | M | not checked | not checked | required: without it the prompt appears only after the line is read. Fixed on master (#11193); goes with the pin's move |
 | `Net::TcpStream` connects with `connect_nonblock` + `wait_writable` + `SO_ERROR` (cybertrain/net/socket.rb, rule 72), not `TCPSocket.new(connect_timeout:)`; socket.rb's header and the guides say why | O | not checked | not checked | required: the keyword is still ignored (checked 2026-11-05 here and in Daicho's report). The connect stays for the deadline either way; a fix retires the sentence. Fixed on master (#11183) |
 | `HttpClient` does the TLS handshake and every read itself, with bounded waits (D24), and its header comment and the guides' "why it exists" name Net::HTTP's blocking waits | P | not checked | not checked | required: against a silent TLS peer Net::HTTP does not return (Daicho's report; checked here). Fixed on matz/spinel master dcc46945c; the client stays either way (deadline, address policy), and the comment is revised when the pin carries the fix |
@@ -1279,7 +1818,10 @@ generating wrong code:
   (migration.rb:173), the seeding idiom of rule 9. If the refusal is
   intended, rule 9 needs another idiom; either way CyberTrain has to change
   for it. Not refused any more on 2026.10.26.7019, nor on matz/spinel
-  master since #10261, so the idiom stays.
+  master since #10261, so rule 9's seeding idiom stayed. (The constant
+  itself was removed on 2026-11-15, nothing having read it; the idiom is
+  still what seeds a typed empty container elsewhere, as in
+  cybertrain/model/bulk_writes.rb.)
 
 #### The refusal in test/template_engine.rb
 
@@ -1550,19 +2092,25 @@ p result_of.ok?      # undefined method 'ok?' for an instance of Result (NoMetho
 p Db.with { |c| 1 }  # without this second block, or calling Pool#with directly: true
 ```
 
-The generated C dispatches `ok?` with a `switch` that has only the
-`default:` NoMethodError case; 2026.09.12's has `case <Result>:`. Builtin
+The generated C (`spinel prog.rb -c`) dispatches `ok?` with a `switch`
+that has only the `default:` NoMethodError case; 2026.09.12's has `case
+<Result>:`. In the reported application the class was `LoginResult`, the
+value of a `Cybertrain::DB.with` block, and `r.ok?` raised "undefined
+method 'ok?' for an instance of LoginResult". Builtin
 values (Arrays, Hashes, Integers, Strings, true/false) still dispatch, so
 CyberTrain's own `Cybertrain::DB.with` sites, which return rows and
 Integers, are unaffected, and its 98 test programs pass. An application's
 `DB.with { |c| ... }` that returns its own object breaks, because the
 framework's blocks already make DB.with's value polymorphic. The reporter
 also saw a Boolean block value refused as a condition ("unsupported
-condition (non-bool)") in a larger program; that was not reproduced.
+condition (non-bool)") in a larger program; that was not reproduced, in
+the framework or in small programs.
 
 CyberTrain's workaround while it was pinned to 2026.10.26.7019: DB.with's
 comment said to assign such a value to a local declared before the block
-(as DB.transaction already requires), and test/db_with_value.rb covered
+(`result = LoginResult.new("none"); DB.with { |c| result = ... };
+result`, as DB.transaction already requires), and test/db_with_value.rb
+covered
 that form and a Boolean condition (spikes/NOTES.md rule 77). Since the pin
 moved to 2026.10.27.7020, which carries the fix below, the comment no
 longer asks for it, and the test also covers the block's own value, which
@@ -1870,9 +2418,11 @@ so it entered between 2026.09.12 and 2026.10.27.7020, with #9840.
   onto main (an experiment, not kept) placed them 9 and 8, at the same
   throughput, since the two CPUs were already saturated; the 15-thread
   queue is what a request waits behind.
-- Today: `Application#serve` sets `SPINEL_WORKERS` to `workers + 1` when
-  `workers > 1` (`Application.spinel_workers`), so `SPINEL_WORKERS=2` as
-  CyberTrain reads it starts two helpers again (spikes/NOTES.md rule 22).
+- Today: each of the `server`, `worker` and `feeds` roles sets
+  `SPINEL_WORKERS` to `workers + 1` when `workers > 1`
+  (`Application.spinel_workers_for`, cybertrain/roles/*.rb), so
+  `SPINEL_WORKERS=2` as CyberTrain reads it starts two helpers again
+  (spikes/NOTES.md rule 22).
 - Fix, any of: (a) let main pump general threads while it blocks in
   `#join` / `#value` with helpers present, re-publishing its roots when it
   returns to the root fiber; (b) do not count a main that is blocked in
@@ -1898,7 +2448,8 @@ rules in spikes/NOTES.md. They were looked at on 2026.11.04.7026 on
 2026-11-04: one is still there (K), and the generated C of the other two
 no longer shows the cause in the shape checked. A fourth, rule 79, was
 found on 2026.11.04.7026 on 2026-11-04 and checked against the two
-releases before it on 2026-11-05 (at the end).
+releases before it on 2026-11-05 (at the end). The record of rule 75,
+closed since 2026.11.04.7026, was moved in before it on 2026-11-21.
 
 ### K. `puts` on a nil-only receiver does not compile once the TLS layer is in the program
 
@@ -1911,7 +2462,12 @@ dispatch's fallback does not compile: `passing argument 2 of
 [-Werror=incompatible-pointer-types]`, an `sp_String *` where sp_io.h
 wants a `const char *`. Checked on 2026.11.04.7026 by putting
 `@io.puts(line)` back into `Logger#log` (cybertrain/logger.rb:57) and
-building test/logger_tls.rb, which then fails to build.
+building test/logger_tls.rb, which then failed to build (2026-11-05).
+The method is `Logger#write_now` today, and the framework's program no
+longer shows it: on 2026-11-19, and again on 2026-11-20, test/logger_tls.rb
+built at `-O 0` with `@io.puts(line)` put back and matched its snapshot.
+The reduced program below still fails in the C compiler
+(spikes/rechecks/nil_only_puts_openssl.rb).
 
 Reduced on 2026-11-05 on 2026.11.04.7026 (a standalone class with a
 nil-default `@io` and `require "openssl"` had not reproduced it on
@@ -1955,10 +2511,12 @@ interpolation in place of the parameter.
   was not run with the change, and the `print` arm beside it was not
   looked at. The fork's master (one commit past 2026.11.04.7026) has not
   touched this code.
-- Today: `Logger#log` calls `@io.write(line.end_with?("\n") ? line :
-  "#{line}\n")`, which compiles through the same dispatch with the right
-  argument type; test/logger_tls.rb is the regression program. With the
-  fix released, `Logger#log` could go back to `@io.puts(line)`.
+- Today: `Logger#write_now` calls `@io.write(line)` on a line that
+  `Logger.format_line` ends with a newline, which compiles through the
+  same dispatch with the right argument type. test/logger_tls.rb was
+  written as the regression program and builds either way today (above).
+  With the fix released, `Logger#write_now` could go back to
+  `@io.puts(line)`.
 - Fixed upstream by matz/spinel#11129 ("puts and print on an IO known
   only at run time write a held String's bytes", 8ec94a54, merged
   2026-11-06), read on master 494deaac and not run here. It names the
@@ -1986,6 +2544,43 @@ interpolation in place of the parameter.
   interpolation allocates. There was no AddressSanitizer run, so this is
   not a claim that it is fixed in general; CyberTrain keeps building the
   allocating argument first, in a local (cybertrain/cli/toolchain.rb).
+
+### Rule 75: files and child processes for `db backup`
+
+Moved here on 2026-11-21 from the body of spikes/NOTES.md rule 75, which
+is cut to its record there: the item was closed by the pin moving to
+2026.11.04.7026 ("Item register"). What follows was seen on Spinel
+2026.09.12 for `db backup` (issue #76), except where a later build is
+named.
+
+- Files, which behave as under CRuby: `File.open(path, File::WRONLY |
+  File::CREAT | File::EXCL, 0o600)` creates the file with that mode and
+  raises `Errno::EEXIST` for an existing one; `File#fsync`, `File.rename`,
+  `File.chmod`, `File.stat(path).mode`, `Dir.children` and `Time#strftime`
+  behave the same too (BlobStore already relied on the O_EXCL form).
+- Not Spinel: `VACUUM INTO` must create its output file itself. macOS's
+  SQLite answers "output file already exists" for a pre-created empty
+  file that Linux's accepts, so `db backup` gives it a fresh name inside a
+  0700 directory (docs/design.md D30). This platform difference was not
+  re-checked after 2026.09.12.
+- Child processes, the difference from CRuby: Kernel `spawn` is
+  "unsupported call", and `Process.spawn` compiles but `Process.wait` does
+  not, so a spawned child is never reaped. `system("prog", "arg", ...)`
+  waits for the child without stalling other threads: with
+  `SPINEL_WORKERS=1` the main thread kept ticking every 0.1 s while
+  another thread's `system("sleep 1")` ran.
+- What CyberTrain did, and still advises: an application runs its own
+  binary for heavy SQLite work (`system("./app", "db", "backup", ...)`
+  from a Scheduler task) instead of running a long `VACUUM INTO` on a
+  thread of the server, where the SQLite call would hold its OS worker
+  until it returns. Bounded work and child cleanup still matter.
+- On 2026.11.04.7026 Kernel `spawn`, `Process.spawn` and `Process.wait`
+  pass the recorded probe ("Status by rule", row 75 on 2026.11.04.7026),
+  and the prohibition on `spawn` is superseded: test/rate_limit_store.rb
+  spawns its own binary and reaps it with `Process.wait(pid)`, and
+  `./<app> dbconsole` runs the sqlite3 shell with `Process.spawn` and
+  `Process.wait` (cybertrain/main.rb, docs/design.md D41).
+- Nothing is asked of Spinel.
 
 ### Rule 79: a rescuing method's value does not compile when its block only raises
 
@@ -2016,7 +2611,10 @@ p out
   return a value (`raise "b" if x > 0; "ok"`).
 - Today: nothing in the framework; a test of a rescuing helper gives the
   block a value after the `raise`, or passes the result through a method
-  (spikes/NOTES.md rule 79).
+  (spikes/NOTES.md rule 79). cybertrain/console.rb, added on
+  2026-11-05, cited the rule for the typed value its two raising helpers
+  end in; that value answers another failure, AY ("Tried without the
+  workaround", below).
 - Fix: give a block whose body cannot complete the bottom type at the
   value slot (as the method's own `rescue` value is what the call
   answers), or type the call by the method's return type rather than the
@@ -2028,6 +2626,39 @@ p out
   the String-handle arm. #11143, #11144 and #11145 do the same for a
   block that ends in `exit` or `abort`, that leaves through `next` and
   otherwise raises, and that leaves by `throw`. In no fork tag yet.
+
+#### Tried without the workaround (2026-11-21)
+
+On 2026.11.15.7033 the program above prints `["b"]` ("Status by rule",
+row 79). Three places in the repository gave rule 79 as their reason that
+day, and each was tried written the plain way, in a copy of the
+repository, on Linux x86_64 (gcc 13.3.0, CRuby 3.3.6), with
+2026.11.04.7026 as a control.
+
+- test/test_lifecycle.rb: three test bodies appended a step before they
+  raised. As lambdas that only raise they pass compiled on both builds,
+  and they are written that way since. This was the one workaround that
+  was rule 79's.
+- cybertrain/console.rb: `Console.unknown_model` and `unknown_record`
+  raise UnknownModel and then name a typed value that is never reached
+  (`Relation.new("")`, `Model.new`). With the two values removed, the
+  framework and every test that compiles the console built and passed on
+  2026.11.15.7033 (row 79 names them), and one new case did not build.
+  That failure is not rule 79's: it has another C error, it is on the
+  pin, and it is item AY, where its program and the case are. The values
+  stay, for AY, and the comments cite rule 124.
+- cybertrain/generator/console_emitter.rb: a comment about those two
+  helpers. It cites rule 124 with them.
+
+So nothing is written around rule 79 any more, and the item was closed
+that day ("Item register"). Its shape written the plain way is in
+test/console.rb's case "an unknown model or record raises through a
+rescuing caller": the appended value of a rescuing method whose block is
+`raise "..."`, once among blocks of other kinds and once through a method
+none of whose blocks has a value. That test builds with 2026.11.04.7026
+as well, although the eight lines above do not: what the control makes
+of the line depends on the rest of the program. The reduced program is
+therefore kept, as the one thing that shows the failure.
 
 ### M. `gets` on STDIN does not flush a partial STDOUT line first
 
@@ -2288,11 +2919,11 @@ converting" is the right shape in either mode.
 
 ## Found in phase 2 of the Rails-gap programme (2026-11-06)
 
-The data-layer design (docs/superpowers/specs/2026-11-06-phase2-data-layer-design.md,
-section 14) ran seven checks against 2026.11.04.7026 before any code was
-written; six passed, and this is the one that did not.
+Before the data-layer work (docs/design.md D42 to D50) seven checks were
+compiled against 2026.11.04.7026; six passed, and this is the one that did
+not.
 
-### Q. A Range of Time or Date raises at construction; a Float or String Range is not a Range once boxed
+### Q. A Range of Time or Date raises at construction; a Float Range is not a Range once boxed
 
 CRuby accepts a Range of any comparable ends and `when Range` matches it
 wherever it is held. Spinel 2026.11.04.7026 keeps a Range as two Integers.
@@ -2325,11 +2956,17 @@ test "Time range in a Hash value" do
 end
 ```
 
-The build accepts it. The first two tests fail: `1.5..2.5` and `"a".."z"`
-are not matched by `when Range` once passed through the boxed parameter
-`v`, so `ends_of` answers an empty Array (each in its own test, so one
-failure does not hide the other). The third raises `TypeError: no
-implicit conversion of Time into Integer` when `t1..t2` is built.
+The build accepts it. The first test fails: `1.5..2.5` is not matched by
+`when Range` once passed through the boxed parameter `v`, so `ends_of`
+answers an empty Array. The second passes: a String Range is matched,
+through the parameter and out of a Hash value. The third raises
+`TypeError: no implicit conversion of Time into Integer` when `t1..t2` is
+built. This is the re-run of 2026-11-15 on the pin, in the test harness
+and as a plain program (spikes/rechecks/float_range_boxed.rb,
+and spikes/rechecks/container_shapes.rb for the String and Integer
+Ranges). Until then this section said the String test failed as well;
+the spike's own program of 2026-11-06 is not kept, so whether it differed
+from the one above is not known.
 
 The second program reads the same Ranges directly, with no boxed value:
 
@@ -2359,8 +2996,7 @@ matched by `case ... when Range`, but `Range.new(t1, t2)` raises the same
 `TypeError` as the literal `t1..t2`, and so does a Range of `Date` ends.
 
 - What CyberTrain does with it (phase 2 of the Rails-gap programme,
-  docs/superpowers/specs/2026-11-06-phase2-data-layer-design.md 3.1 and
-  9.1, delivered 2026-11-07): `where(col: a..b)` (cybertrain/relation.rb)
+  docs/design.md D43 and D48, delivered 2026-11-07): `where(col: a..b)` (cybertrain/relation.rb)
   accepts Integer ends only; any other bound goes through
   `where_between(col, from, to)`, and the validator options
   `inclusion: { in: }` / `exclusion: { in: }` take an Integer Range or an
@@ -2371,8 +3007,8 @@ matched by `case ... when Range`, but `Range.new(t1, t2)` raises the same
   (test/time_range.rb, test/time_range_boxed.rb), and docs/limitations.md
   there calls a Range of Dates a Range of objects, with its limits listed
   ("most Enumerable methods" over a boxed one). So the construction
-  `TypeError` should be gone on master. For the Float and String half
-  (`when Range` missing a boxed `1.5..2.5` or `"a".."z"`), master has
+  `TypeError` should be gone on master. For the Float half
+  (`when Range` missing a boxed `1.5..2.5`), master has
   tests of boxed Float and String Ranges but none was matched to the
   first program above. Not reported upstream: run both programs on a fork
   tag that carries master first, and report only what still fails. If
@@ -2381,7 +3017,7 @@ matched by `case ... when Range`, but `Range.new(t1, t2)` raises the same
   for mixed bounds.
 - Sent and merged (2026-11-13): the first program was run on master
   494deaac on 2026-11-12. Nothing raised at construction there (#10998),
-  and the String Range was matched, but the Float Range and the Time
+  the String Range was matched, as on the pin, but the Float Range and the Time
   Range held in a Hash value were not (`[]` and `0`). matz/spinel#11639
   ("A boxed Range of Float, Time or object ends is a Range to when, in
   and a class value", merged 2026-11-12) fixes that: a boxed Range
@@ -2396,9 +3032,11 @@ matched by `case ... when Range`, but `Range.new(t1, t2)` raises the same
 
 ## Found in phase 3 of the Rails-gap programme (2026-11-09)
 
-The jobs-and-outbound design (docs/superpowers/specs/2026-11-07-phase3-jobs-outbound-design.md,
-section 14) ran six checks against 2026.11.04.7026 before any code was
-written; all six passed, and this was found while writing the second.
+Before the jobs-and-outbound work (docs/design.md D51 to D57) six checks
+were run against 2026.11.04.7026 (cron over a DST change, `rescue` arms
+for application classes, respawning a dead thread, the HTTP client with
+zlib linked, a multipart mail, and same-named methods on distinct
+receivers); all six passed, and this was found while writing the second.
 
 ### R. A `rescue` arm naming a qualified class the program does not define
 
@@ -2630,8 +3268,9 @@ ended (checked again on 2026-11-10 with `spinel exit_thread.rb`).
   (cybertrain/background/supervisor.rb) never calls `exit`; after a feed's
   repeated deaths it logs the FATAL line and sets
   `Background.feeds_failed?`, and the `feeds` role's main thread
-  (Application#run_feeds_threads) stops the feeds and returns 1, the
-  status `Main.run`'s caller exits with (spikes/NOTES.md rule 91).
+  (`Roles::FeedsRunner#run_feeds_threads`, cybertrain/roles/feeds.rb)
+  stops the feeds and returns 1, the status `Main.run`'s caller exits
+  with (spikes/NOTES.md rule 91).
 - Fixed on matz/spinel master, read on 494deaac and not run here:
   test/thread_exit_raises_in_main.rb, whose header is this item ("`exit`
   in a thread other than main ended that thread and nothing else ...
@@ -2646,10 +3285,10 @@ ended (checked again on 2026-11-10 with `spinel exit_thread.rb`).
 
 ## Found in phase 4a of the Rails-gap programme (2026-11-10)
 
-The web-layer design (docs/superpowers/specs/2026-11-10-phase4-web-layer-design.md,
-section 12) ran five checks against 2026.11.04.7026 before any code was
-written (spikes/phase4/); all five passed, one with a stub, and these were
-found while writing the third.
+The web-layer work (docs/design.md D58 to D63) ran five checks against
+2026.11.04.7026 before any code was written (spikes/phase4/, deleted
+since); all five passed, one with a stub,
+and these were found while writing the third.
 
 ### U. A `def` inside a block that never runs defines the method anyway
 
@@ -2676,17 +3315,18 @@ around the block, and `C` has it through the include.
 
 - What CyberTrain does with it (phase 4a): a concern's `class_methods do
   def x ... end end` is written by gen as `def self.x` on the concern and
-  a forwarding `def self.x(...)` in each including class (plan decision
-  12); since `x` is also an instance method of every including class
-  under Spinel, gen refuses a `class_methods` name that an instance method
-  of the concern or of an including class has (spikes/NOTES.md rule 93).
-  Since the final fixes of phase 4a (2026-11-11) the refusal also covers
-  the including class's ancestors and its other concerns, and a model
-  concern's `class_methods` name against the model's instance methods,
-  its scopes and the class methods every model has
-  (cybertrain/generator/concerns_emitter.rb, `ConcernScan::RULE_93`): an
-  application author meets this Spinel behaviour as a gen error asking
-  for a rename.
+  a forwarding `def self.x(...)` in each including class (docs/design.md
+  D60), from a copy of the concern whose `class_methods` block is blank
+  (spikes/NOTES.md rules 92 and 93). Until 2026-11-21 gen also refused a
+  `class_methods` name that an instance method of the concern, of an
+  including class, of its ancestors or of its other concerns has, and a
+  model concern's against the model's instance methods. That refusal is
+  removed: with the block blank the compiler never sees the `def`, and
+  test/gen_concerns.rb and test/gen_model_concerns.rb hold each of those
+  shapes, compiled with Spinel 2026.11.15.7033 and answering as under
+  CRuby. gen still refuses a model concern's `class_methods` name that is
+  a scope of the model or a class method every model has, which is not
+  about this behaviour.
 - Asked of Spinel: do not define a method from a `def` in a block that
   the program never calls; or, short of that, define it where CRuby
   would if the block ran (here nowhere on `Gate`'s instances), or refuse
@@ -2733,7 +3373,7 @@ method on the concern would give those names a second return type (rule
 34). So gen does not let Spinel see the blocks at all: it loads each
 concern from a copy in `gen/concerns/` with its `included` and
 `class_methods` blocks blanked, and splices their bodies into the
-including classes (phase 4a Task 7, 2026-11-10; docs/design.md D60).
+including classes (phase 4a, 2026-11-10; docs/design.md D60).
 
 ### V. `strftime` with a built pattern on a Time or Date returns the pattern
 
@@ -2747,10 +3387,12 @@ polymorphic dispatch (`sp_pd_*`) reads the pattern with
 `_sp_ret_strbuf`, which still holds the pattern. The variant that takes a
 `const char*` (a literal pattern) formats correctly.
 
-- What CyberTrain does with it (phase 4a Task 17): `time_tag_strftime`
-  parses the pattern and calls `strftime` with a literal for each
-  directive it supports, applying flags and widths itself, and raises for
-  an unknown directive (spikes/NOTES.md rule 96).
+- What CyberTrain does with it (phase 4a): `Strftime.walk`
+  (cybertrain/strftime.rb; reached from
+  `Template::Helpers.time_tag_strftime` and `I18n.l`) parses the pattern
+  and calls `strftime` with a literal for each directive it supports,
+  applying flags and widths itself, and raises for an unknown directive
+  (spikes/NOTES.md rule 96).
 - Not reduced to a standalone program yet; not reported upstream. Five
   programs tried on 2026-11-11 on 2026.11.04.7026 all format correctly: a method
   `fmt(t, pattern) = t.strftime(pattern)` called with a Time and with a
@@ -2760,8 +3402,11 @@ polymorphic dispatch (`sp_pd_*`) reads the pattern with
   `args[0]`, the pattern from a Hash of mixed values through a `case`
   that returns it, and one helper called from both arms. So the trigger
   is more of the program than the call; the next step is to put
-  `time.strftime(pattern)` back into `time_tag_strftime` and cut
-  test/helpers.rb down around it.
+  `time.strftime(pattern)` back into `Strftime.walk`'s caller
+  (`time_tag_strftime`) and cut test/helpers.rb down around it. AS shows
+  the same stale `_sp_ret_strbuf` on `ENV[name]`, in a short program
+  against two framework files; reducing either should help with the
+  other.
 - Not the same as matz/spinel 612f4ac5 ("Time#strftime builds its result
   in a buffer of the thread's own", 2026-11-08, refs #11352), which makes
   `sp_timev_strftime`'s static result buffer thread-local: here the
@@ -2778,7 +3423,7 @@ the `Views` module and `@name` a String ivar; the same call with a fresh
 local (`name = "#{@name}"`) builds. It showed only in the blog's
 program, so the trigger needs more of a program than that line.
 
-- What CyberTrain does with it (phase 4a Task 17): `Component` passes the
+- What CyberTrain does with it (phase 4a): `Component` passes the
   interpolated local (spikes/NOTES.md rule 97).
 - Not reduced; not reported upstream.
 
@@ -2790,7 +3435,7 @@ with "type inference did not converge in 128 rounds" after one change to
 `app/controllers` in locals and passing both to two emitters. Bisected to
 that change.
 
-- What CyberTrain does with it (phase 4a Task 5): each emitter scans
+- What CyberTrain does with it (phase 4a): each emitter scans
   `app/controllers` for itself (`Runner.controllers_source`,
   `concerns_source`), so the directory is read twice (spikes/NOTES.md rule
   94).
@@ -2839,9 +3484,10 @@ Integer default, so `H.new` was handed the object as an Integer.
   so does a literal passed positionally to a setter at top level (rule
   82; what gen/helpers.rb does).
 - What CyberTrain does with it: every stored lambda of the framework is
-  made in a method: `Views.default_helpers_builder` (cybertrain/views.rb),
-  `Assets.empty_resolver` (cybertrain/assets.rb), `Cache.system_clock`
-  (cybertrain/cache.rb). An application that writes `@x = ->(a) { ... }`
+  made in a method: `Views.default_url_resolver`,
+  `Views.default_helpers_builder` and `Views.default_component_builder`
+  (cybertrain/views.rb) and `Assets.empty_resolver`
+  (cybertrain/assets.rb). An application that writes `@x = ->(a) { ... }`
   in a module body of its own meets it with nothing to point at the
   cause.
 - Asked of Spinel: type the parameters of a lambda stored by a
@@ -2890,11 +3536,16 @@ compiled program prints `"sub"` (checked here), and a call on implicit
 self inside a `Base` method dispatches to the override as expected (rule
 88).
 
-- What it takes: a block stored and later called with `self` from a
-  base-class method, calling a method that both the base class and a
-  subclass define. The block's parameter is typed from the call site in
-  `Base#run`, as a `Base`, and the call in the block is bound to
-  `Base`'s method instead of being dispatched on the object's class.
+- What it takes: a block written in a subclass's body before that
+  subclass's `def` of the method it calls, stored, and later called with
+  `self` from a base-class method, the method being defined on both
+  classes. With the `add { |r| r.hook }` line moved below `def hook =
+  "sub"` the compiled program prints `"sub"`, and so does the same block
+  registered at top level after both classes (found 2026-11-13,
+  spikes/NOTES.md rule 111; re-run 2026-11-15). The block's parameter
+  is typed from the call site in `Base#run`, as a `Base`, and the call in
+  the block is bound to `Base`'s method instead of being dispatched on
+  the object's class.
 - What CyberTrain does with it: no method that only stored blocks call
   has a stub on its base class: the generated `counter_cache_created` /
   `_destroyed` / `_was` / `_moved` are not on `Cybertrain::Model`
@@ -2906,8 +3557,9 @@ self inside a `Base` method dispatches to the override as expected (rule
   format blocks (cybertrain/format_collector.rb), a controller's
   `content_security_policy` block (cybertrain/controller.rb), a Turbo
   Stream builder's block (cybertrain/template/turbo_stream_builder.rb).
-  An application's own `before_save { |r| r.x }` is safe only because
-  `x` has no definition on `Cybertrain::Model`.
+  An application's own `before_save { |r| r.x }`, which is normally
+  written above `def x`, is safe only because `x` has no definition on
+  `Cybertrain::Model`.
 - Asked of Spinel: dispatch a call on a block parameter by the object's
   class when the parameter's static class has subclasses that override
   the method, as a call on implicit self already does. On master,
@@ -2949,7 +3601,7 @@ the top either way.
 ## Build time, measured on 2026-11-12
 
 Measured for the development flow of an application
-([the spec](superpowers/specs/2026-11-12-dev-flow-bottlenecks-design.md)):
+([performance-next.md](performance-next.md), "The development flow"):
 CyberTrain 34c9b7e, Spinel 2026.11.04.7026, a 4-core x86-64 Linux VM
 (Ubuntu 24.04, gcc 13.3). Nothing here is a wrong result. It is the time a
 developer waits after each edit, and most of it is not CyberTrain's to
@@ -3400,10 +4052,11 @@ by design.
 
 ## Found in phase 4b of the Rails-gap programme (2026-11-11)
 
-The i18n and authentication part of the web-layer design
-(docs/superpowers/specs/2026-11-10-phase4-web-layer-design.md, section 12,
-item 6) ran four checks against 2026.11.04.7026 before any code was
-written (spikes/phase4b/); all four passed, and this was found while
+The i18n and authentication part of the web-layer work (docs/design.md
+D79) ran four checks against 2026.11.04.7026 before any code was
+written (spikes/phase4b/; the YAML reader's programs deleted since, the
+generator's own reader and test/locale_yaml.rb having replaced them); all
+four passed, and this was found while
 measuring the second.
 
 ### AI. A large Hash literal constant takes cc 13 s
@@ -3457,18 +4110,20 @@ compares with generated UTF-8 through `LineDiff.as_utf8`.
 
 ## Found in phase 5a of the Rails-gap programme (2026-11-12)
 
-The tests part of the phase 5 design
-(docs/superpowers/specs/2026-11-11-phase5-tests-operations-design.md,
-section 16) ran six checks against 2026.11.04.7026 before the code
-(spikes/phase5/), and the eighteen tasks after them met the rest. Four
-items are new; spikes/NOTES.md has them as rules 104, 107 and 108, and the
-measurement behind AK.
+Phase 5a (docs/design.md D81 to D84) ran six checks against
+2026.11.04.7026 before the code (spikes/phase5/; each program's header
+holds its command, output and verdict), and the work after them met the
+rest. Six items are new: AJ to AM from the spike and that work
+(spikes/NOTES.md rules 104, 107 and 108, and the measurement behind AK),
+and AN and AO, found on 2026-11-13 (rules 109 and 110).
 
 ### AJ. `Class#superclass` on Ruby's own exception classes is NoMethodError
 
-Rule 104; AE's failing half, on the core classes as well.
+Rule 104; AE's failure, on the core classes as well. It takes a package
+in the program:
 
 ```ruby
+require "json"
 begin
   raise "boom"
 rescue RuntimeError => e
@@ -3477,11 +4132,27 @@ end
 ```
 
 CRuby prints `StandardError`; the compiled program raises `undefined
-method 'superclass' for module RuntimeError (NoMethodError)`. The
-namespaced built-ins (`Errno::ENOENT`, `JSON::ParserError`,
-`Math::DomainError`) answer their qualified `Class#name` but no
-`superclass` either. A class the program defines answers it up to its
-first built-in ancestor.
+method 'superclass' for module RuntimeError (NoMethodError)`. Without the
+first line the compiled program prints `StandardError` too: this section
+printed the program without it until 2026-11-15, and in that form it does
+not show the failure on the pin. `require "uri"` and `require "stringio"`
+in place of `json` fail as it does, `require "socket"` does not, and a
+line `module Pkg; end` in place of the require fails as well (re-run
+2026-11-19; spikes/rechecks/builtin_superclass_with_module.rb,
+and spikes/rechecks/builtin_superclass_no_module.rb for the form that
+passes). That is as far as it was narrowed: what a package or a module
+changes was not read from the generated C.
+
+In such a program the class of a rescued built-in exception
+(`RuntimeError`, `ArgumentError`, `KeyError`, `Errno::ENOENT`,
+`JSON::ParserError`), whether the program, the runtime or a package
+raised it, answers its qualified `Class#name` but no `superclass`. A
+class the program defines answers the whole chain, built-in ancestors
+included (`Mine < ArgumentError < StandardError < Exception < Object <
+BasicObject`, with json required): `ArgumentError` reached as
+`Mine.superclass` does answer; what fails is `superclass` asked of
+`e.class` when that class is a built-in one. So AJ and AE are one defect,
+and one report.
 
 - Today: `assert_raises(Class)` walks a raised exception's ancestry by
   name and, at the first built-in class, reads the rest from a table of
@@ -3490,12 +4161,14 @@ first built-in ancestor.
   the assertion by name.
 - Asked of Spinel: answer `superclass` for the built-in exception classes
   as for the program's own.
-- Reproduced by spikes/phase5/assert_raises.rb; not reported upstream.
+- spikes/phase5/assert_raises.rb records the workaround (the parents
+  table) and prints what CRuby prints; the program above is the
+  reproduction. Not reported upstream.
 
 ### AK. The C of a very large program needs more memory to compile than its front end
 
-Spike item 6 bundled 196 of the framework's test programs (61,000 lines of
-Ruby) into one. Spinel's front end, every rule included, passed in about
+A phase 5a spike (spikes/phase5/bundle_suite.sh) bundled 196 of the
+framework's test programs (61,000 lines of Ruby) into one. Spinel's front end, every rule included, passed in about
 6.5 minutes at about 1.65 GB resident and wrote 87.6 MB of C (1.17 million
 lines). Compiling that C at the default -O2, split into units compiled in
 parallel, ran for about 21 minutes and was killed by the memory cgroup's
@@ -3546,9 +4219,9 @@ rate.
   (rule 105). Not a defect: rule 84's refusal by design has no
   instance-method counterpart to rely on.
 - A Ruby-source `def self.now` on `Time` overrides the builtin at every
-  call site, framework files included (spike item 1), and methods named
-  like builtin Time methods on another class leave a boxed Time working
-  (rule 106).
+  call site, framework files included (spikes/phase5/time_now.rb), and
+  methods named like builtin Time methods on another class leave a boxed
+  Time working (rule 106).
 - `rescue Exception => e` in a yielding method catches ScriptError and
   NotImplementedError as CRuby does; rule 47's `is_a?` half did not
   reproduce for its own example (its status row).
@@ -3645,9 +4318,10 @@ build while a third, loading the same file, built.
 
 ## Found in phase 5b of the Rails-gap programme (2026-11-13)
 
-The operations part of the phase 5 design (logs, request ids and error
-reporting; section 16's items 7 to 9 ran before the code, in
-spikes/phase5/) met two Spinel bugs, AP and AQ, both reduced on 2026-11-14
+Phase 5b, operations (logs, request ids and error reporting,
+docs/design.md D86 and D88; three checks ran before the code:
+spikes/phase5/thread_scope.rb, error_names.rb, deleted since, and
+logger_lock/) met two Spinel bugs, AP and AQ, both reduced on 2026-11-14
 with the pinned 2026.11.04.7026 (a2d06115, gcc 13.3.0, Linux x86_64,
 `spinel prog.rb -o prog`, no flags) and run beside CRuby 3.3.6.
 spikes/NOTES.md has them as rules 117 and 116, and the rest of what the
@@ -3707,9 +4381,11 @@ puts SINK.string.bytesize
 CRuby prints `2432000`. Compiled, five runs: four aborted with `double
 free or corruption (!prev)` (exit 134) and one died with SIGSEGV (exit
 139), printing nothing; earlier runs of the same binary showed `double
-free or corruption (out)` and `malloc(): corrupted top size`. With
-`SPINEL_WORKERS` at 1 the same program printed `2432000` in three runs out
-of three. The C was not read for the cause. Under CRuby the GVL
+free or corruption (out)` and `malloc(): corrupted top size`. With `"1"`
+in place of `"4"` in the program's second line it printed `2432000` in
+three runs out of three (the line overrides the environment, so
+`SPINEL_WORKERS=1` on the command line changes nothing: three such runs
+aborted on 2026-11-19). The C was not read for the cause. Under CRuby the GVL
 serializes the calls, so
 an application ported from Ruby may rely on it without knowing.
 
@@ -3748,9 +4424,9 @@ an application ported from Ruby may rely on it without knowing.
 
 ## Found in the phase 5b follow-ups (2026-11-14)
 
-The follow-ups (docs/superpowers/plans/2026-11-14-phase5b-followups-plan.md)
-met one Spinel item, AR, seen in a build and not yet reduced; spikes/NOTES.md
-has it as rule 122, and a form that works as rule 121.
+The follow-ups (docs/design.md section 13, the entry of 2026-11-14)
+met one Spinel item, AR, seen in a build and reduced on 2026-11-15;
+spikes/NOTES.md has it as rule 122, and a form that works as rule 121.
 
 ### AR. A require-shaped line inside a regex literal is read as a require
 
@@ -3763,24 +4439,418 @@ if (m = raw.match(/\A\s*require "cybertrain\/([\w\/]+)"/))
 
 CRuby runs it. The Spinel build stopped with `spinel: cannot load such
 file -- cybertrain\/([\w\/]+)`: the resolution of `require` took the text
-inside the regex literal for a require of a literal path. Not reduced to a
-standalone program yet, and not run again for this entry (the implementer's
-report, test/gen_jobs.rb before 0dac336).
+inside the regex literal for a require of a literal path (test/gen_jobs.rb
+before 0dac336). Reduced on 2026-11-15 on the pin:
+
+```ruby
+r = /require "abc"/
+puts r.source
+```
+
+CRuby prints `require "abc"`. `spinel --strict-require` (the flag spin
+builds with) refuses it with `cannot load such file -- abc (require
+"abc")`. Without the flag the build warns `'abc' is not available in
+Spinel; the require is ignored and code using it will fail`, and the
+program prints `nil`: the literal is gone, so a match against it fails
+where CRuby's succeeds (spikes/rechecks/differing/require_in_regex.rb is
+the framework's line in that form, and prints `no match`). That is a
+wrong result behind a warning, not only a refused build. A String literal
+holding the same kind of text (`'x require "abd" y'`) is left alone.
 
 - Today: a program that looks for requires in text builds the keyword from
   pieces (`"req" + "uire \"cybertrain/"`) and matches with `start_with?`
   (test/gen_jobs.rb's `core_closure`).
 - Asked of Spinel: resolve only `require` calls, not text that looks like
   one inside a literal.
-- Not reported upstream; to be reduced first (section 3 of "What is asked
-  of Spinel now").
+- Not reported upstream; ready to report with the two-line program.
+
+## Found in the clean-up of 2026-11-15
+
+### AS. `ENV[name]` with a key held in a variable can answer the key
+
+Rule 123. Seen in a program that requires part of the framework, and not
+reduced:
+
+```ruby
+require "cybertrain/http/request"
+require "cybertrain/config"
+
+ENV["CYBERTRAIN_RECHECK_HOST"] = "0.0.0.0"
+puts "set: " + Cybertrain::Config.env_or("CYBERTRAIN_RECHECK_HOST", "default")
+puts "unset: " + Cybertrain::Config.env_or("CYBERTRAIN_RECHECK_UNSET", "default")
+```
+
+`Config.env_or(name, default)` is `configured = ENV[name] || ""`, then
+`configured.empty? ? default : configured`. Compiled by the pinned
+2026.11.04.7026 from the repository root (`spinel -I . prog.rb -O 0 -o
+prog`, no warning) the program prints `set: CYBERTRAIN_RECHECK_HOST`, the
+variable's name, and `unset: default`. The value was expected, `set:
+0.0.0.0`; CRuby cannot load those two files without the preview's FFI
+shim, so the comparison is with the method's source and with the same
+program compiled with `require "cybertrain/core"` in front, which prints
+`0.0.0.0`. The program is
+spikes/rechecks/differing/env_nonliteral_key.rb (run 2026-11-15 with
+cybertrain/http/query in place of http/request and the variable set in
+the shell, to the same effect; again 2026-11-19).
+
+- The generated C of the failing program shows why. The read is compiled
+  as `_sp_ret_strbuf = NULL; _v2 = sp_env_str(getenv(...
+  sp_strbuf_read_pub(lv_name) ...)); !_v2 ? NULL : _sp_ret_strbuf ?
+  (sp_String *)_sp_ret_strbuf : SP_STR_HDL(_v2)`: reading the key
+  publishes the key's handle in `_sp_ret_strbuf`, and the result is then
+  taken from there. It is V's cause (an argument read through
+  `sp_strbuf_read_pub` inside a call whose result the caller takes from
+  `_sp_ret_strbuf`) on another builtin.
+- What it takes is more of a program than the call, and what decides it
+  is not known. The same method in the programs tried that require
+  `cybertrain/core` or `cybertrain` was compiled as a `const char *` read
+  and answered the value; that is two programs, not a guarantee for every
+  application. cybertrain/config.rb alone answered the value, and so did
+  six standalone programs with the same method (spikes/NOTES.md rule
+  123). `ENV["LITERAL"]` was not seen to be affected.
+- Today: nothing guards against it. The reads with a key that is not a
+  literal are `Config.env_or`, `Config.int_from_env` and
+  `Config.bool_from_env` (cybertrain/config.rb) and
+  `Dev::Supervision.supervision_variable` (cybertrain/dev/supervision.rb);
+  only `env_or` was run. A test program that requires part of the
+  framework can meet it. New code does not add an `ENV[variable]` read.
+- Asked of Spinel: clear `_sp_ret_strbuf` after the arguments are read,
+  or take a builtin's String result from its return value when the
+  builtin never publishes one.
+- Not reported upstream; to be reduced first, with V.
+
+## Written up on 2026-11-21
+
+Four differences from CRuby that spikes/NOTES.md recorded as part of a
+rule and that had no item here, or, for AV and AW, only a "rule 17" and a
+"rule 27" row in "Item register". All four were run again that day with
+2026.11.15.7033 and 2026.11.04.7026 on Linux x86_64 (gcc 13.3.0, `-O 0`)
+beside CRuby 3.3.6. A fifth, AX, was found that day and is no rule's, and
+a sixth, AY, was found while rule 79's workaround was tried removed.
+
+### AT. `File#stat` on an open File stats its path, not the descriptor
+
+Rule 112, found in phase 5b (2026-11-13). The program is
+spikes/phase5/flock_fstat.rb: it opens a file, deletes the path, creates
+the path again and asks the first File for its `stat`.
+
+CRuby answers from the descriptor, fstat(2): the deleted file, which the
+program prints as `a.stat names the old file`. Compiled, the program
+prints `a.stat names the new file`: `File#stat` is a stat(2) of the path
+the File was opened with. Rule 112 records two things beside it that the
+program's other lines do not separate from CRuby: with the path gone,
+`File#stat` raises ENOENT; and `IO.for_fd(fd, autoclose: false)` makes a
+dup of the descriptor, whose `stat` is the descriptor's fstat(2) but which
+stays open after the original closes and keeps a `flock` alive until it
+is closed itself. `File.for_fd` does not exist. `File#flock` itself
+answers as under CRuby.
+
+- On 2026.11.04.7026 and on 2026.11.15.7033 the program's lines differ
+  from CRuby's in that one line only ("Status by rule", row 112 of both
+  tables; the same in the runs of 2026-11-21).
+- Today: `CLI::BuildLock#descriptor_id` (cybertrain/cli/build_lock.rb)
+  takes the fstat of an open File through `IO.for_fd(f.fileno, autoclose:
+  false)`, its `stat`, then its `close` under Spinel, and through plain
+  `f.stat` under CRuby, where closing the `for_fd` IO would close the
+  File's own descriptor.
+- Asked of Spinel: `File#stat` on an open File as fstat(2) of its
+  descriptor.
+- Not reported upstream. The `IO.for_fd` difference has no program of its
+  own.
+
+### AU. `String#strip` on a String with an invalid byte returns it
+
+The other half of rule 52. AD is its `byteindex` half and mentions this
+one in passing.
+
+```ruby
+begin
+  p " x\x81 ".strip
+rescue StandardError => e
+  puts "#{e.class.name}: #{e.message}"
+end
+```
+
+CRuby prints `Encoding::CompatibilityError: invalid byte sequence in
+UTF-8`. Compiled by 2026.11.15.7033 and by 2026.11.04.7026 the program
+prints `"x\x81"`. spikes/rechecks/differing/invalid_utf8.rb holds the same
+call beside AD's two: on 2026.11.15.7033 its `byteindex` lines raise as
+under CRuby and its `strip` line still differs ("Status by rule", row 52).
+`split` on such a String raises ArgumentError on both builds, as under
+CRuby, and `index` with a String needle raises on neither runtime
+(spikes/rechecks/invalid_utf8_shapes.rb, which matches CRuby).
+
+- Today: nothing depends on it. Request text is validated once with
+  `valid_encoding?` (`Query.utf8!`, rule 52) before anything strips it.
+- Asked of Spinel: raise as CRuby does. Low in harm, as AD is.
+- Not reported upstream.
+
+### AV. A class used above its definition runs, where CRuby raises NameError
+
+Rule 17, recorded on 2026.09.12 for constants read before their
+definition and narrowed to class names on 2026-11-15. It was listed under
+1.4 as ordinary Ruby until 2026-11-21 and then as the register row "rule
+17", which now points here.
+
+```ruby
+puts Later.new.hi
+class Later; def hi = "hi"; end
+```
+
+CRuby stops at the first line with `uninitialized constant Later
+(NameError)`. Compiled by 2026.11.15.7033 and by 2026.11.04.7026 the
+program prints `hi`: the class is known to the whole program before any
+statement runs. spikes/rechecks/differing/class_before_definition.rb is
+the same two lines with a `rescue NameError` around the first, so that
+CRuby prints `NameError: uninitialized constant Later` and goes on; both
+builds print `hi` for it ("Status by rule", row 17 of both tables). The
+difference is for a class name only. A constant assigned with `=` and
+read before its assignment raises NameError compiled as under CRuby, at
+top level, in a module body and in a class body
+(spikes/rechecks/constant_order.rb, which matches CRuby on both builds).
+
+- Today: nothing in the framework is written around it. Rule 17's advice
+  is to keep an order of definitions that CRuby accepts, and
+  `script/preview-parity` runs every framework test under CRuby. The harm
+  is to a program tried only compiled: it runs,
+  and then fails under CRuby with a NameError.
+- Asked of Spinel: raise NameError when a class is used by a statement
+  that runs before its `class` statement, as CRuby does, or refuse the
+  program at compile time. Low in harm: no wrong result in a program that
+  CRuby accepts.
+- Not reported upstream.
+
+### AW. Socket bytes are tagged UTF-8: `IO#gets`, and an append to a UTF-8 String
+
+Rule 27, recorded on 2026.09.12 for socket buffers generally: CRuby tags
+what a socket reads as ASCII-8BIT, and Spinel's were character Strings.
+It was listed under 1.4 as a constraint until 2026-11-21 and then as the
+register row "rule 27", which now points here. Two differences were left
+on 2026.11.04.7026, and one of them is left on 2026.11.15.7033.
+
+```ruby
+require "socket"
+srv = TCPServer.new("127.0.0.1", 0)
+t = Thread.new { c = srv.accept; c.write("café 日本\n"); c.close }
+cl = TCPSocket.new("127.0.0.1", srv.addr[1])
+line = cl.gets
+puts line.encoding, line.size, line.bytesize
+t.join
+```
+
+CRuby prints `ASCII-8BIT`, `13`, `13`. Compiled by 2026.11.04.7026 the
+program prints `UTF-8`, `8`, `13`; compiled by 2026.11.15.7033 it prints
+what CRuby prints.
+
+```ruby
+require "socket"
+srv = TCPServer.new("127.0.0.1", 0)
+t = Thread.new { c = srv.accept; c.write("café 日本\n"); c.close }
+cl = TCPSocket.new("127.0.0.1", srv.addr[1])
+buf = cl.readpartial(64)
+t.join
+u = +"é"
+begin
+  u << buf
+  puts "appended #{u.bytesize}"
+rescue => e
+  puts "#{e.class}"
+end
+```
+
+CRuby prints `Encoding::CompatibilityError`: a UTF-8 String that holds
+non-ASCII does not take binary bytes that hold non-ASCII. Compiled by
+2026.11.15.7033 and by 2026.11.04.7026 the program prints `appended 15`.
+spikes/rechecks/differing/socket_bytes.rb holds both programs as one,
+printing a `gets:` line and an `append:` line ("Status by rule", row 27
+of both tables, has each run). `readpartial`, `read(n)` and
+`read_nonblock` on a socket answer ASCII-8BIT Strings whose `size` equals
+their `bytesize`, as under CRuby, on both builds
+(spikes/rechecks/socket_shapes.rb).
+
+- Today: every offset into a network buffer is a byte offset
+  (`byteindex`, `byteslice`, `bytesize`, never `index`, `[]` or `size`):
+  `Query.parse` and its scanners (cybertrain/http/query.rb), the
+  multipart parser (cybertrain/http/multipart.rb), the router's path
+  scan (cybertrain/router.rb), `UploadedFile` and the SSE writer; the
+  test receiver frames by byte and never calls `IO#gets`
+  (cybertrain/test/receiver.rb). That is right under both runtimes, so it
+  is no workaround to remove: it stays in rule 27 as advice after AW is
+  closed. One test differs between the runtimes because of the tag:
+  test/stream.rb, where `Base64.urlsafe_decode64` answers ASCII-8BIT
+  under CRuby (test/cruby/parity-gaps.txt).
+- Closed when both lines of spikes/rechecks/differing/socket_bytes.rb
+  print CRuby's result on the pin. The `gets` line does on
+  2026.11.15.7033; the `append` line does not.
+- Asked of Spinel: raise Encoding::CompatibilityError for the append, as
+  CRuby does.
+- Not reported upstream.
+
+### AX. `JSON.parse` does not count an innermost empty Array or Object against the nesting limit
+
+Found on 2026-11-21 and run that day with 2026.11.15.7033 and
+2026.11.04.7026 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6.
+It has no rule in spikes/NOTES.md: no code is written differently
+because of it.
+
+```ruby
+require "json"
+begin
+  JSON.parse(("[" * 101) + ("]" * 101))
+  puts "parsed"
+rescue StandardError => e
+  puts "#{e.class.name}: #{e.message}"
+end
+```
+
+CRuby prints `JSON::NestingError: nesting of 101 is too deep`: its
+default `max_nesting` is 100, and an Array counts when it opens. Compiled
+by 2026.11.15.7033 the program prints `parsed`, and 102 levels raise the
+error CRuby raises for 101, message included. The innermost container is
+not counted while it is empty: with a `1` inside the innermost Array, 101
+levels raise as under CRuby, and so do 101 Objects around a `1`.
+spikes/rechecks/differing/json_parse_nesting.rb searches for the limit:
+for Arrays around `1`, Arrays with nothing inside and Objects around `1`
+it prints the deepest document that parses and what the next depth
+raises, with no option and under `max_nesting:` 10, 0 and 300 ("Status
+by rule", row AX of both tables, has every line).
+
+- On 2026.11.15.7033 two of its eight lines differ from CRuby's, both
+  for Arrays with nothing inside: 101 levels parse (CRuby: 100), and
+  under `max_nesting: 10` 11 levels parse (CRuby: 10). The other six
+  match: the limit of 100, the class JSON::NestingError, the message
+  `nesting of N is too deep`, `max_nesting:` as a limit and
+  `max_nesting: 0` as none. An empty Object is not counted either (100
+  Arrays or 100 Objects around `{}` parse, in a program that is not
+  saved).
+- On 2026.11.04.7026 every line differs: the limit is 200 levels whatever
+  `max_nesting:` says (10, 0 and 300 were tried), the error is
+  `JSON::ParserError: nesting too deep`, and an innermost empty Array is
+  not counted there either (201 parse). So 2026.11.15.7033 brought the
+  limit, the option and the error in line with CRuby, and left one level
+  for an empty container.
+- Today: nothing depends on it, and nothing is worked around. The
+  framework does not parse a request's JSON body: an action calls
+  `JSON.parse(request.body)` itself (cybertrain/http/request.rb), and an
+  error it does not rescue is a 500. The framework's own calls are
+  `Cast.parse_json` (json columns, `HttpClient`'s JSON responses, the
+  cache's stored arrays: cybertrain/cast.rb), `Session.from_json` and
+  `Flash.load` (an authenticated cookie's payload),
+  `Stream::WebSocketWriter.client_request` (a client's subscribe frame:
+  cybertrain/stream/websocket_server.rb) and, in
+  development only, `ErrorPage.json_dump` (a failed request's body of at
+  most 1 MiB). Each has `rescue StandardError` around the parse and
+  answers nil, an empty value or `""` for any failure, so the class of
+  the error does not matter to them either; none compares a depth, passes
+  `max_nesting:` or reads the message. The framework's two depth bounds
+  are its own counts and do not come from JSON: `Query::MAX_DEPTH` for
+  form and query parameters (cybertrain/http/query.rb) and
+  `ErrorPage::MAX_DUMP_DEPTH` for the development dump. What these calls
+  do rely on is that a limit exists, so that a deeply nested document
+  from outside raises and does not exhaust the stack, and one exists on
+  both builds. test/cast_types.rb's `parse_json` case uses 300 levels of
+  Objects, past the limit on CRuby and on both builds.
+- The harm is to an application that counts on the exact bound, for one
+  that sets `max_nesting:` to cap what it then walks recursively: a
+  document one level deeper than the cap gets through when its innermost
+  container is empty.
+- Asked of Spinel: count a container against the limit when it opens, as
+  CRuby does, so that `[` times 101 raises. Low in harm.
+- Not reported upstream.
+
+### AY. A raising method and a raising lambda's call, as blocks of one rescuing method, do not compile
+
+Rule 124. Found on 2026-11-21 while the workaround filed under rule 79
+was tried removed ("Rule 79", "Tried without the workaround"), recorded
+there first and given this item the same day. Run with 2026.11.15.7033
+and 2026.11.04.7026 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby
+3.3.6. The program is
+spikes/rechecks/differing/raising_helper_beside_lambda.rb:
+
+```ruby
+class Rel
+  def initialize(t); @t = t; end
+end
+module C
+  def self.unknown(name)
+    raise "no #{name}"
+  end
+  def self.no_builder = ->(name) { C.unknown(name) }
+  @b = C.no_builder
+  def self.b=(v)
+    @b = v
+  end
+end
+def rel_builder = ->(name) { Rel.new(name) }
+C.b = rel_builder
+def g
+  yield
+rescue StandardError => e
+  e.message
+end
+out = Array.new(0) { "" }
+out << g { C.unknown("a") }
+out << g { C.no_builder.call("b") }
+p out
+```
+
+CRuby prints `["no a", "no b"]`. Neither build compiles it:
+
+- 2026.11.15.7033: `raising_helper_beside_lambda.rb:38: error:
+  incompatible types when assigning to type 'sp_RbVal' from type 'const
+  char *'`, in `_sp_main_body`, then `spinel: C compilation failed`, exit
+  1. Line 38 of the saved file is the `yield` of `g`.
+- 2026.11.04.7026: the same error at the same line, exit 1.
+
+What it needs is all of it. Either `out <<` line alone builds and prints
+its message. So does the whole program once `C.unknown` has `Rel.new("")`
+as a second line, after the `raise`, on both builds. Without the module
+ivar that a lambda returning an object is later stored in, the two blocks
+compile together as well (a method that only raises beside the call of a
+lambda that ends in it, with nothing else stored where the lambda is:
+tried in programs that are not saved). Read from the error alone, and
+not from the generated C: the slot for the value of the `yield` is a
+boxed value, and the rescue's String is assigned to it unboxed.
+
+This is not rule 79's failure, which was "variable or field '_sp_fv'
+declared void" for the appended value of a block that is only `raise`,
+and which 2026.11.15.7033 compiles.
+
+- Today: `Console.unknown_model` ends in `Relation.new("")` and
+  `Console.unknown_record` in `Model.new`, after their `raise`
+  (cybertrain/console.rb), so that each has the type of the builder it
+  stands in for: the default `scope_builder` and `create_builder` are
+  lambdas that end in them, and gen/console.rb's `else` arms call them
+  (cybertrain/generator/console_emitter.rb). These two are the only
+  places written this way for this reason. Other methods end in a value
+  after a `raise` to type their own result, where other paths return
+  (`Console::Helpers#text_arg_at` and `#int_arg_at`,
+  `Interpreter#string_arg`, a generated model's `validation_condition?`);
+  those were not tried without it and are not part of this item.
+- The test that guards it: test/console.rb, "an unknown model or record
+  raises through a rescuing caller", gives one rescuing method the two
+  helpers, the two default builders' calls and two blocks that only
+  raise, and appends each value. With the two typed values removed it
+  does not build on 2026.11.15.7033: the same error, at
+  test/console.rb:422, the `yield` of `message_raised`. Everything else
+  that compiles the console built and passed without them ("Status by
+  rule", row 79), so the framework itself does not meet the shape; a
+  test or an application that calls a default builder inside a rescuing
+  block would.
+- Closed when the program above prints CRuby's line on the pin and that
+  case passes compiled with the two values removed.
+- Asked of Spinel: give the `yield` of a method with a `rescue` one type
+  for its value over all its blocks, the rescue's included, when one
+  block cannot complete and another answers a boxed value; or box the
+  rescue's String there.
+- Not reported upstream.
 
 ## Found in the spinel-http extraction, phase 1 (2026-11-21)
 
 Task 3 of docs/superpowers/plans/2026-11-21-spinel-http-phase1-plan.md met
-one Spinel item, AS.
+one Spinel item, AZ.
 
-### AS. `ENV[name]` answers `name` in some programs
+### AZ. `ENV[name]` answers `name` in some programs
 
 A program that loads Query beside Config, without the rest of the
 framework, reads every set environment variable as its own name:
@@ -3792,6 +4862,11 @@ ENV["AS_VARIABLE"] = "value"
 puts Cybertrain::Config.env_or("AS_VARIABLE", "default")       # AS_VARIABLE (CRuby: value)
 puts Cybertrain::Config.env_or("AS_UNSET_VARIABLE", "default") # default, as CRuby
 ```
+
+This is AS's behaviour, found again from the HTTP layer's side on a
+branch that did not yet have AS, and lettered there on its own. It stays
+an item of its own beside AS: it adds the generated C of the call and
+the requires that switch it.
 
 The same on the fork's 2026.11.15.7033 and on upstream 2026.10.25, at
 d9e62f9 (before Task 3). `require "cybertrain"` in place of the two

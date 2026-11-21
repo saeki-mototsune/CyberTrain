@@ -165,7 +165,7 @@ module Cybertrain
     # names and no #call (NOTES rules 10/34/40).
     # @api public
     class Subscription
-      attr_reader :sub_url, :sub_target, :sub_headers, :sub_timeout, :sub_max_message,
+      attr_reader :sub_url, :sub_headers, :sub_timeout, :sub_max_message,
                   :sub_ping_interval, :sub_stale_after, :sub_allow_private,
                   :sub_open_block, :sub_message_block, :sub_thread, :sub_tick_block, :sub_tick_seconds
 
@@ -602,7 +602,7 @@ module Cybertrain
 
     # Deletes the status rows this process wrote, through the registered
     # {StatusWriter}s: a `feeds` process does it after a clean stop
-    # (Application#run_feeds_threads), so the health check stops counting
+    # (Roles::FeedsRunner#run_feeds_threads), so the health check stops counting
     # feeds nobody runs. A crashed process deletes nothing, and its rows go
     # stale. Does nothing while the feeds run.
     # @return [Integer] how many rows were deleted
@@ -796,7 +796,7 @@ module Cybertrain
     # The feed's log Scope ({feed_scope}) is swapped in first and stays
     # for the life of the thread (nothing else runs on it): every line of
     # the feed and of its callbacks carries `[feed:<name>]`.
-    # The thread's death is reported too (spec section 13.2), its `where`
+    # The thread's death is reported too (docs/design.md D88), its `where`
     # given ({feed_where}), as in the callbacks' rescues.
     def self.run_feed_logged(sub, generation)
       Logger.swap_scope(feed_scope(sub))
@@ -817,21 +817,13 @@ module Cybertrain
       "feed:#{sub.sub_name}"
     end
 
-    # The log Scope of a feed thread (spec section 12.3): the tag and
+    # The log Scope of a feed thread (docs/design.md D86): the tag and
     # `where` `feed:<name>`, no request id, no context.
     # @param sub [Subscription]
     # @return [Logger::Scope]
     # @api private
     def self.feed_scope(sub)
-      where = feed_where(sub)
-      id = ""
-      verb = ""
-      path = ""
-      tags = Array.new(0) { "" }
-      tags << where
-      context = { "" => "" }
-      context.delete("")
-      Logger::Scope.new(id, verb, path, where, tags, -1, context)
+      Logger.where_scope(feed_where(sub))
     end
 
     def self.run_feed(sub, generation)
@@ -893,29 +885,12 @@ module Cybertrain
     # One connection, from connect to its end. Answers "" when it ended
     # without an error (stop!, silence, a failed on_open: logged where they
     # happen), else "Class: message" for the disconnect line. The rescue
-    # ladder is in a method that takes no block and tells the classes apart
-    # by clause, with their full names (NOTES rules 32/45/47/70).
+    # is in a method that takes no block (NOTES rules 32/45).
     def self.feed_session(sub, generation)
       client = Client.connect(sub.sub_url, headers: sub.sub_headers, timeout: sub.sub_timeout,
                                            max_message: sub.sub_max_message, allow_private: sub.sub_allow_private)
       sub.sub_client!(client)
       feed_connected(sub, client, generation)
-    rescue Cybertrain::WebSocket::ClosedError => e
-      "Cybertrain::WebSocket::ClosedError: #{e.message}"
-    rescue Cybertrain::WebSocket::TimeoutError => e
-      "Cybertrain::WebSocket::TimeoutError: #{e.message}"
-    rescue Cybertrain::WebSocket::RefusedError => e
-      "Cybertrain::WebSocket::RefusedError: #{e.message}"
-    rescue Cybertrain::WebSocket::TLSError => e
-      "Cybertrain::WebSocket::TLSError: #{e.message}"
-    rescue Cybertrain::WebSocket::BlockedAddressError => e
-      "Cybertrain::WebSocket::BlockedAddressError: #{e.message}"
-    rescue Cybertrain::WebSocket::HandshakeError => e
-      "Cybertrain::WebSocket::HandshakeError: #{e.message}"
-    rescue Cybertrain::WebSocket::ProtocolError => e
-      "Cybertrain::WebSocket::ProtocolError: #{e.message}"
-    rescue Cybertrain::WebSocket::TooLargeError => e
-      "Cybertrain::WebSocket::TooLargeError: #{e.message}"
     rescue StandardError => e
       "#{e.class.name}: #{e.message}"
     end
@@ -975,10 +950,8 @@ module Cybertrain
       block = sub.sub_open_block
       block.call(conn) unless block.nil?
       true
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} on_open failed: #{e.class.name}: #{e.message}")
-      Cybertrain.error.report_unhandled(e, feed_where(sub), ErrorReporter::NO_CONTEXT)
-      false
+    rescue StandardError => e
+      callback_failed(sub, "on_open", e)
     end
 
     # Calls on_message; false (logged and reported) when it raised. The
@@ -987,10 +960,8 @@ module Cybertrain
       block = sub.sub_message_block
       block.call(conn, data) unless block.nil?
       true
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} on_message failed: #{e.class.name}: #{e.message}")
-      Cybertrain.error.report_unhandled(e, feed_where(sub), ErrorReporter::NO_CONTEXT)
-      false
+    rescue StandardError => e
+      callback_failed(sub, "on_message", e)
     end
 
     # Calls on_tick; false (logged and reported) when it raised a
@@ -1000,8 +971,13 @@ module Cybertrain
       block = sub.sub_tick_block
       block.call(conn) unless block.nil?
       true
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
-      Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} on_tick failed: #{e.class.name}: #{e.message}")
+    rescue StandardError => e
+      callback_failed(sub, "on_tick", e)
+    end
+
+    # A callback raised: logged and reported (`where` {feed_where}); false.
+    def self.callback_failed(sub, callback, e)
+      Cybertrain.logger.error("WebSocket #{sub.sub_name.inspect} #{callback} failed: #{e.class.name}: #{e.message}")
       Cybertrain.error.report_unhandled(e, feed_where(sub), ErrorReporter::NO_CONTEXT)
       false
     end

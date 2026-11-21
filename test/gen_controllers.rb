@@ -283,7 +283,7 @@ test "no jobs page, no jobs controller" do
   assert_equal "", Cybertrain::Gen::ControllersEmitter.jobs_page_warning(none)
 end
 
-# --- concerns (spec 4.1) and the nested module form ------------------------
+# --- concerns and the nested module form -----------------------------------
 
 test "includes, and each include's position among the callbacks and rescues above it" do
   source = <<~'RUBY'
@@ -313,7 +313,6 @@ test "includes, and each include's position among the callbacks and rescues abov
   assert_equal [1, 1, 1], info.rescue_positions
   assert_equal [4, 4, 8], info.include_lines
   assert_equal ["show", "gone"], info.method_names
-  assert_equal [10, 16], info.method_lines
 end
 
 test "the nested module form names the class after its modules" do
@@ -325,7 +324,7 @@ test "the nested module form names the class after its modules" do
   # A module is closed by the `end` at its own indentation.
   after = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/x_controller.rb", "module Admin\nend\n\nclass XController < ApplicationController\nend\n")
   assert_equal "XController", after.class_name
-  # The compact form stays accepted (phase 4a spike, item 2).
+  # The compact form stays accepted (phase 4a spike).
   compact = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/admin/x_controller.rb", "class Admin::XController < ApplicationController\nend\n")
   assert_equal "Admin::XController", compact.class_name
 end
@@ -448,28 +447,23 @@ test "around_action in an included block is refused" do
   assert_equal "app/controllers/concerns/timed.rb:5: around_action is not supported (no around callbacks in Cybertrain::Controller)", msg
 end
 
-test "a class_methods name that is also an instance method is refused, naming both places" do
+test "a class_methods name that is also an instance method gets its forwarder" do
   source = "module Paged\n  extend ActiveSupport::Concern\n\n  class_methods do\n    def per_page = 50\n  end\n\n  def per_page = 10\nend\n"
-  msg = assert_raises("ArgumentError") { concern("app/controllers/concerns/paged.rb", source) }
-  assert_equal "app/controllers/concerns/paged.rb:5: class_methods def per_page: Paged also defines an instance method per_page " \
-               "(app/controllers/concerns/paged.rb:8); Spinel compiles a def inside class_methods as an instance method too " \
-               "(spikes/NOTES.md rule 93), so rename one", msg
+  paged = concern("app/controllers/concerns/paged.rb", source)
+  assert_equal ["per_page"], paged.class_method_names
+  assert_equal ["per_page"], paged.concern_defs.map { |d| d.name }
+  # GATE_SOURCE's class methods are per_page and title: ArticlesController
+  # defines an instance per_page, its parent an instance title.
   gate = concern("app/controllers/concerns/admin_gate.rb", GATE_SOURCE)
   app = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/application_controller.rb", "class ApplicationController < Cybertrain::Controller\n  def title = \"x\"\nend\n")
-  articles = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", "class ArticlesController < ApplicationController\n  include AdminGate\n\n  def per_page\n    20\n  end\nend\n")
-  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ConcernsEmitter.emit([app, articles], [gate]) }
-  assert_equal "app/controllers/concerns/admin_gate.rb:11: class_methods def per_page: ArticlesController, which includes AdminGate, " \
-               "also defines an instance method per_page (app/controllers/articles_controller.rb:4); Spinel compiles a def inside " \
-               "class_methods as an instance method too (spikes/NOTES.md rule 93), so rename one", msg
-  articles = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", "class ArticlesController < ApplicationController\n  include AdminGate\nend\n")
-  msg = assert_raises("ArgumentError") { Cybertrain::Gen::ConcernsEmitter.emit([app, articles], [gate]) }
-  assert_equal "app/controllers/concerns/admin_gate.rb:13: class_methods def title: ApplicationController (an ancestor of " \
-               "ArticlesController, which includes AdminGate) also defines an instance method title (app/controllers/application_controller.rb:2); " \
-               "Spinel compiles a def inside class_methods as an instance method too (spikes/NOTES.md rule 93), so rename one", msg
+  articles = Cybertrain::Gen::ControllerScan.scan_source("app/controllers/articles_controller.rb", "class ArticlesController < ApplicationController\n  include AdminGate\n  include Paged\n\n  def per_page\n    20\n  end\nend\n")
+  out = Cybertrain::Gen::ConcernsEmitter.emit([app, articles], [gate, paged])
+  assert_includes out, "module Paged\n  def self.per_page = 50\nend\n"
+  assert_includes out, "class ArticlesController\n  def self.per_page(...) = AdminGate.per_page(...)\n  def self.title(...) = AdminGate.title(...)\n"
 end
 
 
-# --- helper_method (spec 4.3) ----------------------------------------------
+# --- helper_method ---------------------------------------------------------
 
 HELPERS_SOURCE = <<~'RUBY'
   class ArticlesController < ApplicationController

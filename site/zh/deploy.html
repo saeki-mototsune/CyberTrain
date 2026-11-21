@@ -18,20 +18,20 @@
 <meta property="og:locale:alternate" content="ru_RU">
 <meta property="og:locale:alternate" content="fr_FR">
 <meta property="og:site_name" content="CyberTrain">
-<meta property="og:url" content="https://saeki-mototsune.github.io/CyberTrain/zh/deploy.html">
-<meta property="og:image" content="https://saeki-mototsune.github.io/CyberTrain/assets/og/zh/deploy.png">
+<meta property="og:url" content="https://www.cybertrain.dev/zh/deploy.html">
+<meta property="og:image" content="https://www.cybertrain.dev/assets/og/zh/deploy.png">
 <meta property="og:image:type" content="image/png">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta property="og:image:alt" content="部署 CyberTrain 应用">
 <meta name="twitter:card" content="summary_large_image">
-<link rel="canonical" href="https://saeki-mototsune.github.io/CyberTrain/zh/deploy.html">
-<link rel="alternate" hreflang="en" href="https://saeki-mototsune.github.io/CyberTrain/deploy.html">
-<link rel="alternate" hreflang="ja" href="https://saeki-mototsune.github.io/CyberTrain/ja/deploy.html">
-<link rel="alternate" hreflang="zh-Hans" href="https://saeki-mototsune.github.io/CyberTrain/zh/deploy.html">
-<link rel="alternate" hreflang="ru" href="https://saeki-mototsune.github.io/CyberTrain/ru/deploy.html">
-<link rel="alternate" hreflang="fr" href="https://saeki-mototsune.github.io/CyberTrain/fr/deploy.html">
-<link rel="alternate" hreflang="x-default" href="https://saeki-mototsune.github.io/CyberTrain/deploy.html">
+<link rel="canonical" href="https://www.cybertrain.dev/zh/deploy.html">
+<link rel="alternate" hreflang="en" href="https://www.cybertrain.dev/deploy.html">
+<link rel="alternate" hreflang="ja" href="https://www.cybertrain.dev/ja/deploy.html">
+<link rel="alternate" hreflang="zh-Hans" href="https://www.cybertrain.dev/zh/deploy.html">
+<link rel="alternate" hreflang="ru" href="https://www.cybertrain.dev/ru/deploy.html">
+<link rel="alternate" hreflang="fr" href="https://www.cybertrain.dev/fr/deploy.html">
+<link rel="alternate" hreflang="x-default" href="https://www.cybertrain.dev/deploy.html">
 <script src="../assets/site.js" defer></script>
 
 <title>部署到生产环境 · CyberTrain</title>
@@ -118,9 +118,9 @@
 <span class="ln">                                       └─ storage/production.sqlite3</span></code></pre>
 </figure>
     <ul class="points">
-      <li><strong>它链接系统的 SQLite 和 libc，</strong>因此要在与运行它的机器相同的操作系统和 CPU 上构建。像 Kamal 配置那样在 Docker 镜像内构建，就自然满足了这一点。</li>
+      <li><strong>它链接系统的 SQLite、zlib、OpenSSL 和 libc，</strong>因此要在与运行它的机器相同的操作系统和 CPU 上构建。像 Kamal 配置那样在 Docker 镜像内构建，就自然满足了这一点。</li>
       <li><strong>它只说普通的 HTTP/1.1。</strong>TLS 和 HTTP/2 是反向代理的工作。生产环境中会话 cookie 带有 <code>Secure</code>，所以必须通过 HTTPS 提供服务，否则表单会因 <code>Invalid authenticity token</code> 而失败。</li>
-      <li><strong>数据库是一个 SQLite 文件。</strong>在一台服务器上以单个进程运行，并把文件放在部署之后仍然保留的存储上。</li>
+      <li><strong>数据库是一个 SQLite 文件。</strong>在一台服务器上运行，并把文件放在部署之后仍然保留的存储上。这台服务器上的多个进程可以共用它：处理作业的 <code>worker</code>，或者在 Linux 上监听同一端口的更多服务器进程。</li>
       <li><strong>它默认就是生产模式，</strong>没有 <code>CYBERTRAIN_SECRET_KEY_BASE</code> 就拒绝启动。<code>./blog migrate</code> 应用编译进其中的迁移。</li>
     </ul>
   </section>
@@ -137,11 +137,11 @@
         <tr><td data-label="">静态文件</td><td data-label="Kamal">由应用提供 <code>public/</code></td><td data-label="systemd 加 Caddy">由 Caddy 直接提供 <code>dist/public/</code></td></tr>
         <tr><td data-label="">一次部署</td><td data-label="Kamal">新容器通过健康检查后才接收流量：不会拒绝任何连接</td><td data-label="systemd 加 Caddy">一次重启：几秒钟内显示 Caddy 的 500.html</td></tr>
         <tr><td data-label="">回滚</td><td data-label="Kamal"><code>kamal rollback VERSION</code></td><td data-label="systemd 加 Caddy">把 <code>current</code> 指向较早的发布并重启</td></tr>
-        <tr><td data-label="">服务器需要</td><td data-label="Kamal">SSH 和 Docker（由 <code>kamal setup</code> 安装），外加一个镜像仓库</td><td data-label="systemd 加 Caddy">Ruby、C 工具链、SQLite 头文件、<code>cybertrain</code> CLI 和 Spinel</td></tr>
+        <tr><td data-label="">服务器需要</td><td data-label="Kamal">SSH 和 Docker（由 <code>kamal setup</code> 安装），外加一个镜像仓库</td><td data-label="systemd 加 Caddy">Ruby、C 工具链、SQLite、zlib 和 OpenSSL 的头文件、<code>cybertrain</code> CLI 和 Spinel</td></tr>
       </tbody>
     </table>
     </div>
-    <p class="note">无论哪种方式，应用都是一台服务器上的一个进程加上它的 SQLite 文件。</p>
+    <p class="note">无论哪种方式，应用和它的 SQLite 文件都在一台服务器上。</p>
   </section>
 
   <section class="step" id="kamal" aria-labelledby="h-kamal">
@@ -164,7 +164,7 @@
     <ul class="points">
       <li>每次部署都会构建镜像（首次之后 Spinel 留在 Docker 的层缓存中）、推送它，并启动一个容器；容器先运行 <code>./blog migrate</code>，再以 <code>exec ./blog</code> 在 <code>0.0.0.0:3000</code> 上提供服务。</li>
       <li>kamal-proxy 等到 <code>/up.html</code> 返回 200 后，把流量切换到新容器，然后停止旧容器；旧容器收到 <code>SIGTERM</code> 后会先处理完正在进行的请求。</li>
-      <li>数据库位于挂载在 <code>/app/storage</code> 的卷 <code>blog_storage</code> 上，因此每次部署后都会保留。</li>
+      <li>数据库和上传的文件位于挂载在 <code>/app/storage</code> 的卷 <code>blog_storage</code> 上，因此每次部署后都会保留。</li>
       <li>把 <code>builder.arch</code> 设为服务器的 CPU 架构。Spinel 在镜像内编译，用模拟方式为其他架构构建会很慢；这种情况下改用 <code>builder.remote</code> 在服务器上构建。</li>
     </ul>
     <p class="note">包括卷备份在内的分步指南见 <a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><code>docs/deploy-kamal.md</code></a>。<a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><code>examples/blog</code></a> 也带有同样的配置，CI 会构建它的镜像并做冒烟测试。</p>
@@ -210,7 +210,7 @@
     <table class="env">
       <thead><tr><th scope="col">变量</th><th scope="col">在生产环境中</th></tr></thead>
       <tbody>
-        <tr><td data-label="变量"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="在生产环境中">必需。为会话 cookie 签名；更改它会让所有人退出登录。用 <code>openssl rand -hex 32</code> 生成一次</td></tr>
+        <tr><td data-label="变量"><code>CYBERTRAIN_SECRET_KEY_BASE</code></td><td data-label="在生产环境中">必需。用于加密会话 cookie；更改它会让所有人退出登录。用 <code>openssl rand -hex 32</code>（或 <code>cybertrain secret</code>）生成一次</td></tr>
         <tr><td data-label="变量"><code>CYBERTRAIN_DATABASE</code></td><td data-label="在生产环境中">SQLite 文件；默认是工作目录下的 <code>storage/production.sqlite3</code>。把它放在发布目录之外</td></tr>
         <tr><td data-label="变量"><code>CYBERTRAIN_HOST</code></td><td data-label="在生产环境中">默认 <code>127.0.0.1</code>，适合同一台机器上的代理之后；容器中用 <code>0.0.0.0</code></td></tr>
         <tr><td data-label="变量"><code>PORT</code></td><td data-label="在生产环境中">默认 <code>3000</code>；代理转发的目标</td></tr>
@@ -218,7 +218,7 @@
       </tbody>
     </table>
     </div>
-    <p class="note">教程中的<a href="tutorial.html#ship">为部署而构建</a>一步列出了所有变量及其对应的 <code>config/app.rb</code> 属性。</p>
+    <p class="note">所有变量及其对应的 <code>config/app.rb</code> 属性见<a href="guide/configuration.html#configuration-and-environment-variables">配置</a>指南。</p>
   </section>
 
   <section class="step" id="operate" aria-labelledby="h-operate">
@@ -229,6 +229,7 @@
       <li><strong>用 SQLite 的 <code>.backup</code> 备份，</strong>而不是复制文件：即使应用正在写入，它也能得到一致的副本。</li>
       <li><strong>跨越迁移的回滚</strong>意味着数据库也要回滚：在切换之前，从较新的发布中运行 <code>db rollback</code>。</li>
       <li><strong>停止是平滑的：</strong>收到 <code>SIGTERM</code> 后，服务器停止接受新连接，处理完正在进行的请求后退出，最多 10 秒。</li>
+      <li><strong>一个二进制文件，多种角色。</strong>引入作业子系统后，<code>./blog worker</code> 不提供 HTTP，只运行作业和定时任务；引入 feeds 子系统后，<code>./blog feeds</code> 运行 WebSocket 订阅。数据库、worker 或某个 feed 不正常时，<code>GET /up</code> 返回 503。<a href="guide/background-and-operations.html#process-roles">进程角色</a>。</li>
     </ul>
   </section>
 

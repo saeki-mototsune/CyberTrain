@@ -5,6 +5,7 @@ require "cybertrain/http/sse"
 require "cybertrain/http/parser"
 require "cybertrain/http/query"
 require "cybertrain/stream"
+require "cybertrain/stream/session_writer"
 require "cybertrain/stream/websocket_server"
 
 module Cybertrain
@@ -33,8 +34,7 @@ module Cybertrain
     # `{"stream":...,"id":...,"data":...}`), a `: ping` comment after
     # {Config#stream_ping_interval} seconds of silence. `Last-Event-ID`
     # replays what is still in the table after that id first. A GET with
-    # `Upgrade: websocket` gets the same messages over a WebSocket
-    # ({WebSocketWriter}).
+    # `Upgrade: websocket` gets the same messages over a WebSocket.
     #
     # Authorisation is the token's signature: a bad or missing one is a 403
     # (with no body, nothing read from the database); no session is read.
@@ -223,17 +223,12 @@ module Cybertrain
     # within one), writing each one, and a `: ping` after ping_interval
     # seconds of silence. A client that vanished without a FIN is noticed
     # when a ping's write fails.
-    class SSEWriter < BodyWriter
+    class SSEWriter < SessionWriter
       SLICE = 1.0
 
-      def initialize(hub, names, json, after, ping_interval, max_connections)
-        @max_connections = max_connections
-        @hub = hub
-        @names = names
-        @json = json
-        @after = after
-        @head = -1
-        @ping_interval = ping_interval
+      def write_message(sink, msg)
+        sink.write(sse_event(msg))
+        nil
       end
 
       def write_body(sink)
@@ -257,29 +252,7 @@ module Cybertrain
       private
 
       def sse_session(sink, sub)
-        # Subscribed first (write_body), then the replay, then the boundary,
-        # max(after, the last replayed id) (`after` itself when the replay
-        # found nothing): a row broadcast while the replay ran is either in
-        # the replay or queued, and skip_through! drops the queued copy of a
-        # replayed one.
-        last = Stream.replay_start(@after, @head)
-        if last >= 0
-          # By chunks, each written before the next query; the boundary
-          # never passes a row that was not sent.
-          cursor = sub.boundary
-          while !sink.closed?
-            backlog = Stream.replay(@names, last)
-            i = 0
-            while i < backlog.size
-              msg = backlog[i]
-              sink.write(sse_event(msg))
-              last = msg.message_id
-              i += 1
-            end
-            break if backlog.size < Stream::REPLAY_CHUNK || last >= cursor
-          end
-          sub.skip_through!(last)
-        end
+        replay_backlog(sink, sub, @names)
         ping = @ping_interval.to_f
         slice = ping < SLICE ? ping : SLICE
         quiet_since = Clock.monotonic
@@ -292,7 +265,7 @@ module Cybertrain
               quiet_since = now
             end
           else
-            sink.write(sse_event(msg))
+            write_message(sink, msg)
             quiet_since = now
           end
           break if sink.wait_closed(0)

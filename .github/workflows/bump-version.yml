@@ -170,7 +170,7 @@ jobs:
 
           $checks
 
-          After merging, tag and push \`v$VERSION\` (CONTRIBUTING.md \"Releasing\", step 2). The site and the guides move in the release run.
+          After merging, tag and push \`v$VERSION\` (CONTRIBUTING.md \"Releasing\", step 2).
 
           From $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID."
 

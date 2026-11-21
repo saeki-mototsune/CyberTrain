@@ -1,6 +1,7 @@
 require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/cli"
+require_relative "support/file_tree"
 
 # `cybertrain test` without a compile: the arguments, checked before any
 # step; the steps in order (gen, the compile only when stale, the run);
@@ -12,20 +13,9 @@ ROOT = Dir.mktmpdir("cybertrain-cli-test-command")
 APP = "#{ROOT}/app"
 FRAMEWORK = "#{ROOT}/framework"
 
-def rm_tree(path)
-  if File.symlink?(path)
-    File.delete(path)
-  elsif File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  elsif File.exist?(path)
-    File.delete(path)
-  end
-end
-
 at_exit do
   Dir.chdir("/")
-  rm_tree(ROOT)
+  FileTree.remove(ROOT)
 end
 
 def write(path, text)
@@ -249,7 +239,7 @@ end
 
 test "stale? after an edit to a test, a model, a fixture or the framework, not after a run" do
   binary = "#{APP}/build/test/tests"
-  rm_tree(binary)
+  FileTree.remove(binary)
   assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
   ["test/models/article_test.rb", "app/models/article.rb", "test/fixtures/articles.yml"].each do |rel|
     build_binary

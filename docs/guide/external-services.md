@@ -5,7 +5,7 @@
 An application that calls another server (a webhook, a Slack incoming
 webhook, a third-party API) uses `Cybertrain::HttpClient`. `require
 "cybertrain"` loads it and the TLS layer, through the
-[Sentry sender](background-and-operations.md#error-reporting); an
+[Sentry sender](logs-and-errors.md#error-reporting); an
 application on `cybertrain/core` requires it where it is used, and the TLS
 layer too when any URL is https:
 
@@ -157,7 +157,8 @@ Cybertrain.logger.info("#{res.bytes_written} bytes") if res.success?
 ### gzip
 
 The client asks for and inflates gzip bodies when the gzip support is
-loaded: `require "cybertrain"` loads it, so in an application every request
+loaded: `require "cybertrain/core"` loads it (the server inflates gzip
+request bodies with it), so in an application every request
 sends `Accept-Encoding: gzip` (unless you send an `Accept-Encoding` header of
 your own) and a `Content-Encoding: gzip` body comes back inflated. A program
 that requires only `cybertrain/http_client` adds `require
@@ -202,8 +203,9 @@ parser.finish { |event| Answer.append(event.event_data) }   # a last event the s
 
 An application that listens to an outside feed (market ticks, device
 telemetry, an event stream) while the server runs subscribes to it with
-`Cybertrain::WebSocket.subscribe`. Like the HTTP client it is not in
-`require "cybertrain"`; require it where the subscription is written, and the
+`Cybertrain::WebSocket.subscribe`. `require "cybertrain"` does not load it
+(it loads the feeds subsystem and the HTTP client, not
+`cybertrain/websocket`): require it where the subscription is written, and the
 TLS layer too for `wss://`. It loads the feeds subsystem (the `feeds` role,
 the feed health check), so an application on `cybertrain/core` needs no
 other line:
@@ -228,8 +230,9 @@ subscription gets one thread. It connects, runs `on_open` (send your
 subscribe message there: it runs again after every reconnect), then hands
 each message to `on_message` with the `Connection` (`send_text`,
 `send_binary`, `close`, and `last_opcode`, `:text` or `:binary`). The
-blocks take their arguments and cannot use `self` (Spinel has no
-`instance_eval`).
+blocks take their arguments, and `self` in them is not the subscription: the
+feed calls the blocks it stored, and Spinel refuses `instance_exec` of a
+stored block (spikes/NOTES.md rule 2).
 
 - **When it runs.** The feeds start when the binary serves, like the
   scheduler ([Background work](background-and-operations.md#background-work)); `migrate`, `db ...`,
@@ -313,7 +316,7 @@ blocks take their arguments and cannot use `self` (Spinel has no
   often carry a token. Every line but the first is logged on the feed's
   thread and carries the tag `[feed:trades]`; a block that raises, the
   thread's end and the `feeds` process giving up are also
-  [reported](background-and-operations.md#error-reporting).
+  [reported](logs-and-errors.md#error-reporting).
 - **Errors.** All are `Cybertrain::WebSocket::Error`s, with host and port
   only in the message. Once the handshake is done, a lost connection or a
   close by the server is a `ClosedError` (`close_code`, `close_reason`; a
@@ -413,7 +416,8 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   else is said; bytes the server sends after its STARTTLS reply are
   refused. `tls` speaks TLS from the first byte (port 465). Both check the
   certificate against `host` as the HTTP client does (give a host name, not
-  an IP address), and both need `require "cybertrain/net/tls"` (which `require "cybertrain"` loads): without
+  an IP address), and both need `require "cybertrain/net/tls"` (`require
+  "cybertrain"` loads it; `cybertrain/core` and `cybertrain/mailer` do not): without
   it, `deliver` raises `Mailer::TLSError` saying so, before connecting.
   `none` is plain text, for a relay on the same machine or a test server:
   with a user configured it refuses (`Mailer::InsecureError`, before

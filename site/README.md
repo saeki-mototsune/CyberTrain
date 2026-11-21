@@ -7,16 +7,20 @@ by hand: static HTML and CSS with no build step, no framework and no
 third-party requests. The getting-started tutorial (`tutorial.html`) and the
 guides (`guide/`) are generated from Markdown (see [Generated
 pages](#generated-pages)) into the same page shell. `assets/site.js` only adds
-copy buttons, marks the current step in the contents lists and closes the
-language menu; every page works with JavaScript off. Each page is also
+copy buttons, turns the home page's code panels into file tabs, marks the
+current step in the contents lists and closes the language menu; every page
+works with JavaScript off (the panels are then shown one after another). Each
+page is also
 translated into four languages (see [Translations](#translations)).
 
 - `assets/brand/` — the logo files and [BRAND.md](assets/brand/BRAND.md)
   (construction system, colour tokens, clear space, which file to use where).
 - `assets/fonts/` — Archivo and JetBrains Mono, latin subsets, self-hosted
   under the SIL Open Font License (`OFL-*.txt`).
-- `assets/og/<lang>/<page>.png` — the social cards (`og:image`, 1200 x 630),
-  one per page and language, rendered by `script/og-cards` (see below).
+- `assets/og/<lang>/<page>.png` — the social cards (`og:image`, 1200 x 630)
+  of the home page, the tutorial, the playground page and the deploy page in
+  each language, rendered by `script/og-cards` (see below); a guide page
+  carries the home page's card.
 
 `api/` is not in the repository: it is the API reference, which
 `script/api-docs` builds with YARD (see the comment at its top) and the
@@ -48,11 +52,18 @@ python3 -m http.server -d site 8000   # http://localhost:8000
 ```
 
 Publishing: [.github/workflows/pages.yml](../.github/workflows/pages.yml)
-deploys this directory to GitHub Pages on every push to `main` that touches
-it. One-time setup in the repository settings: Pages → Build and deployment →
-Source: **GitHub Actions**. Links between the pages and to their assets are
-relative, so the site works from the `/CyberTrain/` project path (the `og:image`,
-`og:url` and canonical URLs are absolute, as social previews require).
+builds the API reference and the guides into this directory and deploys it
+to GitHub Pages on every push to `main` that touches a page's source:
+`site/` (its Markdown notes aside), `docs/guide/`, the API reference's
+inputs (`cybertrain/`, `docs/api/`, `.yardopts`), the scripts that build
+them or the workflow itself. It can also be run by hand. One-time setup in the repository settings: Pages → Build and deployment →
+Source: **GitHub Actions**. The site is served at the custom domain
+https://www.cybertrain.dev/ (set in Settings → Pages). Links between the pages
+and to their assets are relative, so the site also works from any other path
+(the `og:image`, `og:url`, canonical and hreflang URLs are absolute, as social
+previews and search engines require). `robots.txt` points crawlers at
+`sitemap.xml`, which `script/sitemap` builds in the Pages workflow (not
+committed) from the pages as deployed.
 A change that touches only `site/` does not run
 [CI](../.github/workflows/ci.yml) (its `paths` filter; CI never checked the site),
 so run `script/check-site-i18n` before pushing one.
@@ -64,6 +75,20 @@ generated ones too, through their Markdown) comes from
 The home page carries summaries and links to the guides for detail: when a
 guide becomes the canonical place for a fact, the home page keeps at most a
 sentence about it.
+The one exception is the quick start: its seven commands are printed in full
+in the home page's hero and again in step 01 of the tutorial
+([docs/guide/tutorial.md](../docs/guide/tutorial.md)), because a landing
+page's command block and a tutorial's first step are each what the page is
+for. Both follow [README.md](../README.md)'s quick start (the commands and
+their order; the trailing comments are worded per page), and nothing checks
+the three against each other: when a command changes, change all three, the
+four translations of each page, and the `COMMANDS` table in
+`script/og-cards`, which prints one of them on the home, tutorial and
+playground social cards (then regenerate the cards, below).
+
+The Caddyfile on `deploy.html` is a second copy of the one in
+[docs/deploy.md](../docs/deploy.md) and docs/deploy.en.md, section 6-2
+(without its two comments): change the three together.
 The home page's Performance section (06) shows the run recorded in
 [docs/benchmark.md](../docs/benchmark.md) (`bench/results/<date>.json`,
 printed by `bench/report`): after a new recorded run, update its numbers in
@@ -76,8 +101,9 @@ the note under it), and the four numbers under them.
 
 Every page carries Open Graph and Twitter card tags: `og:title`,
 `og:description` and `og:image:alt` in its own language, `og:url` and
-`<link rel="canonical">` pointing at itself, and `og:image` pointing at its own
-card, `assets/og/<lang>/<page>.png` (`en` for the English pages). A card shows
+`<link rel="canonical">` pointing at itself, and `og:image` pointing at its card,
+`assets/og/<lang>/<page>.png` (`en` for the English pages; a guide's is
+`index.png` unless its front matter names another). A card shows
 the wordmark, the page's kicker (the home page's status line, or the header
 link for the page) and headline (the tagline, or the `<h1>`), one real command
 from the quick start, and the mark's train on its track. The words are read
@@ -87,10 +113,10 @@ from the pages, so when a tagline or title changes, in any language, run
 script/og-cards                 # all languages; or: script/og-cards ja
 ```
 
-and commit the PNGs. Run `script/guide-pages` first: the cards of the tutorial and the guides read
-their words from the generated pages. It needs Node and Playwright with its Chromium, and Noto
-Sans JP, Noto Sans SC and Noto Sans installed for the Japanese, Chinese and
-Russian cards (the comment at the top of the script has the details). Social
+and commit the PNGs. Run `script/guide-pages` first: the tutorial's card
+reads its words from the generated page. The script needs Node and Playwright
+with its Chromium, and Noto Sans JP, Noto Sans SC and Noto Sans installed for
+the Japanese, Chinese and Russian cards (the comment at the top of the script has the details). Social
 networks cache cards: after changing one, re-scrape the page with the
 network's card validator.
 

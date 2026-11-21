@@ -1,7 +1,7 @@
 #!/usr/bin/env ruby
 # Compiles the bundled dictionaries, cybertrain/locales/*.yml, into the
 # checked-in cybertrain/locales/bundled.rb (Cybertrain::BundledLocales.lookup
-# and .lookup_list; plan decision D2), with gen's own reader and emitter:
+# and .lookup_list; docs/design.md D79), with gen's own reader and emitter:
 # Gen::LocaleYaml reads each file, Gen::LocaleScan merges them sorted by
 # path, Gen::LocalesEmitter writes the module (no I18n.install_dictionary
 # line: cybertrain/i18n installs the bundled pair itself). Runs under CRuby.

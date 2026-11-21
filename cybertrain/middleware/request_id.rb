@@ -9,10 +9,9 @@ require "cybertrain/http/client_error"
 require "cybertrain/error_reporter"
 
 module Cybertrain
-  # Gives every request an id (spec section 12.2, Rails'
-  # ActionDispatch::RequestId), outermost in the stack: a version 4 UUID
+  # Gives every request an id (Rails' ActionDispatch::RequestId), outermost in the stack: a version 4 UUID
   # ({Crypto.uuid}), or the request's `X-Request-Id` when a trusted proxy
-  # sent it ({Request.trusted_peer?}, the check {Request#client_ip} makes)
+  # sent it (the check {Request#client_ip} makes)
   # and it is well-formed ({RequestId.accepted?}), so the proxy's log and
   # the application's share it; any other `X-Request-Id` is discarded,
   # never altered.
@@ -20,7 +19,7 @@ module Cybertrain
   # The id is {Request#request_id}, the response's `X-Request-Id` (set
   # after the stack returned, so a 403 from HostAuthorization, a redirect
   # or an error page carries it too), and, through the thread's
-  # {Logger::Scope} ({RequestId.scope_for}), a tag on every line logged
+  # {Logger::Scope}, a tag on every line logged
   # while the request runs: the tags `log_tags` (Config#log_tags) names,
   # in its order. The Scope found before is put back when the stack
   # returns or raises; what the stack raises goes on up unchanged.
@@ -29,13 +28,13 @@ module Cybertrain
   # server's front_app wraps a second one around the diagnostics page)
   # leaves the id, the Scope and the header to the outer one.
   #
-  # What escapes the stack as a 500 ({ClientError.status_for}) is reported
-  # ({ErrorReporter#report_unhandled}) before it goes on up, while the
+  # What escapes the stack as a 500 is reported to {Cybertrain.error}
+  # before it goes on up, while the
   # request's Scope is still the thread's, so the event carries the id,
-  # the method and the masked path; `where` is the controller and action
-  # ({RequestId.where_for}). The innermost RequestId that sees it reports
-  # it, the one that found the id set included, and marks the Context
-  # ({Context#error_reported}); one further out does not report it again.
+  # the method and the masked path; `where` is the controller and action.
+  # The innermost RequestId that sees it reports it, the one that found
+  # the id set included, and marks the Context; one further out does not
+  # report it again.
   # So a request is reported once by construction, not by the reporter's
   # dedupe: in development the stack's own RequestId reports, and what the
   # diagnostics page outside it does not take (an exception outside
@@ -183,8 +182,7 @@ module Cybertrain
 
     # The stack, with what escapes it reported and raised on unchanged.
     # The rescue sits in this plain method, which does not yield
-    # (spikes/NOTES.md rules 32 and 45). JSON::NestingError and
-    # JSON::ParserError are named (rules 33 and 61); the second arm takes
+    # (spikes/NOTES.md rules 32 and 45). The second arm takes
     # NotImplementedError, SystemStackError and ScriptError. Any other
     # Exception (an application's own, outside StandardError) goes on up
     # unreported; {#call}'s `ensure` still puts the Scope back.
@@ -192,7 +190,7 @@ module Cybertrain
       nxt = @app
       nxt.call(ctx) unless nxt.nil?
       nil
-    rescue JSON::NestingError, JSON::ParserError, StandardError => e
+    rescue StandardError => e
       report_escaped(ctx, e)
       raise e
     rescue NotImplementedError, SystemStackError, ScriptError => e

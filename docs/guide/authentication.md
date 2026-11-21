@@ -34,12 +34,17 @@ the nav partial in the layout, the user command in `bin/<app>.rb`, the
 and in `bin/<app>.rb` and `bin/db.rb` the lines of the subsystems the code
 uses, unless `require "cybertrain"` loads them all already:
 `cybertrain/jobs`, `cybertrain/mailer`, `cybertrain/mailer/later` and
-`cybertrain/rate_limit` ([Subsystems](how-it-works.md#subsystems)).
+`cybertrain/rate_limit` ([Subsystems](how-it-works.md#subsystems)). It
+also includes `SessionTestHelper` in `test/test_helper.rb`, signs
+`users(:one)` in at the top of the scaffold and attachment tests already
+there ([Testing](#testing)), and uncomments the worker role that
+`cybertrain new` left commented in `config/deploy.yml`, since a job thread
+sends the mails.
 Running it again with the same options changes nothing: an edit already
 made is found and skipped, and a file already as it would write it is
 left. A file it would write differently (one you edited, or one an older
 generator or other options wrote) is never overwritten without `--force`:
-its diff is printed instead ([Upgrading from 0.4](#upgrading-from-04),
+its diff is printed instead ([Running the generator again](#running-the-generator-again),
 [Turning on confirmation later](#turning-on-confirmation-later)).
 
 The texts of the generated screens are in the framework's English and
@@ -93,8 +98,9 @@ is no `Current` object.
 
 By default the generator writes `RegistrationsController` (`/sign_up`),
 which creates a user and signs them in. Rails' generator has no sign-up
-page and leaves the first user to the console; CyberTrain has no Ruby
-console, so it writes one. Sign-ups are limited to ten per client address
+page and leaves the first user to `rails console`; CyberTrain's console is
+not a Ruby prompt ([The console](background-and-operations.md#the-console)),
+so the generator writes one. Sign-ups are limited to ten per client address
 every three minutes, as sign-ins are: each one hashes a password, may mail
 a link, and its "has already been taken" tells whether an address is
 registered.
@@ -381,9 +387,11 @@ runs ([Testing an app](testing.md)):
 Time moves with `travel_to` and `travel` (no row is moved back in time),
 and mail is read from `Cybertrain::Mailer.deliveries` with `assert_emails`
 and `perform_enqueued_jobs`. A scaffold generated after authentication
-signs `users(:one)` in at the top of its controller test; one generated
-before it does not, so add `sign_in_as users(:one)` to its `setup`. Run
-again over an application whose tests an earlier generator wrote
+signs `users(:one)` in at the top of its controller test. For one generated
+before it, the generator inserts `sign_in_as users(:one)` into the test's
+`setup` (and into the `setup` of a `generate attachment` integration
+test); a `setup` you rewrote is left alone, so add the line there yourself.
+Run again over an application whose tests an earlier generator wrote
 (`test/authentication.rb`, `admin.rb`, `remember_me.rb`, `lockout.rb`,
 `passwords.rb`, `accounts.rb`, `confirmations.rb`,
 `test/support/app_test.rb`, `test/support/authentication_helpers.rb`), the
@@ -393,12 +401,13 @@ them.
 `script/auth-e2e signup invite confirmable upgrade04` in this repository
 builds applications with the generator and drives them from end to end.
 
-## Upgrading from 0.4
+## Running the generator again
 
-Run the generator again in an application 0.4 generated. It writes the
-files that are missing, a migration with the columns the existing ones
-lack, and the edits; for each file it would write whole that exists with
-other content, it changes nothing and prints a diff:
+Run the generator again in an application an earlier release generated. It
+writes the files that are missing, a migration with the columns the existing
+ones lack, and the edits; for each file it would write whole that exists
+with other content, it changes nothing and prints a diff. In an application
+0.4 generated:
 
 ```text output — cybertrain generate authentication (excerpt)
 exist db/migrate/20260925120000_create_users.rb
@@ -422,30 +431,19 @@ manual  app/controllers/application_controller.rb: apply this diff by hand, or r
 +  include Authentication
 ```
 
-[test/fixtures/auth_04_app.upgrade.diff](../../test/fixtures/auth_04_app.upgrade.diff)
-is the whole output for a sign-up application 0.4 generated.
-
 <!-- list: points -->
 - Save the output and apply it with `patch -p1` from the application's
   directory (patch skips the lines that are not part of a diff), or apply
   each diff by hand where you changed the file. The application may not
   build until they are applied: the new files call what the diffs add.
 - `--force` writes the new files over the old ones instead, for files you
-  never edited; 0.4's block in `ApplicationController` is replaced only
-  when it is exactly as 0.4 wrote it.
+  never edited.
 - The new migration adds only the columns that are missing; run `cybertrain
   db migrate`. With `--confirmable` it also counts the users already there
   as confirmed (since they were created), or none of them could sign in.
-- With `--confirmable`, the diffs of the sessions and registrations
-  controllers carry an `IMPORTANT:` line: until they are applied, an
-  unconfirmed account is not told why it cannot sign in, and a sign-up is
-  mailed no link. In a 0.4 application the concern is a new file, written
-  with its confirmation check, so it still starts no session for an
-  unconfirmed account (and logs `WARN [<request id>] no session started: user <id> has
-  not confirmed its address`) even if those diffs are never applied.
-- Every session ends once at the upgrade (the cookie is encrypted now), and
-  the rest of [Upgrading an application from 0.4](requests.md#upgrading-an-application-from-04)
-  applies too.
+- What a release's generator changes, and what else that release asks of
+  the application, is listed by version in
+  [Upgrading](upgrading.md#notes-by-version).
 
 ### Turning on confirmation later
 

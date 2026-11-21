@@ -1,7 +1,7 @@
-# Phase 5a spike: stand-ins for Tasks 2, 4 and 5 (cybertrain/clock.rb,
-# cybertrain/durations.rb, cybertrain/time_ext.rb's calendar methods and
-# cybertrain/zoned_time.rb), written only far enough to compile and answer
-# the shapes spec sections 2 to 4 give them. Required by durations.rb,
+# Phase 5a spike: stand-ins for what the phase wrote later
+# (cybertrain/clock.rb, cybertrain/durations.rb, cybertrain/time_ext.rb's
+# calendar methods and cybertrain/zoned_time.rb), written only far enough to compile and answer
+# the shapes docs/design.md D81 gives them. Required by durations.rb,
 # time_now.rb and class_app/tests.rb. A record, not the framework's code.
 require "date"
 require "cybertrain/time_zone"

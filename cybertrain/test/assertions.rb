@@ -1,8 +1,8 @@
-# The assertions of spec section 10 beyond the first few, and the checks
+# The assertions (docs/design.md D84) beyond the first few, and the checks
 # behind every assertion, with Minitest's (or Rails') failure text.
 # Required by cybertrain/test at its end; it reopens Cybertrain::Test.
 #
-# The pattern every assertion follows (pre-flight R17): the check and its
+# The pattern every assertion follows: the check and its
 # message live in one module function, `Cybertrain::Test.check_<name>`,
 # which counts the assertion, compares, builds the message into a local
 # (rule 58) and raises AssertionFailed through {Cybertrain::Test.fail_with};
@@ -19,10 +19,11 @@ module Cybertrain
     # given (`to: nil` is an expectation). Not for tests to pass.
     UNSET = "\u0000unset"
 
-    # Ruby's own exception classes answer no `superclass` under Spinel
-    # ("undefined method 'superclass' for module RuntimeError"; phase 5a
-    # spike item 4, spikes/phase5/assert_raises.rb), so above the first
-    # builtin the chain `assert_raises` walks is read from their parents
+    # Ruby's own exception classes answer no `superclass` under Spinel in a
+    # program that defines a module, as every program that requires this
+    # file does ("undefined method 'superclass' for module RuntimeError";
+    # spikes/NOTES.md rule 104, spikes/phase5/assert_raises.rb), so above
+    # the first builtin the chain `assert_raises` walks is read from their parents
     # (checked against CRuby 3.3's `superclass`); every `Errno::` class's
     # parent is SystemCallError (see {builtin_parent}).
     BUILTIN_PARENTS = {
@@ -277,8 +278,9 @@ module Cybertrain
       nil
     end
 
-    # A user class's superclass; nil for a class of Ruby's own, which
-    # answers none under Spinel (a NoMethodError there).
+    # A user class's superclass; nil where `superclass` raises, as it does
+    # under Spinel for a class of Ruby's own in a program that defines a
+    # module (a NoMethodError; spikes/NOTES.md rule 104).
     def self.superclass_or_nil(klass)
       klass.superclass
     rescue StandardError

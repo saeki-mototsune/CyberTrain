@@ -1,5 +1,5 @@
 ---
-source_sha256: 8919ff462caf7ac2d1996cfa666cc4119d5c76c2641e57c1aa075e6dd88c56ff
+source_sha256: a8daf8137bdd9b6bb50a405ab126b696ae02cbddf3e3d25448e6bd2dbe219f15
 ---
 # リクエスト
 
@@ -113,9 +113,9 @@ end
 
 `include AdminGate` と書いたコントローラーは、`included` ブロックが宣言するもの（`before_action`、`skip_before_action`、`after_action`、`helper_method`、`rate_limit`、`rescue_from`、`layout`）を、`include` の位置に、書いた順で受け取り、アクションの中で `self.class.per_page` が使えます。コンサーンはコンサーンを include できます：gen はそれらを深さ優先で、それぞれ一度だけ展開し、循環は名前を挙げて拒否します（`concern cycle: A includes B includes A`）。`include A, B` は Ruby と同じく B を先に include するので、B の `included` ブロックとコールバックが A のものより先に来ます。`around_action` は拒否されます（around コールバックはありません）。コンサーンのメソッドの中の `@x =` の代入は、コントローラーのビュー変数になります。
 
-Spinel は実行されることのない `included` と `class_methods` のブロックもコンパイルするので、gen が代わりに展開します：各コンサーンを、その二つのブロックを空行にして `gen/concerns/<app/ 以下のパス>` に書き（アプリのファイルはこのコピーを読み込みます）、`gen/concerns.rb` で include する各クラスを開き直して、差し込んだ宣言と、`class_methods` のメソッドごとの転送メソッドを書きます。ここから二つの規則が出てきます。`class_methods` のメソッドは、コンサーン、include するクラス、その祖先のインスタンスメソッドと同じ名前にはできません（Spinel はどちらもインスタンスメソッドとして定義してしまいます。spikes/NOTES.md のルール 93）。gen は両方の場所（インスタンスメソッドの `ファイル:行`）を挙げて拒否します。また、コンサーンでないモジュール（`include Comparable` や、`app/*/concerns` の下にファイルのない名前）の `include` は、そのまま Ruby に任されます。そのためコンサーン名の綴り間違いは、gen のメッセージではなく、アプリの読み込み時の `NameError` になります。gen は名前を Ruby と同じように、クラス自身のモジュールから先に探すので、`module Admin` の中の `include Gate` は `Admin::Gate` を取り込みます。どのコンサーンにも届かないのに最後の部分がコンサーンの名前と同じ名前（`Admin::Gate` しかないときの `include Gate`）では gen が止まります。Ruby は別のモジュールを include するか例外を出し、コンサーンの `included` ブロックが失われるからです。
+Spinel は実行されることのない `included` と `class_methods` のブロックもコンパイルするので、gen が代わりに展開します：各コンサーンを、その二つのブロックを空行にして `gen/concerns/<app/ 以下のパス>` に書き（アプリのファイルはこのコピーを読み込みます）、`gen/concerns.rb` で include する各クラスを開き直して、差し込んだ宣言と、`class_methods` のメソッドごとの転送メソッドを書きます。`class_methods` のメソッドは、コンサーン、include するクラス、その祖先のインスタンスメソッドと同じ名前にできます：転送メソッドはクラスメソッドで、gen が書くコピーはその名前のインスタンスメソッドを定義しません。コンサーンでないモジュール（`include Comparable` や、`app/*/concerns` の下にファイルのない名前）の `include` は、そのまま Ruby に任されます。そのためコンサーン名の綴り間違いは、gen のメッセージではなく、アプリの読み込み時の `NameError` になります。gen は名前を Ruby と同じように、クラス自身のモジュールから先に探すので、`module Admin` の中の `include Gate` は `Admin::Gate` を取り込みます。どのコンサーンにも届かないのに最後の部分がコンサーンの名前と同じ名前（`Admin::Gate` しかないときの `include Gate`）では gen が止まります。Ruby は別のモジュールを include するか例外を出し、コンサーンの `included` ブロックが失われるからです。
 
-モデルのコンサーンは `app/models/concerns/` に置き、同じように働きます：`included` ブロックには、モデルのクラスレベルの宣言（`validates`、`validate`、`scope`、`belongs_to`、`has_many`、`has_one`、`encrypts`、コールバック、`normalizes`）をどれでも書け、`include` の位置でモデルに書いたものとして扱われます。コンサーンのコールバックは、同じ種類のモデル自身のコールバックの後に実行され、モデルのコンサーンの `included` ブロックの中の `include` は、そのコンサーンを取り込みます。モデルのコンサーンの `class_methods` のメソッド名は、そのモデルのスコープや、どのモデルにもあるクラスメソッドと同じにはできません（`scope :recent` と並べた `recent` や `where`）。gen はそれを拒否します。
+モデルのコンサーンは `app/models/concerns/` に置き、同じように働きます：`included` ブロックには、モデルのクラスレベルの宣言（`validates`、`validate`、`scope`、`belongs_to`、`has_many`、`has_one`、`encrypts`、コールバック）をどれでも書け、`include` の位置でモデルに書いたものとして扱われます。コンサーンのコールバックは、同じ種類のモデル自身のコールバックの後に実行され、モデルのコンサーンの `included` ブロックの中の `include` は、そのコンサーンを取り込みます。モデルのコンサーンの `class_methods` のメソッド名は、そのモデルのスコープや、どのモデルにもあるクラスメソッドと同じにはできません（`scope :recent` と並べた `recent` や `where`）。gen はそれを拒否します。
 
 コントローラー、またはコンサーンの `included` ブロックに `helper_method :current_user, :admin?` と書くと、そのコントローラーのメソッドを、そのコントローラーのテンプレートと、そこから描画するコンポーネントとパーシャルから、引数付きで呼べるようになります。フレームワークのヘルパーの名前、`_path` や `_url` で終わる名前、`app/helpers` のモジュールが定義する名前、コントローラー・その親・そのコンサーンに `def` がない名前、テンプレートから引数を渡せない（`*rest`、`**opts`、`...`）名前は、gen が拒否します。
 
@@ -210,7 +210,7 @@ def export
 end
 ```
 
-`c.log_tags` で各行に何を出すかを選びます。ジョブの行とエラー報告は、それをキューに入れたリクエストの ID を持ちます（[リクエスト ID](background-and-operations.md#request-ids)）。
+`c.log_tags` で各行に何を出すかを選びます。ジョブの行とエラー報告は、それをキューに入れたリクエストの ID を持ちます（[リクエスト ID](logs-and-errors.md#request-ids)）。
 
 ## Content Security Policy、`force_ssl` とホスト
 
@@ -265,35 +265,18 @@ request.header_params("prefer").key?("respond-async")   # => true
 
 ## クエリ文字列とボディ
 
-`Query.parse`、`Query.value_of`、`Query.decode`、`request.form_value` / `query_value` は、次の場合に `Cybertrain::QueryMalformed`（`Cybertrain::QueryInvalid` 配下の `StandardError` で、`ArgumentError` ではない）を出し、400 が返されます：
+リクエストのパラメーターはアクションが実行される前にデコードされ、`Query.parse` も同じようにテキストをデコードします。どちらも、次の場合に `Cybertrain::QueryInvalid`（`StandardError` で、`ArgumentError` ではない）を出し、400 が返されます：
 
 - 形式の壊れたパーセントエスケープ（どちらのランタイムでも）
 - 不正な UTF-8 のバイト列。生のもの（String のタグにかかわらず）でも、パーセントエンコードされたものでも（Rails も不正なパラメーターのエンコーディングには 400 を返します）
 - エスケープによってしか完成しない生のバイト（`a=\xC3%A9`）
 
-`Cookies.parse` はそうした値を代わりに生のまま保持します。不正なバイト列を含むパス（生のもの、またはセグメント内でパーセントデコードされたもの）も 400 になります（`request.path_segments`）。パス内の形式の壊れたエスケープは文字どおりに扱われ、一致しないので 404 です。リクエストパラメーターのネストは最大 32 階層、4096 ペアで、それを超えると 400 です。アップグレードの注意点：これらの呼び出しを `ArgumentError` で rescue していたアプリのコードは、代わりに `Cybertrain::QueryInvalid` を rescue してください。
+`Cookies.parse` はそうした値を代わりに生のまま保持します。不正なバイト列を含むパス（生のもの、またはセグメント内でパーセントデコードされたもの）も 400 になります。パス内の形式の壊れたエスケープは文字どおりに扱われ、一致しないので 404 です。リクエストパラメーターのネストは最大 32 階層、4096 ペアで、それを超えると 400 です。
 
 リクエストは自前のパラメーターツリーを持ちません（`params` は Router が組み立て、ミドルウェアはキーをひとつ読みます）。ツリー全体が欲しいアプリは自分でパースし（`Query.parse(request.utf8_query_string)`）、結果を自分で管理します。
 
 Rack は gzip されたリクエストボディをそのままにします。ここでは、`Content-Encoding: gzip` で送られたボディ（数キロバイトを超える SDK や API クライアント）は `request.decoded_body` で、出力の上限のもとでシステムの zlib を通じて一度だけ展開されます：上限はデフォルトで 10 MiB で、それ以上を期待するエンドポイントは自分の上限を渡します（`request.decoded_body(limit)`）。壊れたボディや gzip/identity 以外のエンコーディングは `Cybertrain::BodyUndecodable`、上限を超えて展開されそうなものは `Cybertrain::BodyTooLarge` で、どちらも 400 を返す `QueryInvalid` です。`request.body` は送られたままのバイト列です。
 
-## 0.4 のアプリを更新する
+## アップグレード
 
-0.4 向けに書いたアプリで変わること（全体は [設計](../superpowers/specs/2026-11-10-phase4-web-layer-design.md) の 14 節にあります）：
-
-- どのセッションも一度だけ終わります：暗号化した Cookie は以前の署名付きのものを読めないので、ユーザーはもう一度サインインします。`Session.load` や `Session.dump` を呼ぶコードは、導いた鍵 `Crypto.derive_key(secret, SessionStore::SESSION_KEY_LABEL)` を渡します。生の秘密鍵を渡すと `Encryptor::Error` になります。
-- どのアプリも OpenSSL をリンクします（[インストール](install.md#requirements)）。以前の `cybertrain new` が書いた Dockerfile には、ビルド段に `libssl-dev`、実行段に `libssl3t64` が要ります。
-- フォーマットを取るルートでは、動的セグメントが `.` を取り込まなくなりました：ドットを含む id のルートには `format: false` が要ります。
-- 手で書いた `url_resolver` のラムダは三つの引数 `->(name, args, options)` を取ります。`Gen::Routes.url_resolver` を渡しているアプリは `spin run gen` だけで済みます。
-- `params.permit` は `Hash{String => Object}` を返します：値を String として使う前に `Cast.str` か `.to_s` を呼んでください。
-- `rate_limit` はキャッシュで数えます：`store: :memory` で以前のプロセスごとのカウンターになり、一つのコントローラーの二つの制限にはそれぞれの `name:` が要り、nil か `""` を返す `by:` のメソッドは例外を発生させ、何も描画しない `with:` のメソッドの後には 429 が続きます。
-- 数値のヘルパーは、数でない値と、0 から 100 の範囲外の精度で例外を発生させます（nil はテンプレートでは従来どおり `""` になります）。
-- コントローラーやモデルの `include A, B` は、Ruby と同じく B を先に include します。コンサーンでないモジュールの `include` は Ruby に任されます。
-- すべての ETag が一度変わります（リクエストのフォーマットとビルドのダイジェストを含むようになったため）。`Accept` で決まった応答は `Vary: Accept` を送り、html のフォールバックは `text/html` か `*/*` を挙げるどの `Accept` にも働きます。html にフォールバックしうるリクエスト（`application/json, text/html`）は、そのフォーマットだけを求めるリクエストとは別の ETag を持ちます。`Accept` の `text/html;q=0` には、`*/*` が並んでいても html のフォールバックは働きません（html しかないアクションでは 406）。`If-None-Match: *` は、`last_modified:` だけで検証した応答からも 304 を受け取ります。
-- `permit` と `expect` は、Array でないフィルターで `ArgumentError` を発生させます。存在しないレイアウトを指す `layout` は `MissingTemplate` を発生させます（既定の `application` レイアウトは省略可能なままです）。ジャーの Cookie が 4096 バイトを超えると `Session::CookieOverflow` を発生させます。
-- `public/style.css` はそのまま動きます。`app/assets/stylesheets/` への移動は任意です（[アセット](assets.md#moving-publicstylecss)）。
-- バリデーションメッセージは同梱の辞書から来ます（[国際化](i18n.md#models-and-validation-messages)）。英語の文面は同じですが、3 つだけ違います：`:base` のメッセージの頭に "Base" が付かなくなり、`_id` で終わる属性は "id" なしで呼ばれ（"Article id can't be blank" ではなく "Article can't be blank"）、長さの上限 1 は "1 character" になります。これらのメッセージを比べるテストは変わります。
-- `format:` なし、または書式名つきの `time_tag` は `I18n.l` で整形されます（英語のページでは以前と同じ英語の文面です）。
-- gen は `gen/locales.rb`（`config/locales/` がなければ空）を書き、`app/mailers/**/*.rb` を読み込みます。`cybertrain new` は `config/locales/en.yml` を書きます。古いアプリケーションも足せます。
-- `allow_unauthenticated_access` はフレームワークのメソッドになりました。0.4 のジェネレーターが `ApplicationController` に書いたものも動き続け、そちらが優先されます。`cybertrain generate authentication` をもう一度実行すると、パスワードリセット、ロックアウト、ログインしたままにする、アカウントページ、管理者ユーザーが加わり、0.4 が書いたファイルの差分が表示されます（[0.4 からのアップグレード](authentication.md#upgrading-from-04)）。
-- アプリケーションが返すすべてのレスポンスが `X-Request-Id` を持ち（サーバーが読めないリクエストに返す 400 と 413 は除きます）、プロキシの `X-Request-Id` はそのプロキシが信頼されているときだけ使われます。ログの行の形もすべて変わります（[ログとエラー報告の 0.4 からの更新](background-and-operations.md#upgrading-logs-and-error-reports-from-04)）。
+ルーティング、コントローラー、そのほかの Web 層についてリリースが変えることは、[アップグレード](upgrading.md#notes-by-version) にバージョンごとに載っています。
