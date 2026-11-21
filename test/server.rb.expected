@@ -71,4 +71,4 @@ ok   listen_fd naming a read-write regular file raises PortInUse
 ok   listen_fd naming a connected socket that does not listen raises PortInUse
 ok   where SO_ACCEPTCONN cannot be read (macOS) an inherited listener is still served
 ok   where SO_ACCEPTCONN cannot be read (macOS) a file, a closed number and a connected socket are still refused
-73 tests, 307 assertions, 0 failures
+73 tests, 309 assertions, 0 failures

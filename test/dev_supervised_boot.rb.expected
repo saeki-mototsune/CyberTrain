@@ -4,4 +4,5 @@ ok   a regular file's descriptor is a boot failure, not a hang
 ok   outside development the variables are ignored: the port is bound as always, and no failure file is written
 ok   a production boot failure writes no failure file, whatever the variables say
 ok   in development without the descriptor variable no failure file is written
-6 tests, 7 assertions, 0 failures
+ok   the server role adds the settings to the HTTP layer's message
+7 tests, 11 assertions, 0 failures

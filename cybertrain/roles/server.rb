@@ -156,7 +156,17 @@ module Cybertrain
         end
         nil
       rescue PortInUse => e
-        Roles.fail_boot(e.message)
+        Roles.fail_boot(ServerRunner.port_message(e))
+      end
+
+      # The HTTP layer's PortInUse message plus the setting that fixes it
+      # (the text `cybertrain server` has always printed).
+      def self.port_message(e)
+        reason = e.reason
+        return "#{e.message} (stop the other server or set PORT)" if reason == PortInUse::IN_USE
+        return "#{e.message} (check CYBERTRAIN_HOST)" if reason == PortInUse::REUSE_PORT_HOST
+        return "#{e.message} (set CYBERTRAIN_HOST to one of them)" if reason == PortInUse::REUSE_PORT_NAME
+        e.message
       end
 
       private

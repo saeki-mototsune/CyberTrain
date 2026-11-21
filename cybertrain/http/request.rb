@@ -809,7 +809,7 @@ module Cybertrain
     # (CRuby loads this file for the portable tests and check-http-layer),
     # so `require "cybertrain"` installs it. A module-level ivar with a
     # lambda default, the shape Views.url_resolver has (NOTES rules 18, 42).
-    @inflater = ->(data, limit) { raise BodyUndecodable, "gzip request bodies are not decoded: no inflater is installed (require \"cybertrain\")" }
+    @inflater = ->(data, limit) { raise BodyUndecodable, "gzip request bodies are not decoded: no inflater is installed (require the gzip support)" }
 
     def self.inflater
       @inflater

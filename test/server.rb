@@ -1285,7 +1285,7 @@ test "start raises Cybertrain::PortInUse when the port is already bound" do
   port = first.port
   second = Cybertrain::Server.new(Cybertrain::ContextHandler.new(ServerTestApp.new), port: port, logger: Cybertrain::Logger.new($log, :info))
   message = assert_raises("Cybertrain::PortInUse") { second.start }
-  assert_equal "port #{port} on 127.0.0.1 is already in use (stop the other server or set PORT)", message
+  assert_equal "port #{port} on 127.0.0.1 is already in use", message
   assert_equal port, second.port
   # the first server is unaffected
   c = RawClient.new(port)
@@ -1299,7 +1299,9 @@ test "PortInUse names the reason the port could not be bound" do
   assert_equal "port 80 on 127.0.0.1 cannot be bound: permission denied (ports below 1024 need root or a capability)", denied.message
   assert_equal 80, denied.port
   busy = Cybertrain::PortInUse.new("127.0.0.1", 3000)
-  assert_equal "port 3000 on 127.0.0.1 is already in use (stop the other server or set PORT)", busy.message
+  assert_equal "port 3000 on 127.0.0.1 is already in use", busy.message
+  assert_equal "is already in use", busy.reason
+  assert_equal Cybertrain::PortInUse::PERMISSION_DENIED, denied.reason
 end
 
 # Exercises the real, compiled bind path (not a hand-built PortInUse): under

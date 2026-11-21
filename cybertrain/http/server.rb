@@ -19,20 +19,22 @@ module Cybertrain
   # process that is not there. With reuse_port a host that does not resolve
   # or is not this machine's is a third reason and a name with several
   # addresses a fourth, both naming the setting; with listen_fd, a
-  # descriptor that is not a listening socket is a fifth. The message is what
-  # Application#serve prints before exiting.
+  # descriptor that is not a listening socket is a fifth. The message is the HTTP
+  # layer's own, free of any application's settings; #reason is the constant
+  # that ends it, for a caller that adds a hint of its own.
   class PortInUse < StandardError
-    attr_reader :port
+    attr_reader :port, :reason
 
-    IN_USE = "is already in use (stop the other server or set PORT)"
+    IN_USE = "is already in use"
     PERMISSION_DENIED = "cannot be bound: permission denied (ports below 1024 need root or a capability)"
-    REUSE_PORT_HOST = "cannot be bound with reuse_port: the host is not an address of this machine (check CYBERTRAIN_HOST)"
-    REUSE_PORT_NAME = "cannot be bound with reuse_port: the host names several addresses (set CYBERTRAIN_HOST to one of them)"
+    REUSE_PORT_HOST = "cannot be bound with reuse_port: the host is not an address of this machine"
+    REUSE_PORT_NAME = "cannot be bound with reuse_port: the host names several addresses"
     NOT_LISTENING = "cannot be served: the inherited descriptor is not a listening socket"
 
     def initialize(host, port, reason = IN_USE)
       super("port #{port} on #{host} #{reason}")
       @port = port
+      @reason = reason
     end
   end
 

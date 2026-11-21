@@ -92,7 +92,7 @@ test "a regular file's descriptor is a boot failure, not a hang" do
 end
 
 test "outside development the variables are ignored: the port is bound as always, and no failure file is written" do
-  in_use = "error: port PORT on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE}"
+  in_use = "error: port PORT on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE} (stop the other server or set PORT)"
   assert_equal ["1", "#{in_use}\n", ""], boot_child("test", "7; rm")
 end
 
@@ -102,8 +102,19 @@ test "a production boot failure writes no failure file, whatever the variables s
 end
 
 test "in development without the descriptor variable no failure file is written" do
-  in_use = "error: port PORT on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE}"
+  in_use = "error: port PORT on 127.0.0.1 #{Cybertrain::PortInUse::IN_USE} (stop the other server or set PORT)"
   assert_equal ["1", "#{in_use}\n", ""], boot_child("development", "")
+end
+
+test "the server role adds the settings to the HTTP layer's message" do
+  busy = Cybertrain::PortInUse.new("127.0.0.1", 3000)
+  assert_equal "port 3000 on 127.0.0.1 is already in use (stop the other server or set PORT)", Cybertrain::Roles::ServerRunner.port_message(busy)
+  host = Cybertrain::PortInUse.new("10.0.0.1", 3000, Cybertrain::PortInUse::REUSE_PORT_HOST)
+  assert_equal "port 3000 on 10.0.0.1 #{Cybertrain::PortInUse::REUSE_PORT_HOST} (check CYBERTRAIN_HOST)", Cybertrain::Roles::ServerRunner.port_message(host)
+  names = Cybertrain::PortInUse.new("localhost", 3000, Cybertrain::PortInUse::REUSE_PORT_NAME)
+  assert_equal "port 3000 on localhost #{Cybertrain::PortInUse::REUSE_PORT_NAME} (set CYBERTRAIN_HOST to one of them)", Cybertrain::Roles::ServerRunner.port_message(names)
+  denied = Cybertrain::PortInUse.new("127.0.0.1", 80, Cybertrain::PortInUse::PERMISSION_DENIED)
+  assert_equal denied.message, Cybertrain::Roles::ServerRunner.port_message(denied)
 end
 
 Cybertrain::Test.run!
