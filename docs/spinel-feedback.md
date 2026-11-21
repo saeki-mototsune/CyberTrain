@@ -3774,3 +3774,42 @@ report, test/gen_jobs.rb before 0dac336).
   one inside a literal.
 - Not reported upstream; to be reduced first (section 3 of "What is asked
   of Spinel now").
+
+## Found in the spinel-http extraction, phase 1 (2026-11-21)
+
+Task 3 of docs/superpowers/plans/2026-11-21-spinel-http-phase1-plan.md met
+one Spinel item, AS.
+
+### AS. `ENV[name]` answers `name` in some programs
+
+A program that loads Query beside Config, without the rest of the
+framework, reads every set environment variable as its own name:
+
+```ruby
+require "cybertrain/http/query"
+require "cybertrain/config"
+ENV["AS_VARIABLE"] = "value"
+puts Cybertrain::Config.env_or("AS_VARIABLE", "default")       # AS_VARIABLE (CRuby: value)
+puts Cybertrain::Config.env_or("AS_UNSET_VARIABLE", "default") # default, as CRuby
+```
+
+The same on the fork's 2026.11.15.7033 and on upstream 2026.10.25, at
+d9e62f9 (before Task 3). `require "cybertrain"` in place of the two
+requires prints `value`. So does `json`, `uri` or `cybertrain/http/response`
+in place of Query. Query pulls in URI's code, which seems to be what
+switches the C.
+
+- Cause: `Config.env_or`'s `ENV[name] || ""` is emitted as
+  `_sp_ret_strbuf = NULL; _v2 = sp_env_str(getenv(sp_env_chk(SP_STR_B(sp_strbuf_read_pub(lv_name)), 0))); ... _sp_ret_strbuf ? (sp_String *)_sp_ret_strbuf : SP_STR_HDL(_v2)`.
+  `sp_strbuf_read_pub` (spinel_rt.h:3222) sets `_sp_ret_strbuf` to the
+  argument's handle while the argument is evaluated, so the wrapper answers
+  `name` instead of getenv's result. An unset variable is not affected,
+  since the wrapper answers NULL first. Other programs get the plain
+  `SP_STR_B(sp_env_str(getenv(...)))`, which is right.
+- Today: not worked around. Task 3 keeps Query out of the Config-only
+  programs (the db CLI, the mailer, the scheduler) instead: cybertrain/context.rb, not
+  cybertrain/params.rb, registers ParameterMissing with ClientError.
+- Asked of Spinel: the wrapper should not see a `_sp_ret_strbuf` that one of
+  the call's arguments set. It could clear the global after the arguments
+  are evaluated, or not wrap a builtin that returns a fresh `char *`.
+- Not reduced below the two requires; not reported upstream.

@@ -2,6 +2,7 @@ require "cybertrain/http/query"
 require "cybertrain/http/multipart"
 require "cybertrain/http/request"
 require "cybertrain/http/client_error"
+require "cybertrain/context"
 require "cybertrain/test"
 
 # ClientError decides on the class NAME. Class#name is namespaced under CRuby

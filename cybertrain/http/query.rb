@@ -1,5 +1,5 @@
 require "uri"
-require "cybertrain/params"
+require "cybertrain/http/params"
 
 module Cybertrain
   # Raised for request parameters the server will not take: past one of

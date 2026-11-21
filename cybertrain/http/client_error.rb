@@ -15,8 +15,9 @@ module Cybertrain
     # not decodable, QueryInvalid; a missing required parameter) is its 4xx
     # at info, so a flood of them does not fill the error log; anything else
     # is 500 at error, as `class: message`. Each error path then does
-    # `reset_to(status)` (or its own 500 page); the next client-fault class
-    # is added to CLIENT_FAULTS below and nowhere else. `logger` is the
+    # `reset_to(status)` (or its own 500 page); the layer's next
+    # client-fault class is added to CLIENT_FAULTS below and nowhere else
+    # (one defined outside the layer, to extra_faults). `logger` is the
     # Server's {HttpLog} (cybertrain's Logger is one).
     # @param e [Exception]
     # @param logger [HttpLog]
@@ -43,9 +44,8 @@ module Cybertrain
     # part after the last "::" is compared (status_for_name). That is safe
     # only while every bare name here is unique in the program: the Query
     # classes are QueryXxx, not Query::Invalid / Query::TooMany, so an app's
-    # own Billing::Invalid or RateLimiter::TooMany cannot be taken for them,
-    # and "ParameterMissing" is not a name an app has a reason to reuse. A
-    # new entry must be named so as not to collide the same way.
+    # own Billing::Invalid or RateLimiter::TooMany cannot be taken for them.
+    # A new entry must be named so as not to collide the same way.
     #
     # Every subclass must be listed by its full name: the hierarchy is not
     # visible under Spinel (a raised QueryTooMany's class chain there is
@@ -54,15 +54,52 @@ module Cybertrain
     # runtimes. An app's own exception class, even one that subclasses
     # QueryLimitExceeded, is the app's 500 on both; the list is the
     # framework's. script/check-client-faults (run by CI) fails when a
-    # QueryInvalid subclass or ParameterMissing is not listed, or an entry
-    # names no class.
+    # QueryInvalid subclass or cybertrain's ParameterMissing is in neither
+    # this list nor extra_faults, or an entry names no class.
     CLIENT_FAULTS = ["Cybertrain::QueryInvalid", "Cybertrain::QueryLimitExceeded",
                      "Cybertrain::QueryTooDeep", "Cybertrain::QueryTooMany",
                      "Cybertrain::QueryMalformed",
                      "Cybertrain::BodyUndecodable", "Cybertrain::BodyTooLarge",
                      "Cybertrain::MultipartMalformed", "Cybertrain::MultipartTooManyParts",
-                     "Cybertrain::MultipartPartTooLarge", "Cybertrain::MultipartHeaderTooLarge",
-                     "Cybertrain::Params::ParameterMissing"]
+                     "Cybertrain::MultipartPartTooLarge", "Cybertrain::MultipartHeaderTooLarge"]
+
+    # The client faults the layer does not define, added at load by the
+    # code that defines them (cybertrain/context.rb adds
+    # "Cybertrain::Params::ParameterMissing"): full class names, matched
+    # exactly as CLIENT_FAULTS' are and under the same rule of a bare name
+    # unique in the program. Module-level ivars with literal defaults (the
+    # Params.max_page shape, spikes/NOTES.md rule 18); the bare names are
+    # derived by the setter, as CLIENT_FAULT_BARE_NAMES is from
+    # CLIENT_FAULTS, so a lookup never slices.
+    @extra_faults = Array.new(0) { "" }
+    @extra_fault_bare_names = Array.new(0) { "" }
+
+    # @return [Array<String>] the client faults added to CLIENT_FAULTS
+    # @api public
+    def self.extra_faults
+      @extra_faults
+    end
+
+    # Installs the client faults added to CLIENT_FAULTS, replacing the
+    # earlier ones: add to them with
+    # `ClientError.extra_faults = ClientError.extra_faults + [name]`.
+    # Called at load, before any thread starts.
+    # @param names [Array<String>] full class names
+    # @return [nil]
+    # @api public
+    def self.extra_faults=(names)
+      full = Array.new(0) { "" }
+      bare = Array.new(0) { "" }
+      i = 0
+      while i < names.length
+        full << names[i]
+        bare << bare_name(names[i])
+        i += 1
+      end
+      @extra_faults = full
+      @extra_fault_bare_names = bare
+      nil
+    end
 
     # 400 for a client fault, 500 for the app's own exception: an Array
     # lookup, no raise, so RequestLogger (for its Completed line) and the
@@ -101,13 +138,23 @@ module Cybertrain
     # "TooMany" is a 500. A while loop, not a block: no closure, nothing to
     # widen (rules 32, 45).
     def self.status_for_name(name, namespaced)
-      candidates = namespaced ? CLIENT_FAULTS : CLIENT_FAULT_BARE_NAMES
+      listed = namespaced ? CLIENT_FAULTS : CLIENT_FAULT_BARE_NAMES
+      return 400 if fault_name_in?(name, listed)
+
+      extra = namespaced ? @extra_faults : @extra_fault_bare_names
+      return 400 if fault_name_in?(name, extra)
+
+      500
+    end
+
+    # Whether name is one of names. A while loop, not a block (rules 32, 45).
+    def self.fault_name_in?(name, names)
       i = 0
-      while i < candidates.length
-        return 400 if candidates[i] == name
+      while i < names.length
+        return true if names[i] == name
         i += 1
       end
-      500
+      false
     end
 
     # The part after the last "::": Class#name carries no namespace under
