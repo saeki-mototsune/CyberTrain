@@ -4,8 +4,8 @@ This document is the one record of what Spinel does that CyberTrain has had
 to know about, and of where each behaviour stands: what happens, the
 program that shows it, what it did on each build tried, what is asked of
 Spinel, and whether it is closed. Each behaviour is an item whose
-identifier never changes: a digit (1 to 7), a letter (A to AU so far; the
-next is AV) or, for a behaviour first written as a rule of spikes/NOTES.md
+identifier never changes: a digit (1 to 7), a letter (A to AW so far; the
+next is AX) or, for a behaviour first written as a rule of spikes/NOTES.md
 and never lettered, "rule N". "Item register" lists them all.
 
 [spikes/](../spikes/README.md) is the other half and does not say where a
@@ -280,6 +280,8 @@ the cell names another build.
 | AS | bug | 123 | open, not reduced (status 123) |  |
 | AT | bug | 112 | open (status 112) |  |
 | AU | bug | 52 | open (status 52) |  |
+| AV | bug | 17 | open (status 17): a class used above its definition runs compiled where CRuby raises NameError (rechecks/differing/class_before_definition.rb). A constant assigned with `=` and read before its assignment raises NameError as under CRuby (rechecks/constant_order.rb matches on the pin). Nothing in the framework is written around it: the rule's advice is to keep an order CRuby accepts |  |
+| AW | bug | 27 | open (status 27) for an append of socket bytes to a UTF-8 String that holds non-ASCII, which appends where CRuby raises; passes on the pin for `IO#gets` on a socket, which answers a byte String as CRuby does (Linux, 2026-11-21), and `readpartial`, `read(n)` and `read_nonblock` match on the pin (rechecks/socket_shapes.rb). Closed once both lines of rechecks/differing/socket_bytes.rb, `gets` and `append`, print CRuby's result on the pin. Framing by byte is no workaround to remove: it is right under both runtimes and stays in rule 27 as advice after AW is closed |  |
 | rule 1 | constraint | 1 | settled (1.4: no run-time code); the probes of a computed `send` and of reflection with a non-literal name match on the pin (rechecks/dispatch_shapes.rb) |  |
 | rule 2 | constraint | 2 | settled (1.4); a stored block handed to `instance_exec` still raises when reached on the pin (status 2) |  |
 | rule 3 | bug | 3 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
@@ -296,7 +298,7 @@ the cell names another build.
 | rule 14 | bug | 14 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
 | rule 15 | bug | 15 | not re-checked on the pin (last: seen on 2026.09.12 and not tried since) |  |
 | rule 16 | record | 16 | settled: ordinary Ruby (1.4) |  |
-| rule 17 | bug | 17 | open (status 17): a class used above its definition runs compiled where CRuby raises NameError. A constant assigned with `=` and read before its assignment raises NameError as under CRuby (rechecks/constant_order.rb matches on the pin). Nothing in the framework is written around it: the rule's advice is to keep an order CRuby accepts |  |
+| rule 17 | bug | 17 | see AV: rule 17's open difference was given that letter on 2026-11-21, and its state is in AV's row |  |
 | rule 18 | bug | 18 | probe matches on the pin (rechecks/value_shapes.rb), workaround kept |  |
 | rule 19 | bug | 19 | probe matches on the pin (rechecks/io_shapes.rb), workaround kept |  |
 | rule 20 | bug | 20 | probe matches on the pin (rechecks/socket_bare_readpartial.rb), workaround kept either way: its nil return is the idle timeout |  |
@@ -304,7 +306,7 @@ the cell names another build.
 | rule 23 | constraint | 23 | settled (1.4: tests) |  |
 | rule 24 | constraint | 24 | settled (1.4: tests) |  |
 | rule 26 | bug | 26 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
-| rule 27 | bug | 27 | passes on the pin for `IO#gets` on a socket, which answers a byte String as CRuby does (status 27; Linux, 2026-11-21), and `readpartial`, `read(n)` and `read_nonblock` match on the pin (rechecks/socket_shapes.rb); open for an append of socket bytes to a UTF-8 String that holds non-ASCII, which appends where CRuby raises (status 27). Framing by byte is kept: it is right under both runtimes |  |
+| rule 27 | bug | 27 | see AW: rule 27's differences were given that letter on 2026-11-21, and their state is in AW's row |  |
 | rule 28 | bug | 28 | probe matches on the pin (rechecks/io_shapes.rb), workaround kept |  |
 | rule 29 | bug | 29 | probe matches on the pin (rechecks/type_shapes.rb), workaround kept |  |
 | rule 30 | bug | 30 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
@@ -411,8 +413,9 @@ before"; N, O and P under "Found by Daicho"; Q, then R to T, then U to X
 under the sections of phases 2, 3 and 4a; Y and Z under "Re-checked on
 2026-11-11"; AA to AH under "Written up on 2026-11-13"; AI, AJ to AO, AP
 and AQ, and AR under the sections of phases 4b, 5a and 5b and the phase 5b
-follow-ups; AS under "Found in the clean-up of 2026-11-15"; AT and AU,
-written up from rules 112 and 52 on 2026-11-21, are the last section.
+follow-ups; AS under "Found in the clean-up of 2026-11-15"; AT, AU, AV
+and AW, written up from rules 112, 52, 17 and 27 on 2026-11-21, are the
+last section.
 
 ### 1. What CyberTrain does today because of Spinel
 
@@ -529,12 +532,12 @@ They are listed so that they are not mistaken for the rows above.
 | One static return type per method; a base method returning `self` is typed as the base (rule 5) | `pluck_int`, `sum_float`, `Cache.fetch_hash` and the like; `DB.transaction` returns nil; a per-model Relation subclass wraps the base setters (D10, D20, D22, D43) |
 | D (rule 25): `String#to_i` raises `RangeError` past 2**63-1 in the default mode | Request numbers are length-checked first: `Request#content_length`, `Server#body_length`, `Params#int`, the session's and the configuration's Integers |
 | B (rule 59): an `ffi_source` fragment declares what it calls, with the types already emitted | `extern` declarations in db/sqlite_ffi.rb and http/gzip_ffi.rb |
-| `IO#gets` on a socket answers a UTF-8 character String (rule 27; `readpartial`, `read(n)` and `read_nonblock` answer byte Strings on the pin, "Status by rule", row 27 on 2026.11.04.7026) | All framing is by byte (`byteindex`, `byteslice`, `bytesize`). This row does not belong under 1.4 (noted 2026-11-21): the left cell is what 2026.11.04.7026 did, and on 2026.11.15.7033 `gets` on a socket answers an ASCII-8BIT String as CRuby does ("Status by rule", row 27 on 2026.11.15.7033). A build changed it, so rule 27 is an item of kind bug in "Item register", not a constraint; an append of socket bytes to a UTF-8 String still differs there |
+| `IO#gets` on a socket answers a UTF-8 character String (rule 27; `readpartial`, `read(n)` and `read_nonblock` answer byte Strings on the pin, "Status by rule", row 27 on 2026.11.04.7026) | All framing is by byte (`byteindex`, `byteslice`, `bytesize`). This row does not belong under 1.4 (noted 2026-11-21): the left cell is what 2026.11.04.7026 did, and on 2026.11.15.7033 `gets` on a socket answers an ASCII-8BIT String as CRuby does ("Status by rule", row 27 on 2026.11.15.7033). A build changed it, so rule 27 is an item of kind bug in "Item register", not a constraint; an append of socket bytes to a UTF-8 String still differs there. The item is AW since 2026-11-21 |
 | A constant resolves as in CRuby (rule 76); a class method no class defines is refused at compile time, reached or not (rule 84) | Code outside `module Cybertrain` writes `Cybertrain::DB`; a program requires every file whose class methods it names |
 | No `fork`: a compiled `fork` is `NameError` (checked 2026-11-13) | Several processes share a port with `SO_REUSEPORT` (`CYBERTRAIN_REUSE_PORT`, D35) instead of a prefork server; jobs run on threads of a `worker` process |
 | No tz database, `IPAddr` or asynchronous resolver (`Marshal` was listed here until 2026-11-20: a `Marshal.dump` / `Marshal.load` round trip of a Hash holding an Array compiles and prints CRuby's result on the pin, docs/design.md D54); the `zlib` package inflates in one shot with no ceiling; `bigdecimal` has no `to_s("F")`, `to_d` or construction from a Float (rule 100) | `TimeZone` reads TZif files (D19); byte-scanned addresses (net/address.rb, http/ip_address.rb); cache values are Strings; `GzipFFI` streams through the system zlib under a limit (http/gzip_ffi.rb); decimals are Floats rounded on their digits (D73) |
 | Tests: no reflection to find test methods (rule 23); a test requires `cybertrain/test` itself (rule 24); a C file Spinel wrote is refused inside a package (rule 98) | Tests are programs compared with a snapshot (test.rb, D13); probe output is kept outside the package |
-| Rules 13, 16 and 38: frozen String literals, `Class#name` and `case rec when Post`, a protected method called from a class method | Ordinary Ruby, recorded so that nobody takes them for a Spinel rule. Rule 17 (constants read before their definition) was in this row until 2026-11-21. Only its half about a constant assigned with `=` is ordinary Ruby; a class used above its definition runs compiled where CRuby raises NameError, on this section's pin and on 2026.11.15.7033, so rule 17 is an open item of kind bug ("Item register"; "Status by rule", row 17) |
+| Rules 13, 16 and 38: frozen String literals, `Class#name` and `case rec when Post`, a protected method called from a class method | Ordinary Ruby, recorded so that nobody takes them for a Spinel rule. Rule 17 (constants read before their definition) was in this row until 2026-11-21. Only its half about a constant assigned with `=` is ordinary Ruby; a class used above its definition runs compiled where CRuby raises NameError, on this section's pin and on 2026.11.15.7033, so rule 17 is an open item of kind bug ("Item register"; "Status by rule", row 17), AV since 2026-11-21 |
 | Rule 99: `dup` of a user-defined object is a shallow copy | The generated `<Model>Relation#dup` copies its Arrays (D72). CRuby's `dup` is shallow in the same way, and the pin calls `initialize_copy` as CRuby does (probe, 2026-11-13: both print `2 2 0 5` and `1 2`), so this is ordinary Ruby, not a Spinel behaviour |
 | Rules 85, 87, 95: `Queue#pop(timeout:)`, class methods added to `Time`, `binding.local_variable_get` for a keyword named `if` | Used as they are (stream/hub.rb, time_ext.rb, rate_limit.rb and generator/routes_dsl.rb) |
 | Rules 102, 103, 106, 111, 113, 119, 121 (forms that work), 115 (a measurement), 118 (how a thread test is written), 105, 114, 120 (compiler, scheduler and tool behaviour, not defects) | Recorded in spikes/NOTES.md so that nobody takes them for defects; nothing is asked |
@@ -609,13 +612,13 @@ not by design. Costs are in 2; what is by design is in 1.4.
 | AS | `ENV[name]` with a key held in a variable answers the key | Not reduced (spikes/rechecks/differing/env_nonliteral_key.rb, against two framework files) | No |
 | AT | `File#stat` on an open File stats its path, not the descriptor | spikes/phase5/flock_fstat.rb | No |
 | AU | `String#strip` on a String with an invalid byte returns it where CRuby raises | 5 lines | No |
+| AV | A class used above its definition runs, where CRuby raises NameError (rule 17; added 2026-11-21 as "Rule 17", lettered the same day; listed under 1.4 until then) | 2 lines; spikes/rechecks/differing/class_before_definition.rb ("Status by rule", row 17 of both tables) | No |
+| AW | `IO#gets` on a socket answers a UTF-8 character String, and socket bytes append to a UTF-8 String that holds non-ASCII where CRuby raises (rule 27; added 2026-11-21 as "Rule 27", lettered the same day; listed under 1.4 until then). On 2026.11.15.7033 `gets` answers as CRuby does and the append still differs | spikes/rechecks/differing/socket_bytes.rb ("Status by rule", row 27 of both tables) | No |
 | V | `strftime` with a built pattern returns the pattern | Not reduced | No |
 | W | An ivar String passed to a stored lambda is refused | Not reduced | No |
 | X | Type inference does not converge in examples/blog's generator | Not reduced | No |
 | AA | Closure cells allocated on method entry (a cost, listed here because 2026.09.12 allocated none for the same source) | Not reduced | No |
 | Rule 36 | Requiring a middleware whose `#call` is never reached miscompiles unrelated files | Not reduced; the one recorded shape compiles in a probe on the pin ("Status by rule", row 36 on 2026.11.04.7026) | No |
-| Rule 17 | A class used above its definition runs, where CRuby raises NameError (added 2026-11-21; listed under 1.4 until then) | 2 lines ("Status by rule", row 17 of both tables) | No |
-| Rule 27 | `IO#gets` on a socket answers a UTF-8 character String, and socket bytes append to a UTF-8 String that holds non-ASCII where CRuby raises (added 2026-11-21; listed under 1.4 until then). On 2026.11.15.7033 `gets` answers as CRuby does and the append still differs Inline in "Status by rule", row 27 of both tables | No |
 | 7 | A `Mutex` on the request path stalls for seconds at two workers | Not reduced; not retried since 2026.09.12 | No |
 | 5 (a) | At one worker 83% of collections are full | Measured, under 5 | No |
 
@@ -923,8 +926,8 @@ rule".
 | AS. `ENV[name]` with a key held in a variable can answer the key | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-15, in a program that requires two framework files; rule 123) |
 | AT. `File#stat` on an open File stats its path, not the descriptor | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (phase 5b, 2026-11-13; rule 112) |
 | AU. `String#strip` on a String with an invalid byte returns it | yes (rule 52) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-15 and 2026-11-19; rule 52) |
-| Rule 17. A class used above its definition runs, where CRuby raises NameError | yes (rule 17, recorded for constants read before their definition) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** for a class name (2026-11-15); a constant assigned with `=` raises NameError as under CRuby |
-| Rule 27. `IO#gets` on a socket answers a UTF-8 character String; socket bytes append to a UTF-8 String where CRuby raises | yes (rule 27, recorded for socket buffers generally) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** for `gets` and for the append (2026-11-15); `readpartial`, `read(n)` and `read_nonblock` answer byte Strings as under CRuby |
+| AV. A class used above its definition runs, where CRuby raises NameError (rule 17) | yes (rule 17, recorded for constants read before their definition) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** for a class name (2026-11-15); a constant assigned with `=` raises NameError as under CRuby |
+| AW. `IO#gets` on a socket answers a UTF-8 character String; socket bytes append to a UTF-8 String where CRuby raises (rule 27) | yes (rule 27, recorded for socket buffers generally) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** for `gets` and for the append (2026-11-15); `readpartial`, `read(n)` and `read_nonblock` answer byte Strings as under CRuby |
 
 ## Status by rule
 
@@ -997,13 +1000,16 @@ CRuby's result on the pin and not on the control (rows 78, 86 and 104),
 three still differ (rows 52, 122 and 123), and the seventh needs the
 framework and was never a difference (row 48). The first three were then
 moved up into spikes/rechecks/, as spikes/rechecks/README.md says a
-program that matches CRuby is; the other four stay in differing/.
+program that matches CRuby is; the other four stay in differing/. Later
+that day the programs of rows 17 and 27, inline until then, were saved
+there as class_before_definition.rb and socket_bytes.rb (AV and AW), which
+makes six.
 
 | Rule | On 2026.11.15.7033 |
 | --- | --- |
 | 2 | **Still there**, as on 2026.11.04.7026. A block stored in a module's Array and run with `C.new.instance_exec(&b)` compiles on both pins and raises "instance_exec of a proc whose self spinel cannot rebind (NotImplementedError)" when reached; CRuby prints `7`. A proc held in a local and passed straight to `instance_exec` prints `7` on both pins. |
-| 17 | **Still there** for a class name, run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6, not on the machine of the rows below: the two lines `puts Later.new.hi` and `class Later; def hi = "hi"; end` print `hi` compiled, where CRuby raises "uninitialized constant Later (NameError)". 2026.11.04.7026 printed `hi` in the same run. The half about a constant assigned with `=`, which raises NameError as under CRuby, is rechecks/constant_order.rb (the last row). |
-| 27 | **Split**, run on 2026-11-21 on the same Linux machine and tools as row 17. Probe passes for `IO#gets`: the program of row 27 of the next table (a thread writes `"café 日本\n"` to an accepted socket, the client prints `line.encoding`, `line.size` and `line.bytesize` of `cl.gets`) prints `ASCII-8BIT`, `13`, `13`, as under CRuby; 2026.11.04.7026 printed `UTF-8`, `8`, `13` in the same run. **Still there** for the append: `require "socket"; srv = TCPServer.new("127.0.0.1", 0); t = Thread.new { c = srv.accept; c.write("café 日本\n"); c.close }; cl = TCPSocket.new("127.0.0.1", srv.addr[1]); buf = cl.readpartial(64); t.join; u = +"é"; begin; u << buf; puts "appended #{u.bytesize}"; rescue => e; puts "#{e.class}"; end` prints `appended 15` compiled and `Encoding::CompatibilityError` under CRuby; 2026.11.04.7026 printed `appended 15` in the same run. Neither program is saved under spikes/: both are inline, the first in the next table and the second here. `readpartial`, `read(n)` and `read_nonblock` are rechecks/socket_shapes.rb (the last row). |
+| 17 | **Still there** for a class name (docs/spinel-feedback.md AV), run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6, not on the machine of the rows below: the two lines `puts Later.new.hi` and `class Later; def hi = "hi"; end` print `hi` compiled, where CRuby raises "uninitialized constant Later (NameError)". 2026.11.04.7026 printed `hi` in the same run. The program was saved later that day as rechecks/differing/class_before_definition.rb, with a `begin` and `rescue NameError` around its first line so that CRuby prints a line and does not stop: run again then on the same machine and tools, CRuby printed `NameError: uninitialized constant Later` and the program built by each of the two builds printed `hi`. The half about a constant assigned with `=`, which raises NameError as under CRuby, is rechecks/constant_order.rb (the last row). |
+| 27 | **Split** (docs/spinel-feedback.md AW), run on 2026-11-21 on the same Linux machine and tools as row 17. Probe passes for `IO#gets`: the program of row 27 of the next table (a thread writes `"café 日本\n"` to an accepted socket, the client prints `line.encoding`, `line.size` and `line.bytesize` of `cl.gets`) prints `ASCII-8BIT`, `13`, `13`, as under CRuby; 2026.11.04.7026 printed `UTF-8`, `8`, `13` in the same run. **Still there** for the append: `require "socket"; srv = TCPServer.new("127.0.0.1", 0); t = Thread.new { c = srv.accept; c.write("café 日本\n"); c.close }; cl = TCPSocket.new("127.0.0.1", srv.addr[1]); buf = cl.readpartial(64); t.join; u = +"é"; begin; u << buf; puts "appended #{u.bytesize}"; rescue => e; puts "#{e.class}"; end` prints `appended 15` compiled and `Encoding::CompatibilityError` under CRuby; 2026.11.04.7026 printed `appended 15` in the same run. Neither program was saved under spikes/ for that run: both are inline, the first in the next table and the second here. Later that day the two were saved as one program, rechecks/differing/socket_bytes.rb, which prints a `gets:` line and an `append:` line: run on the same machine and tools, CRuby printed `gets: ASCII-8BIT 13 13` and `append: Encoding::CompatibilityError`, 2026.11.15.7033 `gets: ASCII-8BIT 13 13` and `append: appended 15`, and 2026.11.04.7026 `gets: UTF-8 8 13` and `append: appended 15`. `readpartial`, `read(n)` and `read_nonblock` are rechecks/socket_shapes.rb (the last row). |
 | 25 | **Still there**, by design (docs/spinel-feedback.md D): `"99999999999999999999".to_i` raises "RangeError: integer overflow parsing "99999999999999999999"" on both pins; CRuby 4.0.7 returns the Bignum. |
 | 48 | Probe passes for the framework's own `rescue_from JSON::ParserError`, run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`), compiled side only: rechecks/differing/rescue_from_json_error.rb, built with `spinel --strict-require -I .` from the repository root (the framework at 5261e9be), prints the five lines its header gives (`block handler: 422 bad json: JSON::ParserError`, `no error: 200 fine`, `with handler: 400 with: JSON::ParserError`, `unhandled: re-raised JSON::ParserError`, `value: JSON::ParserError`), as 2026.11.04.7026 did in the same run. The value and argument shapes of the rule are rechecks/json_error_shapes.rb (the last row). |
 | 49 | Reduced program passes (docs/spinel-feedback.md AC): decoding e-acute + 50,000 / 100,000 / 200,000 bytes takes `0 0 0` ms (`0 0 1` in one run of three), against `76 384 2435`, `84 447 2470` and `88 389 2513` on 2026.11.04.7026; CRuby prints `0 0 0`. |
@@ -4414,8 +4420,9 @@ the shell, to the same effect; again 2026-11-19).
 
 ## Written up on 2026-11-21
 
-Two differences from CRuby that spikes/NOTES.md recorded as part of a rule
-and that had no item here. Both were run again that day with
+Four differences from CRuby that spikes/NOTES.md recorded as part of a
+rule and that had no item here, or, for AV and AW, only a "rule 17" and a
+"rule 27" row in "Item register". All four were run again that day with
 2026.11.15.7033 and 2026.11.04.7026 on Linux x86_64 (gcc 13.3.0, `-O 0`)
 beside CRuby 3.3.6.
 
@@ -4474,4 +4481,105 @@ CRuby, and `index` with a String needle raises on neither runtime
 - Today: nothing depends on it. Request text is validated once with
   `valid_encoding?` (`Query.utf8!`, rule 52) before anything strips it.
 - Asked of Spinel: raise as CRuby does. Low in harm, as AD is.
+- Not reported upstream.
+
+### AV. A class used above its definition runs, where CRuby raises NameError
+
+Rule 17, recorded on 2026.09.12 for constants read before their
+definition and narrowed to class names on 2026-11-15. It was listed under
+1.4 as ordinary Ruby until 2026-11-21 and then as the register row "rule
+17", which now points here.
+
+```ruby
+puts Later.new.hi
+class Later; def hi = "hi"; end
+```
+
+CRuby stops at the first line with `uninitialized constant Later
+(NameError)`. Compiled by 2026.11.15.7033 and by 2026.11.04.7026 the
+program prints `hi`: the class is known to the whole program before any
+statement runs. spikes/rechecks/differing/class_before_definition.rb is
+the same two lines with a `rescue NameError` around the first, so that
+CRuby prints `NameError: uninitialized constant Later` and goes on; both
+builds print `hi` for it ("Status by rule", row 17 of both tables). The
+difference is for a class name only. A constant assigned with `=` and
+read before its assignment raises NameError compiled as under CRuby, at
+top level, in a module body and in a class body
+(spikes/rechecks/constant_order.rb, which matches CRuby on both builds).
+
+- Today: nothing in the framework is written around it. Rule 17's advice
+  is to keep an order of definitions that CRuby accepts, and
+  `script/preview-parity` runs every framework test under CRuby. The harm
+  is to a program tried only compiled: it runs,
+  and then fails under CRuby with a NameError.
+- Asked of Spinel: raise NameError when a class is used by a statement
+  that runs before its `class` statement, as CRuby does, or refuse the
+  program at compile time. Low in harm: no wrong result in a program that
+  CRuby accepts.
+- Not reported upstream.
+
+### AW. Socket bytes are tagged UTF-8: `IO#gets`, and an append to a UTF-8 String
+
+Rule 27, recorded on 2026.09.12 for socket buffers generally: CRuby tags
+what a socket reads as ASCII-8BIT, and Spinel's were character Strings.
+It was listed under 1.4 as a constraint until 2026-11-21 and then as the
+register row "rule 27", which now points here. Two differences were left
+on 2026.11.04.7026, and one of them is left on 2026.11.15.7033.
+
+```ruby
+require "socket"
+srv = TCPServer.new("127.0.0.1", 0)
+t = Thread.new { c = srv.accept; c.write("café 日本\n"); c.close }
+cl = TCPSocket.new("127.0.0.1", srv.addr[1])
+line = cl.gets
+puts line.encoding, line.size, line.bytesize
+t.join
+```
+
+CRuby prints `ASCII-8BIT`, `13`, `13`. Compiled by 2026.11.04.7026 the
+program prints `UTF-8`, `8`, `13`; compiled by 2026.11.15.7033 it prints
+what CRuby prints.
+
+```ruby
+require "socket"
+srv = TCPServer.new("127.0.0.1", 0)
+t = Thread.new { c = srv.accept; c.write("café 日本\n"); c.close }
+cl = TCPSocket.new("127.0.0.1", srv.addr[1])
+buf = cl.readpartial(64)
+t.join
+u = +"é"
+begin
+  u << buf
+  puts "appended #{u.bytesize}"
+rescue => e
+  puts "#{e.class}"
+end
+```
+
+CRuby prints `Encoding::CompatibilityError`: a UTF-8 String that holds
+non-ASCII does not take binary bytes that hold non-ASCII. Compiled by
+2026.11.15.7033 and by 2026.11.04.7026 the program prints `appended 15`.
+spikes/rechecks/differing/socket_bytes.rb holds both programs as one,
+printing a `gets:` line and an `append:` line ("Status by rule", row 27
+of both tables, has each run). `readpartial`, `read(n)` and
+`read_nonblock` on a socket answer ASCII-8BIT Strings whose `size` equals
+their `bytesize`, as under CRuby, on both builds
+(spikes/rechecks/socket_shapes.rb).
+
+- Today: every offset into a network buffer is a byte offset
+  (`byteindex`, `byteslice`, `bytesize`, never `index`, `[]` or `size`):
+  `Query.parse` and its scanners (cybertrain/http/query.rb), the
+  multipart parser (cybertrain/http/multipart.rb), the router's path
+  scan (cybertrain/router.rb), `UploadedFile` and the SSE writer; the
+  test receiver frames by byte and never calls `IO#gets`
+  (cybertrain/test/receiver.rb). That is right under both runtimes, so it
+  is no workaround to remove: it stays in rule 27 as advice after AW is
+  closed. One test differs between the runtimes because of the tag:
+  test/stream.rb, where `Base64.urlsafe_decode64` answers ASCII-8BIT
+  under CRuby (test/cruby/parity-gaps.txt).
+- Closed when both lines of spikes/rechecks/differing/socket_bytes.rb
+  print CRuby's result on the pin. The `gets` line does on
+  2026.11.15.7033; the `append` line does not.
+- Asked of Spinel: raise Encoding::CompatibilityError for the append, as
+  CRuby does.
 - Not reported upstream.

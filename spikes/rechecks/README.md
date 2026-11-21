@@ -29,9 +29,9 @@ none of them.
 | `decimal.rb` | not a Spinel item: a probe for docs/design.md D42 | | while D42 stands |
 | `dispatch_shapes.rb` | rule 1 to rule 6, rule 30, rule 31, rule 40, rule 42 | 1 to 6, 30, 31, 40, 42 | each is closed; the sections of rules 1, 2 and 5 (constraints) are permanent |
 | `type_shapes.rb` | rule 7 to rule 11, rule 14, rule 26, rule 29, rule 34, rule 35, rule 37, rule 39, rule 41, rule 43, rule 46 | 7 to 11, 14, 26, 29, 34, 35, 37, 39, 41, 43, 46 | each is closed |
-| `constant_order.rb` | rule 17 (the half that matches CRuby: a constant assigned with `=`) | 17 | rule 17 is closed |
+| `constant_order.rb` | AV (the half of rule 17 that matches CRuby: a constant assigned with `=`) | 17 | AV is closed |
 | `io_shapes.rb` | rule 19, rule 28 | 19, 28 | each is closed |
-| `socket_shapes.rb` | rule 21, rule 27 (the reads that match CRuby) | 21, 27 | each is closed |
+| `socket_shapes.rb` | rule 21, AW (the reads of rule 27 that match CRuby) | 21, 27 | each is closed |
 | `socket_bare_readpartial.rb` | rule 20 | 20 | rule 20 is closed |
 | `rescue_shapes.rb` | rule 32, rule 44, rule 45, rule 50, AE | 32, 44, 45, 47, 50 | each is closed |
 | `json_error_shapes.rb` | rule 33, rule 48, rule 61 | 33, 48, 61 | each is closed |
@@ -49,6 +49,8 @@ none of them.
 | `differing/require_in_regex.rb` | AR | 122 | AR is closed |
 | `differing/invalid_utf8.rb` | AD, AU | 52 | AD and AU are closed |
 | `differing/rescue_from_json_error.rb` | rule 48 | 48 | rule 48 is closed |
+| `differing/class_before_definition.rb` | AV | 17 | AV is closed |
+| `differing/socket_bytes.rb` | AW | 27 | AW is closed |
 
 ## The first four programs, 2026-11-11
 
@@ -181,6 +183,13 @@ here. The four that remain are the three that still differed in the run
 of 2026-11-21 (docs/spinel-feedback.md, "Status by rule", rows 52, 122 and
 123 on 2026.11.15.7033) and the one that needs the framework.
 
+Two more were added on 2026-11-21, the last two rows of the table: the
+reductions of rules 17 and 27, whose source was until then inline in
+docs/spinel-feedback.md, "Status by rule". Their headers give the run that
+produced them: Linux x86_64, Spinel `2026.11.15.7033` (`a2f3bfaa`, GCC
+13.3.0), `-O 0`, CRuby 3.3.6, with Spinel `2026.11.04.7026` (`a2d06115`)
+as a control.
+
 | Program | What it showed |
 | --- | --- |
 | `differing/env_nonliteral_key.rb` | Rule 123: after `require "cybertrain/http/request"` and `require "cybertrain/config"`, `Config.env_or` answers the variable's name for a variable that is set. Needs `-I .`. Not reduced |
@@ -190,6 +199,8 @@ of 2026-11-21 (docs/spinel-feedback.md, "Status by rule", rows 52, 122 and
 | `nil_only_puts_openssl.rb` (moved up) | Rule 78: the C compiler refuses `@io.puts(line)` on a nil-only ivar once `openssl` is required |
 | `float_range_boxed.rb` (moved up) | Rule 86: a Range of Time raises TypeError when built; a Float Range is not matched by `when Range` from a Hash value or through a parameter |
 | `differing/rescue_from_json_error.rb` | Rule 48, added 2026-11-20 (same machine and tools): `rescue_from JSON::ParserError` on `Cybertrain::Controller`, with a block and with `with:`, answers for an action's failed `JSON.parse`, and the error is re-raised when no handler is registered. Needs `-I .`; compiled side only, since CRuby cannot load the controller's SQLite FFI bindings without the preview's shim. It does not differ: it printed what it is written to print |
+| `differing/class_before_definition.rb` | Rule 17, added 2026-11-21: a class used above its `class` statement runs, where CRuby raises NameError |
+| `differing/socket_bytes.rb` | Rule 27, added 2026-11-21: `IO#gets` on a socket answers an ASCII-8BIT String, as under CRuby (a UTF-8 one when built by `2026.11.04.7026`), and an append of a socket's bytes to a UTF-8 String that holds non-ASCII appends, where CRuby raises Encoding::CompatibilityError |
 
 ## Running
 
@@ -226,6 +237,8 @@ header like the ones there. The reductions of rules 1 to 50 that still
 differ were recorded before that directory existed and have their source
 inline in docs/spinel-feedback.md, "Status by rule" (the table of
 2026.11.04.7026): rule 54's `JSON::ParserError` superclass
-walk, the stored block of rule 2, the class used above its definition of
-rule 17, the `IO#gets` of rule 27, and rule 36's probe, which needs the
-framework.
+walk, the stored block of rule 2, and rule 36's probe, which needs the
+framework. Two that were inline there are in `differing/` since
+2026-11-21: the class used above its definition of rule 17
+(`differing/class_before_definition.rb`) and the `IO#gets` of rule 27
+(`differing/socket_bytes.rb`).

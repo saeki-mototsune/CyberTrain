@@ -520,7 +520,7 @@ decision, and 77 explicitly retires a workaround.
     Retry::BACKOFF`, `puts EARLY`) and read before its assignment raises
     NameError compiled too, at top level, in a module body and in a class
     body (status 17). The advice is unchanged.
-    Kept until docs/spinel-feedback.md rule 17 is closed.
+    Kept until docs/spinel-feedback.md AV is closed.
 18. A module-level `@@class_variable` assigned inside `module Cybertrain`
     miscompiles once an earlier required file has already opened the module
     (C error "incompatible pointer to integer conversion"). Use a module-level
@@ -647,7 +647,8 @@ decision, and 77 explicitly retires a workaround.
     so; of the reads tried only `IO#gets` returns a UTF-8 character String
     (`size` 8 for 13 bytes; status 27). Byte offsets stay the rule: they are
     right under both.
-    Kept until docs/spinel-feedback.md rule 27 is closed.
+    Kept until docs/spinel-feedback.md AW is closed; the advice to frame
+    by bytes is right under both runtimes and stays after that.
 28. `URI.decode_www_form_component` on a malformed escape (`%ZZ`, a trailing
     `%`) raises under CRuby but silently decodes under Spinel (2026.09.12; on
     2026.11.04.7026 the library raises ArgumentError as CRuby does, status
