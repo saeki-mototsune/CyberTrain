@@ -400,11 +400,12 @@ module Cybertrain
     # a decoded newline in it cannot forge a log line. Raw ORDER BY text goes
     # through add_order_sql (the models' `order_sql`). A Symbol is taken as
     # its name (order(:title) is the common Rails spelling; the column still
-    # goes through Ident.column?) and nil as no order. One to_s up front, so
-    # a non-String never reaches `strip` as a NoMethodError.
+    # goes through Ident.column?) and nil as no order. One Key.string_of up
+    # front (not to_s: NOTES rule 123), so a non-String never reaches `strip`
+    # as a NoMethodError.
     def set_order(order)
       drop_preloaded
-      stripped = order.to_s.strip
+      stripped = Key.string_of(order).strip
       if stripped == ""
         @order = ""
         return nil
