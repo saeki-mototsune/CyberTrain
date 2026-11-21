@@ -16,8 +16,16 @@ that item is closed. For how the framework is written, the rule and the
 code are the authority, and the "What CyberTrain does" columns here are a
 summary for a reader upstream, as of their section's date. For what Spinel
 does on a build, this document is the authority, and NOTES points here.
-In the sections written before 2026-11-15, "the pin" is 2026.11.04.7026;
-the register and "Status by rule" have the present pin.
+
+"The pin" is the present pin, 2026.11.15.7033, in three places only: "Item
+register", the "On 2026.11.15.7033" table of "Status by rule" and "Written
+up on 2026-11-21". Everywhere else it is the pin of the time the passage
+was written, and for everything written from 2026-11-04 on that is
+2026.11.04.7026, the passages dated 2026-11-15 to 2026-11-20 included: the
+pin moved on 2026-11-15, but the runs those passages record used
+2026.11.04.7026, and what they say of "the pin" is not all true of the
+present one (Q's "re-run of 2026-11-15 on the pin" is an example: "Status
+by rule", row 86 on 2026.11.15.7033).
 
 These builds are covered, and the source of one more was read:
 
@@ -127,8 +135,9 @@ These builds are covered, and the source of one more was read:
   pinned to since 2026-11-15 (`Cybertrain::SPINEL_TAG`,
   `Cybertrain::SPINEL_REPOSITORY`). What was run on it, on 2026.11.14.7031
   and on 2026.11.15.7032, and why those two were not pinned, is under
-  "Status by rule", "On 2026.11.15.7033". The sections below were written
-  before it and were not brought up to it; the register was.
+  "Status by rule", "On 2026.11.15.7033". Apart from the three places
+  named above, the sections below were not brought up to it, whatever
+  their date.
 
 2026.11.04.7026, the pin at the time, was used once more on 2026-11-13,
 for the inventory below: forty small programs built with it on Linux x86_64
