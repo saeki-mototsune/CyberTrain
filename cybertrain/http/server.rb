@@ -668,11 +668,11 @@ module Cybertrain
     # does not rescue. Save, work, restore in `ensure`, no rescue
     # (spikes/NOTES.md rule 103).
     def run_writer_scoped(writer, sink, ctx)
-      saved = HttpLogSwitch.installed.swap(ctx)
+      saved = HttpLogSwitch.installed.swap_context(ctx)
       ok = run_writer(writer, sink)
       ok
     ensure
-      HttpLogSwitch.installed.swap(saved)
+      HttpLogSwitch.installed.swap_context(saved)
     end
 
     # TCP keep-alive on a streaming connection, best effort: a peer that
@@ -736,11 +736,11 @@ module Cybertrain
     # thread's context is back afterwards. Save, work, restore in
     # `ensure`, no rescue (spikes/NOTES.md rule 103).
     def classify_scoped(e, ctx)
-      saved = HttpLogSwitch.installed.swap(ctx)
+      saved = HttpLogSwitch.installed.swap_context(ctx)
       status = ClientError.classify(e, @logger)
       status
     ensure
-      HttpLogSwitch.installed.swap(saved)
+      HttpLogSwitch.installed.swap_context(saved)
     end
 
     # Writes an error response; serve closes the socket afterwards.

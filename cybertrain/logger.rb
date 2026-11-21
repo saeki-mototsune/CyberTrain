@@ -197,7 +197,7 @@ module Cybertrain
     # @api private
     class ScopeSwitch < HttpLogSwitch
       # @return [HttpLogContext] this thread's Scope, NONE for {NO_SCOPE}
-      def current
+      def current_context
         scope = Logger.current_scope
         if scope.equal?(Logger::NO_SCOPE)
           HttpLogContext::NONE
@@ -208,7 +208,7 @@ module Cybertrain
 
       # @param ctx [HttpLogContext] a Scope, or NONE for {NO_SCOPE}
       # @return [HttpLogContext] the Scope it replaces, NONE for {NO_SCOPE}
-      def swap(ctx)
+      def swap_context(ctx)
         scope = ctx.equal?(HttpLogContext::NONE) ? Logger::NO_SCOPE : ctx
         previous = Logger.swap_scope(scope)
         if previous.equal?(Logger::NO_SCOPE)

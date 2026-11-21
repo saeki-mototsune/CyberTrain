@@ -149,11 +149,11 @@ module Cybertrain
     # @api public
     def body_writer=(writer)
       @body_writer = writer
-      @body_log_context = HttpLogSwitch.installed.current
+      @body_log_context = HttpLogSwitch.installed.current_context
     end
 
     # The thread's log context when the writer was set ({#body_writer=},
-    # {#upgrade!}; {HttpLogSwitch.installed}'s current): the request's,
+    # {#upgrade!}; {HttpLogSwitch.installed}'s current_context): the request's,
     # whose id and tags the lines logged while the body is written carry
     # (spec section 12.2: the request lasts until its body is written). The
     # Server swaps it in around the writer ({BodyWriter.write_scoped}) and
@@ -179,7 +179,7 @@ module Cybertrain
       @status = 101
       @upgrade = true
       @body_writer = writer
-      @body_log_context = HttpLogSwitch.installed.current
+      @body_log_context = HttpLogSwitch.installed.current_context
       @performed = true
       nil
     end

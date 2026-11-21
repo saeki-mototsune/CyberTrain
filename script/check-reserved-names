@@ -386,11 +386,8 @@ NAME_HOMES = {
   "now" => %w[cybertrain/net/socket.rb cybertrain/test/receiver.rb cybertrain/cache.rb cybertrain/flash.rb cybertrain/clock.rb
               cybertrain/test/time_now.rb cybertrain/cli/dev_server/holding.rb cybertrain/cli/dev_server/processes.rb],
   # Schema.current (the Definition, or nil), Time.current (a Time) and
-  # Date.current (a Date), the last two in clock.rb; HttpLogSwitch#current
-  # and its Logger::ScopeSwitch override (an HttpLogContext, the spinel-http
-  # phase 1 plan's Task 2 interface, compiled beside the others by every
-  # whole-framework test).
-  "current" => %w[cybertrain/schema.rb cybertrain/clock.rb cybertrain/http/log.rb cybertrain/logger.rb],
+  # Date.current (a Date), the last two in clock.rb.
+  "current" => %w[cybertrain/schema.rb cybertrain/clock.rb],
   # Clock.zone and Time.zone answer a TimeZone; ZonedTime#zone the
   # abbreviation (a String, as the builtin Time#zone).
   "zone" => %w[cybertrain/clock.rb cybertrain/zoned_time.rb],
@@ -494,6 +491,10 @@ NAME_HOMES = {
   # DB::Connection#error_message(sql), I18n.error_message and
   # ErrorEvent#error_message: all String.
   "error_message" => %w[cybertrain/db/connection.rb cybertrain/i18n.rb cybertrain/error_reporter.rb],
+  # HttpLogSwitch's and its Logger::ScopeSwitch overrides (an
+  # HttpLogContext): no other definer, kept so a new one is checked.
+  "current_context" => %w[cybertrain/http/log.rb cybertrain/logger.rb],
+  "swap_context" => %w[cybertrain/http/log.rb cybertrain/logger.rb],
   # Logger#info and the HttpLog#info it overrides (nil).
   "info" => %w[cybertrain/cli/toolchain.rb cybertrain/logger.rb cybertrain/http/log.rb],
   # Server#drain; the reporter's is drain_reports. The CRuby preview's

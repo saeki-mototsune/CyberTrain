@@ -65,16 +65,17 @@ module Cybertrain
     end
   end
 
-  # The thread's log context, as the Server reads it ({#current}) and
-  # swaps it around work it runs for a request ({#swap}: a handler's
+  # The thread's log context, as the Server reads it ({#current_context}) and
+  # swaps it around work it runs for a request ({#swap_context}: a handler's
   # exception line, a streamed body's writer). The base keeps none:
-  # {#current} answers {HttpLogContext::NONE} and {#swap} stores nothing.
+  # {#current_context} answers {HttpLogContext::NONE} and {#swap_context}
+  # stores nothing.
   # cybertrain installs Logger::ScopeSwitch, which keeps it in the
   # thread's Logger::Scope slot.
   # @api public
   class HttpLogSwitch
     # @return [HttpLogContext]
-    def current
+    def current_context
       HttpLogContext::NONE
     end
 
@@ -83,7 +84,7 @@ module Cybertrain
     # (spikes/NOTES.md rule 103). The base answers NONE and stores nothing.
     # @param ctx [HttpLogContext]
     # @return [HttpLogContext]
-    def swap(ctx)
+    def swap_context(ctx)
       HttpLogContext::NONE
     end
 

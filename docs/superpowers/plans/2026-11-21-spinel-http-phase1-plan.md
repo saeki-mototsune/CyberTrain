@@ -69,24 +69,24 @@ Each program has its run commands and output in its header comment, as `spikes/p
 - Produces (in `cybertrain/http/log.rb`, all under `Cybertrain`, renamed to `SpinelHttp` in the next plan):
   - `class HttpLogContext`, with no methods. `HttpLogContext::NONE` is the shared empty one.
   - `class HttpLog`, with `debug(msg)`, `info(msg)`, `warn(msg)`, `error(msg)`, each `-> nil`. The base writes `"#{level}: #{msg}\n"` to `$stderr` and drops `debug`.
-  - `class HttpLogSwitch`, the thread's context: `current -> HttpLogContext` (base: `NONE`) and `swap(ctx) -> HttpLogContext` (base: answers `NONE`, stores nothing).
+  - `class HttpLogSwitch`, the thread's context: `current_context -> HttpLogContext` (base: `NONE`) and `swap_context(ctx) -> HttpLogContext` (base: answers `NONE`, stores nothing).
   - `HttpLogSwitch.installed -> HttpLogSwitch` and `HttpLogSwitch.installed = (switch)`, a class-level slot defaulting to the base.
   - `Request#log_context` and `Request#log_context=(ctx)` (`HttpLogContext`), replacing `log_scope`.
-  - `Response#body_log_context -> HttpLogContext`, replacing `body_scope`. Captured with `HttpLogSwitch.installed.current` where `Logger.current_scope` is read today.
-  - `BodyWriter.write_scoped(writer, sink, ctx)` and the server's scoped runs swap through `HttpLogSwitch.installed.swap`.
+  - `Response#body_log_context -> HttpLogContext`, replacing `body_scope`. Captured with `HttpLogSwitch.installed.current_context` where `Logger.current_scope` is read today.
+  - `BodyWriter.write_scoped(writer, sink, ctx)` and the server's scoped runs swap through `HttpLogSwitch.installed.swap_context`.
   - `Server.new(..., logger: HttpLog.new, ...)`: the default no longer names `Cybertrain.logger`.
 - Produces (cybertrain side):
   - `Logger < HttpLog` and `Logger::Scope < HttpLogContext`.
-  - `Logger::ScopeSwitch < HttpLogSwitch`, whose `current` answers `Logger.current_scope` and whose `swap(ctx)` calls `Logger.swap_scope` with the mechanism Task 1 step 3 settled. `NONE` maps to `Logger::NO_SCOPE`.
+  - `Logger::ScopeSwitch < HttpLogSwitch`, whose `current_context` answers `Logger.current_scope` and whose `swap_context(ctx)` calls `Logger.swap_scope` with the mechanism Task 1 step 3 settled. `NONE` maps to `Logger::NO_SCOPE`.
   - `cybertrain/logger.rb` installs `Logger::ScopeSwitch.new` at load.
   - `roles/server.rb` passes `logger: Cybertrain.logger` explicitly.
 
 - [ ] **Step 1: Write the failing tests.** In `test/http_log.rb`, compiled without the rest of the framework (`require "cybertrain/http/log"` only):
-  - `HttpLogSwitch.installed.current.equal?(HttpLogContext::NONE)`;
-  - a subclass switch installed, then `swap(ctx)` from a second thread answers the previous context, and `current` there is `ctx`;
+  - `HttpLogSwitch.installed.current_context.equal?(HttpLogContext::NONE)`;
+  - a subclass switch installed, then `swap_context(ctx)` from a second thread answers the previous context, and `current_context` there is `ctx`;
   - `HttpLog.new.error("x")` prints `error: x` on stderr (capture via `$stderr` reassignment as `test/logger_flush.rb` does).
 
-  In `test/server.rb`, a keep-alive case (Review Focus 2): a handler that sets `request.log_context` to a test context carrying `"req-1"` and raises; a logger subclass that records `[line, HttpLogSwitch.installed.current]`. Expected: the error line was recorded under `"req-1"`, and a second request on the same socket that does not raise records `NONE`.
+  In `test/server.rb`, a keep-alive case (Review Focus 2): a handler that sets `request.log_context` to a test context carrying `"req-1"` and raises; a logger subclass that records `[line, HttpLogSwitch.installed.current_context]`. Expected: the error line was recorded under `"req-1"`, and a second request on the same socket that does not raise records `NONE`.
 
   In `test/response_stream.rb`, rename `body_scope` to `body_log_context` and keep the `equal?` assertions (`Logger::NO_SCOPE` stays what the cybertrain switch answers for none). Add the Review Focus 1 case: a streamed response's writer thread, run through `BodyWriter.write_scoped`, sees `Logger.current_scope.scope_request_id == "req-1"`.
 - [ ] **Step 2: Run them to see them fail.** Run: `spin test test/http_log.rb test/server.rb test/response_stream.rb`. Expected: compile errors naming `HttpLog`, `log_context` and `body_log_context`.

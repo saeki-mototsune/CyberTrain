@@ -30,13 +30,13 @@ end
 class ThreadSwitch < Cybertrain::HttpLogSwitch
   KEY = :http_log_test_context
 
-  def current
+  def current_context
     value = Thread.current[KEY]
     value.nil? ? Cybertrain::HttpLogContext::NONE : value
   end
 
-  def swap(ctx)
-    previous = current
+  def swap_context(ctx)
+    previous = current_context
     Thread.current[KEY] = ctx.equal?(Cybertrain::HttpLogContext::NONE) ? nil : ctx
     previous
   end
@@ -44,21 +44,21 @@ end
 
 base = Cybertrain::HttpLogSwitch.installed
 check "the installed switch is the base, and its current context is NONE",
-      base.current.equal?(Cybertrain::HttpLogContext::NONE)
+      base.current_context.equal?(Cybertrain::HttpLogContext::NONE)
 check "the base switch's swap stores nothing and answers NONE",
-      base.swap(IdContext.new("req-0")).equal?(Cybertrain::HttpLogContext::NONE) &&
-        base.current.equal?(Cybertrain::HttpLogContext::NONE)
+      base.swap_context(IdContext.new("req-0")).equal?(Cybertrain::HttpLogContext::NONE) &&
+        base.current_context.equal?(Cybertrain::HttpLogContext::NONE)
 
 Cybertrain::HttpLogSwitch.installed = ThreadSwitch.new
 ctx = IdContext.new("req-1")
 first = IdContext.new("req-first")
 seen = Array.new(0) { Cybertrain::HttpLogContext::NONE }
 t = Thread.new do
-  seen << Cybertrain::HttpLogSwitch.installed.swap(first)
-  seen << Cybertrain::HttpLogSwitch.installed.swap(ctx)
-  seen << Cybertrain::HttpLogSwitch.installed.current
-  seen << Cybertrain::HttpLogSwitch.installed.swap(Cybertrain::HttpLogContext::NONE)
-  seen << Cybertrain::HttpLogSwitch.installed.current
+  seen << Cybertrain::HttpLogSwitch.installed.swap_context(first)
+  seen << Cybertrain::HttpLogSwitch.installed.swap_context(ctx)
+  seen << Cybertrain::HttpLogSwitch.installed.current_context
+  seen << Cybertrain::HttpLogSwitch.installed.swap_context(Cybertrain::HttpLogContext::NONE)
+  seen << Cybertrain::HttpLogSwitch.installed.current_context
 end
 t.join
 check "an installed subclass switch, from a second thread: swap answers the previous context",
@@ -68,7 +68,7 @@ check "an installed subclass switch, from a second thread: current there is the 
 check "an installed subclass switch, from a second thread: swapping NONE back empties it",
       seen[3].equal?(ctx) && seen[4].equal?(Cybertrain::HttpLogContext::NONE)
 check "the main thread's context was never touched",
-      Cybertrain::HttpLogSwitch.installed.current.equal?(Cybertrain::HttpLogContext::NONE)
+      Cybertrain::HttpLogSwitch.installed.current_context.equal?(Cybertrain::HttpLogContext::NONE)
 Cybertrain::HttpLogSwitch.installed = base
 
 saved = $stderr

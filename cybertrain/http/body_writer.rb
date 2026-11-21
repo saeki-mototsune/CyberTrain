@@ -40,11 +40,11 @@ module Cybertrain
     # @return [nil]
     # @api private
     def self.write_scoped(writer, sink, ctx)
-      saved = HttpLogSwitch.installed.swap(ctx)
+      saved = HttpLogSwitch.installed.swap_context(ctx)
       writer.write_body(sink)
       nil
     ensure
-      HttpLogSwitch.installed.swap(saved)
+      HttpLogSwitch.installed.swap_context(saved)
     end
   end
 
