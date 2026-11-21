@@ -1,5 +1,5 @@
 ---
-source_sha256: 9885a4e240849ba73d46fe5ed2dc1ac3be8ca838941964355e8d95300ece9d2a
+source_sha256: 6fc0644dfa82ec298c9525d73edd8571773fbb9a335a1bec45fab67e94a7c2c8
 title: Guides
 ---
 # Guides
@@ -16,7 +16,8 @@ Tout ce que la documentation de CyberTrain couvre au-delà de la référence de 
 - [**Assets**](assets.md) — Feuilles de style, images et JavaScript avec empreinte, `url()` en CSS, les helpers, l’import map, le service et la conservation
 - [**Internationalisation**](i18n.md) — Dictionnaires dans `config/locales`, `t` et `l`, recherche paresseuse, pluriels, choix de la locale par requête, messages de validation traduits, l’anglais et le japonais fournis
 - [**Configuration**](configuration.md) — `config/app.rb`, variables d’environnement, fuseaux horaires
-- [**Tâches de fond et exploitation**](background-and-operations.md) — Classes de job, nouvelles tentatives, tâches `every` et `cron`, la page des jobs, les rôles de processus `worker` et `feeds`, le cache, la console, sauvegardes, le contrôle de santé, journaux et identifiants de requête, signalement des erreurs à Sentry
+- [**Tâches de fond et exploitation**](background-and-operations.md) — Classes de job, nouvelles tentatives, tâches `every` et `cron`, la page des jobs, les rôles de processus `worker` et `feeds`, le cache, la console, sauvegardes, le contrôle de santé
+- [**Journaux et signalement des erreurs**](logs-and-errors.md) — La ligne de journal, les niveaux et les lignes JSON, identifiants de requête et étiquettes, `Cybertrain.error`, abonnés et filtres, l’envoi à Sentry ou GlitchTip
 - [**Temps réel**](realtime.md) — Turbo Streams sur Server-Sent Events ou WebSocket, diffusions depuis les actions, les jobs et les flux, noms de flux signés, santé des flux
 - [**HTTP sortant, flux WebSocket et e-mail**](external-services.md) — `HttpClient` avec flux, gzip et Server-Sent Events, `WebSocket.subscribe` avec minuteries et redémarrages, `Mailer` avec mail HTML et `deliver_later`
 - [**Tests**](testing.md) — Écrire les tests d’une application, appels sortants, jobs, journaux et rapports d’erreur, CI

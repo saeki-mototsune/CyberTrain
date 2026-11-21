@@ -1,5 +1,5 @@
 ---
-source_sha256: 43043e60ceef489d3b51e2fc972979fe5ae170ebdb2811b96b7f7c5f692f09c2
+source_sha256: 6a31d45e598b54446d9c4a8fac5c9e197285b1b4dd872a7905d91d3f24b3219d
 ---
 # Конфигурация
 
@@ -34,9 +34,9 @@ end
 | `CYBERTRAIN_TRUSTED_PROXIES` | `trusted_proxies` | `[]`; разделённые запятыми адреса IPv4/IPv6 или CIDR (`172.16.0.0/12,10.0.0.0/8`), для соединений с которых `request.client_ip` берётся из последнего адреса `X-Forwarded-For`, — для прокси, доступного по сети, например kamal-proxy в его контейнере; неверная запись останавливает сервер при запуске |
 | `CYBERTRAIN_MAX_PAGE` | `max_page` | `10000`: наибольшая страница, которую выдаёт `params.page_number` и принимает `Relation#page` (см. [Постраничный вывод](models.md#pagination)); значение, не являющееся числом не более чем из 18 цифр, или меньше 1 заменяется значением по умолчанию |
 | `CYBERTRAIN_FILTER_PARAMETERS` | `filter_parameters` | `["password", "password_confirmation", "token", "secret", "secret_key_base", "session_key", "api_key", "authorization"]`; разделённые запятыми имена заменяют список. Значение параметра, имя которого содержит одно из них (без учёта регистра ASCII: `password` совпадает и с `user[password]`), записывается как `[FILTERED]` в лог запросов и на страницу ошибок режима разработки; `[]` в `config/app.rb` это отключает |
-| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`: наименее важный записываемый уровень, `debug`, `info`, `warn`, `error`, `fatal` или `none` (в любом регистре; `none` выключает журнал запросов, но строки ошибок пишет); любое другое значение останавливает загрузку (см. [Журнал](background-and-operations.md#logs)). `cybertrain test` использует `:none`, если `config/app.rb` не задаёт его |
+| `CYBERTRAIN_LOG_LEVEL` | `log_level` | `:info`: наименее важный записываемый уровень, `debug`, `info`, `warn`, `error`, `fatal` или `none` (в любом регистре; `none` выключает журнал запросов, но строки ошибок пишет); любое другое значение останавливает загрузку (см. [Журнал](logs-and-errors.md#logs)). `cybertrain test` использует `:none`, если `config/app.rb` не задаёт его |
 | `CYBERTRAIN_LOG_FORMAT` | `log_format` | `:text`; `json` пишет по одному объекту JSON на строку, для сборщика логов; любое другое значение останавливает загрузку. `cybertrain test` оставляет текстовые строки, если `config/app.rb` не задаёт формат, что бы ни говорила переменная |
-| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`: ничего не отправляется. DSN Sentry или GlitchTip отправляет туда каждый отчёт об ошибке (см. [Отчёты об ошибках](background-and-operations.md#error-reporting)); нужен `require "cybertrain/error_reporter/sentry"` (или `require "cybertrain"`) в `bin/<app>.rb`, иначе загрузка отказывает. Нечитаемый DSN останавливает загрузку, называя неверную часть и никогда ключ. `cybertrain test` опустошает его, если `config/app.rb` его не присваивает |
+| `CYBERTRAIN_SENTRY_DSN` | `sentry_dsn` | `""`: ничего не отправляется. DSN Sentry или GlitchTip отправляет туда каждый отчёт об ошибке (см. [Отчёты об ошибках](logs-and-errors.md#error-reporting)); нужен `require "cybertrain/error_reporter/sentry"` (или `require "cybertrain"`) в `bin/<app>.rb`, иначе загрузка отказывает. Нечитаемый DSN останавливает загрузку, называя неверную часть и никогда ключ. `cybertrain test` опустошает его, если `config/app.rb` его не присваивает |
 | `CYBERTRAIN_ERROR_SAMPLE_RATE` | `error_sample_rate` | `1.0`: доля отчётов об ошибках, отправляемых в Sentry, от 0.0 до 1.0, записанная цифрами с необязательной `.цифрами`; подписчики видят каждый отчёт; любое другое значение останавливает загрузку |
 | `CYBERTRAIN_RELEASE` | `release` | `""`: версия или коммит, отправляемые с каждым отчётом об ошибке |
 | `CYBERTRAIN_WORKER` | `worker` | `true`; `0` или `false` не даёт процессу `server` выполнять задачи по расписанию, фоновые задачи и фиды WebSocket (см. [Роли процессов](background-and-operations.md#process-roles)); `./<app> worker` и `feeds` его игнорируют |
@@ -88,7 +88,7 @@ end
 | `public_root` | `"public"` | Каталог статических файлов; там же ищутся страницы ошибок `public/<status>.html` |
 | `layout` | `"layouts/application"` | Макет, в котором отрисовывается каждая страница; игнорируется, если файла нет |
 | `secret_key_path` | `"tmp/secret_key"` | Где окружения разработки и тестов хранят сгенерированный секрет |
-| `log_tags` | `[:request_id]` | Теги запроса в каждой строке журнала: `:remote_ip` добавляет адрес клиента, `[]` не показывает ничего, любое другое значение останавливает загрузку ([Идентификаторы запросов](background-and-operations.md#request-ids)) |
+| `log_tags` | `[:request_id]` | Теги запроса в каждой строке журнала: `:remote_ip` добавляет адрес клиента, `[]` не показывает ничего, любое другое значение останавливает загрузку ([Идентификаторы запросов](logs-and-errors.md#request-ids)) |
 | `session_cookie_name` | `"_cybertrain_session"` | Имя cookie сессии |
 | `session_max_age` | `1209600` (2 недели) | `Max-Age` cookie сессии в секундах; отсчёт начинается заново при каждом изменении сессии |
 | `session_absolute_max_age` | `1209600` (2 недели) | Наибольшее время жизни сессии в секундах, как бы часто ею ни пользовались: более старая cookie загружается как пустая сессия. `0` снимает ограничение |

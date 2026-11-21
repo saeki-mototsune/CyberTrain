@@ -1,5 +1,5 @@
 ---
-source_sha256: e5f13b67f73f98ad2be5ced715df0a920cd281aca9ffcab3112285ef8e9f39dc
+source_sha256: b855230d282f170790fc5218f4c7c42202916db808f505391e8d5b93077c5577
 ---
 # Requêtes
 
@@ -258,7 +258,7 @@ end
 
 `c.log_tags` choisit ce que montre chaque ligne, et les lignes et les rapports
 d’erreur d’un job portent l’identifiant de la requête qui l’a mis en file
-([Identifiants de requête](background-and-operations.md#request-ids)).
+([Identifiants de requête](logs-and-errors.md#request-ids)).
 
 ## Content Security Policy, `force_ssl` et hôtes
 

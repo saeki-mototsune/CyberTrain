@@ -10,6 +10,7 @@ The guides cover the rest: {https://saeki-mototsune.github.io/CyberTrain/guide/i
 {https://saeki-mototsune.github.io/CyberTrain/guide/i18n.html internationalization},
 {https://saeki-mototsune.github.io/CyberTrain/guide/configuration.html configuration},
 {https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html background work and operations},
+{https://saeki-mototsune.github.io/CyberTrain/guide/logs-and-errors.html logs and error reporting},
 {https://saeki-mototsune.github.io/CyberTrain/guide/realtime.html realtime},
 {https://saeki-mototsune.github.io/CyberTrain/guide/external-services.html outbound HTTP, WebSocket feeds and e-mail},
 {https://saeki-mototsune.github.io/CyberTrain/guide/testing.html testing}

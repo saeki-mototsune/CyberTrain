@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、可选的子系统、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: 74448999a7b68905ec4d5f0ca403b2a03b3822afc562e5f4fa451c95adac7514
+source_sha256: ee5feed8e38a254936fb5d5a6a5a381548db986c1c69972e1f20dc7cb422e42e
 ---
 # 工作原理
 
@@ -43,7 +43,7 @@ Spinel 会编译程序 require 的每个文件里的每个方法，无论是否�
 | `require "cybertrain/mailer/later"` | `Mailer.deliver_later`；同时加载邮件发送器和作业 |
 | `require "cybertrain/cache"` | `Cache` |
 | `require "cybertrain/rate_limit"` | 控制器中的 `rate_limit`；同时加载缓存 |
-| `require "cybertrain/error_reporter/sentry"` | Sentry 发送器：`CYBERTRAIN_SENTRY_DSN` 把每个错误报告发送到 Sentry 或 GlitchTip（[错误报告](background-and-operations.md#error-reporting)）；加载 `HttpClient` 和 TLS。只写在 `bin/<app>.rb` 中 |
+| `require "cybertrain/error_reporter/sentry"` | Sentry 发送器：`CYBERTRAIN_SENTRY_DSN` 把每个错误报告发送到 Sentry 或 GlitchTip（[错误报告](logs-and-errors.md#error-reporting)）；加载 `HttpClient` 和 TLS。只写在 `bin/<app>.rb` 中 |
 | `require "cybertrain"` | 以上所有的行（因此也通过 Sentry 发送器加载 `HttpClient` 和 TLS）；`cybertrain/websocket` 和 `cybertrain/sse` 仍需各写一行 |
 
 每一行都写在 `require "cybertrain/core"` 之后（`cybertrain/jobs` 和 `cybertrain/feeds` 会自己加载核心，其他行不会），行的顺序无关紧要：框架按自己的固定顺序启动和停止各子系统。在一个用脚手架生成的应用上，只用核心时编译 2,205 个方法而不是 2,767 个，分析用 38 秒而不是 52 秒；完整构建用 83 秒而不是 108 秒，修改一次控制器约 47 秒而不是约 65 秒（[docs/performance-next.md](../performance-next.md)）。

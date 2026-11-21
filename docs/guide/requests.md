@@ -453,7 +453,7 @@ end
 
 `c.log_tags` chooses what each line shows, and the job's lines and error
 reports carry the id of the request that enqueued it
-([Request ids](background-and-operations.md#request-ids)).
+([Request ids](logs-and-errors.md#request-ids)).
 
 ## Content Security Policy, `force_ssl` and hosts
 

@@ -467,7 +467,7 @@ EOF
 
 `CYBERTRAIN_RELEASE` は報告がどのバージョンから来たかを示します。デプロイスクリプトでコミットを
 書き込んでもかまいません。変数と報告される内容は
-[エラー報告](guide/ja/background-and-operations.md#error-reporting)にあります。
+[エラー報告](guide/ja/logs-and-errors.md#error-reporting)にあります。
 
 `cybertrain new` が書く `.env.example` には、アプリが読むほかの変数がコメントで並んでいます。
 そのうち一つは、モデルが `encrypts` を宣言したときから必須になります。`CYBERTRAIN_ENCRYPTION_KEY` が

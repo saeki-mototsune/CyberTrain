@@ -1,5 +1,5 @@
 ---
-source_sha256: d804e60e2d88d588d35564f14722f2fa81e4683b3a0bbd266dad9be0793310d2
+source_sha256: c488bca3969af0a0d59804950c6461d8a7735db560f30b0dc8348d77a97edba8
 ---
 # Обновление
 
@@ -315,7 +315,7 @@ cybertrain build
   в начале, ищет уровень и сообщение по отдельности (`" ERROR "` и
   `"password reset mail not sent: "`): теперь строка начинается со времени и
   может нести идентификатор запроса
-  ([Журнал](background-and-operations.md#logs)).
+  ([Журнал](logs-and-errors.md#logs)).
 - Экспортированные `CYBERTRAIN_LOG_FORMAT` или `CYBERTRAIN_SENTRY_DSN` больше
   не доходят до тестов; чтобы тестировать с ними, задайте их в
   `config/app.rb` или присвойте DSN в тесте.

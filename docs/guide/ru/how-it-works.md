@@ -1,6 +1,6 @@
 ---
 description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, необязательные подсистемы, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
-source_sha256: 74448999a7b68905ec4d5f0ca403b2a03b3822afc562e5f4fa451c95adac7514
+source_sha256: ee5feed8e38a254936fb5d5a6a5a381548db986c1c69972e1f20dc7cb422e42e
 ---
 
 # Как это работает
@@ -72,7 +72,7 @@ Spinel компилирует каждый метод каждого файла,
 | `require "cybertrain/mailer/later"` | `Mailer.deliver_later`; загружает почту и задачи |
 | `require "cybertrain/cache"` | `Cache` |
 | `require "cybertrain/rate_limit"` | `rate_limit` в контроллерах; загружает кэш |
-| `require "cybertrain/error_reporter/sentry"` | отправитель Sentry: `CYBERTRAIN_SENTRY_DSN` отправляет каждый отчёт об ошибке в Sentry или GlitchTip ([Отчёты об ошибках](background-and-operations.md#error-reporting)); загружает `HttpClient` и TLS. Только в `bin/<app>.rb` |
+| `require "cybertrain/error_reporter/sentry"` | отправитель Sentry: `CYBERTRAIN_SENTRY_DSN` отправляет каждый отчёт об ошибке в Sentry или GlitchTip ([Отчёты об ошибках](logs-and-errors.md#error-reporting)); загружает `HttpClient` и TLS. Только в `bin/<app>.rb` |
 | `require "cybertrain"` | все строки выше (а значит, через отправитель Sentry, и `HttpClient` с TLS); `cybertrain/websocket` и `cybertrain/sse` остаются отдельными строками |
 
 Каждая строка идёт после `require "cybertrain/core"` (`cybertrain/jobs` и

@@ -1,5 +1,5 @@
 ---
-source_sha256: d804e60e2d88d588d35564f14722f2fa81e4683b3a0bbd266dad9be0793310d2
+source_sha256: c488bca3969af0a0d59804950c6461d8a7735db560f30b0dc8348d77a97edba8
 ---
 # 升级
 
@@ -230,5 +230,5 @@ cybertrain build
 - `1.month.ago` 写作 `Time.current.months_ago(1)`。
 - `assert_equal` 以 Minitest 的两行文本失败；通过的测试快照不变。
 - 再次运行 `cybertrain generate authentication` 会写出类形式的测试，并指出它们替代的每个旧文件（`test/authentication.rb`、`test/support/app_test.rb` 等）；`--force` 会删除它们。
-- 以前查找整行日志（以方括号中的级别开头）的测试，改为分别查找级别和消息（`" ERROR "` 和 `"password reset mail not sent: "`）：现在一行以时间开头，可能带有请求的 ID（[日志](background-and-operations.md#logs)）。
+- 以前查找整行日志（以方括号中的级别开头）的测试，改为分别查找级别和消息（`" ERROR "` 和 `"password reset mail not sent: "`）：现在一行以时间开头，可能带有请求的 ID（[日志](logs-and-errors.md#logs)）。
 - 导出的 `CYBERTRAIN_LOG_FORMAT` 或 `CYBERTRAIN_SENTRY_DSN` 不再影响测试；要用它们测试，请在 `config/app.rb` 中设置，或在测试中给 DSN 赋值。

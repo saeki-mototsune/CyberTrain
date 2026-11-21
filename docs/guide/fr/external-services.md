@@ -1,5 +1,5 @@
 ---
-source_sha256: 8e06dc7c2398339f1839a3e3c9a1a0acc12c23cba8d474c15a18dae68daa2483
+source_sha256: 6e4f1fb3feea6c05454ba214e8d64b5662955142a0167ff12c120a2e654c9ca7
 ---
 # HTTP sortant, flux WebSocket et e-mail
 
@@ -8,7 +8,7 @@ source_sha256: 8e06dc7c2398339f1839a3e3c9a1a0acc12c23cba8d474c15a18dae68daa2483
 Une application qui appelle un autre serveur (un webhook, un webhook entrant
 Slack, une API tierce) utilise `Cybertrain::HttpClient`. `require
 "cybertrain"` le charge, avec la couche TLS, à travers
-l’[envoyeur Sentry](background-and-operations.md#error-reporting)&nbsp;; une
+l’[envoyeur Sentry](logs-and-errors.md#error-reporting)&nbsp;; une
 application sur `cybertrain/core` le requiert là où il est utilisé, ainsi que la
 couche TLS dès qu’une URL est en https&nbsp;:
 
@@ -347,7 +347,7 @@ l’`instance_exec` d’un bloc conservé (spikes/NOTES.md, règle 2).
   sauf la première sont journalisées sur le thread du flux et portent
   l’étiquette `[feed:trades]`&nbsp;; un bloc qui lève, la fin du thread et
   l’abandon du processus `feeds` sont aussi
-  [signalés](background-and-operations.md#error-reporting).
+  [signalés](logs-and-errors.md#error-reporting).
 - **Erreurs.** Toutes sont des `Cybertrain::WebSocket::Error`, avec seulement
   l’hôte et le port dans le message. Une fois la poignée de main faite, une
   connexion perdue ou une fermeture par le serveur est une `ClosedError`

@@ -69,7 +69,7 @@ it, in English and Japanese, with an admin user guarding its `/admin` pages.
 - **Time** ([guide](https://saeki-mototsune.github.io/CyberTrain/guide/configuration.html#time-zones)):
   the time helpers (`5.minutes.ago`, `beginning_of_day`) in a configured
   time zone.
-- **Operations** ([guide](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html#logs)):
+- **Operations** ([guide](https://saeki-mototsune.github.io/CyberTrain/guide/logs-and-errors.html#logs)):
   log lines with the time, the level and tags, a request id on every
   request and in the jobs it queues, JSON lines for a log collector, error
   reporting (`Cybertrain.error`, subscribers, and Sentry or GlitchTip
@@ -138,7 +138,8 @@ the blog has grown since and the comparison has not been re-run
 | [Assets](https://saeki-mototsune.github.io/CyberTrain/guide/assets.html) | Digested stylesheets, images and JavaScript, CSS `url()`, the helpers, the import map, serving |
 | [Internationalization](https://saeki-mototsune.github.io/CyberTrain/guide/i18n.html) | Dictionaries in `config/locales`, `t` and `l`, lazy lookup, plural forms, the locale per request, translated validation messages |
 | [Configuration](https://saeki-mototsune.github.io/CyberTrain/guide/configuration.html) | `config/app.rb`, environment variables, time zones |
-| [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Job classes, retries and concurrency keys (delivered at least once, so make jobs idempotent), `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check, logs and request ids, error reporting to Sentry |
+| [Background work and operations](https://saeki-mototsune.github.io/CyberTrain/guide/background-and-operations.html) | Job classes, retries and concurrency keys (delivered at least once, so make jobs idempotent), `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check |
+| [Logs and error reporting](https://saeki-mototsune.github.io/CyberTrain/guide/logs-and-errors.html) | The log line, levels and JSON lines, request ids and tags, `Cybertrain.error`, subscribers and filters, Sentry or GlitchTip |
 | [Realtime](https://saeki-mototsune.github.io/CyberTrain/guide/realtime.html) | Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names, feed health |
 | [Outbound HTTP, WebSocket feeds and e-mail](https://saeki-mototsune.github.io/CyberTrain/guide/external-services.html) | `HttpClient` (streaming, gzip, redirects, Server-Sent Events), `WebSocket.subscribe` (timers, restarts), `Mailer` (HTML mail, `deliver_later`) |
 | [Testing](https://saeki-mototsune.github.io/CyberTrain/guide/testing.html) | Test classes, fixtures, `cybertrain test`, time travel, components and streams, mail, jobs, outbound calls, logs and error reports, CI |

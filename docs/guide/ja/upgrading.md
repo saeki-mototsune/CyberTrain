@@ -1,5 +1,5 @@
 ---
-source_sha256: d804e60e2d88d588d35564f14722f2fa81e4683b3a0bbd266dad9be0793310d2
+source_sha256: c488bca3969af0a0d59804950c6461d8a7735db560f30b0dc8348d77a97edba8
 ---
 # アップグレード
 
@@ -230,5 +230,5 @@ cybertrain build
 - `1.month.ago` は `Time.current.months_ago(1)` と書きます。
 - `assert_equal` は Minitest の 2 行のテキストで失敗します。通るテストのスナップショットは変わりません。
 - `cybertrain generate authentication` をもう一度実行すると、クラスの形のテストを書き出し、それらが置き換える古いファイル（`test/authentication.rb`、`test/support/app_test.rb` など）をそれぞれ示します。`--force` でそれらを削除します。
-- 角括弧のレベルで始まるログの行を丸ごと探していたテストは、レベルとメッセージを別々に探します（`" ERROR "` と `"password reset mail not sent: "`）。行はいまは時刻で始まり、リクエストの ID を持つことがあります（[ログ](background-and-operations.md#logs)）。
+- 角括弧のレベルで始まるログの行を丸ごと探していたテストは、レベルとメッセージを別々に探します（`" ERROR "` と `"password reset mail not sent: "`）。行はいまは時刻で始まり、リクエストの ID を持つことがあります（[ログ](logs-and-errors.md#logs)）。
 - エクスポートされた `CYBERTRAIN_LOG_FORMAT` や `CYBERTRAIN_SENTRY_DSN` はテストに届かなくなりました。それらでテストするには、`config/app.rb` で設定するか、テストで DSN を代入します。

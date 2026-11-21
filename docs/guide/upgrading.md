@@ -448,7 +448,7 @@ Two defaults changed after 0.4
   looks for the level and the message apart (`" ERROR "` and
   `"password reset mail not sent: "`): a line now starts with the time and
   may carry the request's id
-  ([Logs](background-and-operations.md#logs)).
+  ([Logs](logs-and-errors.md#logs)).
 - An exported `CYBERTRAIN_LOG_FORMAT` or `CYBERTRAIN_SENTRY_DSN` no longer
   reaches the tests; set them in `config/app.rb`, or assign the DSN in the
   test, to test with them.

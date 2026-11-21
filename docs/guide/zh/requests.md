@@ -1,5 +1,5 @@
 ---
-source_sha256: e5f13b67f73f98ad2be5ced715df0a920cd281aca9ffcab3112285ef8e9f39dc
+source_sha256: b855230d282f170790fc5218f4c7c42202916db808f505391e8d5b93077c5577
 ---
 # 请求
 
@@ -210,7 +210,7 @@ def export
 end
 ```
 
-`c.log_tags` 选择每一行显示什么；作业的行和错误报告带有把它加入队列的请求的 ID（[请求 ID](background-and-operations.md#request-ids)）。
+`c.log_tags` 选择每一行显示什么；作业的行和错误报告带有把它加入队列的请求的 ID（[请求 ID](logs-and-errors.md#request-ids)）。
 
 ## Content Security Policy、`force_ssl` 与主机
 

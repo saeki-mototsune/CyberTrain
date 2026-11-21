@@ -520,7 +520,7 @@ EOF
 
 `CYBERTRAIN_RELEASE` names the version each report comes from; the deploy
 script could write the commit there instead. The variables, and what is
-reported: [Error reporting](guide/background-and-operations.md#error-reporting).
+reported: [Error reporting](guide/logs-and-errors.md#error-reporting).
 
 The `.env.example` that `cybertrain new` writes lists the other variables an
 app reads, each commented out. One of them is required as soon as a model

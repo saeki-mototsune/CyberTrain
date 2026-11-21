@@ -1,5 +1,5 @@
 ---
-source_sha256: d804e60e2d88d588d35564f14722f2fa81e4683b3a0bbd266dad9be0793310d2
+source_sha256: c488bca3969af0a0d59804950c6461d8a7735db560f30b0dc8348d77a97edba8
 ---
 # Mise à jour
 
@@ -320,7 +320,7 @@ Deux valeurs par défaut ont changé après 0.4
   crochets en tête, cherche le niveau et le message séparément (`" ERROR "`
   et `"password reset mail not sent: "`)&nbsp;: une ligne commence
   maintenant par l’heure et peut porter l’identifiant de la requête
-  ([Journaux](background-and-operations.md#logs)).
+  ([Journaux](logs-and-errors.md#logs)).
 - Un `CYBERTRAIN_LOG_FORMAT` ou un `CYBERTRAIN_SENTRY_DSN` exporté n’atteint
   plus les tests&nbsp;; pour tester avec, fixez-les dans `config/app.rb`, ou
   affectez le DSN dans le test.

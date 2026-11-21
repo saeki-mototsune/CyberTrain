@@ -1,5 +1,5 @@
 ---
-source_sha256: e5f13b67f73f98ad2be5ced715df0a920cd281aca9ffcab3112285ef8e9f39dc
+source_sha256: b855230d282f170790fc5218f4c7c42202916db808f505391e8d5b93077c5577
 ---
 # Запросы
 
@@ -251,7 +251,7 @@ end
 
 `c.log_tags` выбирает, что показывает каждая строка, а строки задачи и отчёты
 об ошибках несут идентификатор запроса, который поставил её в очередь
-([Идентификаторы запросов](background-and-operations.md#request-ids)).
+([Идентификаторы запросов](logs-and-errors.md#request-ids)).
 
 ## Content Security Policy, `force_ssl` и хосты
 
