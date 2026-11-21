@@ -78,7 +78,9 @@ test "Symbol keys on the request path do not grow the process" do
   assert_equal 201_000 * 5, hits
   # 5 pinned Strings a round would be over 100 MB; the budget leaves room
   # for allocator noise.
-  assert after - before < 20_000, "resident size grew by #{after - before} KB" if before >= 0
+  # One assertion on every system: where the size cannot be read (macOS has
+  # no /proc), before is -1 and it holds trivially.
+  assert before < 0 || after - before < 20_000, "resident size grew by #{after - before} KB"
 end
 
 Cybertrain::Test.run!
