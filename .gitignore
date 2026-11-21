@@ -26,3 +26,5 @@ log/
 /site/*/tutorial.html
 /site/guide/
 /site/*/guide/
+# Built by script/sitemap in the Pages workflow.
+/site/sitemap.xml

@@ -32,7 +32,7 @@ function loadPlaywright() {
 const SITE = path.join(__dirname, '..', 'site');
 const LANGS = ['en', 'ja', 'zh', 'ru', 'fr'];
 const PAGES = ['index', 'tutorial', 'playground', 'deploy'];
-const HOST = 'saeki-mototsune.github.io/CyberTrain';
+const HOST = 'www.cybertrain.dev';
 
 // One real command per page, from the home page's quick start.
 const COMMANDS = {

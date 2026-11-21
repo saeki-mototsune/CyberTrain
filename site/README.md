@@ -57,9 +57,13 @@ to GitHub Pages on every push to `main` that touches a page's source:
 `site/` (its Markdown notes aside), `docs/guide/`, the API reference's
 inputs (`cybertrain/`, `docs/api/`, `.yardopts`), the scripts that build
 them or the workflow itself. It can also be run by hand. One-time setup in the repository settings: Pages → Build and deployment →
-Source: **GitHub Actions**. Links between the pages and to their assets are
-relative, so the site works from the `/CyberTrain/` project path (the `og:image`,
-`og:url` and canonical URLs are absolute, as social previews require).
+Source: **GitHub Actions**. The site is served at the custom domain
+https://www.cybertrain.dev/ (set in Settings → Pages). Links between the pages
+and to their assets are relative, so the site also works from any other path
+(the `og:image`, `og:url`, canonical and hreflang URLs are absolute, as social
+previews and search engines require). `robots.txt` points crawlers at
+`sitemap.xml`, which `script/sitemap` builds in the Pages workflow (not
+committed) from the pages as deployed.
 A change that touches only `site/` does not run
 [CI](../.github/workflows/ci.yml) (its `paths` filter; CI never checked the site),
 so run `script/check-site-i18n` before pushing one.
