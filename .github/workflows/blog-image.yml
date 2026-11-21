@@ -21,7 +21,10 @@
 name: Blog image
 
 on:
+  # A draft pull request builds nothing (the image job skips it), as in
+  # ci.yml; marking it ready for review starts the build.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "examples/blog/**"
       - ".github/workflows/blog-image.yml"
@@ -71,6 +74,7 @@ concurrency:
 
 jobs:
   image:
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     outputs:

@@ -19,7 +19,11 @@
 name: Required
 
 on:
+  # ready_for_review: CI and the image workflows run no job on a draft and
+  # start again when it is marked ready, on the same commit; this check
+  # starts again with them and waits for those runs.
   pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
   # For a merge queue, should one be enabled: the queue waits for the same
   # check on the commit it builds.
   merge_group:
@@ -55,13 +59,18 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
         run: |
-          set -eu
+          set -euo pipefail
           deadline=$(( $(date +%s) + 20400 ))
           interval=30
           list() {
             gh api --paginate \
               "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEAD_SHA&event=$GITHUB_EVENT_NAME&per_page=100" \
-              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID) | [.status, (.conclusion // \"-\"), .name, .html_url] | @tsv"
+              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID and .name != \"$GITHUB_WORKFLOW\") | [.status, (.conclusion // \"-\"), .name, .html_url] | @tsv" |
+              # Other workflows' runs only, the newest of each (the API lists
+              # the newest first): marking a draft ready starts a second run
+              # of CI, of an image workflow and of this one on the same
+              # commit, and the first of each may have been cancelled.
+              awk -F'\t' '!seen[$3]++'
           }
           # The Gate starts on every pull request, so an empty list means the
           # runs are not listed yet, never that there is nothing to wait for.
