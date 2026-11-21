@@ -1,7 +1,7 @@
 # spinel-http: the HTTP server as a package of its own
 
 Date: 2026-11-21. Status: draft for the maintainer's approval. Section 2
-records what the maintainer decided; everything marked *author's call* is a
+records what the maintainer decided (five points); everything marked *author's call* is a
 proposal they can correct.
 
 ## 1. Why
@@ -31,6 +31,14 @@ and a handler of a few lines give them a production-grade server.
 2. The audience is Spinel users who do not need a Rails-shaped framework.
 3. **Approach A**: the code lives only in the `spinel-http` repository, and
    cybertrain depends on it through `spin.toml` (section 4).
+4. **Upstream support comes first.** When a workaround that upstream
+   Spinel needs costs cybertrain something under the fork, the cost is
+   accepted as long as it stays within the line of anti-goal 1; past that
+   line it goes back to the maintainer.
+5. **The repository is `saeki-mototsune/spinel-http`.** The maintainer
+   creates it; from then on the builder pushes and tags there (steps 3 and
+   4). `spin publish` (step 5) stays the maintainer's, as it opens a pull
+   request against matz/spin-index under their name.
 
 ## 3. Goals, non-goals, anti-goals
 
@@ -96,8 +104,7 @@ Anti-goals (a failure even if everything else works)
 ## 5. Name, repository, namespace
 
 - Index name **`spinel-http`**, repository
-  **`https://github.com/saeki-mototsune/spinel-http`** (author's call on
-  the owner). The index's convention is "name = the rubygems.org gem's
+  **`https://github.com/saeki-mototsune/spinel-http`** (decision 5). The index's convention is "name = the rubygems.org gem's
   name, repository `spinel-<name>`", and a shared name means "the same
   library". `http` on rubygems.org is http.rb, an HTTP *client*, so taking
   `http` would claim to be its port. `spinel-http` is not a gem name, so
@@ -109,8 +116,7 @@ Anti-goals (a failure even if everything else works)
   Ruby's usual mapping of a hyphenated gem name, and no claim on a
   `Spinel` namespace the compiler project may want).
 - License MIT, as cybertrain. Version starts at `0.1.0`.
-- The repository has to be created by the maintainer (this session cannot
-  create repositories).
+- The maintainer creates the repository (decision 5); this session cannot.
 
 ## 6. What moves, what stays
 
@@ -205,7 +211,9 @@ subclass, so neither cybertrain's code nor an application changes
    constant aliases, class reopening and a subclass installed at boot
    compile and keep their static types. If upstream fails in ways a
    workaround in spinel-http cannot fix, stop and come back to the
-   maintainer: G1 would then wait on an upstream release.
+   maintainer: G1 would then wait on an upstream release. A workaround
+   that only costs speed is taken if it stays within anti-goal 1's line
+   (decision 4).
 2. **Cut the ties inside CyberTrain** (section 7), still under
    `Cybertrain::`, with every test passing. This is worth doing even if
    publishing stalls, and it is the riskiest step for cybertrain, so it
