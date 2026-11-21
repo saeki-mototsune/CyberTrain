@@ -1,0 +1,135 @@
+#!/usr/bin/env bash
+# Measures what the HTTP layer's refactoring must not make worse: build times
+# and request throughput of examples/blog, built with Spinel.
+#
+# usage: script/measure-http-layer OUT.json
+#
+# Works in a `cp -a` of examples/blog under tmp/measure/ (spin.toml pointed at
+# this checkout, as script/preview-e2e does). Measures
+#   * the cold build (`rm -rf build && cybertrain build`), 3 times;
+#   * the incremental build (touch app/controllers/articles_controller.rb,
+#     then `cybertrain build`), 3 times;
+#   * the built binary served in production mode on a free port, seeded with
+#     20 articles through the form (as bench/run does), then
+#     `wrk -t2 -c32 -d10s` on /up and on /articles, 5 times each.
+# Writes {"commit", "build_cold_s", "build_incremental_s", "rps_up",
+# "rps_articles", "median"} to OUT.json. Takes many minutes: run it on an
+# otherwise idle machine, and compare numbers only from the same machine.
+set -euo pipefail
+
+[ $# -eq 1 ] || { echo "usage: script/measure-http-layer OUT.json" >&2; exit 2; }
+repo=$(cd "$(dirname "$0")/.." && pwd)
+case $1 in /*) out=$1 ;; *) out=$PWD/$1 ;; esac
+
+if ! command -v wrk > /dev/null 2>&1; then
+  apt-get install -y wrk > /dev/null 2>&1 || true
+  command -v wrk > /dev/null 2>&1 || { echo "measure-http-layer: wrk is missing and 'apt-get install -y wrk' failed" >&2; exit 1; }
+fi
+
+if command -v cybertrain > /dev/null 2>&1; then
+  ct=(cybertrain)
+else
+  ct=(ruby "-I$repo" "$repo/exe/cybertrain")
+fi
+
+work=$repo/tmp/measure
+app=$work/blog
+rm -rf "$app"
+mkdir -p "$work" "$(dirname "$out")"
+cp -a "$repo/examples/blog" "$app"
+rm -rf "$app/build" "$app/dist" "$app/tmp" "$app/storage"/*.sqlite3*
+mkdir -p "$app/tmp" "$app/storage"
+(cd "$app" && ruby -e '
+  toml = File.read("spin.toml")
+  pinned = toml.sub(%q(cybertrain = { path = "../.." }), "cybertrain = { path = #{ARGV[0].dump} }")
+  abort "spin.toml has no cybertrain path dependency" if pinned == toml
+  File.write("spin.toml", pinned)' "$repo")
+
+now() { date +%s.%N; }
+cold=() incr=()
+
+build() { (cd "$app" && "${ct[@]}" build > "$work/build.log" 2>&1) || { echo "measure-http-layer: build failed, see $work/build.log" >&2; tail -20 "$work/build.log" >&2; exit 1; }; }
+
+for i in 1 2 3; do
+  rm -rf "$app/build"
+  t0=$(now); build; t1=$(now)
+  cold+=("$(echo "$t1 - $t0" | bc -l)")
+  echo "cold build $i: ${cold[-1]} s" >&2
+done
+for i in 1 2 3; do
+  touch "$app/app/controllers/articles_controller.rb"
+  t0=$(now); build; t1=$(now)
+  incr+=("$(echo "$t1 - $t0" | bc -l)")
+  echo "incremental build $i: ${incr[-1]} s" >&2
+done
+
+[ -x "$app/dist/blog" ] || { echo "measure-http-layer: $app/dist/blog was not built" >&2; exit 1; }
+
+port=$(ruby -rsocket -e 's = TCPServer.new("127.0.0.1", 0); print s.addr[1]; s.close')
+export CYBERTRAIN_SECRET_KEY_BASE=$(ruby -rsecurerandom -e 'print SecureRandom.hex(64)')
+cd "$app/dist"
+mkdir -p storage tmp
+rm -f storage/production.sqlite3*
+{ ./blog migrate && ./blog user bench@example.com measure-http-layer-pw; } > "$work/migrate.log" 2>&1 || { echo "measure-http-layer: migrate or user creation failed" >&2; cat "$work/migrate.log" >&2; exit 1; }
+PORT=$port SPINEL_WORKERS=2 ./blog > /dev/null 2> "$work/server.log" &
+server=$!
+trap 'kill $server 2> /dev/null || true' EXIT
+
+# /articles needs a signed-in user: sign in through the form, and keep the
+# session cookie for wrk.
+cookie=$(ruby -rnet/http -e '
+  port = ARGV[0].to_i
+  ok = false
+  60.times { begin; ok = Net::HTTP.get_response("127.0.0.1", "/", port).code == "200"; rescue SystemCallError; end; break if ok; sleep 0.5 }
+  abort "server not ready" unless ok
+  cookie = nil
+  req = lambda do |r|
+    r["Cookie"] = cookie if cookie
+    res = Net::HTTP.start("127.0.0.1", port) { |h| h.request(r) }
+    set = res.get_fields("set-cookie")
+    cookie = set.first.split(";").first if set && !set.empty?
+    res
+  end
+  token = lambda do |page, action|
+    form = req.(Net::HTTP::Get.new(page)).body[/<form[^>]*action="#{Regexp.escape(action)}"[^>]*>.*?<\/form>/m] or abort "no form #{action}"
+    form[/name="authenticity_token" value="([^"]+)"/, 1] or abort "no token"
+  end
+  r = Net::HTTP::Post.new("/session")
+  r.set_form_data("authenticity_token" => token.("/session/new", "/session"), "email_address" => "bench@example.com", "password" => "measure-http-layer-pw")
+  res = req.(r)
+  abort "sign-in: #{res.code} #{res.body.to_s[0, 200]}" unless res.code == "303" && res["location"] !~ /session/
+  (1..20).each do |i|
+    r = Net::HTTP::Post.new("/articles")
+    r.set_form_data("authenticity_token" => token.("/articles/new", "/articles"), "article[title]" => "Article #{i}", "article[body]" => "#{i}. Spinel compiles Ruby ahead of time into C.")
+    res = req.(r)
+    abort "creating article #{i}: #{res.code}" unless res.code == "303"
+  end
+  n = req.(Net::HTTP::Get.new("/articles")).body.scan("<tr>").size - 1
+  abort "index lists #{n} articles, not 20" unless n == 20
+  print cookie' "$port")
+
+# Warm up, then measure.
+wrk -t2 -c32 -d3s -H "Cookie: $cookie" "http://127.0.0.1:$port/articles" > /dev/null
+rps() { wrk -t2 -c32 -d10s -H "Cookie: $cookie" "http://127.0.0.1:$port$1" | awk '/Requests\/sec/ { print $2 }'; }
+up=() arts=()
+for i in 1 2 3 4 5; do
+  up+=("$(rps /up)"); arts+=("$(rps /articles)")
+  echo "run $i: /up ${up[-1]} req/s, /articles ${arts[-1]} req/s" >&2
+done
+
+kill $server 2> /dev/null || true
+wait $server 2> /dev/null || true
+trap - EXIT
+
+ruby -rjson -e '
+  commit, out, *rest = ARGV
+  a = rest.join(" ").split("|", -1).map { |s| s.split.map(&:to_f) }
+  names = %w[build_cold_s build_incremental_s rps_up rps_articles]
+  abort "wrong counts" unless a.map(&:size) == [3, 3, 5, 5] && a.flatten.none?(&:zero?)
+  med = ->(v) { s = v.sort; m = s.size / 2; (s.size.odd? ? s[m] : (s[m - 1] + s[m]) / 2.0).round(2) }
+  h = { "commit" => commit }
+  names.zip(a) { |n, v| h[n] = v }
+  h["median"] = names.zip(a).to_h { |n, v| [n, med.(v)] }
+  File.write(out, JSON.pretty_generate(h) + "\n")' \
+  "$(git -C "$repo" rev-parse HEAD)" "$out" "${cold[*]}" "|" "${incr[*]}" "|" "${up[*]}" "|" "${arts[*]}"
+cat "$out"
