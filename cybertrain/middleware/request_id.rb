@@ -76,7 +76,7 @@ module Cybertrain
         scope = RequestId.scope_for(request, id, @log_tags)
         # Kept on the request for the Server, which logs what escapes the
         # stack after this method has put the thread's Scope back.
-        request.log_scope = scope
+        request.log_context = scope
         saved = Logger.swap_scope(scope)
       end
       call_reporting(ctx)

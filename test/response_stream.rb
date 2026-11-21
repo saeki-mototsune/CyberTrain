@@ -220,20 +220,56 @@ def streamed_under_scope
   res = Cybertrain::Response.new
   scope = Cybertrain::Logger::Scope.new("r-9", "GET", "/s", "", ["r-9"], 0, { "k" => "v" })
   with_scope(scope) { res.body_writer = ThreeChunks.new }
-  assert res.body_scope.equal?(scope)
+  assert res.body_log_context.equal?(scope)
   res
 end
 
 test "a body, a redirect or an error reset that drops the writer drops its Scope too" do
   rendered = streamed_under_scope
   rendered.body = "rendered"
-  assert rendered.body_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+  assert rendered.body_log_context.equal?(Cybertrain::HttpLogContext::NONE)
   redirected = streamed_under_scope
   redirected.redirect("/next", 303)
-  assert redirected.body_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+  assert redirected.body_log_context.equal?(Cybertrain::HttpLogContext::NONE)
   reset = streamed_under_scope
   reset.reset_to(500)
-  assert reset.body_scope.equal?(Cybertrain::Logger::NO_SCOPE)
+  assert reset.body_log_context.equal?(Cybertrain::HttpLogContext::NONE)
+end
+
+# What RecordsScope's write_body saw: the thread's request id, and then
+# (after write_scoped returned) whether the thread was back on NO_SCOPE.
+SCOPE_SEEN = Array.new(0) { "" }
+
+class RecordsScope < Cybertrain::BodyWriter
+  def write_body(sink)
+    SCOPE_SEEN << Cybertrain::Logger.current_scope.scope_request_id
+    nil
+  end
+end
+
+# A Sink on no socket: RecordsScope writes nothing.
+class NullSink < Cybertrain::Sink
+  def initialize
+    @closed = false
+    @chunked = false
+    @broken = false
+    @write_timeout = 0
+  end
+end
+
+test "a streamed body's writer thread, through BodyWriter.write_scoped, runs under the request's Scope" do
+  SCOPE_SEEN.pop until SCOPE_SEEN.empty?
+  res = Cybertrain::Response.new
+  writer = RecordsScope.new
+  scope = Cybertrain::Logger::Scope.new("req-1", "GET", "/s", "", ["req-1"], 0, { "k" => "v" })
+  with_scope(scope) { res.body_writer = writer }
+  t = Thread.new do
+    Cybertrain::BodyWriter.write_scoped(writer, NullSink.new, res.body_log_context)
+    SCOPE_SEEN << (Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE) ? "no scope" : "leaked")
+  end
+  t.join
+  assert_equal ["req-1", "no scope"], SCOPE_SEEN
+  assert Cybertrain::Logger.current_scope.equal?(Cybertrain::Logger::NO_SCOPE)
 end
 
 test "a client that never reads ends the stream when a write times out" do

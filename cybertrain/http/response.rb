@@ -1,6 +1,6 @@
 require "cybertrain/http/header_name"
 require "cybertrain/http/body_writer"
-require "cybertrain/logger"
+require "cybertrain/http/log"
 
 module Cybertrain
   # The response a request builds up on its way through the stack; the
@@ -102,7 +102,7 @@ module Cybertrain
     # @api public
     def body=(text)
       @body_writer = nil
-      @body_scope = Logger::NO_SCOPE
+      @body_log_context = HttpLogContext::NONE
       @upgrade = false
       @body = text
     end
@@ -132,8 +132,8 @@ module Cybertrain
       # nil for an ordinary response.
       @body_writer = nil
       @upgrade = false
-      # The log Scope the writer runs under (see #body_scope).
-      @body_scope = Logger::NO_SCOPE
+      # The log context the writer runs under (see #body_log_context).
+      @body_log_context = HttpLogContext::NONE
     end
 
     # The writer of a streaming response (docs/design.md D36), nil for an
@@ -149,19 +149,20 @@ module Cybertrain
     # @api public
     def body_writer=(writer)
       @body_writer = writer
-      @body_scope = Logger.current_scope
+      @body_log_context = HttpLogSwitch.installed.current
     end
 
-    # The thread's log Scope when the writer was set ({#body_writer=},
-    # {#upgrade!}): the request's, whose id and tags the lines logged while
-    # the body is written carry (spec section 12.2: the request lasts until
-    # its body is written). The Server swaps it in around the writer
-    # ({BodyWriter.write_scoped}) and back after it. {Logger::NO_SCOPE}
-    # when there is no writer: a body, a redirect or an error reset that
-    # drops the writer drops its Scope too.
-    # @return [Logger::Scope]
+    # The thread's log context when the writer was set ({#body_writer=},
+    # {#upgrade!}; {HttpLogSwitch.installed}'s current): the request's,
+    # whose id and tags the lines logged while the body is written carry
+    # (spec section 12.2: the request lasts until its body is written). The
+    # Server swaps it in around the writer ({BodyWriter.write_scoped}) and
+    # back after it. {HttpLogContext::NONE} when there is no writer: a
+    # body, a redirect or an error reset that drops the writer drops its
+    # context too.
+    # @return [HttpLogContext]
     # @api private
-    attr_reader :body_scope
+    attr_reader :body_log_context
 
     # @return [Boolean] true when a {BodyWriter} is set
     # @api public
@@ -178,7 +179,7 @@ module Cybertrain
       @status = 101
       @upgrade = true
       @body_writer = writer
-      @body_scope = Logger.current_scope
+      @body_log_context = HttpLogSwitch.installed.current
       @performed = true
       nil
     end
@@ -306,7 +307,7 @@ module Cybertrain
     def redirect(location, status = 302)
       set_header("Location", location) # raises on CR/LF: the stream stays
       @body_writer = nil
-      @body_scope = Logger::NO_SCOPE
+      @body_log_context = HttpLogContext::NONE
       @upgrade = false
       @status = status
       @performed = true
@@ -411,7 +412,7 @@ module Cybertrain
       # An error after Controller#stream (or an upgrade) is an ordinary
       # response: no writer runs and nothing is sent chunked.
       @body_writer = nil
-      @body_scope = Logger::NO_SCOPE
+      @body_log_context = HttpLogContext::NONE
       @upgrade = false
       @status = status
       self.content_type = "text/plain; charset=utf-8"

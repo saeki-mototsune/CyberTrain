@@ -63,7 +63,7 @@ module Cybertrain
                                                             max_body_bytes: config.max_body_bytes,
                                                             reuse_port: reuse_port?,
                                                             stream_write_timeout: config.stream_ping_interval,
-                                                            listen_fd: listen_fd)
+                                                            listen_fd: listen_fd, logger: Cybertrain.logger)
           @server = built
         end
         built

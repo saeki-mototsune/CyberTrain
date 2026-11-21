@@ -16,7 +16,11 @@ module Cybertrain
     # at info, so a flood of them does not fill the error log; anything else
     # is 500 at error, as `class: message`. Each error path then does
     # `reset_to(status)` (or its own 500 page); the next client-fault class
-    # is added to CLIENT_FAULTS below and nowhere else.
+    # is added to CLIENT_FAULTS below and nowhere else. `logger` is the
+    # Server's {HttpLog} (cybertrain's Logger is one).
+    # @param e [Exception]
+    # @param logger [HttpLog]
+    # @return [Integer]
     def self.classify(e, logger)
       status = self.status_for(e)
       if status >= 500

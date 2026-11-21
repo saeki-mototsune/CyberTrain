@@ -3,7 +3,7 @@ require "cybertrain/http/header_name"
 require "cybertrain/http/parser"
 require "cybertrain/http/multipart"
 require "cybertrain/http/ip_address"
-require "cybertrain/logger"
+require "cybertrain/http/log"
 
 module Cybertrain
   # The request body cannot be decoded as its Content-Encoding says
@@ -101,19 +101,20 @@ module Cybertrain
       @request_id = id
     end
 
-    # The log Scope of the request ({Logger::Scope}), set by the RequestId
-    # middleware that gave it its id; {Logger::NO_SCOPE} until then. The
-    # Server swaps it in around the error line it logs for what escaped
-    # the stack, after RequestId has put the thread's own Scope back, so
-    # that line carries the request's id too.
-    # @return [Logger::Scope]
+    # The request's log context ({HttpLogContext}), set by whatever gave
+    # the request its id (cybertrain's RequestId middleware sets its
+    # Logger::Scope); {HttpLogContext::NONE} until then. The Server swaps
+    # it in through {HttpLogSwitch.installed} around the error line it logs
+    # for what escaped the handler, after the handler has put the thread's
+    # own context back, so that line carries the request's id too.
+    # @return [HttpLogContext]
     # @api private
-    attr_reader :log_scope
+    attr_reader :log_context
 
-    # @param scope [Logger::Scope]
+    # @param ctx [HttpLogContext]
     # @api private
-    def log_scope=(scope)
-      @log_scope = scope
+    def log_context=(ctx)
+      @log_context = ctx
     end
 
     def initialize(method, target, headers, body, remote_addr = "", http_version = "HTTP/1.1")
@@ -131,7 +132,7 @@ module Cybertrain
       @remote_addr = remote_addr
       @http_version = http_version
       @request_id = ""
-      @log_scope = Logger::NO_SCOPE
+      @log_context = HttpLogContext::NONE
       @utf8_query_string = nil
       @utf8_body = nil
       @decoded_body = nil

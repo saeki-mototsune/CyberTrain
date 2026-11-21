@@ -1,5 +1,5 @@
 require "socket"
-require "cybertrain/logger"
+require "cybertrain/http/log"
 
 module Cybertrain
   # What a streaming response carries instead of a body (docs/design.md D36):
@@ -26,24 +26,25 @@ module Cybertrain
       nil
     end
 
-    # Runs `writer` on `sink` with `scope` (the request's,
-    # {Response#body_scope}) as this thread's log Scope, and puts the
-    # thread's own back after it, also when it raises: a streamed body or
-    # an upgraded connection is written after the middleware that made the
-    # Scope has returned. Save, work, restore in `ensure`; no rescue here
+    # Runs `writer` on `sink` with `ctx` (the request's,
+    # {Response#body_log_context}) as this thread's log context, swapped
+    # through {HttpLogSwitch.installed}, and puts the thread's own back
+    # after it, also when it raises: a streamed body or an upgraded
+    # connection is written after the middleware that made the context has
+    # returned. Save, work, restore in `ensure`; no rescue here
     # (spikes/NOTES.md rule 103). What Test::Client#get_stream calls; the
     # Server does the same around its rescuing run_writer.
     # @param writer [BodyWriter]
     # @param sink [Sink]
-    # @param scope [Logger::Scope]
+    # @param ctx [HttpLogContext]
     # @return [nil]
     # @api private
-    def self.write_scoped(writer, sink, scope)
-      saved = Logger.swap_scope(scope)
+    def self.write_scoped(writer, sink, ctx)
+      saved = HttpLogSwitch.installed.swap(ctx)
       writer.write_body(sink)
       nil
     ensure
-      Logger.swap_scope(saved)
+      HttpLogSwitch.installed.swap(saved)
     end
   end
 

@@ -7,7 +7,7 @@ require "cybertrain/http/handler"
 require "cybertrain/http/body_writer"
 require "cybertrain/http/client_error"
 require "cybertrain/http/stream_failure"
-require "cybertrain/logger"
+require "cybertrain/http/log"
 
 module Cybertrain
   # Raised by Server#start when the listener cannot bind: another process
@@ -128,7 +128,7 @@ module Cybertrain
     # wait for a client that does not read (Sink); Application passes
     # Config#stream_ping_interval.
     def initialize(handler, host: "127.0.0.1", port: 3000, read_timeout: 15, drain_timeout: 10.0,
-                   max_head_bytes: 65536, max_body_bytes: 10_485_760, logger: Cybertrain.logger,
+                   max_head_bytes: 65536, max_body_bytes: 10_485_760, logger: HttpLog.new,
                    reuse_port: false,
                    stream_write_timeout: 15, listen_fd: -1)
       @handler = handler
@@ -656,21 +656,23 @@ module Cybertrain
       sink = Sink.new(sock, chunked, @stream_write_timeout)
       Server.keep_alive_probes(sock)
       conn.streaming = true
-      sink.sink_finish if run_writer_scoped(writer, sink, response.body_scope)
+      sink.sink_finish if run_writer_scoped(writer, sink, response.body_log_context)
       false
     end
 
-    # {run_writer} under the request's log Scope ({Response#body_scope}),
-    # so the writer's lines and the `stream error:` line carry the
-    # request's id; this thread's own Scope is back afterwards, also when
-    # the writer raised something run_writer does not rescue. Save, work,
-    # restore in `ensure`, no rescue (spikes/NOTES.md rule 103).
-    def run_writer_scoped(writer, sink, scope)
-      saved = Logger.swap_scope(scope)
+    # {run_writer} under the request's log context
+    # ({Response#body_log_context}), swapped through
+    # {HttpLogSwitch.installed}, so the writer's lines and the `stream
+    # error:` line carry the request's id; this thread's own context is
+    # back afterwards, also when the writer raised something run_writer
+    # does not rescue. Save, work, restore in `ensure`, no rescue
+    # (spikes/NOTES.md rule 103).
+    def run_writer_scoped(writer, sink, ctx)
+      saved = HttpLogSwitch.installed.swap(ctx)
       ok = run_writer(writer, sink)
       ok
     ensure
-      Logger.swap_scope(saved)
+      HttpLogSwitch.installed.swap(saved)
     end
 
     # TCP keep-alive on a streaming connection, best effort: a peer that
@@ -688,7 +690,7 @@ module Cybertrain
     # 32/45); JSON::NestingError named first (rule 61). False when it raised.
     # Either arm logs the `stream error:` line; a failure is then told to
     # {Cybertrain.stream_failure} (reported, once cybertrain/error_reporter
-    # is loaded), under the request's Scope (run_writer_scoped). A client
+    # is loaded), under the request's log context (run_writer_scoped). A client
     # that went away (the closed peer serve rescues) is logged only.
     def run_writer(writer, sink)
       writer.write_body(sink)
@@ -716,7 +718,7 @@ module Cybertrain
       # and the template Interpreter are the guard against those.
       # ClientError maps and logs (a client's fault is its 4xx at info);
       # ErrorPages and Dev::ErrorPage ask it too, this is the bare-app path.
-      response = error_response(classify_scoped(e, request.log_scope))
+      response = error_response(classify_scoped(e, request.log_context))
       # The id a RequestId in the app gave the request, echoed on this
       # answer too (the response the stack had is replaced). The header's
       # name is written out: the HTTP layer loads alone
@@ -727,17 +729,18 @@ module Cybertrain
     end
 
     # {ClientError.classify} (which logs the error or rejection line) under
-    # the request's log Scope ({Request#log_scope}): a RequestId in the app
-    # has already put the thread's own Scope back when the exception gets
-    # here, and the line must carry the request's id all the same (spec
-    # section 12.2). The thread's Scope is back afterwards. Save, work,
-    # restore in `ensure`, no rescue (spikes/NOTES.md rule 103).
-    def classify_scoped(e, scope)
-      saved = Logger.swap_scope(scope)
+    # the request's log context ({Request#log_context}), swapped through
+    # {HttpLogSwitch.installed}: a RequestId in the app has already put the
+    # thread's own context back when the exception gets here, and the line
+    # must carry the request's id all the same (spec section 12.2). The
+    # thread's context is back afterwards. Save, work, restore in
+    # `ensure`, no rescue (spikes/NOTES.md rule 103).
+    def classify_scoped(e, ctx)
+      saved = HttpLogSwitch.installed.swap(ctx)
       status = ClientError.classify(e, @logger)
       status
     ensure
-      Logger.swap_scope(saved)
+      HttpLogSwitch.installed.swap(saved)
     end
 
     # Writes an error response; serve closes the socket afterwards.

@@ -2,8 +2,8 @@ module Cybertrain
   # What the Server tells when a streamed or upgraded body's writer raised
   # (docs/design.md D88): {Server} calls {#stream_failed} on
   # {Cybertrain.stream_failure} after it logged its `stream error:` line,
-  # with the request's log Scope current ({Response#body_scope}), once per
-  # failed stream. A client that went away (EOFError, IOError,
+  # with the request's log context current ({Response#body_log_context}),
+  # once per failed stream. A client that went away (EOFError, IOError,
   # Errno::ECONNRESET, Errno::EPIPE: what the server treats as a closed
   # peer) is not a failure and is not told.
   #

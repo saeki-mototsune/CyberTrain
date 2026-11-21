@@ -386,8 +386,11 @@ NAME_HOMES = {
   "now" => %w[cybertrain/net/socket.rb cybertrain/test/receiver.rb cybertrain/cache.rb cybertrain/flash.rb cybertrain/clock.rb
               cybertrain/test/time_now.rb cybertrain/cli/dev_server/holding.rb cybertrain/cli/dev_server/processes.rb],
   # Schema.current (the Definition, or nil), Time.current (a Time) and
-  # Date.current (a Date), the last two in clock.rb.
-  "current" => %w[cybertrain/schema.rb cybertrain/clock.rb],
+  # Date.current (a Date), the last two in clock.rb; HttpLogSwitch#current
+  # and its Logger::ScopeSwitch override (an HttpLogContext, the spinel-http
+  # phase 1 plan's Task 2 interface, compiled beside the others by every
+  # whole-framework test).
+  "current" => %w[cybertrain/schema.rb cybertrain/clock.rb cybertrain/http/log.rb cybertrain/logger.rb],
   # Clock.zone and Time.zone answer a TimeZone; ZonedTime#zone the
   # abbreviation (a String, as the builtin Time#zone).
   "zone" => %w[cybertrain/clock.rb cybertrain/zoned_time.rb],
@@ -472,9 +475,9 @@ NAME_HOMES = {
   "head" => %w[cybertrain/controller.rb cybertrain/test/integration.rb],
   # Phase 5b (logs and error reporting; spike items 7 to 9,
   # spikes/phase5/error_names.rb compiled each beside its namesakes).
-  # Logger#error (nil), Template::Parser's two private #error (raise) and
-  # Cybertrain.error (the ErrorReporter).
-  "error" => %w[cybertrain/logger.rb cybertrain/template/parser.rb cybertrain/error_reporter.rb],
+  # Logger#error and the HttpLog#error it overrides (nil), Template::Parser's
+  # two private #error (raise) and Cybertrain.error (the ErrorReporter).
+  "error" => %w[cybertrain/logger.rb cybertrain/http/log.rb cybertrain/template/parser.rb cybertrain/error_reporter.rb],
   # CLI::Toolchain.report prints; ErrorReporter#report and
   # ErrorSubscriber#report answer nil (a subscriber's override may answer
   # anything: the spike's answered an Array).
@@ -491,7 +494,8 @@ NAME_HOMES = {
   # DB::Connection#error_message(sql), I18n.error_message and
   # ErrorEvent#error_message: all String.
   "error_message" => %w[cybertrain/db/connection.rb cybertrain/i18n.rb cybertrain/error_reporter.rb],
-  "info" => %w[cybertrain/cli/toolchain.rb cybertrain/logger.rb],
+  # Logger#info and the HttpLog#info it overrides (nil).
+  "info" => %w[cybertrain/cli/toolchain.rb cybertrain/logger.rb cybertrain/http/log.rb],
   # Server#drain; the reporter's is drain_reports. The CRuby preview's
   # holding desk (cli/dev_server/holding.rb, Desk#drain, nil as Server's)
   # runs only under CRuby: Spinel never compiles it.
