@@ -25,11 +25,7 @@ unless stray.empty?
   exit 1
 end
 # The names a method may reach without the layer loading them, by file.
-LAZY = {
-  # Request#preferred_locale's default (its comment: a program that calls it
-  # loads cybertrain/i18n, as `require "cybertrain"` does).
-  "cybertrain/http/request.rb" => ["I18n"]
-}.freeze
+LAZY = {}.freeze
 
 scopes = [Object]
 queue = [Cybertrain]

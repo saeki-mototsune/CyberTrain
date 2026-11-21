@@ -867,3 +867,24 @@ module I18n
     (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b == 95
   end
 end
+
+module Cybertrain
+  # The HTTP layer's Request (cybertrain/http/request.rb) negotiates a
+  # locale against a default it is given; cybertrain answers with
+  # {I18n.default_locale}. Reopened here, beside I18n, so the layer names
+  # no I18n. This file does not require the layer: a program that holds a
+  # Request has loaded it.
+  class Request
+    # {#negotiate_locale} with {I18n.default_locale} as the default: the
+    # locale the client prefers among `available`, from `Accept-Language`,
+    # or the default locale when none matches, never nil.
+    # @example
+    #   request.preferred_locale([:en, :ja])   # "ja-JP, en;q=0.5" => :ja
+    # @param available [Array<Symbol>] the locales the application serves
+    # @return [Symbol]
+    # @api public
+    def preferred_locale(available)
+      negotiate_locale(available, I18n.default_locale)
+    end
+  end
+end

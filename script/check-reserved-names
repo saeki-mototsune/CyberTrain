@@ -305,7 +305,10 @@ NAME_HOMES = {
   "with_locale" => %w[cybertrain/i18n.rb],
   "default_locale" => %w[cybertrain/i18n.rb],
   "available_locales" => %w[cybertrain/i18n.rb],
-  "preferred_locale" => %w[cybertrain/http/request.rb],
+  # The HTTP layer negotiates against a default it is given; cybertrain's
+  # reopening of Request beside I18n supplies I18n.default_locale.
+  "negotiate_locale" => %w[cybertrain/http/request.rb],
+  "preferred_locale" => %w[cybertrain/i18n.rb],
   "human_attribute_name" => %w[cybertrain/i18n.rb cybertrain/generator/models_emitter.rb],
   # gen/locales.rb's Gen::Locales and the checked-in locales/bundled.rb's
   # Cybertrain::BundledLocales, both written by locales_emitter.rb.

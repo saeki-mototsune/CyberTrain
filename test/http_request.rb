@@ -666,6 +666,12 @@ test "preferred_locale never raises on a header that is not valid UTF-8" do
   assert_equal :"pt-BR", locale_request("pt_br, pt;q=0.5").preferred_locale([:pt, :"pt-BR", :en])
 end
 
+test "negotiate_locale answers the given default, not I18n's" do
+  I18n.default_locale = :en
+  assert_equal "fr", request_with({}).negotiate_locale(["en", "ja"], "fr")
+  assert_equal "ja", locale_request("ja;q=0.9, en;q=0.8").negotiate_locale(["en", "ja"], "fr")
+end
+
 test "a ?locale= value from the query only passes when it names an available locale" do
   I18n.default_locale = :en
   I18n.available_locales = [:en, :ja]

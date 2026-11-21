@@ -206,10 +206,10 @@ module Cybertrain
       :html
     end
 
-    # The most bytes of `Accept-Language` {#preferred_locale} reads.
+    # The most bytes of `Accept-Language` {#negotiate_locale} reads.
     LOCALE_HEADER_LIMIT = 4096
 
-    # The most `Accept-Language` entries {#preferred_locale} reads.
+    # The most `Accept-Language` entries {#negotiate_locale} reads.
     LOCALE_ENTRY_LIMIT = 32
 
     # The locale the client prefers among `available`, from
@@ -217,28 +217,27 @@ module Cybertrain
     # breaks a tie; `ja-JP` matches `:ja` (the full tag is tried before its
     # language, ASCII case-insensitively); `q=0`, `*` and a malformed entry
     # match nothing. Without a match (no header, junk, nothing available)
-    # it answers `I18n.default_locale`, never nil. Only the first 4 KB and
-    # 32 entries are read, and the answer is always an element of
-    # `available` (or the default): request text is compared, never turned
-    # into a Symbol.
-    # The default comes from `I18n` (cybertrain/i18n), which the HTTP layer
-    # does not require (script/check-http-layer keeps it standalone): a
-    # program that calls this loads it, as `require "cybertrain"` does.
+    # it answers `default`, never nil. Only the first 4 KB and 32 entries
+    # are read, and the answer is always an element of `available` (or
+    # `default`): request text is compared, never turned into a Symbol.
     # @example
-    #   request.preferred_locale([:en, :ja])   # "ja-JP, en;q=0.5" => :ja
-    # @param available [Array<Symbol>] the locales the application serves
-    # @return [Symbol]
+    #   request.negotiate_locale([:en, :ja], :en)   # "ja-JP, en;q=0.5" => :ja
+    #   request.negotiate_locale(["en", "ja"], "fr")   # no header => "fr"
+    # @param available [Array<Symbol>, Array<String>] the locales the
+    #   application serves, compared by name
+    # @param default [Symbol, String] the answer when nothing matches
+    # @return [Symbol, String] an element of `available`, or `default`
     # @api public
-    def preferred_locale(available)
+    def negotiate_locale(available, default)
       raw = header("Accept-Language").to_s
-      return I18n.default_locale if raw.empty?
+      return default if raw.empty?
 
       text = raw.bytesize > LOCALE_HEADER_LIMIT ? raw.byteslice(0, LOCALE_HEADER_LIMIT).to_s : raw
       # A header that is not valid text (or was cut inside a character)
       # cannot be split; it is no preference.
-      return I18n.default_locale unless text.valid_encoding?
+      return default unless text.valid_encoding?
 
-      best = I18n.default_locale
+      best = default
       best_q = 0
       entries = text.split(",", LOCALE_ENTRY_LIMIT + 1)
       i = 0
