@@ -6,8 +6,7 @@ module Cybertrain
   # invalid boundary, a part without its headers or its closing delimiter,
   # a Content-Disposition that is not form-data, a bad name, ...). A client
   # fault: ClientError answers 400 (listed in CLIENT_FAULTS). The four
-  # Multipart classes are QueryInvalid subclasses with unique bare names,
-  # because Class#name has no namespace under Spinel (NOTES rule 46).
+  # Multipart classes are QueryInvalid subclasses.
   # @api public
   class MultipartMalformed < QueryInvalid
   end
@@ -30,8 +29,8 @@ module Cybertrain
 
   # The flat result of {Multipart.parse}: parallel typed Arrays, in the order
   # the parts arrived, not one Hash of mixed values (NOTES rules 46, 56). It
-  # is named MultipartForm and not Multipart::Form because Class#name carries
-  # no namespace under Spinel.
+  # is named MultipartForm and not Multipart::Form: Class#name carried no
+  # namespace on Spinel 2026.09.12 (rule 46), and the name is public API.
   # @api public
   class MultipartForm
     def initialize
@@ -144,10 +143,14 @@ module Cybertrain
     # Spaces and tabs allowed after a delimiter (RFC 2046 transport padding).
     MAX_PADDING_BYTES = 16
 
-    # Module-level ivars with literal defaults, the Request.inflater shape
-    # (NOTES rule 18). Application#boot installs the configured limits.
-    @max_upload_bytes = 5_242_880
-    @max_parts = 128
+    # The limits before any boot, which Runtime.reset! restores.
+    DEFAULT_MAX_UPLOAD_BYTES = 5_242_880
+    DEFAULT_MAX_PARTS = 128
+
+    # Module-level ivars, the Request.inflater shape (NOTES rule 18).
+    # Application#boot installs the configured limits.
+    @max_upload_bytes = DEFAULT_MAX_UPLOAD_BYTES
+    @max_parts = DEFAULT_MAX_PARTS
 
     # Installs the limits from the Config. Called by Application#boot.
     # @param max_upload_bytes [Integer] the largest file part, in bytes

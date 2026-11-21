@@ -526,10 +526,7 @@ module Cybertrain
         now = process_start(pid)
         return now == start unless now == "" || start == ""
 
-        # An explicit Boolean: under Spinel 2026.09.12 a method that returns
-        # `now == start` on one path and system's result on another returns
-        # false for the latter.
-        system("kill -0 #{pid} 2>/dev/null") ? true : false
+        system("kill -0 #{pid} 2>/dev/null")
       end
 
       # When pid started, as ps prints it; "" when there is no such process,
@@ -613,7 +610,7 @@ module Cybertrain
 
         source = File.join(dir, "probe.c")
         File.write(source, "#include <#{include}>\nint main(void) { return #{body}; }\n")
-        ok = system("#{cc} #{Shell.quote(source)} -o #{Shell.quote(File.join(dir, "probe"))} #{link} > /dev/null 2>&1") ? true : false
+        ok = system("#{cc} #{Shell.quote(source)} -o #{Shell.quote(File.join(dir, "probe"))} #{link} > /dev/null 2>&1")
         system("rm -rf #{Shell.quote(dir)}")
         ok
       end

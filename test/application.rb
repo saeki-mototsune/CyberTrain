@@ -16,20 +16,11 @@ require "cybertrain/application"
 require "cybertrain/test"
 require "cybertrain/test/client"
 require_relative "support/log_capture"
+require_relative "support/file_tree"
 
 # ---- a scratch app root: views, public files, the secret key -------------
 
 ROOT = "tmp/application_test"
-
-def remove_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| remove_tree("#{path}/#{child}") }
-    Dir.rmdir(path)
-  elsif File.exist?(path)
-    File.delete(path)
-  end
-  nil
-end
 
 def write_file(path, content)
   dir = File.dirname(path)
@@ -44,12 +35,12 @@ def write_file(path, content)
   nil
 end
 
-remove_tree(ROOT)
+FileTree.remove(ROOT)
 write_file("#{ROOT}/views/layouts/site.html.erb", "<title>Site</title>\n<%= csrf_meta_tags %>\n<%= yield %>\n")
 write_file("#{ROOT}/views/pages/index.html.erb", "<h1>Home</h1>\n")
 write_file("#{ROOT}/views/pages/links.html.erb", "<%= link_to \"Notes\", notes_path %>\n")
 write_file("#{ROOT}/public/robots.txt", "User-agent: *\n")
-at_exit { remove_tree(ROOT) }
+at_exit { FileTree.remove(ROOT) }
 
 # Every variable Config reads, cleared so the defaults are deterministic.
 CONFIG_ENV = ["CYBERTRAIN_ENV", "PORT", "CYBERTRAIN_DATABASE", "CYBERTRAIN_SECRET_KEY_BASE", "SPINEL_WORKERS",

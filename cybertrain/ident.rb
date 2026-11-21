@@ -4,8 +4,8 @@
 # the scaffold accepts is a name the generator and the models accept, and
 # the failure comes from the command that would write the files.
 #
-# Plain Ruby with no requires: the CLI gem ships this file and runs it under
-# CRuby, the framework compiles it under Spinel (no Regexp, NOTES rule 1).
+# Plain Ruby with no requires and no Regexp: the CLI gem ships this file and
+# runs it under CRuby, the framework compiles it under Spinel.
 module Cybertrain
   module Ident
     # Column names whose plain reader the generated class cannot host: it

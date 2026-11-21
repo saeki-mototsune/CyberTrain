@@ -1,10 +1,10 @@
-# The bundled Japanese dictionary (plan decision D2): rails-i18n's
+# The bundled Japanese dictionary (docs/design.md D79): rails-i18n's
 # rails/locale/ja.yml (https://github.com/svenfuchs/rails-i18n, commit
 # f5c999b88935d4c1389a1ffe8a00f29b43e10366, MIT License; the file as
 # fetched and its license are in test/fixtures/i18n/rails-i18n/), cut to
 # date, time, datetime.distance_in_words, number, errors,
 # activerecord.errors.messages, helpers.submit and support.array; plus
-# the framework's own keys under cybertrain (plan decision D12), and the
+# the framework's own keys under cybertrain, and the
 # screens `cybertrain generate authentication` writes: their lazy keys
 # (sessions.*, registrations.*, setup.*, passwords.*, accounts.*,
 # confirmations.*, the reset mail's mail.password_reset.* and

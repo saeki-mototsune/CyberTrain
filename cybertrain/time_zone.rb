@@ -2,11 +2,12 @@
 #
 # Spinel ships no tz database, and switching ENV["TZ"] to convert a time is
 # process-wide (not thread-safe). This file reads `/usr/share/zoneinfo/<name>`
-# (or `$TZDIR/<name>`) itself: TZif versions 1 to 4 (RFC 8536), the
-# transitions and local time types, and the POSIX TZ footer that a "slim"
-# file relies on for every instant after its last transition. Everything is
-# Integer epoch seconds, so an application can do wall-clock arithmetic on a
-# "local epoch" (the wall clock read as if it were UTC) and convert back.
+# (or `$TZDIR/<name>`) itself: TZif versions 1 to 4 (RFC 9636, which
+# replaced RFC 8536 and added version 4), the transitions and local time
+# types, and the POSIX TZ footer that a "slim" file relies on for every
+# instant after its last transition. Everything is Integer epoch seconds, so
+# an application can do wall-clock arithmetic on a "local epoch" (the wall
+# clock read as if it were UTC) and convert back.
 #
 # Parsing is byte scans with getbyte on a String local (spikes/NOTES.md
 # rule 62), never String#unpack: the file is binary and its counts are
@@ -37,6 +38,8 @@ module Cybertrain
   # @api public
   class TimeZone
     # Where zone files are looked up when `TZDIR` is unset or empty.
+    # @return [String]
+    # @api public
     DEFAULT_DIR = "/usr/share/zoneinfo"
     # A zone file larger than this is refused (the largest real ones are a
     # few KB).
@@ -49,8 +52,6 @@ module Cybertrain
     # plus the wall-clock time of day it takes effect at, in seconds (can be
     # negative or past 24 hours, RFC 8536 section 3.3.1).
     class TzDate
-      attr_reader :rd_kind, :rd_month, :rd_week, :rd_wday, :rd_day, :rd_secs
-
       def initialize(kind, month, week, wday, day, secs)
         @rd_kind = kind
         @rd_month = month
@@ -90,7 +91,7 @@ module Cybertrain
     # (the POSIX sign is the other way round). `rule_valid` is false for an
     # empty or malformed string.
     class PosixTz
-      attr_reader :rule_valid, :rule_has_dst, :std_utoff, :dst_utoff, :std_abbr, :dst_abbr, :dst_start, :dst_end
+      attr_reader :rule_valid, :std_utoff, :dst_utoff, :std_abbr, :dst_abbr
 
       def initialize(valid, has_dst, std_off, dst_off, std_abbr, dst_abbr, dst_start, dst_end)
         @rule_valid = valid
@@ -603,7 +604,8 @@ module Cybertrain
       remember_zone(path, zone)
     end
 
-    # The directory zone names resolve under: `TZDIR`, or {DEFAULT_DIR}.
+    # The directory zone names resolve under: `TZDIR`, or
+    # `/usr/share/zoneinfo` ({DEFAULT_DIR}).
     # @return [String]
     # @api public
     def self.zoneinfo_dir
@@ -692,7 +694,7 @@ module Cybertrain
 
     # --- TZif ------------------------------------------------------------
 
-    # Parses the bytes of a TZif file (RFC 8536, versions 1 to 4). For
+    # Parses the bytes of a TZif file (RFC 9636, versions 1 to 4). For
     # version 2 and later the 32-bit block is skipped and the 64-bit block
     # and the footer are read. Malformed input gives a zone whose {#found?} is false.
     # @param name [String] the name to report

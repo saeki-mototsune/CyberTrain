@@ -1,5 +1,5 @@
 ---
-source_sha256: f33d41101fb56e6a4ccb2fd65374062a590ba781adb2baf79d57aef2a6aefb2c
+source_sha256: a77a19e2278cd27bc36e8e45fce99f4e163be63214923bc644316b2566560c97
 ---
 # 资源
 
@@ -46,7 +46,7 @@ vendor/javascript/chart.js                chart.js
 <%= asset_path "logo.svg" %>                    <%# /assets/logo-8177afd7.svg %>
 ```
 
-名称缺少扩展名时，`stylesheet_link_tag` 加上 `.css`，`javascript_include_tag` 加上 `.js`；两者都接受 `nonce: true`，`stylesheet_link_tag` 还接受 `media:`。带协议的 URL（或 `//`、`data:`）按原样写出，以 `/` 开头的路径也一样。未知的逻辑名称在开发和测试环境中抛出 `Cybertrain::Assets::UnknownAsset`（`asset "logo.png" is not in app/assets, app/javascript or vendor/javascript (run spin run gen)`）；生产环境只记录一次日志并写出 `/assets/<名称>`。完整签名见[模板语言](template-language.md#helpers-and-the-form-builder)。
+名称缺少扩展名时，`stylesheet_link_tag` 加上 `.css`，`javascript_include_tag` 加上 `.js`；两者都接受 `nonce: true`，`stylesheet_link_tag` 还接受 `media:`。带协议的 URL（或 `//`、`data:`）按原样写出，以 `/` 开头的路径也一样。未知的逻辑名称在生产环境之外抛出 `Cybertrain::Assets::UnknownAsset`（`asset "logo.png" is not in app/assets, app/javascript or vendor/javascript (run spin run gen)`）；生产环境只记录一次日志并写出 `/assets/<名称>`。完整签名见[模板语言](template-language.md#helpers-and-the-form-builder)。
 
 ## Import map
 

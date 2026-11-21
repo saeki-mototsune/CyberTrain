@@ -1,4 +1,4 @@
-require "cybertrain/generator/controller_scan"
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/inflector"
 
 module Cybertrain
@@ -24,7 +24,7 @@ module Cybertrain
       # Sorted "<version>_<name>.rb" paths under root/db/migrate ([] when the
       # directory does not exist).
       def self.migration_files(root)
-        ControllerScan.ruby_files("#{root}/db/migrate")
+        SourceText.ruby_files("#{root}/db/migrate")
       end
 
       # "20260101000000_create_posts" -> "20260101000000".

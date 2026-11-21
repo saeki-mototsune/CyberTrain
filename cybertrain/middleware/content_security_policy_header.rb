@@ -2,7 +2,7 @@ require "cybertrain/middleware"
 require "cybertrain/content_security_policy"
 
 module Cybertrain
-  # Writes the Content Security Policy (spec C-5) on every response: the
+  # Writes the Content Security Policy on every response: the
   # controller's own policy (Controller.content_security_policy, which
   # Controller#process puts in Context#csp_policy) or else the
   # application's (Config#content_security_policy). With nonce directives

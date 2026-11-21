@@ -13,7 +13,7 @@ module Cybertrain
       # (generated: ["gen/"]).
       #
       # #pending? is what the machine's change_pending? asks between a build
-      # and its handover (P16): a change queued for the driver, one the
+      # and its handover: a change queued for the driver, one the
       # watcher has seen and not yet queued, or a file that differs from the
       # watcher's baseline right now, before the watcher's next poll. gen/ is
       # left out of that last comparison: its files are rewritten by the

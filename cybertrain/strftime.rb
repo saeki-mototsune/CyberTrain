@@ -30,7 +30,7 @@ module Cybertrain
     # directives (multibyte included) is copied as it is.
     #
     # A Time at offset 0 (every Time the framework hands out is a UTC
-    # instant) is rendered in zone (spec section 4): the wall fields, `%z`
+    # instant) is rendered in zone (docs/design.md D81): the wall fields, `%z`
     # and `%Z` are the zone's (zoned_time). A Time that carries another
     # offset of its own (`getlocal("+09:00")`) keeps it, as Rails renders
     # a plain Time; a caller that wants it in the zone passes `getutc`. A
@@ -150,7 +150,8 @@ module Cybertrain
       ""
     end
 
-    # One directive of time_tag_strftime; nil for an unknown conversion.
+    # One directive of a pattern Strftime.walk reads; nil for an unknown
+    # conversion.
     # abbr, when not "", is what `%Z` writes (the zone's abbreviation).
     def self.strftime_directive(time, conv, flags, width, abbr)
       base = case conv

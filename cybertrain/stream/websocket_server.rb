@@ -3,6 +3,7 @@ require "cybertrain/logger"
 require "cybertrain/http/body_writer"
 require "cybertrain/websocket/frame"
 require "cybertrain/stream"
+require "cybertrain/stream/session_writer"
 
 module Cybertrain
   module Stream
@@ -26,9 +27,7 @@ module Cybertrain
       def initialize(socket, sub, max_message)
         @socket = socket
         @sub = sub
-        @max_message = max_message
         @assembler = WebSocket::Frame::Assembler.new(max_message)
-        @assembled = 0
         @buf = +""
         @pos = 0
         @done = false
@@ -104,10 +103,7 @@ module Cybertrain
         WebSocket::Frame.check_header(header, @assembler.assembling?, false)
         op = header.frame_opcode
         length = header.frame_length
-        if op < 8
-          before = op == WebSocket::Frame::OP_CONTINUATION ? @assembled : 0
-          raise Cybertrain::WebSocket::TooLargeError, "message too large" if before + length > @max_message
-        end
+        @assembler.check_room(op, length)
         return 0 if have < size + length
 
         payload = WebSocket::Frame.unmask(@buf.byteslice(@pos + size, length), header.frame_mask_key)
@@ -123,11 +119,8 @@ module Cybertrain
           return -1
         else
           if @assembler.add(op, header.frame_fin, payload)
-            @assembled = 0
             msg = @assembler.take_message
             return -1 unless reader_push(msg.ws_opcode == :text ? "text" : "binary", msg.ws_data)
-          else
-            @assembled = op == WebSocket::Frame::OP_CONTINUATION ? @assembled + payload.bytesize : payload.bytesize
           end
         end
         1
@@ -166,22 +159,21 @@ module Cybertrain
     # connect, 1009 for a message past {Config#stream_max_message}, 1002
     # for a framing error, 1013 past {Config#stream_max_connections} and
     # for a subscriber dropped for its backlog.
-    class WebSocketWriter < BodyWriter
+    class WebSocketWriter < SessionWriter
       SLICE = 1.0
       # How long to wait for the client's close after ours.
       CLOSE_WAIT = 1.0
 
       # close_code > 0: answer the handshake with that close at once.
       def initialize(hub, names, json, after, ping_interval, max_message, close_code, max_connections)
-        @max_connections = max_connections
-        @hub = hub
-        @names = names
-        @json = json
-        @after = after
-        @head = -1
-        @ping_interval = ping_interval
+        super(hub, names, json, after, ping_interval, max_connections)
         @max_message = max_message
         @close_code = close_code
+      end
+
+      def write_message(sink, msg)
+        ws_send(sink, WebSocket::Frame::OP_TEXT, @json ? Stream.envelope(msg) : msg.message_payload)
+        nil
       end
 
       def write_body(sink)
@@ -244,24 +236,7 @@ module Cybertrain
       private
 
       def ws_session(sink, sub)
-        last = Stream.replay_start(@after, @head)
-        if last >= 0
-          # By chunks, as SSEWriter does.
-          cursor = sub.boundary
-          names = sub.stream_names
-          while !sink.closed?
-            backlog = Stream.replay(names, last)
-            i = 0
-            while i < backlog.size
-              msg = backlog[i]
-              ws_send(sink, WebSocket::Frame::OP_TEXT, ws_text(msg))
-              last = msg.message_id
-              i += 1
-            end
-            break if backlog.size < Stream::REPLAY_CHUNK || last >= cursor
-          end
-          sub.skip_through!(last)
-        end
+        replay_backlog(sink, sub, sub.stream_names)
         ping = @ping_interval.to_f
         slice = ping < SLICE ? ping : SLICE
         started = Clock.monotonic
@@ -303,7 +278,7 @@ module Cybertrain
           elsif msg.message_id == CONTROL_ID
             return nil unless ws_control(sink, sub, msg.message_stream, msg.message_payload)
           else
-            ws_send(sink, WebSocket::Frame::OP_TEXT, ws_text(msg))
+            write_message(sink, msg)
             quiet_since = now
           end
         end
@@ -369,7 +344,7 @@ module Cybertrain
       end
 
       # ["subscribe" | "unsubscribe", token], or ["", ""] for anything else.
-      # The rescue in a plain method (rules 32/45); NestingError first (61).
+      # The rescue in a plain method (rules 32/45).
       def self.client_request(text)
         parsed = JSON.parse(text)
         case parsed
@@ -384,7 +359,7 @@ module Cybertrain
           end
         end
         ["", ""]
-      rescue JSON::NestingError, JSON::ParserError, StandardError
+      rescue StandardError
         ["", ""]
       end
 
@@ -409,10 +384,6 @@ module Cybertrain
       def ws_send(sink, opcode, payload)
         sink.write(WebSocket::Frame.encode(opcode, payload, ""))
         nil
-      end
-
-      def ws_text(msg)
-        @json ? Stream.envelope(msg) : msg.message_payload
       end
     end
   end

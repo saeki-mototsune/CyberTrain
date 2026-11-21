@@ -1,9 +1,10 @@
 #!/usr/bin/env ruby
 # Keeps the release numbers out of the pages a reader follows: the site, the
-# guides, the deployment tutorial and the READMEs must not name the current
-# Cybertrain::VERSION or Cybertrain::SPINEL_TAG (cybertrain/version.rb). Those
-# numbers change with every release, and a page that spells them out is wrong
-# the day after. Name what the number is instead: "the pinned Spinel
+# guides, the deployment tutorial, README.md and playground/README.md must
+# not name the current Cybertrain::VERSION or Cybertrain::SPINEL_TAG
+# (cybertrain/version.rb). Those numbers change with every release, and a
+# page that spells them out is wrong the day after. Name what the number is
+# instead: "the pinned Spinel
 # release" or `Cybertrain::SPINEL_TAG`, the placeholders `X.Y.Z`/`vX.Y.Z` and
 # `SPINEL_TAG` in commands and output, and point at `cybertrain version` or
 # `cybertrain doctor`, which print the numbers.

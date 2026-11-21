@@ -2,19 +2,29 @@ require "uri"
 require "cybertrain/params"
 
 module Cybertrain
-  # Raised for request parameters the server will not take: past one of
-  # Query's limits (QueryLimitExceeded: QueryTooDeep, QueryTooMany) or not
-  # decodable (QueryMalformed). StandardErrors on purpose: ClientError turns
+  # The parameter errors below are past one of Query's limits
+  # (QueryLimitExceeded: QueryTooDeep, QueryTooMany) or not decodable
+  # (QueryMalformed). StandardErrors on purpose: ClientError turns
   # them into a 400 at info level instead of a 500 at error level, so a
   # scanner's junk does not fill the error log or kill the connection
-  # thread. In Cybertrain (like Rejected, RecordNotFound, MissingTemplate)
-  # and prefixed Query, not Query::Invalid / Query::TooMany: Class#name
-  # carries no namespace under Spinel (NOTES rule 46), so a bare "Invalid" or
-  # "TooMany" there is indistinguishable from an app's own Billing::Invalid or
-  # RateLimiter::TooMany. The bare names here are unique, which is what lets
-  # ClientError tell a framework client fault from an app class by name alone.
+  # thread. In Cybertrain (like Rejected, RecordNotFound, MissingTemplate);
+  # ClientError tells a framework client fault from an app class by its full
+  # name.
   # Not called Rejected: Cybertrain::Rejected is the Server's own
   # status-carrying error.
+  # (A blank line ends this comment: the API reference shows the next one.)
+
+  # Raised for request text the server will not take: parameters that do not
+  # decode or are past a limit, a body that cannot be decoded
+  # ({BodyUndecodable}, {BodyTooLarge}), a multipart body that is not well
+  # formed or is past a limit ({MultipartMalformed}, {MultipartTooManyParts},
+  # {MultipartPartTooLarge}, {MultipartHeaderTooLarge}).
+  #
+  # The class to rescue around {Query.parse}, {Query.without_key},
+  # {Request#utf8_query_string}, {Request#decoded_body} and
+  # {Request#multipart_form}: every refusal of request text is one of its
+  # subclasses. Unhandled, the request is answered 400.
+  # @api public
   class QueryInvalid < StandardError
   end
 
@@ -31,8 +41,9 @@ module Cybertrain
   # or an invalid UTF-8 byte sequence ("\x81", or "%81" once decoded) in a
   # query string or form body (Cookies keep such a value raw instead).
   # Query finds the escape with its own byte scanner, not the decoder's
-  # ArgumentError (CRuby only: Spinel decodes it leniently, to a NUL byte,
-  # NOTES rule 28), and the bytes with String#valid_encoding? on the text
+  # ArgumentError (NOTES rule 28: Spinel 2026.09.12 decoded it leniently,
+  # to a NUL byte; status 28 has the decoder raising on the pinned build),
+  # and the bytes with String#valid_encoding? on the text
   # read as UTF-8 whatever the String's tag (Query.utf8!, NOTES rule 52), so
   # both are raised the same way on both runtimes. That includes a raw byte
   # and an escape that would only together make one character
@@ -108,6 +119,22 @@ module Cybertrain
     # segment: a yielding helper called from nested blocks is a NOTES rule 32
     # hazard (the raises below must stay plain raises), and the loop is a
     # dozen lines; Array-free on purpose too (no `split`, see above).
+    # (A blank line ends this comment: the API reference shows the next one.)
+
+    # Parses a query string or an `application/x-www-form-urlencoded` body
+    # into a new {Params}. `+` and percent-escapes are decoded, `a[b]=1` nests,
+    # `a[]=1` adds to a list, a name without `=` maps to `""`, and a later
+    # pair overrides an earlier one of the same name.
+    # @example The query string of a request as a tree
+    #   Query.parse(request.utf8_query_string)["page"]
+    # @example
+    #   Query.parse("q=a+b&tags[]=x&tags[]=y").list("tags")  # => ["x", "y"]
+    # @param str [String] the text as sent, not yet percent-decoded
+    # @return [Params] a new tree, the caller's own
+    # @raise [QueryInvalid] for a malformed percent-escape, an invalid UTF-8
+    #   byte sequence, a name nested past 32 levels or more than 4096
+    #   `&`-separated pairs (a 400 when unhandled)
+    # @api public
     def self.parse(str)
       parse_into(Params.new, str)
     end
@@ -200,9 +227,10 @@ module Cybertrain
     # fault in every parameter: a malformed percent-escape or an invalid
     # UTF-8 byte sequence (raw, or percent-encoded: "%81") is QueryMalformed.
     # The escapes are refused by the decoding loop itself, with one clear
-    # message and the same behaviour on both runtimes, which Spinel could not
-    # give otherwise (its decoder never raises, NOTES rule 28, and would put
-    # NUL bytes into params while CRuby answered 400); there is no pre-scan
+    # message and the same behaviour on both runtimes, whatever the library
+    # decoder does with one (Spinel 2026.09.12's never raised and put NUL
+    # bytes into params where CRuby's raised, NOTES rule 28); there is no
+    # pre-scan
     # (valid_escapes? is Request.split_path's check, for its own policy). There is no
     # rescue around the library decoder either: the loop hands it only runs
     # of well-formed "%XX", which it never refuses.

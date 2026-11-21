@@ -59,9 +59,12 @@ missing it also prints the install command for your platform (a missing
   (`require "cybertrain/net/tls"`) and encrypted columns (`encrypts`).
 - jemalloc's development package (`libjemalloc-dev`; `brew install jemalloc`)
   is optional: an app needs it only once its `spin.toml` says
-  `allocator = "jemalloc"`, which `cybertrain new` writes commented out. It
-  is worth turning on for production: 1.1 to 1.4 times the requests per second on
-  examples/blog ([docs/benchmark.md](../benchmark.md)).
+  `allocator = "jemalloc"`, which `cybertrain new` writes commented out.
+  Measure it on your own application before relying on it in production: on
+  examples/blog it gave 1.3 to 1.4 times the requests per second on the
+  dynamic pages in the run of 2026-10-09, and within a few percent on the
+  pages (18% more on the POST, on one core) in the latest one
+  ([docs/benchmark.md](../benchmark.md)).
 
 </details>
 
@@ -84,31 +87,49 @@ from there, from `cybertrain new` to `cybertrain build`.
   [--skip-spin]` creates an application in NAME, then runs `spin lock` and
   `SPIN_DEBUG=1 spin run gen` in it, installing Spinel first when it is
   needed (the CLI builds gen and `bin/db.rb` in spin's debug mode).
-- `cybertrain generate scaffold NAME field:type ...` (alias `g scaffold`)
-  adds a resource to the application in the current directory.
-- `cybertrain generate authentication` adds email-and-password sign-in to
-  it: users and sessions tables, `User` and `Session` models, the sign-in
-  and sign-up controllers and views, the routes, a `before_action` in
-  `ApplicationController` and a test (see [Add sign-in](tutorial.md#authentication)).
-  With `--invite-only` there is no sign-up page: users are created with
-  `./NAME user EMAIL`, and the first one also at a `/setup` page that
-  answers only to the server's own machine, with the one-time token its
-  boot warning prints, while no user exists.
+- `cybertrain generate scaffold NAME field:type ... [parent:references] [--any]`
+  (alias `g scaffold`) adds a resource to the application in the current
+  directory; a `parent:references` field is the `parent_id` column, and
+  `--any` goes with an attachment field (below).
+- `cybertrain generate authentication [--invite-only] [--confirmable] [--force]`
+  adds email-and-password sign-in to it: users and sessions tables, `User`
+  and `Session` models, the `Authentication` concern that
+  `ApplicationController` includes, the sign-in, sign-up, password-reset and
+  account controllers and views, the routes, the jobs page behind
+  `require_admin`, the subsystem lines it needs in `bin/<app>.rb` and
+  `bin/db.rb`, and tests. `--invite-only` leaves the sign-up page out,
+  `--confirmable` has a new account confirm its address by mail before it
+  can sign in, and `--force` overwrites the files for which a second run
+  otherwise only prints a diff ([Authentication](authentication.md)).
 - `cybertrain generate attachment MODEL FIELD [--any]` adds a file upload
   to a scaffolded model: five metadata columns, model methods and
   callbacks, a download action, the route, the form field and a test (see
   [Add a cover image](tutorial.md#attachments)). A scaffold field `cover:attachment` does the same.
+- `cybertrain generate helper NAME [--force]` adds
+  `app/helpers/NAME_helper.rb`, a module whose methods every template can
+  call once `spin run gen` has run, and a test
+  ([Application helpers](template-language.md#application-helpers)).
+- `cybertrain generate component NAME [attr[:type] ...] [--force]` adds a
+  view component: `app/components/NAME_component.rb`, its template and a
+  test ([Components](template-language.md#components)).
+- `cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]`
+  adds `app/jobs/NAME_job.rb` and a test, and `require "cybertrain/jobs"` to
+  `bin/<app>.rb` and `bin/db.rb`
+  ([Background work](background-and-operations.md#background-work)).
 - `cybertrain db migrate` generates, applies pending migrations, and
   generates again (`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db --
   migrate; SPIN_DEBUG=1 spin run gen`);
   `cybertrain migration` is kept as an alias.
 - `cybertrain db COMMAND...` runs any other database command after
   `SPIN_DEBUG=1 spin run gen`: `status`, `rollback [N]` (which generates
-  again afterwards),
-  `schema:dump`, `create`.
+  again afterwards), `schema` (writes `db/schema.rb` from the database as it
+  is, without migrating), `schema:dump`, `create`, `backup` and `vacuum`
+  ([Operations](background-and-operations.md#operations-backups-vacuum-health-check))
+  and `normalize`
+  ([Datetimes and `db normalize`](models.md#datetimes-and-db-normalize)).
 - `cybertrain server [PORT] [--spinel]` starts the development server
-  (default port 3000). Right after a change the application runs under
-  CRuby while Spinel builds it in the background, and the compiled binary
+  (default: the application's port, `PORT` or `c.port`, 3000 unless set).
+  Right after a change the application runs under CRuby while Spinel builds it in the background, and the compiled binary
   takes the port when its build succeeds; the application's responses
   carry `X-Cybertrain-Runtime: cruby` or `spinel` ([The development
   loop](how-it-works.md#the-development-loop)). `--spinel` runs the
@@ -124,21 +145,27 @@ from there, from `cybertrain new` to `cybertrain build`.
   [Testing an app](testing.md#running-the-tests)).
 - `cybertrain spin ARGS...` runs `spin` with the pinned Spinel from any
   directory (`cybertrain spin test`, `cybertrain spin run gen -- --check`).
+- `cybertrain secret [--hex]` prints a new random secret for
+  `CYBERTRAIN_SECRET_KEY_BASE`; with `--hex`, a new key for
+  `CYBERTRAIN_ENCRYPTION_KEY`. Both are 64 hex digits.
 - `cybertrain setup [--force]` installs the pinned Spinel release into
   `~/.cybertrain` unless a `spinel` of that release is already on `PATH`;
   `--force` rebuilds the copy under `~/.cybertrain`.
-- `cybertrain doctor` checks the C toolchain, the SQLite headers, whether
-  Ruby loads `fiddle` (the CRuby preview needs it) and the Spinel install.
-- `cybertrain version` prints the version.
+- `cybertrain doctor` checks everything under [Requirements](#requirements):
+  `git`, `make`, `curl`, the C compiler, the SQLite, zlib and OpenSSL
+  headers, the `prism` gem, whether Ruby loads `fiddle` (the CRuby preview
+  needs it) and the Spinel install.
+- `cybertrain version` prints the version; `cybertrain help` prints this
+  list.
 
-`db`, `server` and `build` run inside an application; NAME is the
-`[package] name` in its `spin.toml`.
+`generate`, `db`, `server`, `build` and `test` run inside an application;
+NAME is the `[package] name` in its `spin.toml`.
 
 ## How Spinel is installed
 
-Every command that runs `spin` (`new`, `db`, `server`, `build`, `spin`) first
-makes sure a Spinel of the release in `Cybertrain::SPINEL_TAG` is available. A
-`spinel` on `PATH` (with a `spin`) whose `spinel --version` reports that
+Every command that runs `spin` (`new`, `db`, `server`, `build`, `test`,
+`spin`) first makes sure a Spinel of the release in
+`Cybertrain::SPINEL_TAG` is available. A `spinel` on `PATH` (with a `spin`) whose `spinel --version` reports that
 release is used as it is; otherwise the copy `cybertrain` keeps under
 `~/.cybertrain/spinel/<SPINEL_TAG>/`; otherwise `cybertrain` builds that
 copy from the release tag of `Cybertrain::SPINEL_REPOSITORY` (`git clone`,
@@ -172,6 +199,10 @@ Two environment variables override all this:
   then uses the `spinel` and `spin` in `PREFIX/bin` (or in `PREFIX` itself,
   if `spinel` is directly in it) and stops with an error if they are not that
   release.
+
+A third, `CYBERTRAIN_KEEP_SRC=1`, keeps the Spinel source the build cloned
+(`~/.cybertrain/src/spinel-<SPINEL_TAG>/`) instead of deleting it after the
+build.
 
 </details>
 
@@ -267,14 +298,12 @@ cybertrain spin run gen
 `spin lock` keeps the commit it has locked for a git dependency, whatever
 `ref` has become in `spin.toml`, which is why the lock is removed first. In
 an app with other dependencies you can delete only the `[lock.cybertrain]`
-table from `spin.lock` instead, and keep the other pins. An app that depends
-on a version from the index (`cybertrain = "X.Y.Z"`) needs no `rm`: there
-`spin lock` moves the pin.
+table from `spin.lock` instead, and keep the other pins.
 
-For an app that depends on [an index version](#an-index-version), run
-`cybertrain spin search cybertrain` first, which updates spin's copy of the
-index, then change the version on the `cybertrain =` line of `spin.toml` to
-the new release and run `cybertrain spin lock` and `cybertrain spin run gen`.
+An app that depends on [an index version](#an-index-version) needs no `rm`,
+since there `spin lock` moves the pin: run `cybertrain spin search
+cybertrain` first, which updates spin's copy of the index, then change the
+version on the `cybertrain =` line of `spin.toml` to the new release and run `cybertrain spin lock` and `cybertrain spin run gen`.
 
 The command checks that the two match. Before `server`, `build`, `db`,
 `test` or `generate` runs spin or writes a file, it compares the version of
@@ -293,10 +322,8 @@ or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then 
 ```
 
 Do one or the other. `cybertrain spin ...` is never checked, so `cybertrain
-spin lock` always runs. With a git dependency, editing `spin.toml` changes
-nothing, and neither does `spin lock` after it: spin goes on building the
-commit in `spin.lock` until that lock is removed, hence the `rm`. With a
-version from the index, the message names `cybertrain = "A.B.C"` and
+spin lock` always runs. With a version from the index, the message names
+`cybertrain = "A.B.C"` and
 `cybertrain spin lock` alone; spin builds the locked release only while
 `spin.toml` still allows it, so the version `spin.toml` names is compared
 as soon as it differs from the lock, and a range (`"~> X.Y"`) that no longer
@@ -306,6 +333,5 @@ checked. An app with no `spin.lock` is checked against the release its
 `spin.toml` names (`"X.Y.Z"` or `ref = "vX.Y.Z"`); a branch, a commit or a
 range names none, so it is not checked.
 
-An application written for 0.4 has a few changes to make (every session
-ends once, OpenSSL is linked, a dotted route segment needs `format: false`,
-and more): see [Upgrading an application from 0.4](requests.md#upgrading-an-application-from-04).
+Relocking is one step of an upgrade. [Upgrading](upgrading.md) has the
+whole procedure, and what each release changes for an application.

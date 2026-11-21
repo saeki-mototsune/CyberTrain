@@ -1,5 +1,5 @@
 ---
-source_sha256: 5eff6b39d0621ee0f07cd8319c7e6e783ac69c4b344edb3fd4cf2b07191e3dcf
+source_sha256: d29713ab9a0a7d9c68b0dee1b1c47c3b269ecf60b632ed1961477498dcd853a7
 ---
 # Установка
 
@@ -64,8 +64,11 @@ source_sha256: 5eff6b39d0621ee0f07cd8319c7e6e783ac69c4b344edb3fd4cf2b07191e3dcf
 - Пакет разработки jemalloc (`libjemalloc-dev`; `brew install jemalloc`)
   необязателен: он нужен приложению, только когда в его `spin.toml` указано
   `allocator = "jemalloc"`, что `cybertrain new` записывает закомментированным.
-  Его стоит включить для продакшена: в 1,1–1,4 раза больше запросов в секунду на
-  examples/blog ([docs/benchmark.md](../benchmark.md)).
+  Прежде чем полагаться на него в продакшене, измерьте на своём приложении: на
+  examples/blog замер 2026-10-09 дал в 1,3–1,4 раза больше запросов в секунду
+  на динамических страницах, а последний замер — разницу в несколько процентов
+  на страницах (POST на одном ядре: на 18% больше)
+  ([docs/benchmark.md](../benchmark.md)).
 
 </details>
 
@@ -88,29 +91,49 @@ cybertrain doctor
   [--skip-spin]` создаёт приложение в NAME, затем запускает в нём `spin lock` и
   `SPIN_DEBUG=1 spin run gen`, при необходимости сначала устанавливая Spinel
   (CLI собирает gen и `bin/db.rb` в отладочном режиме spin).
-- `cybertrain generate scaffold NAME field:type ...` (псевдоним `g scaffold`)
-  добавляет ресурс в приложение в текущем каталоге.
-- `cybertrain generate authentication` добавляет в него вход по адресу почты и
-  паролю: таблицы users и sessions, модели `User` и `Session`, контроллеры и
-  представления входа и регистрации, маршруты, `before_action` в
-  `ApplicationController` и тест (см. [Добавление входа](tutorial.md#authentication)).
-  С `--invite-only` страницы регистрации нет: пользователи создаются командой
-  `./NAME user EMAIL`, а первый — также на странице `/setup`, которая отвечает
-  только машине самого сервера, с одноразовым токеном, который выводит
-  предупреждение при запуске, пока не существует ни одного пользователя.
+- `cybertrain generate scaffold NAME field:type ... [parent:references] [--any]`
+  (псевдоним `g scaffold`) добавляет ресурс в приложение в текущем каталоге;
+  поле `parent:references` — это столбец `parent_id`, а `--any` относится
+  к полю-вложению (ниже).
+- `cybertrain generate authentication [--invite-only] [--confirmable] [--force]`
+  добавляет в него вход по адресу почты и паролю: таблицы users и sessions,
+  модели `User` и `Session`, concern `Authentication`, который включает
+  `ApplicationController`, контроллеры и представления входа, регистрации,
+  сброса пароля и учётной записи, маршруты, страницу задач за
+  `require_admin`, нужные ему строки подсистем в `bin/<app>.rb` и
+  `bin/db.rb` и тесты. `--invite-only` убирает страницу регистрации,
+  `--confirmable` требует, чтобы новая учётная запись подтвердила адрес по
+  почте до входа, а `--force` перезаписывает файлы, для которых повторный
+  запуск иначе только печатает diff ([Аутентификация](authentication.md)).
 - `cybertrain generate attachment MODEL FIELD [--any]` добавляет загрузку файла
   в модель со скаффолдом: пять столбцов метаданных, методы и колбэки модели,
   действие для скачивания, маршрут, поле формы и тест (см.
   [Добавление обложки](tutorial.md#attachments)). Поле скаффолда `cover:attachment` делает то же самое.
+- `cybertrain generate helper NAME [--force]` добавляет
+  `app/helpers/NAME_helper.rb`, модуль, методы которого после `spin run gen`
+  может вызывать любой шаблон, и тест
+  ([Хелперы приложения](template-language.md#application-helpers)).
+- `cybertrain generate component NAME [attr[:type] ...] [--force]` добавляет
+  компонент представления: `app/components/NAME_component.rb`, его шаблон и
+  тест ([Компоненты](template-language.md#components)).
+- `cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]`
+  добавляет `app/jobs/NAME_job.rb` и тест, а в `bin/<app>.rb` и `bin/db.rb` —
+  `require "cybertrain/jobs"`
+  ([Фоновая работа](background-and-operations.md#background-work)).
 - `cybertrain db migrate` выполняет генерацию, применяет ожидающие миграции и
   генерирует снова (`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db --
   migrate; SPIN_DEBUG=1 spin run gen`);
   `cybertrain migration` оставлена как псевдоним.
 - `cybertrain db COMMAND...` после `SPIN_DEBUG=1 spin
   run gen` запускает любую другую команду базы данных: `status`, `rollback [N]`
-  (после которой генерация выполняется снова), `schema:dump`, `create`.
-- `cybertrain server [PORT] [--spinel]` запускает сервер разработки (порт по
-  умолчанию — 3000). Сразу после изменения приложение работает под CRuby,
+  (после которой генерация выполняется снова), `schema` (записывает
+  `db/schema.rb` по базе данных как она есть, без миграций), `schema:dump`,
+  `create`, `backup` и `vacuum`
+  ([Эксплуатация](background-and-operations.md#operations-backups-vacuum-health-check))
+  и `normalize`
+  ([Дата-время и `db normalize`](models.md#datetimes-and-db-normalize)).
+- `cybertrain server [PORT] [--spinel]` запускает сервер разработки (по
+  умолчанию — порт приложения, `PORT` или `c.port`, 3000, если они не заданы). Сразу после изменения приложение работает под CRuby,
   пока Spinel собирает его в фоне, а когда сборка удаётся, порт забирает
   скомпилированный бинарный файл; ответы приложения несут
   `X-Cybertrain-Runtime: cruby` или `spinel` ([Цикл
@@ -127,19 +150,25 @@ cybertrain doctor
   [Тестирование приложения](testing.md#running-the-tests)).
 - `cybertrain spin ARGS...` запускает `spin` с зафиксированным Spinel из
   любого каталога (`cybertrain spin test`, `cybertrain spin run gen -- --check`).
+- `cybertrain secret [--hex]` выводит новый случайный секрет для
+  `CYBERTRAIN_SECRET_KEY_BASE`; с `--hex` — новый ключ для
+  `CYBERTRAIN_ENCRYPTION_KEY`. Оба состоят из 64 шестнадцатеричных цифр.
 - `cybertrain setup [--force]` устанавливает зафиксированный релиз Spinel в
   `~/.cybertrain`, если `spinel` этого релиза ещё нет в `PATH`;
   `--force` пересобирает копию в `~/.cybertrain`.
-- `cybertrain doctor` проверяет инструменты C, заголовки SQLite, загружает
-  ли Ruby `fiddle` (он нужен CRuby-превью) и установку Spinel.
-- `cybertrain version` выводит версию.
+- `cybertrain doctor` проверяет все [требования](#requirements): `git`,
+  `make`, `curl`, компилятор C, заголовки SQLite, zlib и OpenSSL, гем
+  `prism`, загружает ли Ruby `fiddle` (он нужен CRuby-превью) и установку
+  Spinel.
+- `cybertrain version` выводит версию, `cybertrain help` — этот список.
 
-`db`, `server` и `build` запускаются внутри приложения; NAME — это
-`[package] name` из его `spin.toml`.
+`generate`, `db`, `server`, `build` и `test` запускаются внутри приложения;
+NAME — это `[package] name` из его `spin.toml`.
 
 ## Как устанавливается Spinel
 
-Каждая команда, которая запускает `spin` (`new`, `db`, `server`, `build`, `spin`),
+Каждая команда, которая запускает `spin` (`new`, `db`, `server`, `build`, `test`,
+`spin`),
 сначала убеждается, что доступен Spinel релиза из `Cybertrain::SPINEL_TAG`.
 `spinel` в `PATH` (вместе с `spin`), чей `spinel --version` сообщает этот
 релиз, используется как есть; иначе используется копия, которую `cybertrain`
@@ -172,6 +201,10 @@ export PATH="$HOME/.cybertrain/bin:$PATH"
 
 - `CYBERTRAIN_HOME` заменяет `~/.cybertrain` (путь без пробелов, кавычек, `$` и `:`, которые не принимают Makefile Spinel и `PATH`).
 - `CYBERTRAIN_SPINEL_HOME=PREFIX` принудительно задаёт существующую установку: тогда `cybertrain` использует `spinel` и `spin` из `PREFIX/bin` (или из самого `PREFIX`, если `spinel` лежит прямо в нём) и останавливается с ошибкой, если это не тот релиз.
+
+Третья, `CYBERTRAIN_KEEP_SRC=1`, сохраняет исходный код Spinel, клонированный
+для сборки (`~/.cybertrain/src/spinel-<SPINEL_TAG>/`), вместо того чтобы
+удалить его после сборки.
 
 </details>
 
@@ -269,10 +302,9 @@ cybertrain spin run gen
 ни стал `ref` в `spin.toml`, поэтому сначала удаляется файл блокировки. В
 приложении с другими зависимостями можно вместо этого удалить из `spin.lock`
 только таблицу `[lock.cybertrain]` и сохранить остальные фиксации.
-Приложению, зависящему от версии из индекса (`cybertrain = "X.Y.Z"`), `rm` не
-нужен: там `spin lock` сам переносит фиксацию.
 
-В приложении, которое зависит от [версии из индекса](#an-index-version),
+Приложению, которое зависит от [версии из индекса](#an-index-version), `rm`
+не нужен, потому что там `spin lock` сам переносит фиксацию:
 сначала выполните `cybertrain spin search cybertrain`, чтобы обновить копию
 индекса у spin, затем замените версию в строке `cybertrain =` файла
 `spin.toml` на новый релиз и выполните `cybertrain spin lock` и `cybertrain spin run gen`.
@@ -294,9 +326,7 @@ or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then 
 ```
 
 Сделайте одно из двух. `cybertrain spin ...` не проверяется, поэтому
-`cybertrain spin lock` выполняется всегда. С git-зависимостью правка
-`spin.toml` ничего не меняет, и `spin lock` после неё тоже: spin продолжает
-собирать коммит из `spin.lock`, пока эта фиксация не удалена, отсюда `rm`. С
+`cybertrain spin lock` выполняется всегда. С
 версией из индекса сообщение называет `cybertrain = "A.B.C"` и один только
 `cybertrain spin lock`; spin собирает зафиксированный релиз, лишь пока
 `spin.toml` его допускает, поэтому версия, названная в `spin.toml`,
@@ -308,6 +338,5 @@ or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then 
 `ref = "vX.Y.Z"`); ветка, коммит или диапазон релиза не называют, поэтому
 проверки нет.
 
-Приложению, написанному для 0.4, нужно внести несколько изменений (каждая
-сессия один раз завершается, линкуется OpenSSL, сегменту маршрута с точкой
-нужен `format: false` и другое): см. [Обновление приложения с 0.4](requests.md#upgrading-an-application-from-04).
+Повторная фиксация зависимостей — один из шагов обновления. Весь порядок действий
+и то, что каждый релиз меняет для приложения, описаны в разделе [Обновление](upgrading.md).

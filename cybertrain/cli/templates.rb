@@ -47,8 +47,8 @@ module Cybertrain
       # ---- the subsystem lines of bin/<app>.rb ----------------------------
       #
       # `cybertrain new` writes `require "cybertrain/core"`: the framework
-      # without its optional subsystems (docs/superpowers/specs/
-      # 2026-11-13-optional-subsystems-design.md). A generator whose files
+      # without its optional subsystems (docs/design.md D85). A generator
+      # whose files
       # need one adds its line: `generate job` cybertrain/jobs,
       # `generate authentication` cybertrain/jobs, cybertrain/mailer,
       # cybertrain/mailer/later and cybertrain/rate_limit
@@ -155,10 +155,10 @@ module Cybertrain
           [package]
           name = "#{package}"
           version = "0.1.0"
-          # jemalloc is a faster malloc for a server: 1.1 to 1.4 times the
-          # requests per second on examples/blog (docs/benchmark.md). Building then
-          # needs its development package (libjemalloc-dev on Debian/Ubuntu,
-          # `brew install jemalloc` on macOS).
+          # jemalloc is another malloc for a server: between no gain and 1.4 times
+          # the requests per second on examples/blog, depending on the run
+          # (docs/benchmark.md). Building then needs its development package
+          # (libjemalloc-dev on Debian/Ubuntu, `brew install jemalloc` on macOS).
           # allocator = "jemalloc"
 
           [dependencies]
@@ -187,8 +187,8 @@ module Cybertrain
           # is committed: copy a line into the environment (or your deploy's
           # secrets) with a value, never write the value here.
 
-          # Signs the session cookie; changing it signs everyone out. Required in
-          # production; development and test keep one in tmp/secret_key.
+          # Encrypts the session cookie; changing it signs everyone out. Required
+          # in production; development and test keep one in tmp/secret_key.
           # Make one with `cybertrain secret`.
           # CYBERTRAIN_SECRET_KEY_BASE=
 
@@ -1040,6 +1040,9 @@ module Cybertrain
               # CYBERTRAIN_LOG_FORMAT: json
             secret:
               - CYBERTRAIN_SECRET_KEY_BASE
+              # Encrypts the columns a model declares with `encrypts`; boot
+              # fails without it once one does. Also list it in .kamal/secrets.
+              # - CYBERTRAIN_ENCRYPTION_KEY
               # Where error reports are sent (a Sentry DSN); also list it in
               # .kamal/secrets.
               # - CYBERTRAIN_SENTRY_DSN
@@ -1083,9 +1086,15 @@ module Cybertrain
           # GitHub token with write:packages for ghcr.io).
           KAMAL_REGISTRY_PASSWORD=$KAMAL_REGISTRY_PASSWORD
 
-          # Signs the session cookie; changing it signs everyone out. Generate it
+          # Encrypts the session cookie; changing it signs everyone out. Generate it
           # once with `openssl rand -hex 32` and keep it somewhere safe.
           CYBERTRAIN_SECRET_KEY_BASE=$CYBERTRAIN_SECRET_KEY_BASE
+
+          # Encrypts the columns a model declares with `encrypts`; boot fails
+          # without it once one does. Make it once with `cybertrain secret --hex`
+          # and keep it safe: encrypted data cannot be read without it. Add it
+          # to env: secret: in config/deploy.yml too.
+          # CYBERTRAIN_ENCRYPTION_KEY=$CYBERTRAIN_ENCRYPTION_KEY
 
           # Where error reports are sent (a Sentry DSN, which holds a key). Add
           # it to env: secret: in config/deploy.yml too.
@@ -1151,7 +1160,7 @@ module Cybertrain
         YAML
       end
 
-      # test/test_helper.rb (spec 5.1): what every test file's `require
+      # test/test_helper.rb: what every test file's `require
       # "test_helper"` loads. `cybertrain test` requires it before the test
       # files; the generators that add helpers (authentication) insert them
       # after TEST_HELPER_MARKER.
@@ -1467,7 +1476,7 @@ module Cybertrain
             end
 
             # GET /#{p}/new
-            # (named new_action: a `new` method would shadow #{res.plural_class}Controller.new)
+            # (named new_action: the generated routes call the `new` action by that name)
             def new_action
               @#{s} = #{res.class_name}.new
             end

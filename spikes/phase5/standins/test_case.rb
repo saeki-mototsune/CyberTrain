@@ -1,7 +1,7 @@
-# Phase 5a spike: minimal stand-ins of Task 6's lifecycle and base classes,
-# Task 8's database steps, Task 12's ActionDispatch::IntegrationTest and
-# Task 13's render_inline / ViewComponent::TestCase, written only far enough
-# to compile spec section 5.2's program (class_app/tests.rb). A record, not
+# Phase 5a spike: minimal stand-ins of the lifecycle and base classes, the
+# database steps, ActionDispatch::IntegrationTest and render_inline /
+# ViewComponent::TestCase, written only far enough to compile the bundle's
+# program (class_app/tests.rb). A record, not
 # the framework's code.
 require "cybertrain/test"
 require "cybertrain/test/client"
@@ -103,7 +103,7 @@ module Cybertrain
       Cybertrain::Clock.travel_back
     end
 
-    # Task 12: nested params: to the bracketed keys Client#post sends.
+    # IntegrationTest: nested params: to the bracketed keys Client#post sends.
     def self.flatten_params(params)
       out = { "" => "" }
       out.delete("")
@@ -196,7 +196,7 @@ module ViewComponent
   end
 end
 
-# Task 13: one method for both forms (rule 34).
+# render_inline: one method for both forms (rule 34).
 def render_inline(component = nil, content: "", partial: "", locals: {})
   html = partial == "" ? Cybertrain::Views.render_component(component, content).to_s : Cybertrain::Views.render_partial(partial, locals).to_s
   Cybertrain::Test.last_html = html

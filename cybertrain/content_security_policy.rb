@@ -1,5 +1,5 @@
 module Cybertrain
-  # A Content Security Policy (spec section 5, C-5), declared in
+  # A Content Security Policy, declared in
   # `config/app.rb` and, per controller, with `content_security_policy do
   # |p| ... end`. One method per directive, each taking its sources:
   #
@@ -17,8 +17,8 @@ module Cybertrain
   # with ArgumentError, so nothing in a source can end its directive or the
   # header. A directive declared again replaces its sources in place; one
   # declared with no sources is removed. The header lists the directives in
-  # declaration order ({#header_value}); {ContentSecurityPolicyHeader}
-  # writes it on every response.
+  # declaration order ({#header_value}); the `ContentSecurityPolicyHeader`
+  # middleware writes it on every response.
   # @api public
   class ContentSecurityPolicy
     # The directive names, as the header spells them.

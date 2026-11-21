@@ -22,11 +22,18 @@ an ahead-of-time Ruby compiler. That shapes everything about working on it:
   compiles); that preview is never the program that ships. Things
   Ruby programmers take for granted (`method_missing`, `define_method`,
   `instance_variable_get`, `eval`) do not exist. [spikes/NOTES.md](spikes/NOTES.md)
-  lists the constraints found so far and how the code works around them.
-  When something will not compile, look there first, and add a note when you
-  find a new one. Its section "Workarounds that shape the design" says which
-  shapes are permanent, which are tied to the pinned build and which test
-  covers each, and what a Spinel update re-checks.
+  has the rules the code follows because of the compiler and how it works
+  around each behaviour; [docs/spinel-feedback.md](docs/spinel-feedback.md)
+  is the one record of the behaviours themselves: what Spinel does on which
+  build, what was asked upstream, and whether an item is closed. When
+  something will not compile, look in NOTES first. When you find a new
+  behaviour, write the item in spinel-feedback (it takes the next letter),
+  put its reduced program under `spikes/`, listed in the README beside it,
+  and add the rule to NOTES, ending with the line that names the item;
+  rules and programs stay until their item is closed. NOTES' section
+  "Workarounds that shape the design" says which shapes are permanent,
+  which are tied to the pinned build and which test covers each, and what
+  a Spinel update re-checks.
 - **A CRuby pass, a test run under CRuby or a page seen in the preview, is
   not acceptance.** The commit gate, `ruby -I. test/<name>.rb`,
   `script/preview-parity` and the development server's CRuby preview run
@@ -39,7 +46,8 @@ an ahead-of-time Ruby compiler. That shapes everything about working on it:
   Proc crosses, adds a shared helper or a base class, or changes what the
   generator emits must pass the affected tests compiled (`spin test`), and
   a generator change must leave `examples/blog` regenerating clean and
-  passing. Say in the pull request which compiled tests you ran.
+  passing (`cybertrain test` there). Say in the pull request which compiled
+  tests you ran.
 - **Every design decision is written down.** [docs/design.md](docs/design.md)
   records what was decided, what was rejected and why. Read the
   relevant section before changing a behaviour, and update it when a
@@ -56,9 +64,10 @@ so that the pull request can be about the code.
 
 ## Setting up a checkout
 
-The requirements are the ones in [docs/guide/install.md](docs/guide/install.md#requirements): Ruby
-3.2 or newer, a C compiler, make, git, curl, and the SQLite and zlib headers.
-Then:
+The requirements are the ones in
+[docs/guide/install.md](docs/guide/install.md#requirements): Ruby 3.2 or
+newer (with `fiddle`, for the CRuby preview and its tests), a C compiler,
+make, git, curl, and the SQLite, zlib and OpenSSL headers. Then:
 
 ```sh
 git clone https://github.com/saeki-mototsune/CyberTrain.git
@@ -66,7 +75,7 @@ cd CyberTrain
 script/install-hooks           # the commit gate, once per clone (below)
 ruby -I. exe/cybertrain doctor # what is missing, if anything
 ruby -I. exe/cybertrain setup  # builds the pinned Spinel into ~/.cybertrain (minutes, once)
-spin test                      # the suite; see "Running the tests"
+spin test test/router.rb       # one program, to see the toolchain work; "Running the tests" has the suite
 ```
 
 `ruby -I. exe/cybertrain` runs the CLI from the checkout (`spin install`
@@ -75,29 +84,38 @@ instead builds `bin/cybertrain.rb` into `~/.local/bin/cybertrain`), and `cybertr
 cybertrain` gives you the released one instead, which installs the same
 Spinel. On an Ubuntu machine you can also run
 [script/claude-cloud-setup](script/claude-cloud-setup), which does the whole
-setup non-interactively. The [playground](https://saeki-mototsune.github.io/CyberTrain/playground.html)
+setup non-interactively. The [playground](https://www.cybertrain.dev/playground.html)
 is a quick way to try the framework, not a place to develop it.
 
 ## The commit gate
 
-Every commit passes a gate: a set of fast checks (about a second, CRuby only,
-no Spinel) that catch what is cheap to catch before a reviewer or a
-20-minute CI run does. `script/install-hooks` points this clone's git hooks
+Every commit passes a gate: a set of fast checks (CRuby only, no Spinel;
+under a second for a commit of Markdown alone, some tens of seconds when the
+repository checks run) that catch what is cheap to catch before a reviewer
+or a CI run does. `script/install-hooks` points this clone's git hooks
 at [.githooks/](.githooks/), after which:
 
 - **pre-commit** runs `script/gate --staged` on the files being committed:
   trailing whitespace, final newlines, LF line endings, merge-conflict
   markers, Ruby syntax (`ruby -c`), YAML files load; and, when the commit
   touches the framework, the CLI, the tests, the scripts or the playground's
-  Dockerfile, the repository checks: the version and Spinel-tag pins agree,
-  `script/check-reserved-names`, `check-client-faults`, `check-http-layer`
-  and `check-core-closure` pass (see [Conventions](#conventions-ci-enforces)
-  for what each guards),
-  every file `cybertrain.gemspec` lists exists, the CLI loads under CRuby and
-  `playground/Dockerfile` copies each of those files into its gem stage, the
-  Playground image and Blog image workflows run for a pull request that
-  changes one of them or a pin, and every `test/*.rb` has its `.expected`
-  snapshot.
+  Dockerfile, the repository checks: the version and Spinel-tag pins agree
+  (and `script/claude-cloud-setup` builds from
+  `Cybertrain::SPINEL_REPOSITORY`), `script/check-reserved-names`,
+  `check-client-faults`, `check-http-layer` and `check-core-closure` pass
+  (see [Conventions](#conventions-ci-enforces) for what each guards),
+  `script/ci-changes --self-test` passes, `cybertrain/locales/bundled.rb`
+  is what `script/bundle-locales` writes, every file `cybertrain.gemspec`
+  lists exists, the CLI loads under CRuby and `playground/Dockerfile`
+  copies each of those files into its gem stage, the Playground image and
+  Blog image workflows run for a pull request that changes one of them or a
+  pin, every `test/*.rb` and `test/cruby/*.rb` has its `.expected` snapshot
+  and every snapshot its test, and the generator run under CRuby leaves
+  `examples/blog/gen/` unchanged. Four more checks run when their files
+  are in the commit: the deployment tutorial's translations
+  (`check-docs-i18n`), the guides' translations (`check-guide-i18n`),
+  release numbers in the pages (`check-version-mentions`) and the
+  workflows' rules (`check-workflows`).
 - **commit-msg** checks the message's shape (see [Commits](#commits)).
 
 `script/gate` with no arguments runs the same checks over the whole
@@ -118,9 +136,18 @@ into its own binary, whose output (stdout and stderr) is compared with the
 committed snapshot `test/<name>.rb.expected`:
 
 ```sh
-spin test                      # everything (one program per test/*.rb; minutes the first time, then cached)
+spin test                      # everything: one program per test/*.rb, each compiled on its own
 spin test test/router.rb       # one program
 ```
+
+A plain `spin test` recompiles every program whenever any file of the
+package is newer than the binaries, a test file included: with the pinned
+Spinel release, touching one test of a two-test package recompiled both.
+Only a run with nothing changed is quick. So while working, run the programs
+you touched (`spin test test/<name>.rb` compiles that one) and leave the
+whole suite to one run before the pull request. The suite is 240 programs;
+the last recorded local time is 14 minutes for 82 programs on 4 cores
+([docs/design.md](docs/design.md), D34), so allow several times that.
 
 On Ubuntu, CI divides the programs into four shards, the `framework-tests` jobs
 in [.github/workflows/ci.yml](.github/workflows/ci.yml); on macOS they run in
@@ -153,6 +180,8 @@ differs:
 diff build/test/router.out test/router.rb.expected
 ```
 
+### After a merge
+
 A snapshot that ends with the harness summary (`N tests, N assertions, N
 failures`; `test/version.rb.expected` is the one that does not) counts the
 assertions, and that count is what a merge gets wrong without a conflict:
@@ -163,15 +192,42 @@ snapshot that says `N+1` (this happened on `main` between pull requests #58
 and #61; #79 regenerated the snapshot). After merging `main` into a branch
 that touches a test, run that test again before pushing: `spin test
 test/<name>.rb`, or, for a test that needs neither SQLite nor any other FFI
-(the next paragraph), `ruby -I. test/<name>.rb` under CRuby, which takes a
-second and needs no compiler.
+(below), `ruby -I. test/<name>.rb` under CRuby, which takes a second and
+needs no compiler.
 
-Tests that need SQLite or other FFI only run compiled (`spin test --regen
-test/<name>.rb` would capture CRuby's output; [spikes/NOTES.md](spikes/NOTES.md),
-rule 23); `script/regen-snapshot` handles that. Use the assertions in `cybertrain/test.rb` (`assert`,
-`assert_equal`, `assert_raises("Class") { }`, ...); for controllers and HTTP
-flows, `Cybertrain::Test::Client` drives an application in-process, as
-[examples/blog/test/](examples/blog/test/) does.
+### Writing a framework test
+
+A snapshot of a test that needs SQLite or other FFI comes from the compiled
+binary only: `spin test --regen test/<name>.rb` writes the snapshot from
+CRuby's output ([spikes/NOTES.md](spikes/NOTES.md), rule 23), so use
+`script/regen-snapshot`, which captures the binary's. To run such a test
+under CRuby for a quick look, load the preview's shim, as
+`script/preview-parity` does: `ruby -E UTF-8 -I. -r cybertrain/preview
+test/<name>.rb`.
+
+Use the assertions in `cybertrain/test.rb` (`assert`, `assert_equal`,
+`assert_raises("Class") { }`, ...); for controllers and HTTP flows,
+`Cybertrain::Test::Client` drives an application in-process, as
+`test/client.rb` and `test/application.rb` do. An application's own tests
+are a different thing: test classes that `cybertrain test` runs, as in
+[examples/blog/test/](examples/blog/test/) (see the
+[testing guide](docs/guide/testing.md)).
+
+What several test programs need is in `test/support/`, loaded with
+`require_relative "support/<name>"` (the files there are not test programs:
+neither the gate nor `script/test-shard` looks into `test/support/`). Use these before
+writing another copy into a test:
+
+- `file_tree.rb`: `FileTree.remove`, `copy` and `make_dirs`, for a test
+  that builds a scratch tree on disk.
+- `schema_tables.rb`: `SchemaTables.create_sql`, the `CREATE TABLE`
+  statements of a schema definition, for a test that loads generated models
+  into an in-memory database.
+- `log_capture.rb`: `capture_log`, `with_scope` and `assert_logged`, for a
+  test that reads log lines.
+- `zone_swap.rb`: `ZoneSwap.during`, for a test that sets `Time.zone`.
+
+### The example application
 
 The example application is a test too. If your change affects what the
 generator emits or how an application runs:
@@ -179,11 +235,16 @@ generator emits or how an application runs:
 ```sh
 cd examples/blog
 spin run gen && git status --short -- gen/     # generated code must be fresh: this prints nothing
-spin test
+ruby -I../.. ../../exe/cybertrain test         # the blog's tests (test/**/*_test.rb), one compiled program
 ```
 
 `git status` rather than `git diff`: a file the generator writes for the
 first time is untracked, and `git diff` passes over it. CI fails on either.
+`cybertrain test`, not `spin test`: the blog's tests are test classes, which
+only `cybertrain test` runs; `spin test` there would compile
+`test/test_helper.rb` alone and call it ok.
+
+### The CRuby preview's checks
 
 The CRuby preview (`cybertrain/preview/`, and the supervisor in
 `cybertrain/cli/dev_server*`) has three checks of its own, none of which
@@ -210,10 +271,21 @@ build log as the run's `preview-e2e-logs` artifact. Run it yourself too,
 before pushing, after changing the supervisor, the shim or the framework's
 development server.
 
-CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs all of this on
-Ubuntu and macOS, builds and installs the gem, scaffolds and serves an
-application end to end, and builds the API reference with YARD (any warning
-fails it: `script/api-docs`, the `api-docs` job). A change to nothing but
+### What CI runs
+
+CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the
+framework's tests and the example application on Ubuntu and macOS, builds
+and installs the gem, and scaffolds, builds and serves applications end to
+end. Three of those end-to-end checks are scripts you can run yourself after
+changing a generator or the test command: `script/auth-e2e signup` (or
+`invite`, `confirmable`, `upgrade04`), `script/generators-e2e` and
+`script/test-command-e2e`. Each makes its applications in a scratch
+directory and compiles them, so they are slow (a comment in `ci.yml`
+records 114 minutes for the four variants of `script/auth-e2e` together on
+a 4-core machine); run the one variant you changed.
+
+CI also builds the API reference with YARD (any warning fails it:
+`script/api-docs`, the `api-docs` job). A change to nothing but
 the API reference's own inputs (`docs/api/`, `script/api-docs`, `.yardopts`)
 runs that job alone; [script/ci-changes](script/ci-changes) holds the rule
 and `script/ci-changes --self-test` checks it. Its `setup-cybertrain` jobs run the action
@@ -230,9 +302,28 @@ way; the script or workflow step that checks it says so in its comment.
 - **A column may not be named after a `Cybertrain::Model` method.** Add a
   method or an ivar to `Model` and `Ident::RESERVED_COLUMN_NAMES` must list
   it, or a generated reader silently shadows it (`script/check-reserved-names`).
+  The same script keeps the neighbouring lists honest: the action names an
+  attachment field may not take (`ATTACHMENT_RESERVED_ACTIONS`, against
+  `Controller` growing), the helper names an application helper may not
+  take (`HelperScan::RESERVED_HELPER_NAMES`), the names a model `scope` may
+  not take (`ModelScan::RESERVED_SCOPE_NAMES`), the class methods a job
+  class may not define (`JobScan::RESERVED_CLASS_METHODS`), the names a
+  fixture accessor may not take (`FixtureScan::TAKEN_NAMES`), and the
+  method names with fixed homes (`NAME_HOMES` in the script: a listed name
+  may be defined only in the files its row names).
+- **One method name has one return type.** This is the project's rule
+  ([spikes/NOTES.md](spikes/NOTES.md), rules 10 and 34, which record
+  programs where methods of one name with different return types on
+  unrelated classes corrupted Spinel's inference, and others where such a
+  pair compiled). The same script holds the
+  typed part of it: each definition of a framework method named like a
+  typed column (`Ident::FRAMEWORK_METHOD_TYPES`) must document that type
+  with `@return`.
 - **Every client fault is listed.** A new `QueryInvalid` subclass must be in
-  `ClientError::CLIENT_FAULTS`, or it is a 500 under Spinel, where the class
-  hierarchy is not visible (`script/check-client-faults`).
+  `ClientError::CLIENT_FAULTS`, or it is a 500: the list is compared with
+  the exception's class name, not walked with `is_a?`
+  ([spikes/NOTES.md](spikes/NOTES.md), rules 47 and 54, has why)
+  (`script/check-client-faults`).
 - **The HTTP layer stands alone.** `cybertrain/http/*` must load without the
   rest of the framework, so it can be lifted out (`script/check-http-layer`).
 - **The core does not name an optional subsystem.** No file that
@@ -264,6 +355,10 @@ way; the script or workflow step that checks it says so in its comment.
   `spin.toml`'s version; `Cybertrain::SPINEL_TAG` equals `SPINEL_TAG` in
   `ci.yml`. (`script/claude-cloud-setup` pins no tag: it builds the latest
   release of the saeki-mototsune fork.)
+- **The bundled dictionaries are compiled in.** `cybertrain/locales/en.yml`
+  and `ja.yml` are the source; `cybertrain/locales/bundled.rb` is what the
+  framework loads. After changing a YAML file run `script/bundle-locales`
+  and commit both (the gate runs `script/bundle-locales --check`).
 - **Public API is documented.** A class or method an application calls
   carries a YARD comment tagged `@api public`; the API reference is built from
   those and must build without a warning. Anything without the tag is
@@ -275,13 +370,6 @@ way; the script or workflow step that checks it says so in its comment.
   them changes, compares their headings and section numbers, code blocks
   (comments and progress messages aside) and table rows. As with the site,
   if you cannot translate, say so in the pull request.
-- **The site is published in five languages.** A change to an English page
-  under `site/` changes `ja/`, `zh/`, `ru/` and `fr/` with it, and
-  `script/check-site-i18n` verifies the structure matches (see
-  [site/README.md](site/README.md), "Translations"). If you cannot translate,
-  say so in the pull request and leave the English change; a maintainer will
-  follow up.
-
 - **The workflows pass actionlint.** A workflow or a composite action under
   `.github/` that loads as YAML can still name a job, an input or a step
   output that does not exist, and GitHub says so only when it runs, which for
@@ -290,6 +378,15 @@ way; the script or workflow step that checks it says so in its comment.
   request; with [actionlint](https://github.com/rhysd/actionlint) installed
   (and shellcheck, which it calls for the `run:` scripts) the same command
   runs locally. The commit gate does not run it.
+
+One convention is not enforced by CI. **The site is published in five
+languages**: a change to an English page under `site/` changes `ja/`, `zh/`,
+`ru/` and `fr/` with it. Neither the gate nor a workflow checks this, so run
+`script/check-site-i18n` (Python 3) yourself before pushing; it compares the
+structure, the code blocks and the inline code (see
+[site/README.md](site/README.md), "Translations"). If you cannot translate,
+say so in the pull request and leave the English change; a maintainer will
+follow up.
 
 There is no formatter or linter for the Ruby code beyond the gate. Follow the surrounding code:
 two-space indentation, comments that explain why rather than what, methods
@@ -338,8 +435,10 @@ blank second line) and leaves merge, revert, fixup! and squash! commits alone.
 2. Make the change with its tests and documentation. Run `script/gate` and
    `spin test`.
 3. Open the pull request against `main`. The template asks what the change
-   does and why, how it was checked, and what the reviewer should know; the
-   checklist is the gate above in prose. Mark it a draft if it is not ready
+   does and why, how it was checked, and what the reviewer should know; its
+   checklist is this file in five lines (the gate, `spin test`, a compiled
+   run for a structural change, a test for new behaviour with changed
+   snapshots explained, documentation updated). Mark it a draft if it is not ready
    for review.
 4. CI must be green: the Gate workflow, the CI workflow (both operating
    systems) and, when the change touches an image, that image's workflow.
@@ -480,42 +579,46 @@ before the gem is pushed:
    step with nothing pushed. With it, the Gate and CI run on the pull
    request, and the run waits until both have started and fails if they
    have not. Renew the secret when the token expires.
+
+   Before merging a minor release's bump, check that the release's upgrade
+   notes are written: a section under "Notes by version" in
+   [docs/guide/upgrading.md](docs/guide/upgrading.md), in the four
+   translations too, with an entry for every compatibility change since the
+   previous release ([docs/compatibility.md](docs/compatibility.md#changing-a-contract)).
+   The section names its releases as `X.Y` ("From 0.4 to 0.5"), which
+   `script/check-version-mentions` allows. A patch release has no notes.
 2. Merge to `main`, then tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. `gem build cybertrain.gemspec && gem push cybertrain-X.Y.Z.gem`.
-4. The tag runs [.github/workflows/release.yml](.github/workflows/release.yml),
-   which tests the tag (below) and, only if every check passes, publishes the
-   playground image `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z`
-   through
-   [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml)
-   and the blog image `ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z`, built
-   and smoke-tested by
-   [.github/workflows/blog-image.yml](.github/workflows/blog-image.yml);
-   check that run.
-5. The tag also creates the GitHub release `vX.Y.Z`, with notes generated
-   from the pull requests merged since the previous tag, through
-   [.github/workflows/release.yml](.github/workflows/release.yml). That
-   workflow first runs the Gate, the full CI (Linux and macOS, built against
-   the Spinel release the tag pins) and the blog image's smoke test on the
-   tagged commit. If any of those fails, nothing is published. Once they
-   pass, it pushes the playground and blog images (in parallel) and then
-   creates the release. The blog image pushed is the one the smoke test
-   ran on, kept as a workflow artifact for 7 days, not a second build: to
-   re-run its push later than that, re-run the whole workflow. If one image
-   push fails, no release is created, but the other image's `X.Y.Z` may
-   already be pushed: check both packages before re-running the failed jobs. For a tag pushed without a
-   release, run that workflow by hand with the tag. Last, its
-   `promote-latest` job points `latest` of both images at the newest
-   release: the highest `X.Y.Z` that has a published release, whichever run
-   it is in. Releases of different tags may run at the same time, and a
-   manual run may release an old tag, without `latest` going back; that job
-   runs one at a time across all release runs, and when several wait GitHub
-   cancels all but the newest waiting one, which is harmless (each would
-   move `latest` to the same image). Nothing else pushes `latest`; to repair
-   it, re-run that job. After the release is
-   created, the same run attaches a Linux build of the fork's latest Spinel
-   release (`spinel-<tag>-linux-x86_64.tar.gz`, for Claude Code cloud
-   sessions; see below); check that its `spinel-prebuilt` job passed.
-6. Once the framework is on the spin index, and to put it there the first
+4. The tag runs [.github/workflows/release.yml](.github/workflows/release.yml);
+   check that run. In order:
+   - It runs the Gate, the full CI (Linux and macOS, built against the
+     Spinel release the tag pins) and the blog image's build and smoke test
+     ([.github/workflows/blog-image.yml](.github/workflows/blog-image.yml))
+     on the tagged commit. If any of those fails, nothing is published.
+   - It pushes, in parallel, the playground image
+     `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z`
+     ([.github/workflows/playground-image.yml](.github/workflows/playground-image.yml))
+     and the blog image `ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z`.
+     The blog image pushed is the one the smoke test ran on, kept as a
+     workflow artifact for 7 days, not a second build: to re-run its push
+     later than that, re-run the whole workflow. If one image push fails,
+     no release is created, but the other image's `X.Y.Z` may already be
+     pushed: check both packages before re-running the failed jobs.
+   - It creates the GitHub release `vX.Y.Z`, with notes generated from the
+     pull requests merged since the previous tag. For a tag pushed without
+     a release, run that workflow by hand with the tag.
+   - Its `promote-latest` job points `latest` of both images at the newest
+     release: the highest `X.Y.Z` that has a published release, whichever
+     run it is in. Releases of different tags may run at the same time, and
+     a manual run may release an old tag, without `latest` going back; that
+     job runs one at a time across all release runs, and when several wait
+     GitHub cancels all but the newest waiting one, which is harmless (each
+     would move `latest` to the same image). Nothing else pushes `latest`;
+     to repair it, re-run that job.
+   - Its `spinel-prebuilt` job attaches a Linux build of the fork's latest
+     Spinel release to the release (`spinel-<tag>-linux-x86_64.tar.gz`, for
+     Claude Code cloud sessions; see below); check that it passed.
+5. Once the framework is on the spin index, and to put it there the first
    time: publish the release to it, by hand, after the Release workflow has
    passed. See [Publishing to the spin index](#publishing-to-the-spin-index).
    No workflow does this, and none should: it opens a pull request in
@@ -556,7 +659,7 @@ What `spin publish` does, in order, stopping at the first that fails:
    must be on a remote branch (`git branch -r --contains`) and whose
    `spin.toml` must carry the same version;
 4. runs the whole of `spin test`: every program must pass (the full
-   suite, a quarter of an hour or more). The compiler is the `spinel`
+   suite; [Running the tests](#running-the-tests) says how long). The compiler is the `spinel`
    executable in the directory of the `spin` binary, and the one on `PATH`
    only when there is none there, which is why the recipe asks that one,
    not a bare `spinel`, for its version;
@@ -613,15 +716,16 @@ Check first:
 
 The pages a reader follows, the site (`site/`), the guides (`docs/guide/`),
 the deployment tutorial (`docs/deploy.md`, `docs/deploy.en.md`,
-`docs/deploy-kamal.md`) and the READMEs, do not name the release numbers
+`docs/deploy-kamal.md`) and the two READMEs a user reads (`README.md`,
+`playground/README.md`), do not name the release numbers
 `Cybertrain::VERSION` and `Cybertrain::SPINEL_TAG`, so a release changes none
 of them. Describe the number instead ("the pinned Spinel release",
 `Cybertrain::SPINEL_TAG`), write `X.Y.Z`, `vX.Y.Z` or `SPINEL_TAG` in commands
 and output, and point at `cybertrain version` and `cybertrain doctor`, which
 print them. [script/check-version-mentions](script/check-version-mentions),
 run by the Gate, fails when one of those pages names the current numbers. A
-record of what was measured on a given release belongs in `docs/` outside
-those files.
+record of what was measured or re-checked on a given release belongs outside
+those files (`docs/benchmark.md`, `docs/spinel-feedback.md`).
 
 `Cybertrain::SPINEL_TAG` (also in `cybertrain/version.rb`) is the Spinel
 release `cybertrain setup` installs. It must equal `SPINEL_TAG` in

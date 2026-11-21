@@ -17,7 +17,7 @@ ok   4000 segments after a non-ASCII character parse by byte offsets (O(body), n
 ok   multibyte keys and values survive the byte-offset cut, whatever the segment boundaries
 ok   20000 key kind flips complete and keep the last write
 ok   flips within one parse keep Rack's last-write-wins
-ok   set_path and merge! handle a 5000 level chain iteratively
+ok   set_path handles a 5000 level chain iteratively
 ok   QueryMalformed (an undecodable percent-escape) is a client fault: 400, not 500
 ok   a malformed escape is rescued as QueryInvalid, not ArgumentError (upgrade note)
 22 tests, 87 assertions, 0 failures

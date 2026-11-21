@@ -38,8 +38,6 @@ module Cybertrain
         attr_reader :all
       end
 
-      attr_reader :libs, :sources
-
       def initialize(mod)
         @mod = mod
         @libs = []

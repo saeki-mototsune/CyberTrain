@@ -1,5 +1,5 @@
 ---
-source_sha256: 56fd42be62c881b2651d4f07b3a1416a772e668460ec68fc56b620e7a78810bb
+source_sha256: 6e4f1fb3feea6c05454ba214e8d64b5662955142a0167ff12c120a2e654c9ca7
 ---
 # Исходящий HTTP, потоки WebSocket и электронная почта
 
@@ -8,7 +8,7 @@ source_sha256: 56fd42be62c881b2651d4f07b3a1416a772e668460ec68fc56b620e7a78810bb
 Приложение, которое обращается к другому серверу (вебхук, входящий вебхук
 Slack, сторонний API), использует `Cybertrain::HttpClient`. `require
 "cybertrain"` загружает его и слой TLS через
-[отправитель Sentry](background-and-operations.md#error-reporting); приложение
+[отправитель Sentry](logs-and-errors.md#error-reporting); приложение
 на `cybertrain/core` подключает его там, где он используется, а также слой
 TLS, если какой-либо URL — https:
 
@@ -163,7 +163,8 @@ Cybertrain.logger.info("#{res.bytes_written} bytes") if res.success?
 ### gzip
 
 Клиент запрашивает и распаковывает тела gzip, когда загружена поддержка
-gzip: `require "cybertrain"` её загружает, так что в приложении каждый запрос
+gzip: `require "cybertrain/core"` её загружает (сервер распаковывает ею
+gzip-тела запросов), так что в приложении каждый запрос
 отправляет `Accept-Encoding: gzip` (если только вы не отправляете свой
 заголовок `Accept-Encoding`), а тело с `Content-Encoding: gzip` приходит
 распакованным. Программа, которая подключает только `cybertrain/http_client`,
@@ -211,8 +212,9 @@ parser.finish { |event| Answer.append(event.event_data) }   # последнее
 
 Приложение, которое слушает внешний поток (биржевые тики, телеметрию
 устройств, поток событий), пока работает сервер, подписывается на него через
-`Cybertrain::WebSocket.subscribe`. Как и HTTP-клиент, он не входит в
-`require "cybertrain"`; подключайте его там, где пишется подписка, а для
+`Cybertrain::WebSocket.subscribe`. `require "cybertrain"` его не загружает
+(он загружает подсистему фидов и HTTP-клиент, но не `cybertrain/websocket`);
+подключайте его там, где пишется подписка, а для
 `wss://` — также слой TLS. Он загружает подсистему фидов (роль `feeds`,
 проверку здоровья фидов), так что приложению на `cybertrain/core` другая
 строка не нужна:
@@ -238,7 +240,9 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
 выполняется снова после каждого переподключения), а затем передаёт каждое
 сообщение в `on_message` вместе с `Connection` (`send_text`, `send_binary`,
 `close` и `last_opcode` — `:text` или `:binary`). Блоки получают свои аргументы
-и не могут использовать `self` (в Spinel нет `instance_eval`).
+и не могут использовать `self` как подписку: фид вызывает сохранённые блоки, а
+`instance_exec` сохранённого блока Spinel отвергает (spikes/NOTES.md,
+правило 2).
 
 - **Когда это выполняется.** Потоки запускаются, когда бинарный файл
   обслуживает запросы, как и планировщик
@@ -327,7 +331,7 @@ Cybertrain::WebSocket.subscribe("trades", ENV["FEED_URL"],
   ошибках: в них часто содержится токен. Все строки, кроме первой, пишутся
   в потоке фида и несут тег `[feed:trades]`; блок, который бросил
   исключение, завершение потока и отказ процесса `feeds` также попадают в
-  [отчёты об ошибках](background-and-operations.md#error-reporting).
+  [отчёты об ошибках](logs-and-errors.md#error-reporting).
 - **Ошибки.** Все они — `Cybertrain::WebSocket::Error`, и в сообщении только
   хост и порт. После рукопожатия потерянное соединение или закрытие сервером —
   это `ClosedError` (`close_code`, `close_reason`; сброс или конец без
@@ -432,7 +436,7 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   своего ответа на STARTTLS, отвергаются. `tls` говорит на TLS с первого байта
   (порт 465). Оба проверяют сертификат по `host`, как HTTP-клиент (указывайте
   имя хоста, а не IP-адрес), и обоим нужен `require "cybertrain/net/tls"` (его загружает
-  `require "cybertrain"`): без
+  `require "cybertrain"`, а `cybertrain/core` и `cybertrain/mailer` нет): без
   него `deliver` ещё до подключения возбуждает `Mailer::TLSError`, который
   говорит об этом. `none` — открытый текст, для ретранслятора на той же машине
   или тестового сервера: при настроенном пользователе он отказывается

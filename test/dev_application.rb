@@ -16,18 +16,9 @@ require "cybertrain/application"
 require "cybertrain/dev"
 require "cybertrain/test"
 require "cybertrain/test/client"
+require_relative "support/file_tree"
 
 ROOT = "tmp/dev_application_test"
-
-def remove_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| remove_tree("#{path}/#{child}") }
-    Dir.rmdir(path)
-  elsif File.exist?(path)
-    File.delete(path)
-  end
-  nil
-end
 
 def write_file(path, content)
   current = +""
@@ -40,13 +31,13 @@ def write_file(path, content)
   nil
 end
 
-remove_tree(ROOT)
+FileTree.remove(ROOT)
 write_file("#{ROOT}/views/layouts/site.html.erb", "<html><body class=\"site\">\n<%= yield %>\n</body></html>\n")
 write_file("#{ROOT}/views/pages/index.html.erb", "<h1>Home</h1>\n")
 write_file("#{ROOT}/views/pages/cached.html.erb", "<h1>Cached</h1>\n")
 write_file("#{ROOT}/views/pages/broken.html.erb", "<h1>Broken</h1>\n<p><%= no_such_helper(1) %></p>\n")
 write_file("#{ROOT}/public/robots.txt", "User-agent: *\n")
-at_exit { remove_tree(ROOT) }
+at_exit { FileTree.remove(ROOT) }
 
 class PagesController < Cybertrain::Controller
   def index

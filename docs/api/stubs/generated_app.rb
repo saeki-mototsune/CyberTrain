@@ -7,8 +7,10 @@
 # examples/blog/gen/routes.rb). Every table gets the same surface under its
 # own names, and every job class the same class methods. Keep the signatures
 # in step with cybertrain/generator/models_emitter.rb, routes_emitter.rb,
-# controllers_emitter.rb (the jobs page's controller, helper methods), concerns_emitter.rb
-# and jobs_emitter.rb.
+# controllers_emitter.rb (the jobs page's controller, helper methods),
+# concerns_emitter.rb, jobs_emitter.rb, association_emitter.rb,
+# assets_emitter.rb, locales_emitter.rb, test_data_emitter.rb and
+# components_emitter.rb.
 
 # What `spin run gen` writes into `gen/models/article.rb` for this table in
 # `db/schema.rb` (the {file:docs/api/README.md overview} has the rules for
@@ -873,7 +875,7 @@ class CommentRelation < Cybertrain::Relation
 end
 
 # What `spin run gen` writes into `gen/jobs.rb` for a job class in
-# app/jobs, here the spec's example:
+# app/jobs, here the example of {Cybertrain::Job::Base}:
 #
 #     class WelcomeJob < Cybertrain::Job::Base
 #       retry_on Cybertrain::Mailer::TimeoutError, wait: 60, attempts: 5
@@ -1115,11 +1117,11 @@ module Admin
   #
   # gen/controllers.rb adds the concern's callback methods to the class's
   # `run_callback` table (with the `with:` methods of `rate_limit` lines),
-  # writes {#rate_limit_key} and {#rate_limit_condition?} for their `by:`
+  # writes `rate_limit_key` and `rate_limit_condition?` for their `by:`
   # and `if:` / `unless:` methods, and adds the ivars its methods assign to
   # `view_assigns`; for the `helper_method` names of the class and of the
-  # concerns it includes, it writes {#helper_method?} and
-  # {#call_helper_method}; for the `layout` lines of the class and of its
+  # concerns it includes, it writes `helper_method?` and
+  # `call_helper_method`; for the `layout` lines of the class and of its
   # concerns' `included` blocks, it writes {#controller_layout} (here
   # AdminGate's `layout "admin", except: [:show]`, then the class's own
   # `layout :choose_layout` below the `include`, `choose_layout` being a
@@ -1150,7 +1152,7 @@ module Admin
     end
 
     # Whether a template's receiverless call `name` is one of this
-    # controller's helper methods (`helper_method :admin?`, spec 4.3);
+    # controller's helper methods (`helper_method :admin?`);
     # a name it does not declare goes to the parent's table.
     # @param name [String]
     # @return [Boolean]
@@ -1181,7 +1183,7 @@ module Admin
     end
 
     # The key of a `rate_limit ..., by: :account_key` line of this
-    # controller or of its concerns' `included` blocks (spec C-4): the
+    # controller or of its concerns' `included` blocks: the
     # method's value as a String; a name it does not know goes to the
     # parent's table. A `rate_limit` line's `with:` method is an arm of
     # `run_callback`.
@@ -1214,7 +1216,7 @@ module Gen
   # The `*_path` and `*_url` helpers `spin run gen` writes into
   # `gen/routes.rb`, one pair per named route in `config/routes.rb`. They are
   # included into every controller and resolved by name in templates. These
-  # are the ones examples/blog's routes generate:
+  # are the ones this part of examples/blog's routes generates:
   #
   #     Cybertrain::Routes.draw do
   #       root "articles#index"
@@ -1228,7 +1230,7 @@ module Gen
   # percent-encoded as one segment. nil raises `ArgumentError "missing route
   # parameter"`. `*_url` prepends {Cybertrain.url_root}.
   #
-  # Keywords after them land in the trailing `options` Hash (spec 2.6):
+  # Keywords after them land in the trailing `options` Hash:
   # `format:` adds an extension, `anchor:` a fragment, and every other key
   # becomes a query parameter, in the order given, escaped. A nil value
   # leaves its key out, an Array gives `key[]=v` per element, a Hash raises
@@ -1311,7 +1313,8 @@ module Gen
     def self.digest_path(logical); end
 
     # @return [String] `{"imports":{"application":"/assets/application-1a2b3c4d.js"}}`
-    #   (compact, pins in order, `</` written `</`)
+    #   (compact, pins in order, `</` written `\u003c/` so it can sit
+    #   inside a `<script>` element)
     # @api public
     def self.importmap_json; end
 
@@ -1362,20 +1365,26 @@ module Gen
   # (cybertrain/generator/test_data_emitter.rb) when the application has a
   # `test/` directory: the tables `cybertrain test` empties before each
   # test and the rows of `test/fixtures/*.yml` it then inserts
-  # ({Cybertrain::Test::Database}). The values below are for a
+  # (`Cybertrain::Test::Database`). The values below are for a
   # `test/fixtures/articles.yml` with the labels `one` and `two` (`id: 42`).
   # @api public
   module TestData
     # @return [Array<String>] every table of db/schema.rb
+    # @api public
     TABLES = %w[articles comments].freeze
     # @return [Array<String>] one INSERT per fixture row, a `?` for each
     #   created_at / updated_at the row leaves to the Clock
-    FIXTURE_SQL = ["INSERT INTO \"articles\" (\"id\", \"title\", \"created_at\", \"updated_at\") VALUES (980190962, 'First', ?, ?)"].freeze
+    # @api public
+    FIXTURE_SQL = ["INSERT INTO \"articles\" (\"id\", \"title\", \"created_at\", \"updated_at\") VALUES (980190962, 'First', ?, ?)",
+                   "INSERT INTO \"articles\" (\"id\", \"title\", \"created_at\", \"updated_at\") VALUES (42, 'Second', ?, ?)"].freeze
     # @return [Array<Integer>] how many `?` each statement binds
-    FIXTURE_TIMESTAMPS = [2].freeze
+    # @api public
+    FIXTURE_TIMESTAMPS = [2, 2].freeze
     # @return [Array<String>] the labels of test/fixtures/articles.yml
+    # @api public
     LABELS_articles = %w[one two].freeze
     # @return [Array<Integer>] their ids: Rails' `Zlib.crc32(label) % (2**30 - 1)`, or `id:`
+    # @api public
     IDS_articles = [980_190_962, 42].freeze
   end
 
@@ -1402,6 +1411,7 @@ end
 # (`def initialize(comment:)`), ViewComponent's `with_collection`. The
 # build arm of `Gen::Components.build` answers `render component:
 # "comment", collection: @comments` with the same collection.
+# @api public
 class CommentComponent < Cybertrain::Component
   # One CommentComponent per item, each built with the item as `comment:`
   # (and `comment_counter:` 0, 1, ... when `initialize` declares it).

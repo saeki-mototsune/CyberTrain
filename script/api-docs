@@ -1,6 +1,6 @@
 #!/bin/sh
 # Builds the API reference (YARD) into site/api/, which the Pages workflow
-# publishes as https://saeki-mototsune.github.io/CyberTrain/api/. What goes
+# publishes as https://www.cybertrain.dev/api/. What goes
 # in, and how, is .yardopts: the framework's methods marked `@api public`,
 # the generated-code descriptions in docs/api/stubs/, docs/api/README.md as
 # the front page. The guides (docs/guide/) are not part of it: script/guide-pages

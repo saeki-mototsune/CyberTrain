@@ -137,12 +137,15 @@ module Cybertrain
       @uploads.key?(key.to_s)
     end
 
+    # {.max_page} before any boot, which Runtime.reset! restores.
+    DEFAULT_MAX_PAGE = 10_000
+
     # The largest page number {#page_number} gives (and {Relation#page}
-    # accepts), `10000` by default. A module-level ivar with a literal
-    # default, the Multipart shape (spikes/NOTES.md rule 18):
+    # accepts), `10000` by default. A module-level ivar, the Multipart
+    # shape (spikes/NOTES.md rule 18):
     # Application#boot installs Config#max_page here, since Params belongs
     # to the HTTP layer and cannot read the Config itself.
-    @max_page = 10_000
+    @max_page = DEFAULT_MAX_PAGE
 
     # @return [Integer] the largest page number accepted (Config#max_page)
     # @api public
@@ -163,6 +166,8 @@ module Cybertrain
     # The most digits {Params.parse_int} reads: 18 stay below 2**63-1, past
     # which `String#to_i` raises RangeError under Spinel instead of
     # promoting to a Bignum (spikes/NOTES.md rule 25).
+    # @return [Integer]
+    # @api public
     MAX_INT_DIGITS = 18
 
     # A String value read as a decimal Integer, bounded: `default` when the
@@ -211,7 +216,7 @@ module Cybertrain
     end
 
     # A decimal Integer from text, or default when text is not an optional
-    # `-` and 1 to {MAX_INT_DIGITS} ASCII digits. Never raises: the length
+    # `-` and 1 to 18 ({MAX_INT_DIGITS}) ASCII digits. Never raises: the length
     # is checked before `to_i` (NOTES rule 25). Shared with Config.
     # @param text [String]
     # @param default [Integer]
@@ -452,47 +457,11 @@ module Cybertrain
       nil
     end
 
-    # other wins on conflicts: a scalar or list key present on other
-    # replaces this Params' value for it outright, and a nested Params
-    # present on both sides is merged recursively (so a key only the
-    # receiver's nested Params has survives). A key only this Params has,
-    # at any level, is left untouched. other is never mutated, and nothing
-    # of other's internal Arrays/Hashes/Params/Strings is aliased into self
-    # -- every scalar, list element and nested Params that crosses over is
-    # copied (a String is mutable, so `dst["q"] << "x"` must not change
-    # other), so an app that merges one tree into another gets two
-    # independent trees.
-    # The exception is an uploaded file, which is shared by reference: an
-    # UploadedFile is immutable, and copying its body would double the memory.
-    #
-    # Iterative: dsts[i] receives srcs[i], and each nested pair found while
-    # merging one level is appended to the two work lists. Levels are
-    # independent of each other, so visiting order does not matter.
-    def merge!(other)
-      dsts = [self]
-      srcs = [other]
-      i = 0
-      while i < dsts.length
-        dst = dsts[i]
-        src = srcs[i]
-        src.raw_values.keys.each { |k| dst.set_value(k, src.raw_values[k].dup) }
-        src.lists.keys.each { |k| dst.replace_list!(k, Params.copy_strings(src.lists[k])) }
-        src.children.keys.each do |k|
-          dsts << dst.child!(k)
-          srcs << src.children[k]
-        end
-        # Shared, not copied: an UploadedFile is immutable.
-        src.upload_map.keys.each { |k| dst.set_upload(k, src.upload_map[k]) }
-        i += 1
-      end
-      self
-    end
-
     # This level's String values as a Hash (not the lists or nested
     # parameters).
     #
     # Params has no `keys` method on purpose: it would share its name with Hash#keys in a
-    # class whose own code (to_h, inspect, merge!) calls Hash#keys on its
+    # class whose own code (to_h, inspect) calls Hash#keys on its
     # Hashes, the shape NOTES rule 51 records as mis-dispatching under
     # Spinel. Ask key? for one name, or to_h / inspect for the whole level.
     # @return [Hash{String => String}]
@@ -542,7 +511,7 @@ module Cybertrain
     end
 
     # A new Array holding a copy of each String of arr (Array#dup alone
-    # shares the elements). A while loop, no block. For merge!.
+    # shares the elements). A while loop, no block.
     def self.copy_strings(arr)
       copy = []
       i = 0
@@ -554,8 +523,6 @@ module Cybertrain
     end
 
     protected
-
-    attr_reader :lists, :children
 
     # #permit's work, on the filters as one Array (Symbols, Strings and
     # Hashes of key => Array). Recurses into a nested level once per
@@ -598,32 +565,6 @@ module Cybertrain
         i += 1
       end
       out
-    end
-
-    # NOTE: named raw_values, not values -- a reader called "values" collides
-    # with Hash#values: under Spinel the call resolves "values" against
-    # Hash#values instead of this reader (a "const char * -> sp_int" C build
-    # error, confirmed on 2026.09.12 in a recursive merge!). merge! is
-    # iterative, but a reader named like a Hash method on a class whose
-    # Hashes it reads asks for the same mis-resolution.
-    def raw_values
-      @values
-    end
-
-    # The uploads Hash, for merge!. Named upload_map rather than uploads so
-    # it cannot be mistaken for a Hash method (see raw_values).
-    def upload_map
-      @uploads
-    end
-
-    # Replaces the list under k with arr (an owned copy), evicting the other
-    # kinds. Used by merge!, which calls it on another Params.
-    def replace_list!(k, arr)
-      @values.delete(k)
-      @children.delete(k)
-      @uploads.delete(k)
-      @lists[k] = arr
-      nil
     end
   end
 end

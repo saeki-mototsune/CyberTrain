@@ -1,6 +1,8 @@
 #!/bin/sh
-# Regenerate the .expected snapshot of test programs that link SQLite/FFI and
-# therefore cannot run under CRuby (so "spin test --regen" is not an option).
+# Regenerate the .expected snapshot of test programs that link SQLite or other
+# FFI. Their snapshot must come from the compiled binary, and "spin test
+# --regen" writes it from a CRuby run (spikes/NOTES.md rule 23), which loads
+# such a program only with the preview's shim (script/preview-parity).
 # For each file it runs "spin test <file>" to build ./build/test/<name> (the
 # exit status is ignored: the current snapshot may well be stale), captures the
 # binary's stdout and stderr, which spin test compares together, into

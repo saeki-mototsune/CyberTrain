@@ -6,8 +6,8 @@ require "cybertrain/clock"
 # script/gate and script/test-shard read test/*.rb only.
 #
 # Sets Cybertrain::Clock.zone for the block and puts the zone found before
-# back when it ends, also when an assertion in it fails (pre-flight N17;
-# spikes/NOTES.md rule 103's save-yield-ensure in a module function).
+# back when it ends, also when an assertion in it fails
+# (spikes/NOTES.md rule 103's save-yield-ensure in a module function).
 module ZoneSwap
   def self.during(name)
     saved = Cybertrain::Clock.zone

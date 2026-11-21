@@ -1,5 +1,5 @@
-# assert_select and the HTML reader behind it (spec section 9.2,
-# acceptance 6): every selector form and option, each unsupported form's
+# assert_select and the HTML reader behind it (docs/design.md
+# D84): every selector form and option, each unsupported form's
 # message, malformed HTML failing with its byte offset, the excerpt, and
 # the reader on the HTML the framework writes and on odd but well-formed
 # HTML. CRuby-runnable: it requires the harness, the reader and

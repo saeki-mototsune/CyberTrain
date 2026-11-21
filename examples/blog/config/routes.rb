@@ -7,8 +7,8 @@ Cybertrain::Routes.draw do
   post "/setup", to: "setup#create"
   root "articles#index"
 
-  # Nested blocks take the mapper explicitly (Spinel cannot instance_eval
-  # them): `articles.resources` instead of Rails' bare `resources`.
+  # Nested blocks take the mapper explicitly: `articles.resources` instead
+  # of Rails' bare `resources`.
   resources :articles do |articles|
     articles.resources :comments, only: [:create, :destroy]
   end

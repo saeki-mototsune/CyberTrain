@@ -60,7 +60,7 @@ test "a POST without a token is rejected" do
   inner = RecordingApp.new
   csrf = Cybertrain::CsrfProtection.new(inner)
   ctx = build_ctx("POST")
-  Cybertrain::CsrfProtection.token_for(ctx.session)
+  ctx.session.csrf_token!
 
   csrf.call(ctx)
 
@@ -77,7 +77,7 @@ test "a POST with the right token in the urlencoded body passes" do
   inner = RecordingApp.new
   csrf = Cybertrain::CsrfProtection.new(inner)
   session = Cybertrain::Session.new
-  token = Cybertrain::CsrfProtection.token_for(session)
+  token = session.csrf_token!
   ctx = build_form_post("#{Cybertrain::CsrfProtection::PARAM}=#{token}")
   ctx.session = session
 
@@ -91,7 +91,7 @@ test "a POST with the right token in the query string passes" do
   inner = RecordingApp.new
   csrf = Cybertrain::CsrfProtection.new(inner)
   session = Cybertrain::Session.new
-  token = Cybertrain::CsrfProtection.token_for(session)
+  token = session.csrf_token!
   req = Cybertrain::Request.new("POST", "/posts?#{Cybertrain::CsrfProtection::PARAM}=#{token}", {}, "")
   ctx = Cybertrain::Context.new(req)
   ctx.session = session
@@ -108,7 +108,7 @@ test "a POST with the right token via the header passes" do
   req = Cybertrain::Request.new("POST", "/posts", {}, "")
   ctx = Cybertrain::Context.new(req)
   ctx.session = Cybertrain::Session.new
-  token = Cybertrain::CsrfProtection.token_for(ctx.session)
+  token = ctx.session.csrf_token!
   req.headers[Cybertrain::CsrfProtection::HEADER] = token
 
   csrf.call(ctx)
@@ -121,7 +121,7 @@ test "a POST with the wrong token in the body is rejected" do
   inner = RecordingApp.new
   csrf = Cybertrain::CsrfProtection.new(inner)
   session = Cybertrain::Session.new
-  Cybertrain::CsrfProtection.token_for(session)
+  session.csrf_token!
   ctx = build_form_post("#{Cybertrain::CsrfProtection::PARAM}=wrong-token")
   ctx.session = session
 
@@ -201,18 +201,18 @@ test "an empty prefix exempts nothing and the default is no exemption" do
   assert Cybertrain::CsrfProtection.new(inner, ["/hooks/", "/api/"]).exempt?("/api/1")
 end
 
-test "token_for mints a token once and reuses it" do
+test "csrf_token! mints a token once and reuses it" do
   session = Cybertrain::Session.new
-  t1 = Cybertrain::CsrfProtection.token_for(session)
-  t2 = Cybertrain::CsrfProtection.token_for(session)
+  t1 = session.csrf_token!
+  t2 = session.csrf_token!
   assert_equal t1, t2
   refute t1.empty?
 end
 
-test "token_for marks the session changed and stores the token under TOKEN_KEY" do
+test "csrf_token! marks the session changed and stores the token under TOKEN_KEY" do
   session = Cybertrain::Session.new
   refute session.changed?
-  token = Cybertrain::CsrfProtection.token_for(session)
+  token = session.csrf_token!
   assert session.changed?
   assert_equal token, session[Cybertrain::CsrfProtection::TOKEN_KEY]
 end

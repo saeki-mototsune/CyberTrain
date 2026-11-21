@@ -1,6 +1,6 @@
 require "test_helper"
 
-# Mail in tests (spec section 10): stored in Mailer.deliveries, counted by
+# Mail in tests: stored in Mailer.deliveries, counted by
 # assert_emails, and jobs run inline by perform_enqueued_jobs with a block.
 class NewsMailerTest < ApplicationTest
   test "mail is stored, not sent" do

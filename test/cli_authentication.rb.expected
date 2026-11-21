@@ -2326,7 +2326,7 @@ next:
   cybertrain server      # then open the /setup?token=... link it prints, on this machine (or: spin run cclub -- user EMAIL)
   cybertrain test        # test/controllers/sessions_controller_test.rb and the other authentication tests among the others
   # password reset and confirmation mails: set CCLUB_BASE_URL and CYBERTRAIN_SMTP_* (config/app.rb, Cybertrain::Config)
-ok   --confirmable confirms the users nothing mails: the user command's and /setup's (pre-flight finding 6)
+ok   --confirmable confirms the users nothing mails: the user command's and /setup's
 ok   without --confirmable none of them
 ok   --confirmable's screens and mails go through t, with keys the bundled dictionaries have
 ok   --confirmable: the generated test

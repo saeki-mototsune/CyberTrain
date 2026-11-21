@@ -1,8 +1,9 @@
+require "cybertrain/generator/source_text"
 require "cybertrain/generator/component_scan"
 
 module Cybertrain
   module Gen
-    # Writes gen/components.rb (spec 3.2): per component class its
+    # Writes gen/components.rb (docs/design.md D38): per component class its
     # view_assigns, call_view_method / view_method? case tables,
     # component_name and component_template, then Gen::Components.build,
     # the `case` from a template's component name to the class's `new`
@@ -57,23 +58,7 @@ module Cybertrain
         superclass = info.superclass_name
         superclass = "::#{superclass}" unless superclass.start_with?("::")
         body = plain_class_source(info, parts.last.to_s, superclass)
-        out = +""
-        depth = 0
-        parts.each_with_index do |mod, i|
-          next if i == parts.size - 1
-
-          out << ("  " * depth) << "module #{mod}\n"
-          depth += 1
-        end
-        body.each_line do |line|
-          out << ("  " * depth) unless line == "\n"
-          out << line
-        end
-        while depth > 0
-          depth -= 1
-          out << ("  " * depth) << "end\n"
-        end
-        out
+        SourceText.wrap_in_scopes(info.class_name, Array.new(0) { "" }, body)
       end
 
       def self.plain_class_source(info, class_name, superclass_name)

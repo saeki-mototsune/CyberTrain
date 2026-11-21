@@ -29,8 +29,9 @@
 # the create_table migration itself, so there is no second migration.
 #
 # Loaded by cybertrain/cli.rb together with scaffold.rb (whose Scaffold
-# and InvalidArgument it uses) and authentication.rb (indent and
-# insert_after_line).
+# and InvalidArgument it uses, and through it source_edit.rb's text
+# helpers) and authentication.rb (included?, include_line? and
+# test_sign_in_lines: what an application with authentication needs).
 require "cybertrain/generator/inflector"
 require "cybertrain/ident"
 require "cybertrain/cli/templates"
@@ -90,9 +91,7 @@ module Cybertrain
         spec = AttachmentSpec.new(model, field, any)
         check_names!(spec)
 
-        routes_path = File.join(root, "config/routes.rb")
-        raise InvalidArgument, "#{routes_path} not found: run this inside a cybertrain app" unless File.exist?(routes_path)
-        raise InvalidArgument, "#{routes_path} has no `#{Scaffold::DRAW_LINE}` line" if File.read(routes_path).index(Scaffold::DRAW_LINE).nil?
+        Scaffold.require_routes!(root)
 
         model_path = File.join(root, model_file(spec))
         raise InvalidArgument, "#{model_path} not found: generate the model first (cybertrain generate scaffold #{spec.singular} ...)" unless File.exist?(model_path)
@@ -268,7 +267,7 @@ module Cybertrain
       def self.check_names!(spec)
         field = spec.field
         raise InvalidArgument, "bad model name '#{spec.singular}'" unless Templates.identifier?(spec.singular)
-        raise InvalidArgument, "bad field name '#{field}' (lowercase letters, digits and _, starting with a letter)" unless field_name?(field)
+        raise InvalidArgument, "bad field name '#{field}' (lowercase letters, digits and _, starting with a letter)" unless Templates.identifier?(field)
         if Templates.attachment_action_clash?(field, spec.singular)
           raise InvalidArgument, "'#{field}' would redefine a method of #{spec.plural_class}Controller (the download action is `def #{field}`); pick another field name"
         end
@@ -278,31 +277,11 @@ module Cybertrain
         nil
       end
 
-      # /\A[a-z][a-z0-9_]*\z/
-      def self.field_name?(name)
-        return false if name.empty?
-
-        i = 0
-        while i < name.bytesize
-          b = name.getbyte(i)
-          lower = b >= 97 && b <= 122
-          digit_or_underscore = (b >= 48 && b <= 57) || b == 95
-          return false unless lower || (i > 0 && digit_or_underscore)
-
-          i += 1
-        end
-        true
-      end
-
       # ---- the migration ------------------------------------------------
 
       # db/migrate/<version>_add_cover_to_posts.rb, or the existing one.
       def self.migration_path(root, spec)
-        suffix = "_add_#{spec.field}_to_#{spec.plural}.rb"
-        existing = Dir.glob(File.join(root, "db/migrate/*#{suffix}")).sort
-        return "db/migrate/#{File.basename(existing[0])}" unless existing.empty?
-
-        "db/migrate/#{Scaffold.next_version(root, Scaffold.timestamp)}#{suffix}"
+        Scaffold.migration_file(root, "_add_#{spec.field}_to_#{spec.plural}.rb")
       end
 
       # `default:` is SQL literal text (migration.rb), hence "''" and "0".
@@ -336,11 +315,11 @@ module Cybertrain
         at = line_end(source, line_start(source, "class #{spec.class_name}", "class"))
         if at < 0
           puts "skip #{path} (no `class #{spec.class_name}` line): add this inside the class:"
-          puts Authentication.indent(model_block(spec))
+          puts SourceEdit.indent(model_block(spec))
           return false
         end
 
-        File.write(full, insert_at(source, at, Authentication.indent(model_block(spec)) + "\n"))
+        File.write(full, insert_at(source, at, SourceEdit.indent(model_block(spec)) + "\n"))
         puts "insert #{path} (attachment #{spec.field})"
         true
       end
@@ -365,12 +344,12 @@ module Cybertrain
         at = line_end(source, line_start(source, controller_line(spec), "start"))
         if at < 0
           puts "skip #{path} (no `#{controller_line(spec)}` line): add this to the controller:"
-          puts Authentication.indent(action_block(spec, false))
+          puts SourceEdit.indent(action_block(spec, false))
           return false
         end
 
         source = add_to_only_list(source, spec, spec.field) if coverage == "add"
-        block = Authentication.indent(action_block(spec, scoped))
+        block = SourceEdit.indent(action_block(spec, scoped))
         # Below the before_action line when there is one, so that it stays
         # the first thing in the class. The block ends in a blank line; it
         # moves to the front, since that line is usually followed by one.
@@ -608,7 +587,7 @@ module Cybertrain
           return false
         end
 
-        File.write(routes_path, Authentication.insert_after_line(source, Scaffold::DRAW_LINE, Authentication.indent(line + "\n")))
+        File.write(routes_path, SourceEdit.insert_after_line(source, Scaffold::DRAW_LINE, SourceEdit.indent(line + "\n")))
         puts "route #{spec.singular}_#{spec.field} (GET /#{spec.plural}/:id/#{spec.field})"
         true
       end
@@ -1087,7 +1066,7 @@ module Cybertrain
         body = body.sub("<<fields_hash>>", fields_hash(root, spec, fields))
         text = TEST_HEAD.sub("<<sign_in>>", auth ? Authentication.test_sign_in_lines : "")
         text = text.sub("<<TestClass>>", test_class(spec))
-        text += Authentication.margin(body, 2)
+        text += SourceEdit.margin(body, 2)
         text += "end\n"
         spec.expand(text)
       end

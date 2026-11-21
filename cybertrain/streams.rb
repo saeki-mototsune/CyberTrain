@@ -1,6 +1,6 @@
 # cybertrain/streams: Turbo Streams, an optional subsystem (require
 # "cybertrain/streams" in bin/NAME.rb, or require "cybertrain";
-# docs/superpowers/specs/2026-11-13-optional-subsystems-design.md):
+# docs/design.md D85):
 #
 #   Stream, its broadcasts and its message table   cybertrain/stream.rb
 #   the endpoint (SSE and WebSocket), its poller   cybertrain/stream/*.rb

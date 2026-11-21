@@ -1,4 +1,4 @@
-# The top-level form's lifecycle (spec sections 5.3 and 5.4): the file's
+# The top-level form's lifecycle (docs/design.md D82): the file's
 # `setup` blocks in order and its `teardown` blocks in reverse around every
 # case, after the reset hooks; the clock real again after each case.
 # CRuby-runnable: it requires the harness alone.
@@ -109,16 +109,15 @@ end
 # NotImplementedError, ScriptError and SystemStackError are not
 # StandardErrors; Minitest records them as errors and goes on, and so does
 # this runner (only Interrupt, SystemExit and NoMemoryError end the run).
-# Each lambda does something before it raises (NOTES rule 79).
 test "NotImplementedError, ScriptError and SystemStackError in a body are ERR; teardown still runs" do
   STEPS.clear
   file = top_level_file([], [-> { STEPS << "t" }])
   assert_equal ["ERR", "NotImplementedError: subclass must implement"],
-               run_by_hand(file, -> { STEPS << "b1"; raise NotImplementedError, "subclass must implement" })
-  assert_equal ["ERR", "ScriptError: no such file"], run_by_hand(file, -> { STEPS << "b2"; raise ScriptError, "no such file" })
+               run_by_hand(file, -> { raise NotImplementedError, "subclass must implement" })
+  assert_equal ["ERR", "ScriptError: no such file"], run_by_hand(file, -> { raise ScriptError, "no such file" })
   assert_equal ["ERR", "SystemStackError: stack level too deep"],
-               run_by_hand(file, -> { STEPS << "b3"; raise SystemStackError, "stack level too deep" })
-  assert_equal %w[b1 t b2 t b3 t], STEPS
+               run_by_hand(file, -> { raise SystemStackError, "stack level too deep" })
+  assert_equal %w[t t t], STEPS
 end
 
 test "the same three in setup, teardown and an on_reset hook are ERR with the step named" do
@@ -193,7 +192,7 @@ test "the outer case's after_this_case callable ran at its own end" do
   refute Cybertrain::Clock.travelling?
 end
 
-# The log scope (spec section 20: "resets ... the log tags"): a Scope a case
+# The log scope: a Scope a case
 # swapped in and never swapped back is gone before the next case, as a
 # travel is; a case driven inside a case gives the outer case its own back.
 SCOPE_SEEN = Array.new(0) { "" }

@@ -1,5 +1,5 @@
 ---
-source_sha256: 4d2f34b5565d3b155fb42b317bb2b8548de7e76aeab9e9f2f11e8cf44f6bd971
+source_sha256: 0ac92df8f2d3d6ae1a67b27813f027a53e1ada3527cc73bb34c9baad2db17ab7
 ---
 # 实时：推送到浏览器的流
 
@@ -18,13 +18,15 @@ source_sha256: 4d2f34b5565d3b155fb42b317bb2b8548de7e76aeab9e9f2f11e8cf44f6bd971
 
 ## Turbo Streams
 
-[Turbo](https://turbo.hotwired.dev) 根据 `<turbo-stream action="append" target="comments">` 元素更新页面，就像 Rails 8 应用那样。在布局中加载 Turbo（没有资源管道：使用 CDN 或放在 `public/` 中的副本），然后用 `turbo_stream_from` 让页面订阅。广播、流端点和流辅助方法需要在 `bin/<app>.rb` 和 `bin/db.rb` 中写 `require "cybertrain/streams"`；缺少它时，`spin run gen` 会停在第一个 `turbo_stream_from` 处并指出那一行（[子系统](how-it-works.md#subsystems)）：
+[Turbo](https://turbo.hotwired.dev) 根据 `<turbo-stream action="append" target="comments">` 元素更新页面，就像 Rails 8 应用那样。通过 import map 加载 Turbo：取消 `config/importmap.rb` 中 `@hotwired/turbo` 的 pin 和 `app/javascript/application.js` 中 `import "@hotwired/turbo"` 的注释，这两行都是 `cybertrain new` 写出的（[Import map](assets.md#the-import-map)），然后用 `turbo_stream_from` 让页面订阅。广播、流端点和流辅助方法需要在 `bin/<app>.rb` 和 `bin/db.rb` 中写 `require "cybertrain/streams"`；缺少它时，`spin run gen` 会停在第一个 `turbo_stream_from` 处并指出那一行（[子系统](how-it-works.md#subsystems)）：
 
-```erb app/views/layouts/application.html.erb（节选）
-<head>
-  <%= csrf_meta_tags %>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8/dist/turbo.es2017-esm.js"></script>
-</head>
+```ruby config/importmap.rb
+pin "application"
+pin "@hotwired/turbo", to: "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js"
+```
+
+```javascript app/javascript/application.js
+import "@hotwired/turbo"
 ```
 
 ```erb app/views/articles/show.html.erb（节选）
@@ -58,19 +60,20 @@ Turbo 还会把链接和表单变成 fetch 请求（Turbo Drive）。scaffold �
 
 ### 用 Turbo Stream 响应表单
 
-Turbo 提交的表单接受 `text/vnd.turbo-stream.html`。要用流而不是重定向来响应，就自己渲染这个元素；`Cybertrain::Turbo` 负责构建它们（`replace`、`update`、`append`、`prepend`、`before`、`after`、`remove`、`refresh`）：
+Turbo 提交的表单接受 `text/vnd.turbo-stream.html`，所以请求的格式是 `:turbo_stream`。要用流而不是重定向来响应，就像在 Rails 中那样列出这个格式（[格式与 `respond_to`](requests.md#formats-and-respond_to)）：
 
 ```ruby
 def destroy
   @comment = Comment.where(article_id: @article.id).find(params[:id])
   @comment.destroy
-  if request.header("accept").to_s.include?("text/vnd.turbo-stream.html")
-    render html: Cybertrain::Turbo.remove(@comment), content_type: "text/vnd.turbo-stream.html"
-  else
-    redirect_to article_path(@article), status: :see_other
+  respond_to do |format|
+    format.turbo_stream { render turbo_stream: turbo_stream.remove(@comment) }
+    format.html { redirect_to article_path(@article), status: :see_other }
   end
 end
 ```
+
+`turbo_stream` 构建 `replace`、`update`、`append`、`prepend`、`before`、`after`（一个目标，加上带 `locals:` 的 `partial:` 或 `html:` 之一）和 `remove`。不带块的 `format.turbo_stream` 会渲染 `<action>.turbo_stream.erb`，不套布局，在那里同一个构建器是一个辅助方法（`<%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>`，出自 examples/blog 的 `create.turbo_stream.erb`）。在控制器和模板之外，由 `Cybertrain::Turbo` 构建这些元素：同样的七种，再加上 `refresh`。
 
 ### 从作业、定时任务或数据订阅中广播
 
@@ -141,7 +144,7 @@ partial 由 `Cybertrain::Views.render_partial` 渲染，它在没有请求的情
 
 ## 从动作中流式输出
 
-动作可以让自己的响应保持打开，就像 Rails 的 `ActionController::Live` 那样：`stream` 在动作之后、在连接的线程上运行这个块，并把套接字作为 `Cybertrain::Sink` 交给它。
+动作可以让自己的响应保持打开，就像 Rails 的 `ActionController::Live` 那样：`stream` 在动作之后、在连接的线程上运行这个块，并把套接字作为 `Cybertrain::Sink` 交给它。`stream` 和 `Sink` 在核心之中；示例用到的 `Cybertrain::SSE` 随 `require "cybertrain/streams"` 加载，没有这一行的应用要自己 require `cybertrain/http/sse`。
 
 ```ruby app/controllers/reports_controller.rb（节选）
 def progress
@@ -158,11 +161,10 @@ end
 
 ## 签名的流名称
 
-页面只有持有指明某个流的令牌，才能读取该流。令牌由流名称和一个 HMAC-SHA256 签名组成，签名的密钥是从 `secret_key_base` 专为流派生出来的（如同 Rails 的 `turbo/signed_stream_verifier_key`），因此令牌绝不会是有效的会话 cookie；端点检查签名，既不读取会话，也不读取数据库。这就是 Turbo 的模型：能够渲染该页面的人就能读取它的流。令牌不会过期；更改 `secret_key_base` 会使所有令牌失效，跨越这次部署仍然打开的页面在重新加载之前收不到更新（`EventSource` 把 403 视为最终结果）。
+页面只有持有指明某个流的令牌，才能读取该流。令牌由流名称和一个 HMAC-SHA256 签名组成，签名的密钥是从 `secret_key_base` 专为流派生出来的（如同 Rails 的 `turbo/signed_stream_verifier_key`），因此令牌绝不会是有效的会话 cookie；端点检查签名，既不读取会话，也不读取数据库。这就是 Turbo 的模型：能够渲染该页面的人就能读取它的流。令牌不会过期；更改 `secret_key_base`（`CYBERTRAIN_SECRET_KEY_BASE`）会使所有令牌连同所有会话一起失效，跨越这次部署仍然打开的页面在重新加载之前收不到更新（`EventSource` 把 403 视为最终结果）。
 
 <!-- list: points -->
 - 专属于某个用户的流，是以该用户的记录命名的流 `turbo_stream_from @user`（`"users:7"`），只在该用户的页面上渲染。任何拿到该令牌的人，只要密钥不变，都能读取这个流。
-- 令牌不会过期。更改 `CYBERTRAIN_SECRET_KEY_BASE` 会使所有令牌（以及所有会话）失效。
 - 令牌放在 URL 中传递，因此反向代理的访问日志会记录它。框架自己的请求日志把它写成 `[FILTERED]`；请为 `/cybertrain/stream` 关闭代理的日志，或者让这些日志与流本身同样保密。
 - 无效或缺失的令牌在 SSE 下是 403，在 WebSocket 下则是握手之后立即以 1008 关闭。
 - 名称为 1 到 200 字节，不含控制字符和逗号；一个令牌最多携带 16 个名称，一个连接最多 64 个。

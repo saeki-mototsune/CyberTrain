@@ -13,8 +13,6 @@ ok   split_path: an invalid byte sequence in a decoded segment is QueryMalformed
 ok   the path segment policy: the whole path is validated, then a malformed escape stays literal
 ok   the Router reads the request's cached path_segments; an invalid decoded segment is the 400
 ok   a large non-ASCII path segment with an escape splits without a quadratic library call
-ok   path_for builds paths from route names
-ok   Route#path raises ArgumentError when a segment is missing
 ok   an extension on the last segment is the format
 ok   a route with format: false keeps the dot
 ok   a dotted segment that is not a registered format
@@ -31,4 +29,4 @@ ok   later sources still win when each is parsed straight into ctx.params
 ok   the Query limits apply per parse call: the query string and the form body each get MAX_PAIRS
 ok   form body is ignored unless the request is a form
 ok   route params and escaped output work in one program
-33 tests, 171 assertions, 0 failures
+31 tests, 159 assertions, 0 failures

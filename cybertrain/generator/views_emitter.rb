@@ -28,7 +28,7 @@ module Cybertrain
         dir = "#{root}/app/views"
         files = view_files(dir)
         # Component templates (app/components/**/*.erb) under the
-        # "__components/" names the engine reads them by (spec 3.2;
+        # "__components/" names the engine reads them by (docs/design.md D38;
         # Template::Engine::COMPONENTS_PREFIX), which no view path has: a
         # view under app/views/components/ keeps its own key.
         components_dir = "#{root}/app/components"

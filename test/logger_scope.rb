@@ -3,15 +3,14 @@ require "cybertrain/logger"
 require "cybertrain/test"
 require_relative "support/log_capture"
 
-# The per-thread log scope (spec sections 12.2 "thread-local" and 12.4,
-# plan D5): one Logger::Scope in the Thread.current[Logger::SCOPE_KEY]
-# slot, its request id and tags on every line logged meanwhile, and
+# The per-thread log scope (docs/design.md D86): one Logger::Scope in the
+# Thread.current[Logger::SCOPE_KEY] slot, its request id and tags on every line logged meanwhile, and
 # `Cybertrain.logger.tagged`. Meant to be compiled (`spin test
 # test/logger_scope.rb`), where the threads are real; it also runs under
-# CRuby. Restores go through plain helpers' `ensure` (pre-flight ruling
-# G4); threads are started through methods (spikes/NOTES.md rule 21) and
-# meet through Queue waits, not timing (ruling S4: `sleep 0` does not
-# switch threads).
+# CRuby. Restores go through plain helpers' `ensure` (spikes/NOTES.md rules
+# 32 and 45); threads are started through methods (spikes/NOTES.md rule 21) and
+# meet through Queue waits, not timing (`sleep 0` does not switch
+# threads, rule 114).
 
 NOON = Time.utc(2026, 11, 11, 12)
 
@@ -142,7 +141,7 @@ test "NO_SCOPE, shared by every thread, is never written: scope_where= on it doe
   assert_equal %(id="" where="" no_scope=true), read_on_thread
 end
 
-# NO_SCOPE's containers are frozen (review I1, ruling S1): a write through
+# NO_SCOPE's containers are frozen: a write through
 # `scope_tags` or `scope_context`, or through the context a `with_tags` copy
 # shares with it, raises FrozenError (compiled too) instead of changing the
 # Scope every thread without one of its own shares.
@@ -171,7 +170,7 @@ test "with_tags is a copy with the tags appended and the request id's place kept
   assert_equal 0, Cybertrain::Logger::NO_SCOPE.scope_tags.size
 end
 
-# Concurrent `tagged` (ruling S3): each thread swaps in its own Scope and
+# Concurrent `tagged`: each thread swaps in its own Scope and
 # tags it; inside its block it posts its number to the other thread's
 # inbox and waits (up to 5 s) on its own for the other's, so both are
 # inside their blocks at once whatever the timing (no sleep needed: a
@@ -235,7 +234,7 @@ test "tagged on concurrent threads: each sees its own tags, and a raising block 
   assert no_scope?
 end
 
-# Tags and messages of other encodings (Task 2's review, I2): a text line
+# Tags and messages of other encodings: a text line
 # is built from the bytes, so a UTF-8 tag beside a binary or ISO-8859-1
 # message never raises into the caller (Encoding::CompatibilityError under
 # CRuby); the bytes are written as they are.
@@ -278,7 +277,7 @@ test "JSON lines with a non-ASCII tag and a binary or ISO-8859-1 message stay va
                sink.string
 end
 
-# A write that fails (Task 2's review, M3: a closed io, a dead pipe) is
+# A write that fails (a closed io, a dead pipe) is
 # dropped: logging never raises into its caller, and the lock is free.
 test "a logger whose io is closed drops the line and does not raise; the next logger still writes" do
   closed = StringIO.new
@@ -289,7 +288,7 @@ test "a logger whose io is closed drops the line and does not raise; the next lo
   assert sink.string.end_with?(" INFO kept\n")
 end
 
-# LogCapture.entries reads a line's time by its shape (Task 2's review, M8),
+# LogCapture.entries reads a line's time by its shape,
 # so a continuation line whose first word ends in "Z" stays as it is.
 test "LogCapture.entries drops only a real time and the tags" do
   text = "fooZ ERROR x\n2026-11-11T12:00:00.000Z ERROR [r1] [billing] y\n2026-11-11T12:00:00.000 ERROR z"

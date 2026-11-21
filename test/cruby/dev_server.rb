@@ -699,7 +699,7 @@ test "a leftover child of this application is stopped; another process is left a
   end
 end
 
-# P14 by whole arguments: a process is this application's child only when it
+# Identity by whole arguments: a process is this application's child only when it
 # runs this application's bin/app.rb (a relative path resolved against the
 # process's directory) or is its build/bin/app. Each case is a live process
 # named by child.pid; startup stops it or leaves it alone.
@@ -811,7 +811,7 @@ test "only this application's `spin build NAME` is taken for a leftover build" d
 end
 
 # A build left by a killed supervisor that has ended before the next start
-# wrote its binary with nobody to stamp it (P25): build.pid's own time is
+# wrote its binary with nobody to stamp it: build.pid's own time is
 # its launch, and the binary goes back to it, so that a save made while it
 # ran is newer than the binary and the first build compiles it.
 test "a build left by a killed supervisor that has since ended: the binary goes back to its launch, never forward" do
@@ -1400,10 +1400,10 @@ def gen_pids(root)
   File.read(File.join(root, "gen-pids")).split.map(&:to_i)
 end
 
-# R32: gen runs on the driver's thread, so a TERM while it hangs must reach
+# gen runs on the driver's thread, so a TERM while it hangs must reach
 # it: the supervisor stops gen's group (TERM, the grace, KILL), starts
 # nothing, stops the child it had and exits 0 within the grace and a
-# margin, the files of P2 removed.
+# margin, the supervisor's files removed.
 test "TERM while a round's gen runs: gen's group and the child are stopped, exit 0, the files removed" do
   [false, true].each do |stubborn|
     with_driver_app do |root, start|
@@ -1432,7 +1432,7 @@ end
 # The start-up probes run before `serve` traps the signals: a TERM raises
 # in them, their group is stopped, and the supervisor ends by TERM, as it
 # does during the probe of the children's Ruby. No child was started and
-# no file of P2 written.
+# no file of the supervisor's written.
 STARTUP_HANG = <<~RUBY
   stubborn = File.exist?("stubborn")
   trap(:TERM) {} if stubborn
@@ -1487,7 +1487,7 @@ test "a second signal during a start-up probe's grace still kills the probe's gr
   end
 end
 
-# R21: a supervisor killed outright leaves its build running in a group of
+# A supervisor killed outright leaves its build running in a group of
 # its own; the next one finds it in build.pid and stops the whole group
 # before it starts a build of its own.
 test "a build left by a killed supervisor is stopped, grandchild included" do

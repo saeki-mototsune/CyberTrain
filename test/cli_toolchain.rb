@@ -1,6 +1,7 @@
 require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/cli/toolchain"
+require_relative "support/file_tree"
 
 # Toolchain without a network, a compiler or a real Spinel: the version
 # parsing, the managed layout under CYBERTRAIN_HOME, the lock, and how a
@@ -20,20 +21,11 @@ ENV["CC"] = ""
 TAG = Cybertrain::SPINEL_TAG
 Toolchain = Cybertrain::CLI::Toolchain
 
-def rm_tree(path)
-  if File.directory?(path)
-    Dir.children(path).each { |child| rm_tree(File.join(path, child)) }
-    Dir.rmdir(path)
-  else
-    File.delete(path)
-  end
-end
-
 at_exit do
   ENV["PATH"] = ORIGINAL_PATH
   ENV["HOME"] = ORIGINAL_HOME
   Dir.chdir("/")
-  rm_tree(TMP)
+  FileTree.remove(TMP)
 end
 
 # Pure Ruby: some tests below empty PATH, so /bin/mkdir cannot be relied on.
@@ -344,7 +336,7 @@ test "the build lock is a directory holding the builder's pid, taken atomically"
   File.write(File.join(lock, "pid"), "999999999")
   Toolchain.release_lock
   assert File.directory?(lock)
-  rm_tree(lock)
+  FileTree.remove(lock)
   ENV["CYBERTRAIN_HOME"] = ""
 end
 
@@ -358,7 +350,7 @@ test "a lock is removed only by the one process holding its reclaim marker" do
   assert Toolchain.lock_stale?
   refute Toolchain.reclaim_stale_lock
   assert File.directory?(File.join(lock, "reclaim"))
-  rm_tree(lock)
+  FileTree.remove(lock)
   # ... an unmarked stale one is taken over, through the marker ...
   mkdir_p(lock)
   File.write(File.join(lock, "pid"), "999999999")
@@ -397,7 +389,7 @@ test "a lock is removed only by the one process holding its reclaim marker" do
   assert Toolchain.holding_lock?
   File.write(File.join(lock, "pid"), "999999999")
   refute Toolchain.holding_lock?
-  rm_tree(lock)
+  FileTree.remove(lock)
   ENV["CYBERTRAIN_HOME"] = ""
 end
 

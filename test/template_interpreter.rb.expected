@@ -14,6 +14,7 @@ ok   assignment
 ok   a local first assigned inside a block is local to the block
 ok   a Ruby comment filling a code tag is ignored
 ok   Time methods (Time before Array)
+ok   a Time takes no Array arm in each, [], zip, flatten and blank?
 ok   String, Integer, Float, Array and Hash methods
 ok   safe navigation
 ok   Model dispatch: read_attribute, read_association, call_view_method
@@ -29,4 +30,4 @@ ok   helpers get args, kwargs and blocks
 ok   escaping vs raw
 ok   nil prints nothing
 ok   yield reads the layout content slots
-31 tests, 117 assertions, 0 failures
+32 tests, 128 assertions, 0 failures

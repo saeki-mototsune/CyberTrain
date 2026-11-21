@@ -1,5 +1,5 @@
-# cybertrain/test/mail -- the mail assertions (spec section 10, plan
-# decision D13): assert_emails and assert_no_emails count the messages
+# cybertrain/test/mail -- the mail assertions (docs/design.md
+# D84): assert_emails and assert_no_emails count the messages
 # Mailer.deliveries gained, which in the test environment is where every
 # delivery goes (Config#mail_delivery_method :test). As in Rails, mail
 # queued with deliver_later in the block is delivered (its "cybertrain

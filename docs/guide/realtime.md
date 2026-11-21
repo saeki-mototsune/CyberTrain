@@ -34,18 +34,23 @@ endpoint. `config.stream_path = ""` turns the whole feature off.
 
 [Turbo](https://turbo.hotwired.dev) updates a page from
 `<turbo-stream action="append" target="comments">` elements, the way Rails 8
-applications do. Load Turbo in the layout (there is no asset pipeline: a CDN
-or a copy in `public/`), and subscribe a page with `turbo_stream_from`.
+applications do. Load Turbo through the import map: uncomment the
+`@hotwired/turbo` pin in `config/importmap.rb` and `import "@hotwired/turbo"`
+in `app/javascript/application.js`, both written by `cybertrain new`
+([The import map](assets.md#the-import-map)), and subscribe a page with
+`turbo_stream_from`.
 Broadcasts, the stream endpoint and the stream helpers need
 `require "cybertrain/streams"` in `bin/<app>.rb` and `bin/db.rb`; without
 it `spin run gen` stops at the first `turbo_stream_from` and names the
 line ([Subsystems](how-it-works.md#subsystems)):
 
-```erb app/views/layouts/application.html.erb (excerpt)
-<head>
-  <%= csrf_meta_tags %>
-  <script type="module" src="https://cdn.jsdelivr.net/npm/@hotwired/turbo@8/dist/turbo.es2017-esm.js"></script>
-</head>
+```ruby config/importmap.rb
+pin "application"
+pin "@hotwired/turbo", to: "https://cdn.jsdelivr.net/npm/@hotwired/turbo@8.0.12/dist/turbo.es2017-esm.js"
+```
+
+```javascript app/javascript/application.js
+import "@hotwired/turbo"
 ```
 
 ```erb app/views/articles/show.html.erb (excerpt)
@@ -98,22 +103,29 @@ successful form, and 422 with the form again after a failed one.
 
 ### Answering a form with a Turbo Stream
 
-A form Turbo submits accepts `text/vnd.turbo-stream.html`. To answer with a
-stream instead of a redirect, render the element yourself;
-`Cybertrain::Turbo` builds them (`replace`, `update`, `append`, `prepend`,
-`before`, `after`, `remove`, `refresh`):
+A form Turbo submits accepts `text/vnd.turbo-stream.html`, so the request's
+format is `:turbo_stream`. To answer with a stream instead of a redirect,
+list the format, as in Rails
+([Formats and `respond_to`](requests.md#formats-and-respond_to)):
 
 ```ruby
 def destroy
   @comment = Comment.where(article_id: @article.id).find(params[:id])
   @comment.destroy
-  if request.header("accept").to_s.include?("text/vnd.turbo-stream.html")
-    render html: Cybertrain::Turbo.remove(@comment), content_type: "text/vnd.turbo-stream.html"
-  else
-    redirect_to article_path(@article), status: :see_other
+  respond_to do |format|
+    format.turbo_stream { render turbo_stream: turbo_stream.remove(@comment) }
+    format.html { redirect_to article_path(@article), status: :see_other }
   end
 end
 ```
+
+`turbo_stream` builds `replace`, `update`, `append`, `prepend`, `before` and
+`after` (a target and one of `partial:` with `locals:` or `html:`) and
+`remove`. A `format.turbo_stream` without a block renders
+`<action>.turbo_stream.erb`, without the layout, and there the same builder
+is a helper (`<%= turbo_stream.append "comments", html: render(component: "comment", comment: @comment) %>`, from examples/blog's `create.turbo_stream.erb`). Outside a
+controller or a template, `Cybertrain::Turbo` builds the elements: the same
+seven and `refresh`.
 
 ### Broadcasting from a job, a task or a feed
 
@@ -218,7 +230,10 @@ page fell too far behind.
 
 An action can keep its own response open, as Rails' `ActionController::Live`
 does: `stream` runs the block after the action, on the connection's thread,
-and gives it the socket as a `Cybertrain::Sink`.
+and gives it the socket as a `Cybertrain::Sink`. `stream` and the `Sink` are
+in the core; `Cybertrain::SSE`, which the example uses, comes with
+`require "cybertrain/streams"`, and an application without that line requires
+`cybertrain/http/sse` itself.
 
 ```ruby app/controllers/reports_controller.rb (excerpt)
 def progress
@@ -246,17 +261,16 @@ stream names and an HMAC-SHA256 signature made with a key derived from
 `turbo/signed_stream_verifier_key`), so a token is never a valid session
 cookie; the endpoint checks the signature and reads neither the session nor the
 database. That is Turbo's model: whoever could render the page could read
-its streams. Tokens do not expire; changing `secret_key_base` invalidates
-every one, and a page open across that deploy stops receiving (an
-`EventSource` treats the 403 as final) until it is reloaded.
+its streams. Tokens do not expire; changing `secret_key_base`
+(`CYBERTRAIN_SECRET_KEY_BASE`) invalidates every one, and every session with
+them, and a page open across that deploy stops receiving (an `EventSource`
+treats the 403 as final) until it is reloaded.
 
 <!-- list: points -->
 - A stream for one user is a stream named after that user's record,
   `turbo_stream_from @user` (`"users:7"`), rendered only on that user's
   pages. Anyone who gets hold of the token can read that stream, for
   as long as the secret stays the same.
-- Tokens do not expire. Changing `CYBERTRAIN_SECRET_KEY_BASE` invalidates
-  every token (and every session).
 - The token travels in the URL, so a reverse proxy's access log records it.
   The framework's own request log writes it as `[FILTERED]`; turn the
   proxy's logging off for `/cybertrain/stream`, or keep those logs as private

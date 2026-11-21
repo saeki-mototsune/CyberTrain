@@ -3,8 +3,7 @@ require "cybertrain/test"
 require "cybertrain/generator"
 
 # `spin run gen` refuses a view that calls a helper of a subsystem
-# bin/NAME.rb does not require (Gen::ViewRequires, the optional-subsystems
-# design, section 5): file, line, helper and the require to add, exit 1,
+# bin/NAME.rb does not require (Gen::ViewRequires, docs/design.md D85): file, line, helper and the require to add, exit 1,
 # nothing written, with or without --check. `require "cybertrain/streams"`
 # or `require "cybertrain"` accepts the view; a tree with no bin/NAME.rb
 # (a fixture) refuses nothing. A helper's name inside a string, a comment,

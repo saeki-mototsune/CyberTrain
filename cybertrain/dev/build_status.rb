@@ -2,8 +2,7 @@ require "cybertrain/dev/state_file"
 
 # Cybertrain::Dev::BuildStatus -- "did the last Spinel build fail, and with
 # what output", as Dev::ErrorPage asks it under `cybertrain server`
-# (docs/superpowers/specs/2026-11-12-cruby-preview-design.md section 8,
-# change 4). The answer comes from the supervisor's state file: given a
+# (docs/design.md D87). The answer comes from the supervisor's state file: given a
 # StateFile::Reader the status refreshes itself from it on every question;
 # without one it holds what #update was last given.
 module Cybertrain

@@ -527,7 +527,7 @@ Usage:
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
   cybertrain secret [--hex]
-      Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (signs
+      Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (encrypts
       the session cookie); with --hex, a new key for
       CYBERTRAIN_ENCRYPTION_KEY (encrypts the columns of `encrypts`).
       Both are 64 hex digits (32 random bytes). Keep the encryption
@@ -645,7 +645,7 @@ Usage:
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
   cybertrain secret [--hex]
-      Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (signs
+      Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (encrypts
       the session cookie); with --hex, a new key for
       CYBERTRAIN_ENCRYPTION_KEY (encrypts the columns of `encrypts`).
       Both are 64 hex digits (32 random bytes). Keep the encryption
@@ -762,7 +762,7 @@ Usage:
       Run spin with the pinned Spinel, from any directory
       (cybertrain spin test; cybertrain spin run gen -- --check).
   cybertrain secret [--hex]
-      Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (signs
+      Print a new random secret for CYBERTRAIN_SECRET_KEY_BASE (encrypts
       the session cookie); with --hex, a new key for
       CYBERTRAIN_ENCRYPTION_KEY (encrypts the columns of `encrypts`).
       Both are 64 hex digits (32 random bytes). Keep the encryption
@@ -782,8 +782,8 @@ ok   CLI version, help and unknown commands
 # is committed: copy a line into the environment (or your deploy's
 # secrets) with a value, never write the value here.
 
-# Signs the session cookie; changing it signs everyone out. Required in
-# production; development and test keep one in tmp/secret_key.
+# Encrypts the session cookie; changing it signs everyone out. Required
+# in production; development and test keep one in tmp/secret_key.
 # Make one with `cybertrain secret`.
 # CYBERTRAIN_SECRET_KEY_BASE=
 
@@ -834,4 +834,4 @@ ok   new writes the logging and reporting variables, all commented
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-33 tests, 697 assertions, 0 failures
+33 tests, 708 assertions, 0 failures

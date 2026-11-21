@@ -1,6 +1,6 @@
 ENV["CYBERTRAIN_ENV"] ||= "test"
 require_relative "../config/app"
-# `require "cybertrain/test_help"` in the real file (Task 6); the spike's
+# `require "cybertrain/test_help"` in the real file; the spike's
 # stand-in has another name so it never shadows that file.
 require "standins/test_case"
 

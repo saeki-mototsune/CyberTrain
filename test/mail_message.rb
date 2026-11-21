@@ -5,7 +5,7 @@ require "cybertrain/test"
 require "cybertrain/test/jobs"
 require "cybertrain/test/smtp_receiver"
 
-# Cybertrain::MailMessage (plan D16): what a generated mailer method returns,
+# Cybertrain::MailMessage: what a generated mailer method returns,
 # so `PasswordsMailer.reset(user, url).deliver_later` reads as in Rails.
 # deliver_later enqueues the built-in "cybertrain mail" job
 # (Mailer.deliver_later); deliver_now sends at once (Mailer.deliver). It

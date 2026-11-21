@@ -2,52 +2,28 @@ require "tmpdir"
 require "cybertrain/test"
 require "cybertrain/generator"
 
-# Fixtures at build time (spec section 7, plan decision D8): gen reads
+# Fixtures at build time (docs/design.md D83): gen reads
 # test/fixtures/*.yml against db/schema.rb and the model scan into one
 # INSERT per label with Rails' ids, and writes gen/test/data.rb with the
 # tables, the statements and the accessors. Run against copies of
-# test/fixtures/gen_app (posts and comments, Comment belongs_to :post:
-# pre-flight ruling B5). Text only: CRuby-portable.
+# test/fixtures/gen_app (posts and comments, Comment belongs_to
+# :post). Text only: CRuby-portable.
 require_relative "fixtures/gen_app/config/routes"
 require_relative "fixtures/gen_app/db/schema"
+require_relative "support/file_tree"
 
 FIXTURE = "test/fixtures/gen_app"
 TEMP_ROOTS = Array.new(0) { "" }
 Crc32 = Cybertrain::Gen::Crc32
 
-def copy_tree(from, to)
-  Dir.mkdir(to) unless File.directory?(to)
-  Dir.children(from).sort.each do |entry|
-    if File.directory?("#{from}/#{entry}")
-      copy_tree("#{from}/#{entry}", "#{to}/#{entry}")
-    else
-      File.write("#{to}/#{entry}", File.read("#{from}/#{entry}"))
-    end
-  end
-  nil
-end
-
-def remove_tree(dir)
-  Dir.children(dir).each do |entry|
-    path = "#{dir}/#{entry}"
-    if File.directory?(path)
-      remove_tree(path)
-    else
-      File.delete(path)
-    end
-  end
-  Dir.rmdir(dir)
-  nil
-end
-
-at_exit { TEMP_ROOTS.each { |root| remove_tree(root) if File.directory?(root) } }
+at_exit { TEMP_ROOTS.each { |root| FileTree.remove(root) if File.directory?(root) } }
 
 # A copy of the fixture app whose test/fixtures holds only `files`
 # (name => text).
 def app_copy(files)
   root = Dir.mktmpdir("cybertrain-gen-fixtures")
   TEMP_ROOTS << root
-  copy_tree(FIXTURE, root)
+  FileTree.copy(FIXTURE, root)
   Dir.children("#{root}/test/fixtures").each { |f| File.delete("#{root}/test/fixtures/#{f}") }
   files.each { |name, text| File.write("#{root}/test/fixtures/#{name}", text) }
   root
@@ -246,8 +222,8 @@ test "an accessor that would replace a harness, Kernel or test-helper method is 
   Cybertrain::Gen::FixtureScan.refuse_accessor_clashes(rows, Array.new(0) { file })
   root = app_copy("posts.yml" => "one:\n  title: x\n")
   File.write("#{root}/test/test_helper.rb", "def posts = 1\n")
-  # gen succeeds; the bundle is refused with the reason (pre-flight ruling
-  # B2), so `cybertrain test` fails with it.
+  # gen succeeds; the bundle is refused with the reason, so `cybertrain
+  # test` fails with it.
   assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
   bundle = File.read("#{root}/gen/tests.rb")
   assert_includes bundle, "abort(\"test/fixtures/posts.yml:1: the fixture accessor posts(label) would replace the top-level def posts at test/test_helper.rb:1"
@@ -295,7 +271,7 @@ test "gen writes gen/test/data.rb and --check reports it stale" do
   assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
   assert_equal 0, Cybertrain::Gen::Runner.run(root, ["--check"])
   # With test/ gone, gen/test/data.rb goes too (and gen/test with it).
-  remove_tree("#{root}/test")
+  FileTree.remove("#{root}/test")
   assert_equal 1, Cybertrain::Gen::Runner.run(root, ["--check"])
   assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
   refute File.exist?("#{root}/gen/test")
