@@ -59,8 +59,8 @@ module Cybertrain
       # by the model; an unknown name goes to `unknown`, one of
       # Cybertrain::Console's raising helpers, which raises UnknownModel
       # listing the models and is typed as returning what the arm returns
-      # (a Relation for scope, a Model for create), so an app with no
-      # tables still compiles (NOTES rule 79).
+      # (a Relation for scope, a Model for create: NOTES rule 124), which
+      # an application with no tables gets as the method's whole body.
       def self.name_case(models, template, unknown)
         out = +""
         if models.empty?

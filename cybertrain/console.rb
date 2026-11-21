@@ -102,8 +102,10 @@ module Cybertrain
     # `no model "Nope" (models: Article, Comment)`. The `else` of a
     # generated scope / create table calls it. Typed as returning a
     # Relation (never reached), so a lambda that ends in it has the type of
-    # the real builder: raise, then a typed value, so the method is never a
-    # body whose only expression is `raise` (NOTES rule 79).
+    # the real builder: raise, then a typed value. Without the value, a
+    # rescuing method given this helper and a default builder's call as
+    # blocks does not compile (NOTES rule 124; test/console.rb has the
+    # case).
     # @param name [String]
     # @return [Relation] never: it always raises
     # @raise [UnknownModel]
@@ -114,7 +116,7 @@ module Cybertrain
     end
 
     # {Console.unknown_model} for create_builder: typed as returning a
-    # record (raise, then a typed value: NOTES rule 79).
+    # record (raise, then a typed value: NOTES rule 124).
     # @param name [String]
     # @return [Model] never: it always raises
     # @raise [UnknownModel]

@@ -1,10 +1,11 @@
-# Evidence for docs/spinel-feedback.md rule 79 (NOTES rule 79). Kept until
-# rule 79 is closed.
+# Evidence for docs/spinel-feedback.md AY (NOTES rule 124). Kept until AY
+# is closed.
 # Why Console.unknown_model and unknown_record (cybertrain/console.rb) keep
 # a typed value after their `raise`: a method that only raises, and a
 # lambda that calls it and is stored where a lambda returning an object is
-# stored later, as the blocks of one rescuing method. This is not rule 79's
-# own program (../2026.11.15.7033/r79_raise_block.rb): the C error differs.
+# stored later, as the blocks of one rescuing method. It was found while
+# rule 79's workaround was tried removed, and is not rule 79's program
+# (../2026.11.15.7033/r79_raise_block.rb): the C error differs.
 #
 #   ruby spikes/rechecks/differing/raising_helper_beside_lambda.rb
 #   spinel spikes/rechecks/differing/raising_helper_beside_lambda.rb -O 0 -o "$TMPDIR/rhl" && "$TMPDIR/rhl"

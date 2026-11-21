@@ -255,7 +255,7 @@ The rules are numbered in the order they were found. By topic:
 - Constants, class variables, module state: 17, 18, 64, 70, 74, 76, 81, 93,
   101
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
-  79, 81, 89, 103, 104, 107, 113, 119
+  79, 81, 89, 103, 104, 107, 113, 119, 124
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66, 96
 - Memory and GC roots: 58, 64, 65; and 99, a shallow built-in `dup`, which
   is ordinary Ruby
@@ -333,7 +333,7 @@ follows the rule even where a probe passes.
 
 | Workaround | Rule | Where | Fails without it in | Items (docs/spinel-feedback.md) |
 | --- | --- | --- | --- | --- |
-| `begin/rescue` and `ensure` live in a plain method that takes the block as a Proc, one level down and no further (`DB.run_transaction`, `Controller#process` / `#run_action`, the job worker's run loop, `Server#run_writer`, `Main.run_command`) | 32, 45, 67, 69, 79 | db.rb, controller.rb, job/worker.rb, job/executor.rb, scheduler.rb, http_client.rb, http/server.rb, main.rb | test/db_transaction.rb, test/db_transaction_api.rb, test/db_rolled_back_transaction.rb, test/jobs.rb, test/cron.rb | rule 32, rule 45, rule 67, rule 69, rule 79 |
+| `begin/rescue` and `ensure` live in a plain method that takes the block as a Proc, one level down and no further (`DB.run_transaction`, `Controller#process` / `#run_action`, the job worker's run loop, `Server#run_writer`, `Main.run_command`) | 32, 45, 67, 69 | db.rb, controller.rb, job/worker.rb, job/executor.rb, scheduler.rb, http_client.rb, http/server.rb, main.rb | test/db_transaction.rb, test/db_transaction_api.rb, test/db_rolled_back_transaction.rb, test/jobs.rb, test/cron.rb | rule 32, rule 45, rule 67, rule 69 |
 | Every client fault is listed by its full name in `ClientError::CLIENT_FAULTS`, which is compared with `e.class.name` | 46, 53, 54 | http/client_error.rb | `script/check-client-faults`, test/client_error.rb | AE, rule 46 |
 | Byte scanners read their parameter through a fresh `to_s` local; no Ruby method is named after a builtin (`getbyte`, `write`, `close`, `<<`) | 62, 66 | http/*.rb, cast.rb, http_client.rb, mailer.rb, net/*.rb | test/openssl_dispatch.rb, test/http_client_gzip.rb, test/template_integration.rb, test/websocket_integration.rb | rule 62, rule 66 |
 | A String made in an argument is bound to a local before `new`; `SafeString.of` | 58, 65 | html.rb, mailer.rb, cron.rb, job.rb, model/bulk_writes.rb | test/uploaded_file.rb, test/cli_toolchain.rb, test/gen_models.rb | item 1 |
@@ -346,7 +346,7 @@ follows the rule even where a probe passes.
 | `exit` only on the main thread: a feeds supervisor sets a flag the main thread acts on | 91 | background/supervisor.rb, roles/feeds.rb | test/feeds_exit.rb | T |
 | `Logger#write_now` writes with `@io.write`; the console flushes after each prompt | 78, 83 | logger.rb, console.rb | test/logger_flush.rb, test/main_console.rb; test/logger_tls.rb was written for 78 and no longer fails without it (status 78) | K, M |
 | Integer-only Ranges: a Time range is `where_between`; `time_tag`'s `format:` (and `I18n.l`) walks the pattern itself instead of calling `strftime` with a built one | 86, 96 | relation.rb, validator.rb, template/helpers.rb, strftime.rb | test/relation_where.rb, test/validators.rb, test/helpers.rb | Q, V |
-| A helper that only raises and stands in for a typed lambda names a typed value after its `raise` (`Console.unknown_model`, `Console.unknown_record`) | 79 | console.rb; generator/console_emitter.rb emits the calls | test/console.rb (the rescuing-caller case) | rule 79 |
+| A helper that only raises and stands in for a typed lambda names a typed value after its `raise` (`Console.unknown_model`, `Console.unknown_record`) | 124 | console.rb; generator/console_emitter.rb emits the calls | test/console.rb (the rescuing-caller case), which does not compile without the values | AY |
 | A program that requires a middleware exercises it | 36 | every test that requires `cybertrain/application` | test/application.rb, test/db_integration.rb, test/health.rb | rule 36 |
 
 The table had a row for rules 33 and 61 until 2026-11-21: `rescue
@@ -358,6 +358,13 @@ names a JSON class: each of those clauses is `rescue StandardError` since
 arms, since 2026-11-21. The tests that raise a JSON error into the plain
 clause are test/server.rb (`/json`, `/deep`),
 test/json_rescue_background.rb and test/cast_types.rb (`parse_json`).
+
+The first row named rule 79 beside rules 32, 45, 67 and 69 until
+2026-11-21. Rule 79 is closed (docs/spinel-feedback.md, "Item register"),
+and the row's shape stays for the other four. Rule 79's own shape, the
+appended value of a rescuing method whose block only raises, is written
+the plain way in test/console.rb (the rescuing-caller case), and
+test/test_lifecycle.rb's bodies only raise.
 
 ### When the pinned Spinel changes
 
@@ -1446,13 +1453,11 @@ decision, and 77 explicitly retires a workaround.
     compile, and so does a block that can also return a value (`raise "b"
     if x > 0; "ok"`). Found while re-checking rule 32. In a test of a
     rescuing helper, give the block a value after the raise or pass the
-    result through a method. A helper that only raises and stands where a
-    lambda's value is expected names a typed value after its `raise`
-    (`Console.unknown_model`, `Console.unknown_record`): without it a
-    rescuing method given both the helper and such a lambda's call as
-    blocks does not compile (rechecks/differing/raising_helper_beside_lambda.rb;
-    test/console.rb has the case).
-    Kept until docs/spinel-feedback.md rule 79 is closed.
+    result through a method.
+    2026-11-21: test/test_lifecycle.rb's bodies and test/console.rb's
+    rescuing-caller case are written the plain way; the typed value after
+    a `raise` in cybertrain/console.rb is rule 124's, not this rule's.
+    Closed (docs/spinel-feedback.md rule 79): kept for its number.
 80. Never wait for another connection's SQLite lock inside the SQLite call
     on the request path: an FFI call holds its OS worker for as long as it
     runs, with or without `blocking: true`, and with one worker
@@ -2364,6 +2369,21 @@ decision, and 77 explicitly retires a workaround.
      read, and when a partial-require test reads a setting from the
      environment, check the value compiled.
      Kept until docs/spinel-feedback.md AS is closed.
+124. A method that only raises, and a lambda that ends in a call of it
+     and is stored where a lambda returning an object is stored later,
+     cannot both be blocks of one rescuing method whose value is used:
+     the C does not compile ("incompatible types when assigning to type
+     'sp_RbVal' from type 'const char *'" at the method's `yield`;
+     rechecks/differing/raising_helper_beside_lambda.rb, found
+     2026-11-21 while rule 79's workaround was tried removed). Either
+     block alone compiles. So a helper that only raises and stands where
+     a typed lambda's value is expected names a value of that type after
+     its `raise`, never reached: `Console.unknown_model` ends in
+     `Relation.new("")` and `Console.unknown_record` in `Model.new`
+     (cybertrain/console.rb), which the default builders and the `else`
+     arms of gen/console.rb call. test/console.rb's rescuing-caller case
+     holds the shape and does not compile without the two values.
+     Kept until docs/spinel-feedback.md AY is closed.
 
 <a id="numbers-worth-remembering"></a>
 

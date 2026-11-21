@@ -35,7 +35,7 @@ logs go outside the package tree (rule 98).
 | `r52_byteindex.rb` | AD | 52 | AD is closed |
 | `r54_superclass.rb` | AE | 54 | AE is closed |
 | `r78_puts_nil_io.rb` | K | 78 | K is closed |
-| `r79_raise_block.rb` | rule 79 | 79 | rule 79 is closed |
+| `r79_raise_block.rb` | rule 79 (closed 2026-11-21) | 79 | kept: the tests named in rule 79's register row build with 2026.11.04.7026 too, so this program is the one that shows the failure |
 | `r80_ffi_blocking.rb`, `r80_ffi_none.rb`, `r80_ffi_offload.rb` | AB | 80 | AB is closed |
 | `r81_rescue_relative.rb` | R | 81 | R is closed |
 | `r82_module_ivar_lambda.rb` | Y | 82 | Y is closed |
