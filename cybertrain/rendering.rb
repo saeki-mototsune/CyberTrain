@@ -19,6 +19,7 @@ require "cybertrain/html"
 require "cybertrain/views"
 require "cybertrain/template/helpers"
 require "cybertrain/http/request"
+require "cybertrain/key"
 
 module Cybertrain
   class MissingTemplate < StandardError
@@ -65,7 +66,7 @@ module Cybertrain
       keys = locals.keys
       i = 0
       while i < keys.size
-        out[keys[i].to_s] = locals[keys[i]]
+        out[Key.string_of(keys[i])] = locals[keys[i]]
         i += 1
       end
       out

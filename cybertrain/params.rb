@@ -48,7 +48,7 @@ module Cybertrain
     #   article"` (a 400 unless rescued)
     # @api public
     def require(key)
-      k = key.to_s
+      k = Key.string_of(key)
       child = @children[k]
       if child.nil? || child.empty?
         raise ParameterMissing, "param is missing or the value is empty: #{k}"
@@ -111,7 +111,7 @@ module Cybertrain
           raise ArgumentError, msg
         end
         name = names[0]
-        k = name.to_s
+        k = Key.string_of(name)
         filters = spec[name]
         case filters
         when Array
@@ -131,7 +131,7 @@ module Cybertrain
         Params.filter_not_array!("expect", k, filters.class.name.to_s)
         Params.permitted_hash
       else
-        k = spec.to_s
+        k = Key.string_of(spec)
         v = @values[k]
         Params.expect_missing!(k) if v.nil? || v.empty?
         out = Params.permitted_hash
@@ -223,7 +223,7 @@ module Cybertrain
           j = 0
           while j < names.length
             name = names[j]
-            k = name.to_s
+            k = Key.string_of(name)
             inner = f[name]
             case inner
             when Array
@@ -242,7 +242,7 @@ module Cybertrain
         when Array
           Params.nested_array_filter!
         else
-          k = f.to_s
+          k = Key.string_of(f)
           out[k] = @values[k] if @values.key?(k)
         end
         i += 1

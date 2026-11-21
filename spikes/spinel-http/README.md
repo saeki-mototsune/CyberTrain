@@ -1,7 +1,7 @@
 # spinel-http spike (phase 1, Task 1)
 
 Throwaway records for the spinel-http extraction
-([docs/design.md D90](../../docs/design.md) holds the decisions and the
+([docs/design.md D91](../../docs/design.md) holds the decisions and the
 mechanisms taken from them). They answer whether cybertrain's HTTP
 layer builds under upstream Spinel, and which mechanisms the later tasks
 can use to cut its ties to the rest of the framework. They are records,
@@ -37,7 +37,7 @@ rather than spelling it.
 ## The moving tests under upstream
 
 Beyond `hello.rb`, the eleven test programs the design moves into
-spinel-http (D90, step 3) were run under upstream `spin test`, in an export of HEAD
+spinel-http (D91, step 3) were run under upstream `spin test`, in an export of HEAD
 (`git archive`) so the checkout's `build/` was not touched:
 
     PATH=~/.spinel-upstream/2026.10.25/bin:$PATH spin test test/http_parser.rb \

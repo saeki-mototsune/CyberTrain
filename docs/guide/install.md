@@ -231,7 +231,10 @@ into its cache, `~/.cache/spin/packages/`, and pins the commit in
 commit `spin.toml` and `spin.lock`. `bin/<app>.rb` and `bin/db.rb` require
 `cybertrain/core`, the framework without its optional subsystems; the
 generators that need one add its line
-([Subsystems](how-it-works.md#subsystems)).
+([Subsystems](how-it-works.md#subsystems)). It also writes `AGENTS.md`,
+instructions for AI coding agents (where the application differs from
+Rails, and the checks to run before a change is done), and `CLAUDE.md`,
+which imports it for Claude Code.
 
 If Spinel or one of the two `spin` steps fails, the files stay, `new` exits
 with 1 and prints what to run once the cause is fixed (for Spinel:

@@ -38,6 +38,9 @@ module Cybertrain
       problem = csrf_exempt_prefixes_error
       return problem unless problem.empty?
 
+      problem = filter_path_prefixes_error
+      return problem unless problem.empty?
+
       problem = max_body_bytes_error
       return problem unless problem.empty?
 
@@ -183,6 +186,26 @@ module Cybertrain
         prefix = prefixes[i]
         unless prefix.size >= 2 && prefix.start_with?("/") && prefix.end_with?("/")
           return "csrf_exempt_prefixes entry #{prefix.inspect} must start and end with \"/\" and not be \"/\" alone"
+        end
+        i += 1
+      end
+      ""
+    end
+
+    # The error Application#boot reports (and exits 1 on) when a
+    # filter_path_prefixes entry is not a usable prefix: each must start and
+    # end with "/" (so "/results" cannot take "/results.csv" with it, and
+    # the byte after the prefix starts a segment) and must not be "/" alone
+    # (which would mask the first segment of every path). "" when every
+    # entry is fine. A while loop over the typed Array, no block (NOTES
+    # rules 32, 45).
+    def filter_path_prefixes_error
+      prefixes = @filter_path_prefixes
+      i = 0
+      while i < prefixes.size
+        prefix = prefixes[i]
+        unless prefix.size >= 2 && prefix.start_with?("/") && prefix.end_with?("/")
+          return "filter_path_prefixes entry #{prefix.inspect} must start and end with \"/\" and not be \"/\" alone"
         end
         i += 1
       end

@@ -12,8 +12,9 @@
 # This file is the HTTP layer's half: what Query and Multipart fill and the
 # readers over it. It loads alone (script/check-http-layer). Strong
 # parameters are not the layer's: a framework on top adds them by
-# reopening the class (docs/design.md D90).
+# reopening the class (docs/design.md D91).
 require_relative "uploaded_file"
+require_relative "../key"
 
 module Cybertrain
   # The request parameters as the HTTP layer parses them: Strings, lists of
@@ -38,7 +39,7 @@ module Cybertrain
     # @return [String, nil]
     # @api public
     def [](key)
-      @values[key.to_s]
+      @values[Key.string_of(key)]
     end
 
     # The values sent as `key[]=a&key[]=b`.
@@ -46,7 +47,7 @@ module Cybertrain
     # @return [Array<String>] `[]` when absent
     # @api public
     def list(key)
-      arr = @lists[key.to_s]
+      arr = @lists[Key.string_of(key)]
       arr.nil? ? [] : arr
     end
 
@@ -60,14 +61,14 @@ module Cybertrain
     # @return [Params]
     # @api public
     def nested(key)
-      @children[key.to_s] || Params.new
+      @children[Key.string_of(key)] || Params.new
     end
 
     # @param key [String, Symbol]
     # @return [Boolean] true when the key was sent, of any kind
     # @api public
     def key?(key)
-      k = key.to_s
+      k = Key.string_of(key)
       @values.key?(k) || @lists.key?(k) || @children.key?(k) || @uploads.key?(k)
     end
 
@@ -89,7 +90,7 @@ module Cybertrain
     # @return [UploadedFile, nil] nil when no file was sent under that name
     # @api public
     def upload(key)
-      @uploads[key.to_s]
+      @uploads[Key.string_of(key)]
     end
 
     # @param key [String, Symbol]
@@ -97,7 +98,7 @@ module Cybertrain
     #   chosen file with no bytes; never an input left empty)
     # @api public
     def upload?(key)
-      @uploads.key?(key.to_s)
+      @uploads.key?(Key.string_of(key))
     end
 
     # {.max_page} until another ceiling is installed.
@@ -147,7 +148,7 @@ module Cybertrain
     # @return [Integer]
     # @api public
     def int(key, default:, min:, max:)
-      Params.clamp_int(@values[key.to_s], default, min, max)
+      Params.clamp_int(@values[Key.string_of(key)], default, min, max)
     end
 
     # The 1-based page number from `?page=N`, for a paginated query: 1 when
@@ -214,7 +215,7 @@ module Cybertrain
     # from the other two (a no-op when absent), so a name is only ever one
     # kind at a time and the last write wins.
     def set_value(key, value)
-      k = key.to_s
+      k = Key.string_of(key)
       @lists.delete(k)
       @children.delete(k)
       @uploads.delete(k)
@@ -222,7 +223,7 @@ module Cybertrain
     end
 
     def add_list_value(key, value)
-      k = key.to_s
+      k = Key.string_of(key)
       @values.delete(k)
       @children.delete(k)
       @uploads.delete(k)
@@ -231,7 +232,7 @@ module Cybertrain
     end
 
     def child!(key)
-      k = key.to_s
+      k = Key.string_of(key)
       @values.delete(k)
       @lists.delete(k)
       @uploads.delete(k)
@@ -247,7 +248,7 @@ module Cybertrain
     # @param key [String, Symbol]
     # @param up [UploadedFile]
     def set_upload(key, up)
-      k = key.to_s
+      k = Key.string_of(key)
       @values.delete(k)
       @lists.delete(k)
       @children.delete(k)

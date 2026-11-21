@@ -302,7 +302,7 @@ will move with `cybertrain/http/` into a library of its own, and
 upstream Spinel, matz/spinel's release `SPINEL_UPSTREAM_TAG` in `ci.yml`,
 rather than the fork. A failure there that the fork's run does not have is
 usually a shape upstream compiles differently from the fork
-(spikes/NOTES.md rule 125 is the one known so far).
+(spikes/NOTES.md rule 126 is the one known so far).
 To reproduce it, build upstream once as the job does (`git clone --depth 1
 --branch 2026.10.25 https://github.com/matz/spinel`, then `make deps`,
 `make -j"$(nproc)"`, `make install PREFIX=$HOME/.spinel-upstream/2026.10.25`),

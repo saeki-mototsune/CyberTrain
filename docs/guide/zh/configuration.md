@@ -1,5 +1,5 @@
 ---
-source_sha256: 6a31d45e598b54446d9c4a8fac5c9e197285b1b4dd872a7905d91d3f24b3219d
+source_sha256: 0d4044d25ae3a662123d5ade27eaf77e908a536c48a46ba72557147da3306758
 ---
 # 配置
 
@@ -104,6 +104,8 @@ end
 **Content Security Policy**：与 Rails 一样默认关闭；`cybertrain new` 会在 `config/app.rb` 中以注释形式写出下面的块。`c.content_security_policy do |p| ... end` 声明策略（每个指令一个方法，`p.script_src :self, "https://cdn.jsdelivr.net"`；第二次调用会补充同一个策略），`c.content_security_policy_nonce_directives`（`[]`）列出接收请求 nonce 的指令（不是指令的名称会让启动停止），`c.content_security_policy_report_only`（`false`）把响应头作为 `Content-Security-Policy-Report-Only` 发送。控制器用 `content_security_policy do |p|` 声明自己的副本；参见[Content Security Policy](requests.md#content-security-policy-force_ssl-and-hosts)。
 
 **过滤的参数**：请求日志中的 `Started GET "/login?..."` 行和开发时的错误页面（其中的请求行，以及它转储的 params 和 JSON 请求体）会把 `config.filter_parameters` 中所列名称的每个参数的值显示为 `[FILTERED]`，与 Rails 的 `filter_parameters` 一样，所以 URL 中的 `?token=` 或提交到失败表单的密码不会出现在框架的请求日志或开发时的错误页面上。只替换值：查询字符串的其余部分按发送时的原样记录（控制字符会被转义）。该列表按子串、不区分大小写地匹配；可以在 `config/app.rb` 中扩展它（`c.filter_parameters = c.filter_parameters + ["otp", "ssn"]`），或用 `CYBERTRAIN_FILTER_PARAMETERS` 替换它。动作自己写入日志的值不会被过滤；在那里请调用 `Cybertrain::ParameterFilter.filter?(name)` 或 `ParameterFilter.filter_query(text)`。
+
+**过滤的路径**：路径本身中的秘密（`/results/<token>` 中分享链接的令牌）没有可供过滤的参数名，所以要列出它前面的前缀：设置 `c.filter_path_prefixes = ["/results/"]` 之后，凡是框架写出请求路径的地方（请求日志的 `Started` 行、`Blocked host` 行、错误报告中的请求，以及开发时的错误页面），`/results/` 之后的整个路径段都写成 `[FILTERED]`。前缀与发送时的路径从第一个字节开始比较，必须以 `/` 开头和结尾，且不能只是 `/`，否则启动失败。该列表默认为空；框架自己的签名令牌（密码重置链接中的）不需要它，会按其形状被遮盖。前面的反向代理有它自己的日志：在那里也要遮盖路径。
 
 **部署**：`cybertrain build` 生成 `dist/`：嵌入了视图的二进制文件 `dist/NAME`、`dist/public/`（静态资源，也可以交给反向代理提供），以及 `dist/storage/`（默认存放 SQLite 文件）和 `dist/tmp/`。在设置了 `CYBERTRAIN_SECRET_KEY_BASE` 的情况下从 `dist/` 运行它；除非 `CYBERTRAIN_ENV` 另有指定，它运行在生产环境中，`./NAME
 migrate` 会执行编译进其中的迁移。二进制文件只支持纯 HTTP/1.1；请在前面放置 nginx/Caddy 来提供 TLS 和 HTTP/2（会话 cookie 在生产环境中为 `Secure`，所以要通过 HTTPS 提供服务）。在生产环境中，异常会以 500 响应，而简单的错误响应（路由器的纯文本 404、`head :not_found`、`render plain:`）在 `public/<status>.html` 文件存在时会被它替换；动作以 HTML 或 JSON 渲染的错误则原样通过。`SIGTERM` 会停止接受新连接，让已在处理中的请求完成（以 `Connection: close` 响应；空闲的 keep-alive 连接会立即关闭），并在它们完成后、或在服务器的 `drain_timeout`（10 秒）之后退出。监视和重新构建循环在生产环境中从不运行。[docs/deploy.en.md](../deploy.en.md)（日文版：[docs/deploy.md](../deploy.md)）从头到尾演示了整个过程：`cybertrain new`、Ubuntu 服务器、systemd、带 HTTPS 的 Caddy、重新部署、回滚和备份。

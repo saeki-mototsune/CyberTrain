@@ -4,8 +4,8 @@ This document is the one record of what Spinel does that CyberTrain has had
 to know about, and of where each behaviour stands: what happens, the
 program that shows it, what it did on each build tried, what is asked of
 Spinel, and whether it is closed. Each behaviour is an item whose
-identifier never changes: a digit (1 to 7), a letter (A to AY so far; the
-next is AZ) or, for a behaviour first written as a rule of spikes/NOTES.md
+identifier never changes: a digit (1 to 7), a letter (A to AZ so far; the
+next is BA) or, for a behaviour first written as a rule of spikes/NOTES.md
 and never lettered, "rule N". "Item register" lists them all.
 
 [spikes/](../spikes/README.md) is the other half and does not say where a
@@ -241,7 +241,7 @@ the cell names another build.
 | C | bug |  | closed | 2026.10.26.7019 (#10258, #10259) and, for the refusal under it, 2026.11.04.7026 (#10525, #10524): test/template_engine.rb is back in its earlier form |
 | D | constraint | 25 | settled: by design; still raises RangeError on the pin (status 25) |  |
 | E | cost |  | not re-checked on the pin (last: no change against 2026.10.27.7020 on 2026.11.04.7026, 2026-11-05) |  |
-| F | bug | 125 | closed | 2026.10.26.7019 (#10260); never had a workaround on the pin. Rule 125 is for upstream 2026.10.25, which predates #10260 and which CI's http-upstream job builds the HTTP layer's tests with |
+| F | bug | 126 | closed | 2026.10.26.7019 (#10260); never had a workaround on the pin. Rule 126 is for upstream 2026.10.25, which predates #10260 and which CI's http-upstream job builds the HTTP layer's tests with |
 | G | bug |  | closed | 2026.10.26.7019 (#10262); never had a workaround |
 | H | bug | 77 | closed | 2026.10.27.7020 (#10415); test/db_with_value.rb covers the plain form. The body of rule 77 was cut on 2026-11-21, and what only it held is in H |
 | I | bug |  | closed | 2026.11.04.7026 (#10735, #10786); never had a workaround |
@@ -1057,7 +1057,7 @@ json_parse_nesting.rb (row AX) were added, which makes eight.
 | 122 | **Still there** (docs/spinel-feedback.md AR), run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6, not on the machine of the rows above: with rechecks/differing/require_in_regex.rb, `--strict-require` stops the build ("cannot load such file", naming the text of the regex), and without the flag the build warns that the require is ignored and the program prints `no match`, where CRuby prints `db`. 2026.11.04.7026 did the same in the same run. |
 | 123 | **Still there** (docs/spinel-feedback.md AS), run on 2026-11-21 on the same Linux machine and tools as row 122: rechecks/differing/env_nonliteral_key.rb, built with `spinel -I .` from the repository root (the framework at 79b38b68), prints `set: CYBERTRAIN_RECHECK_HOST` and `unset: default`, as 2026.11.04.7026 did in the same run; the value, `0.0.0.0`, was expected. Not reduced. |
 | 124 | **Still there** (docs/spinel-feedback.md AY), found and run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6: rechecks/differing/raising_helper_beside_lambda.rb prints `["no a", "no b"]` under CRuby and does not build, exit 1: `raising_helper_beside_lambda.rb:38: error: incompatible types when assigning to type 'sp_RbVal' from type 'const char *'`, line 38 being the `yield` of `g`, then `spinel: C compilation failed`. With `Rel.new("")` as a second line of `C.unknown` it builds and prints CRuby's line, and so does either of its two `out <<` lines alone. In the framework: test/console.rb with the typed values removed from `Console.unknown_model` and `unknown_record` does not build, the same error at test/console.rb:422, the `yield` of `message_raised` (4 times, in `_proc_main_15`); with them it passes. Row 79 has what else was built without the two values that day. |
-| 125 | Not a behaviour of the pin (docs/spinel-feedback.md F, fixed in 2026.10.26.7019 and matz/spinel #10260): the rule is for upstream 2026.10.25 (2814693f), on which, run on 2026-11-21 on Linux x86_64 (gcc 13.3.0), test/http_response.rb failed 2 of its cases in its old shape (`assert_nil res.drop_header(...)`) and passes in the rule's shape; built by this build it passes in both. |
+| 126 | Not a behaviour of the pin (docs/spinel-feedback.md F, fixed in 2026.10.26.7019 and matz/spinel #10260): the rule is for upstream 2026.10.25 (2814693f), on which, run on 2026-11-21 on Linux x86_64 (gcc 13.3.0), test/http_response.rb failed 2 of its cases in its old shape (`assert_nil res.drop_header(...)`) and passes in the rule's shape; built by this build it passes in both. |
 | AX (no rule) | **Still there** for an innermost empty container, found and run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6: rechecks/differing/json_parse_nesting.rb. CRuby prints "depth 100 parses, depth 101 raises JSON::NestingError: nesting of 101 is too deep" for Arrays around `1`, for Arrays with nothing inside and for Objects around `1`; the same with 10 and 11 under `max_nesting: 10` and with 300 and 301 under `max_nesting: 300`; and "every depth up to 400 parses" under `max_nesting: 0`. Built by 2026.11.15.7033 the program prints those lines but for two: "arrays, the innermost empty: depth 101 parses, depth 102 raises JSON::NestingError: nesting of 101 is too deep", and under `max_nesting: 10` "depth 11 parses, depth 12 raises JSON::NestingError: nesting of 11 is too deep". A second program, not saved, gave the same for an empty Object: 100 Arrays around `{}`, 100 Objects around `{}` and 100 Objects around `[]` raise "nesting of 101 is too deep" under CRuby and parse on 2026.11.15.7033. This is `JSON.parse`; `JSON.generate`'s limit (rules 33 and 61, test/server.rb's `/deep`) is another matter and was not part of this run. |
 | 1, 3 to 16, 18 to 24, 26, 28 to 32, 34 to 47, 50, 51, 53, 55 to 60, 62 to 77, 84, 85, 87, 95, 98, 99, 102, 103, 105, 106, 108, 111, 113 to 115, 118 to 121 | Not re-checked on this pin with a program of their own. Their status on 2026.11.04.7026 is in the next section, "On 2026.11.04.7026"; it is not carried over. The saved probes that hold a shape of some of them were run on 2026-11-21: the last row. |
 | rechecks/run.sh | Run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`, CRuby 3.3.6): all nineteen programs of rechecks/ compiled and printed their `.expected`. That is a **Probe passes** for each section's own small shape, with the limits spikes/rechecks/README.md states, for the shapes of rules 1 to 12, 14, 17 to 21, 26 to 35, 37, 39 to 48, 50 to 55, 60 to 62, 69, 72, 86 and 104 that those programs hold (for 2, 17, 27, 52, 54, 72, 86 and 104 only the half that already matched CRuby on 2026.11.04.7026). 2026.11.04.7026 was not run beside it that day. Run again on 2026-11-21 on the same machine and tools, after rechecks/nil_only_puts_openssl.rb, rechecks/float_range_boxed.rb and rechecks/builtin_superclass_with_module.rb moved up from rechecks/differing/ (rows 78, 86 and 104): all twenty-two programs compiled and printed their `.expected`. With those three the run also holds the shape of rule 78 and the halves of 86 and 104 that failed on 2026.11.04.7026 (a Range of Dates, row 86, is not in a saved program). Run once more on 2026-11-21 on the same machine and tools, after rules 33 and 61 were closed, rechecks/json_nesting_shapes.rb was deleted and the section of 33 and 61 left rechecks/json_error_shapes.rb (rows 33 and 61): all twenty-one programs compiled and printed their `.expected`. |
@@ -4869,3 +4869,46 @@ and which 2026.11.15.7033 compiles.
   block cannot complete and another answers a boxed value; or box the
   rescue's String there.
 - Not reported upstream.
+
+
+## Found while measuring the HTTP layer (2026-11-21)
+
+A baseline of examples/blog's request throughput (script/measure-http-layer)
+showed the production server's memory growing without bound under load.
+spikes/NOTES.md has it as rule 125.
+
+### AZ. A frozen String made at run time is never freed, and `Symbol#to_s` makes one at every call
+
+Rule 125. The runtime pins every heap String it freezes (`sp_str_freeze_val`
+and `sp_str_clone_val` call `sp_slab_pin`, "immortal, as a literal is"), and
+`sp_sym_to_s_new`, which `Symbol#to_s` and the Symbol arm of a boxed `to_s`
+call, answers a new frozen String each time. So this program grows by about
+110 MB on 2026.11.15.7033, where CRuby stays flat:
+
+```ruby
+syms = [:alpha, :beta, :gamma]
+i = 0
+n = 0
+while i < 1_000_000
+  n += syms[i % 3].to_s.size
+  i += 1
+end
+puts n
+```
+
+`("x" + i.to_s).freeze` in the same loop grows by about 124 MB. `sym.name`,
+`"#{sym}"` and an unfrozen String do not grow. `SPINEL_GC_STATS=1` reports
+the live heap flat (pinned Strings are not counted), which hides the growth
+from the collector's own report. In examples/blog, `params[:id]`,
+`session[:user_id]`, `t(:key)`, `where(title: ...)` and the like leaked 1 to
+4 KB a request: 29 MB to 725 MB in 100 s of `wrk`.
+
+- Today: the framework names a String-or-Symbol key with
+  `Cybertrain::Key.string_of` (`Symbol#name`), and freezes only Strings it makes
+  once; test/key_text.rb fails if the request path pins again. Application
+  code that writes `sym.to_s` on every request still leaks.
+- Asked of Spinel: let the collector free a frozen String that is not a
+  literal (keep pinning for literals and interned Strings, `String#-@`), or
+  answer `Symbol#to_s` with a String that is not pinned (CRuby's is a new
+  unfrozen String; `Symbol#name` is the cached frozen one).
+- Not reported upstream yet; the reduced program above is ready.

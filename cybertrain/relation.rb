@@ -84,7 +84,7 @@ module Cybertrain
     # to compare; so does an encrypted one.
     def add_where(hash)
       drop_preloaded
-      hash.each { |key, value| @wheres << where_term(key.to_s, value) }
+      hash.each { |key, value| @wheres << where_term(Key.string_of(key), value) }
       nil
     end
 
@@ -94,7 +94,7 @@ module Cybertrain
     def add_where_not(hash)
       drop_preloaded
       terms = Array.new(0) { "" }
-      hash.each { |key, value| terms << where_term(key.to_s, value) }
+      hash.each { |key, value| terms << where_term(Key.string_of(key), value) }
       return nil if terms.empty?
 
       joined = terms.join(" AND ")
@@ -181,13 +181,13 @@ module Cybertrain
     def add_where_between(column, from, to, exclude_end)
       drop_preloaded
       quoted = Relation.checked_column("where_between", column)
-      check_not_json("where_between", column.to_s)
-      check_not_encrypted("where_between", column.to_s)
+      check_not_json("where_between", Key.string_of(column))
+      check_not_encrypted("where_between", Key.string_of(column))
       if from.nil? && to.nil?
         raise ArgumentError, "where_between: from and to are both nil (give at least one bound)"
       end
 
-      name = column.to_s
+      name = Key.string_of(column)
       unless from.nil?
         @wheres << "#{quoted} >= ?"
         @binds << bind_for(name, from)
@@ -390,11 +390,12 @@ module Cybertrain
     # a decoded newline in it cannot forge a log line. Raw ORDER BY text goes
     # through add_order_sql (the models' `order_sql`). A Symbol is taken as
     # its name (order(:title) is the common Rails spelling; the column still
-    # goes through Ident.column?) and nil as no order. One to_s up front, so
-    # a non-String never reaches `strip` as a NoMethodError.
+    # goes through Ident.column?) and nil as no order. One Key.string_of up
+    # front (not to_s: NOTES rule 125), so a non-String never reaches `strip`
+    # as a NoMethodError.
     def set_order(order)
       drop_preloaded
-      stripped = order.to_s.strip
+      stripped = Key.string_of(order).strip
       if stripped == ""
         @order = ""
         return nil
@@ -429,7 +430,7 @@ module Cybertrain
       terms = Array.new(0) { "" }
       hash.each do |key, dir|
         quoted = Relation.checked_column("order", key)
-        word = dir.to_s.upcase
+        word = Key.string_of(dir).upcase
         unless word == "ASC" || word == "DESC"
           raise ArgumentError, "order: #{key.to_s.inspect} => #{dir.to_s.inspect} is not :asc or :desc"
         end
@@ -761,7 +762,7 @@ module Cybertrain
     # A column name for the methods below: checked (a programmer error, an
     # ArgumentError, otherwise) and backtick-quoted.
     def self.checked_column(method, column)
-      name = column.to_s
+      name = Key.string_of(column)
       raise ArgumentError, "#{method}: #{name.inspect} is not a column name" unless Ident.column?(name)
 
       Relation.quote_ident(name)
@@ -772,7 +773,7 @@ module Cybertrain
     def add_where_like(column, text)
       drop_preloaded
       quoted = Relation.checked_column("where_like", column)
-      check_not_encrypted("where_like", column.to_s)
+      check_not_encrypted("where_like", Key.string_of(column))
       @wheres << "#{quoted} LIKE ? ESCAPE '\\'"
       escaped = Cast.like_escape(text)
       pattern = "%#{escaped}%"
@@ -796,7 +797,7 @@ module Cybertrain
     def increment(column, by: 1)
       quoted = Relation.checked_column("increment", column)
       # A payload plus 1 would destroy it.
-      check_not_encrypted("increment", column.to_s)
+      check_not_encrypted("increment", Key.string_of(column))
       table = Relation.quote_ident(@table)
       sql = +"UPDATE #{table} SET #{quoted} = #{quoted} + ?"
       binds = Cast.empty_binds
@@ -874,7 +875,7 @@ module Cybertrain
       hash.each do |key, value|
         quoted = Relation.checked_column("update_all", key)
         sets << "#{quoted} = ?"
-        name = key.to_s
+        name = Key.string_of(key)
         check_not_encrypted("update_all", name)
         type = column_type(name)
         # A hand-written relation that knows no types binds as where does
@@ -998,3 +999,4 @@ module Cybertrain
 end
 
 require "cybertrain/relation/aggregates"
+require "cybertrain/key"

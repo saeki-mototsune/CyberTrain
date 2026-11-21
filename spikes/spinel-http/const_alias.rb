@@ -1,6 +1,6 @@
 # spinel-http phase 1, Task 1, step 5: the old cybertrain names kept as
 # constant aliases of classes that moved into SpinelHttp (docs/design.md
-# D90, step 4: "keep every public name ... by constant alias"). A record, not a test.
+# D91, step 4: "keep every public name ... by constant alias"). A record, not a test.
 #
 # Run (2026-11-21, Linux x86_64, gcc 13.3.0, 4 vCPU, from spikes/spinel-http/;
 # binaries kept outside the package, rule 98). The fork is the pinned

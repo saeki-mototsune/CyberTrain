@@ -1,5 +1,5 @@
 ---
-source_sha256: 6a31d45e598b54446d9c4a8fac5c9e197285b1b4dd872a7905d91d3f24b3219d
+source_sha256: 0d4044d25ae3a662123d5ade27eaf77e908a536c48a46ba72557147da3306758
 ---
 # Configuration
 
@@ -181,6 +181,20 @@ ou remplacez-la avec `CYBERTRAIN_FILTER_PARAMETERS`. Les valeurs qu’une action
 journalise elle-même ne sont pas filtrées&nbsp;; interrogez-y
 `Cybertrain::ParameterFilter.filter?(name)` ou
 `ParameterFilter.filter_query(text)`.
+
+**Chemins filtrés&nbsp;:** un secret dans le chemin lui-même (le jeton d’un lien
+de partage dans `/results/<token>`) n’a pas de nom de paramètre par lequel le
+filtrer&nbsp;; listez donc le préfixe qu’il suit&nbsp;: avec
+`c.filter_path_prefixes = ["/results/"]`, tout le segment après `/results/`
+est écrit `[FILTERED]` partout où le framework écrit le chemin d’une
+requête&nbsp;: la ligne `Started` du journal des requêtes, une ligne
+`Blocked host`, la requête d’un rapport d’erreur et la page d’erreur de
+développement. Un préfixe est comparé au chemin tel qu’envoyé, depuis son
+premier octet, et doit commencer et finir par `/` sans être `/` seul, sinon le
+démarrage échoue. La liste est vide par défaut&nbsp;; les jetons signés du
+framework (celui d’un lien de réinitialisation de mot de passe) sont masqués
+d’après leur forme sans elle. Un proxy inverse placé devant tient son propre
+journal&nbsp;: masquez-y le chemin aussi.
 
 **Déploiement&nbsp;:** `cybertrain build` produit `dist/`&nbsp;: le binaire
 `dist/NAME` avec les vues intégrées, `dist/public/` (ressources statiques, ou

@@ -23,7 +23,7 @@
 # (cybertrain/http/server and what it loads, Params and Logger included)
 # compiles under upstream 2026.10.25 with no error or warning and serves.
 # The moving tests (test/server.rb and the ten parser/request/response
-# tests the design moves, docs/design.md D90) under upstream `spin test`: see README.md.
+# tests the design moves, docs/design.md D91) under upstream `spin test`: see README.md.
 require "socket"
 require "cybertrain/http/server"
 

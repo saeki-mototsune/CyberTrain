@@ -204,7 +204,7 @@ test "drop_header removes a header whatever its case and leaves the rest in orde
   res.set_header("X-A", "1")
   res.set_header("location", "/x")
   res.set_header("X-B", "2")
-  # Each call a statement, then its result asserted (NOTES rule 125).
+  # Each call a statement, then its result asserted (NOTES rule 126).
   dropped = res.drop_header("Location")
   assert_nil dropped
   assert_nil res.header("Location")

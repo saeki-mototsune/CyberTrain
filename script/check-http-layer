@@ -21,7 +21,9 @@ require "cybertrain/http/server"
 
 root = File.expand_path("..", __dir__) + "/"
 loaded = $LOADED_FEATURES.select { |f| f.start_with?(root + "cybertrain/") }.map { |f| f.delete_prefix(root) }
-allowed = []
+# cybertrain/key.rb: main's Key.string_of, which Params names its keys with
+# (merged from main; the next commit moves it into the layer).
+allowed = ["cybertrain/key.rb"]
 stray = loaded.reject { |f| f.start_with?("cybertrain/http/") || allowed.include?(f) }
 
 unless stray.empty?

@@ -340,7 +340,7 @@ jobs:
   # image and architecture as setup-spinel caches the fork. `spin test` takes
   # the compiler's flags from upstream's own `spin flags` (`--require-gate`
   # where the fork says `--strict-require`). Upstream 2026.10.25 predates
-  # the fork's fixes merged on 2026-10-26; spikes/NOTES.md rule 125 has the
+  # the fork's fixes merged on 2026-10-26; spikes/NOTES.md rule 126 has the
   # one shape the tests keep for it. Ubuntu only.
   http-upstream:
     needs: changes

@@ -1,6 +1,6 @@
 module Cybertrain
   # What the HTTP layer logs through, and the per-request context those
-  # lines are written under (docs/design.md D90). The layer loads alone
+  # lines are written under (docs/design.md D91). The layer loads alone
   # (script/check-http-layer), so it defines plain bases here: a sink that
   # writes to standard error ({HttpLog}), an opaque context with no
   # behaviour ({HttpLogContext}), and the thread's context as the server
