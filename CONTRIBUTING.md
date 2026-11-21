@@ -341,9 +341,9 @@ way; the script or workflow step that checks it says so in its comment.
   built gem and runs it.
 - **A workflow's token can do only what its jobs need.** Every workflow
   states `permissions:` at the top, so nothing relies on the repository's
-  default: read access for what only checks (the Gate, CI, `required`),
-  write access only where something is published (a release, a package,
-  the site), on the job that publishes when the workflow has others. Every
+  default: read access for what only checks (the Gate, CI), write access
+  only where something is published (a release, a package, the site) or a
+  check is written (`required`, which writes its check run), on the job that publishes when the workflow has others. Every
   `actions/checkout` sets `persist-credentials: false`, so the token is not
   left in `.git/config` for the steps after it, unless a later step pushes
   with it (the Bump version workflow, which says so)
@@ -481,19 +481,23 @@ anchor, which the gate does not see.
 only when two checks have passed on its latest commit:
 
 - **`gate`**, the Gate workflow's job that runs `script/gate`;
-- **`required`**, the one job of
-  [.github/workflows/required.yml](.github/workflows/required.yml). It waits
-  for every other workflow the pull request started (the Gate, CI, the image
-  workflows) and passes only if each of them did. CI and the image workflows
-  start only for the paths they test, so their jobs cannot be required one by
-  one: a documentation pull request would wait for ever for a job that never
-  starts. `required` starts on every pull request and waits only for what
-  did start, which for a documentation change is the Gate, about a minute.
+- **`required`**, a check run that
+  [.github/workflows/required.yml](.github/workflows/required.yml) writes on
+  the commit. It covers every other workflow the pull request started (the
+  Gate, CI, the image workflows): in progress while one of them runs, green
+  only if each of them passed. CI and the image workflows start only for the
+  paths they test, so their jobs cannot be required one by one: a
+  documentation pull request would wait for ever for a job that never
+  starts. `required` covers only what did start, which for a documentation
+  change is the Gate, about a minute. It is written afresh, in a few
+  seconds, whenever one of those workflows is requested or finishes, a
+  re-run included, so it holds no runner while it waits. It knows those
+  workflows by name: a new workflow a pull request starts goes into the
+  list at the top of `required.yml`. On a draft it stays in progress.
 
 A pull request whose workflows did not start (one opened with
 `GITHUB_TOKEN`, see [Releasing](#releasing), step 1) has neither check and
-cannot be merged until they run. After re-running a failed job, re-run
-`required` as well: it reported on the attempt it saw.
+cannot be merged until they run.
 
 The rule itself is a repository setting, which only an owner can change. Its
 definition is checked in as
@@ -510,7 +514,7 @@ gh api --method POST repos/saeki-mototsune/CyberTrain/rulesets --input .github/r
 Then check it on two pull requests: one that changes only a Markdown file
 must show `gate` and `required` green within minutes, with CI not started,
 and be mergeable; one that breaks a test must show `required` red and the
-merge blocked. When a required job is renamed, change the file, the ruleset
+merge blocked. When a required check is renamed, change the file, the ruleset
 and this section together.
 
 ## Dependencies and their updates

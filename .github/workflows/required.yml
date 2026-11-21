@@ -6,102 +6,111 @@
 # waits for it for ever. CI and the image workflows have path filters (a
 # documentation change starts none of them), so none of their jobs can be
 # required directly, and a job inside one of them cannot speak for the
-# others. This workflow has no path filter: its job waits until every other
-# workflow run started for the same commit by the same event has finished,
-# and passes only if each one succeeded (or was skipped). A documentation
-# change therefore waits for the Gate alone, about a minute; a framework
-# change waits for the Gate and CI; a change to an image waits for that
-# image's build and smoke test too. A workflow that was not started is not
-# waited for, and a workflow added later is covered without a change here.
+# others. So this workflow reads every workflow run started for the commit
+# by the same event, the newest of each workflow, and writes the check run
+# `required` on that commit: in progress while one of them has not
+# finished, a success when each succeeded (or was skipped), a failure
+# otherwise. A documentation change therefore waits for the Gate alone; a
+# framework change for the Gate and CI; a change to an image for that
+# image's workflow too. A workflow that was not started is not waited for.
 #
-# After re-running a failed job in another workflow, re-run this one too: it
-# reported on the attempt it saw.
+# It does not wait on a runner. It used to: one job per pull request
+# polled for as long as CI took (up to six hours), holding one of the
+# account's 20 concurrent runners all that time while the jobs it waited
+# for queued behind it (docs/design.md, D34, the status of 2026-11-21). Now
+# it runs for a few seconds each time one of the workflows below is
+# requested or completes, and the last of those runs leaves the answer.
+# A workflow that a pull request starts and that is not listed below is
+# NOT waited for: add it here when you add one.
+#
+# A draft pull request starts no job of CI or the image workflows
+# (ci.yml), so its check stays in progress, saying so, until it is marked
+# ready and those runs finish.
+#
+# `workflow_run` runs this file as it is on the default branch, with a
+# token that can write checks, also for a pull request from a fork; it
+# checks out nothing and runs nothing from the pull request, only reads
+# the runs through the API.
 name: Required
 
 on:
-  # ready_for_review: CI and the image workflows run no job on a draft and
-  # start again when it is marked ready, on the same commit; this check
-  # starts again with them and waits for those runs.
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
-  # For a merge queue, should one be enabled: the queue waits for the same
-  # check on the commit it builds.
-  merge_group:
+  workflow_run:
+    workflows: [Gate, CI, Playground image, Blog image]
+    types: [requested, completed]
 
-# Reads the list of workflow runs; nothing is checked out and nothing from
-# the pull request runs here.
 permissions:
   actions: read
+  checks: write
+  pull-requests: read
 
+# One commit's runs one after another, the newest last: each run reads the
+# state afresh, so whichever runs last writes the right answer, and a run
+# still waiting to start is replaced by a newer one.
 concurrency:
-  group: required-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: required-${{ github.event.workflow_run.head_sha }}
+  cancel-in-progress: false
 
 jobs:
-  # The job's name is the check's name in the ruleset: renaming it means
-  # changing .github/rulesets/main.json and the ruleset itself.
-  required:
+  # The check's name is `required` (the ruleset's), written by the step
+  # below; this job's own name is not a check anyone requires.
+  report:
+    # A push to main or a release run has no pull request to answer for.
+    if: github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'merge_group'
     runs-on: ubuntu-26.04
-    # Longer than the slowest workflow it waits for plus the time that one
-    # may spend queued. The slowest is CI: its macOS job allows itself 360
-    # minutes (ci.yml, `test`). Measured on 2026-11-14: 154 minutes on main
-    # (run 43566475842), and 172 on the pull request that added phase
-    # 5b's tests while this job, then waiting 170, gave up on it three
-    # minutes early (run 43576220948). An earlier wait of 80 minutes gave up
-    # the same way on a run of 98 (run 43086752319, 2026-11-11). The wait
-    # below is 340 minutes, and this limit a little more, so that the job
-    # reports its own message rather than being cut off; a hosted job
-    # cannot run longer than 360.
-    timeout-minutes: 350
+    timeout-minutes: 5
     steps:
-      - name: Every other workflow run for this commit has passed
+      - name: Write the required check for the commit
         env:
           GH_TOKEN: ${{ github.token }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.event.merge_group.head_sha || github.sha }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_EVENT: ${{ github.event.workflow_run.event }}
         run: |
           set -euo pipefail
-          deadline=$(( $(date +%s) + 20400 ))
-          interval=30
-          list() {
-            gh api --paginate \
-              "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEAD_SHA&event=$GITHUB_EVENT_NAME&per_page=100" \
-              --jq ".workflow_runs[] | select(.id != $GITHUB_RUN_ID and .name != \"$GITHUB_WORKFLOW\") | [.status, (.conclusion // \"-\"), .name, .html_url] | @tsv" |
-              # Other workflows' runs only, the newest of each (the API lists
-              # the newest first): marking a draft ready starts a second run
-              # of CI, of an image workflow and of this one on the same
-              # commit, and the first of each may have been cancelled.
-              awk -F'\t' '!seen[$3]++'
-          }
-          # The Gate starts on every pull request, so an empty list means the
-          # runs are not listed yet, never that there is nothing to wait for.
-          # Two quiet polls in a row: a run that starts late is still seen.
-          quiet=0
-          while :; do
-            sleep "$interval"
-            if runs=$(list); then
-              waiting=$(printf '%s\n' "$runs" | awk -F'\t' 'NF && $1 != "completed"')
-              if [ -n "$runs" ] && [ -z "$waiting" ]; then
-                quiet=$((quiet + 1))
-                if [ "$quiet" -ge 2 ]; then break; fi
-              else
-                quiet=0
-              fi
-            else
-              echo "could not list the workflow runs; trying again"
-              runs=""
-              quiet=0
-            fi
-            if [ "$(date +%s)" -ge "$deadline" ]; then
-              echo "::error::gave up waiting for the other workflow runs of $HEAD_SHA"
-              printf '%s\n' "${runs:-(none listed)}"
-              exit 1
-            fi
-          done
-          printf '%s\n' "$runs"
-          failed=$(printf '%s\n' "$runs" | awk -F'\t' '$2 != "success" && $2 != "skipped" && $2 != "neutral" { print $3 " (" $2 "): " $4 }')
-          if [ -n "$failed" ]; then
-            echo "::error::not every workflow run for $HEAD_SHA passed"
-            printf '%s\n' "$failed"
-            exit 1
+          # Other workflows' runs for this commit and event, the newest of
+          # each (the API lists the newest first): marking a draft ready
+          # starts a second run of CI on the same commit, and the first one
+          # may have been cancelled.
+          runs=$(gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$HEAD_SHA&event=$RUN_EVENT&per_page=100" \
+            --jq ".workflow_runs[] | select(.name != \"$GITHUB_WORKFLOW\") | [.status, (.conclusion // \"-\"), .name, .html_url] | @tsv" |
+            awk -F'\t' '!seen[$3]++')
+          printf '%s\n' "${runs:-(none listed)}"
+
+          draft=false
+          if [ "$RUN_EVENT" = pull_request ]; then
+            draft=$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" \
+              --jq ".[] | select(.head.sha == \"$HEAD_SHA\") | .draft" | grep -qx true && echo true || echo false)
           fi
-          echo "required: every other workflow run for $HEAD_SHA passed"
+          waiting=$(printf '%s\n' "$runs" | awk -F'\t' 'NF && $1 != "completed" { print $3 " (" $1 "): " $4 }')
+          failed=$(printf '%s\n' "$runs" | awk -F'\t' 'NF && $1 == "completed" && $2 != "success" && $2 != "skipped" && $2 != "neutral" { print $3 " (" $2 "): " $4 }')
+
+          conclusion=""
+          if [ "$draft" = true ]; then
+            title="Draft: CI runs when the pull request is marked ready for review"
+            summary="$runs"
+          elif [ -z "$runs" ]; then
+            # The Gate starts on every pull request: no run listed yet.
+            title="Waiting for the workflow runs to be listed"
+            summary="(none listed)"
+          elif [ -n "$waiting" ]; then
+            title="Waiting for $(printf '%s\n' "$waiting" | wc -l | tr -d ' ') workflow run(s)"
+            summary="$waiting"
+          elif [ -n "$failed" ]; then
+            conclusion=failure
+            title="Not every workflow run passed"
+            summary="$failed"
+          else
+            conclusion=success
+            title="Every workflow run for this commit passed"
+            summary="$runs"
+          fi
+
+          echo "required: ${conclusion:-in progress}: $title"
+          if [ -n "$conclusion" ]; then
+            set -- -f status=completed -f conclusion="$conclusion"
+          else
+            set -- -f status=in_progress
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/check-runs" \
+            -f name=required -f head_sha="$HEAD_SHA" "$@" \
+            -f "output[title]=$title" -f "output[summary]=$summary" > /dev/null
