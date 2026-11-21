@@ -257,7 +257,7 @@ The rules are numbered in the order they were found. By topic:
 - Exceptions, `rescue` and `ensure`: 32, 33, 44, 45, 47, 48, 50, 53, 54, 61,
   79, 81, 89, 103, 104, 107, 113, 119, 124
 - Strings and bytes: 12, 13, 25, 27, 39, 52, 55, 60, 66, 96
-- Memory and GC roots: 58, 64, 65; and 99, a shallow built-in `dup`, which
+- Memory and GC roots: 58, 64, 65, 125; and 99, a shallow built-in `dup`, which
   is ordinary Ruby
 - Request decoding: 28, 49, 52
 - I/O, sockets, threads, processes: 19, 20, 21, 22, 57, 72, 75, 78, 80, 83, 85,
@@ -2384,6 +2384,35 @@ decision, and 77 explicitly retires a workaround.
      arms of gen/console.rb call. test/console.rb's rescuing-caller case
      holds the shape and does not compile without the two values.
      Kept until docs/spinel-feedback.md AY is closed.
+
+125. A frozen heap String is never freed under Spinel 2026.11.15.7033, and
+     `Symbol#to_s` answers a new frozen String at every call, so every
+     `sym.to_s` leaks it for the life of the process. The runtime pins a
+     String when it freezes it (`sp_str_freeze_val` marks it 0xf1 and calls
+     `sp_slab_pin`, "a frozen heap string: immortal, as a literal is"), and
+     `sp_sym_to_s_new` freezes what it makes. The same holds for `.freeze`,
+     `-s` and `clone` of a frozen String built at run time. The collector's
+     "live" figure (`SPINEL_GC_STATS=1`) leaves pinned Strings out: it stayed
+     at 1.3 MB while the process grew. A reduced program (1,000,000 calls
+     each, 2026-11-21): `sym.to_s` +110 MB, `("x" + i.to_s).freeze` +124 MB;
+     `sym.name`, `"#{sym}"` and an unfrozen String built at run time +0 MB.
+     Under load this was examples/blog's server growing by 1 to 4 KB per
+     request (29 MB to 725 MB over ten 10 s `wrk` runs on /articles, with
+     throughput falling from 1,577 to 1,108 req/s). About 20 call sites
+     pinned on each request: `params[:id]`, `session[:user_id]`,
+     `cookies[:x]`, `flash[:notice]`, `t(:key)`, `where(col: v)`, the
+     action name, the template interpreter's `article[:title]`, helper names.
+     Name a key given as a String or a Symbol with
+     `Cybertrain::Key.string_of(key)` (cybertrain/key.rb: `Symbol#name`, one
+     cached String per Symbol), never `key.to_s`, and use `sym.name` where
+     the value is known to be a Symbol (`I18n.locale.name`); freeze only
+     Strings made once (constants, boot). test/key_text.rb is the
+     regression program (it fails on the old call sites: +168 MB over
+     200,000 rounds). To find what pins on a running server, attach gdb with
+     `break sp_slab_pin` plus `commands; bt 8; continue; end` and send a few
+     requests; the warm-up's first `Symbol#name` of each Symbol pins once,
+     which is bounded. docs/spinel-feedback.md AZ asks Spinel to let a
+     frozen run-time String be collected.
 
 <a id="numbers-worth-remembering"></a>
 

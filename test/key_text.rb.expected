@@ -1,0 +1,5 @@
+ok   Key.string_of names a Symbol with the same frozen String at every call
+ok   Key.string_of answers a String key itself and to_s of anything else
+ok   Symbol and String keys reach the same entries
+ok   Symbol keys on the request path do not grow the process
+4 tests, 14 assertions, 0 failures

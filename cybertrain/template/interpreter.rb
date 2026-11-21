@@ -817,7 +817,7 @@ module Cybertrain
       def hash_key(key)
         case key
         when String then key
-        when Symbol then key.to_s
+        when Symbol then key.name
         else to_s_value(key)
         end
       end

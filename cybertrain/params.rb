@@ -10,6 +10,7 @@
 # every kind change an O(n) Array#delete, i.e. quadratic parsing).
 require_relative "http/uploaded_file"
 require_relative "http/parameter_filter"
+require_relative "key"
 
 module Cybertrain
   # The request parameters, {Controller#params} in an action and `params`
@@ -58,7 +59,7 @@ module Cybertrain
     # @return [String, nil]
     # @api public
     def [](key)
-      @values[key.to_s]
+      @values[Key.string_of(key)]
     end
 
     # The values sent as `key[]=a&key[]=b`.
@@ -66,7 +67,7 @@ module Cybertrain
     # @return [Array<String>] `[]` when absent
     # @api public
     def list(key)
-      arr = @lists[key.to_s]
+      arr = @lists[Key.string_of(key)]
       arr.nil? ? [] : arr
     end
 
@@ -80,14 +81,14 @@ module Cybertrain
     # @return [Params]
     # @api public
     def nested(key)
-      @children[key.to_s] || Params.new
+      @children[Key.string_of(key)] || Params.new
     end
 
     # @param key [String, Symbol]
     # @return [Boolean] true when the key was sent, of any kind
     # @api public
     def key?(key)
-      k = key.to_s
+      k = Key.string_of(key)
       @values.key?(k) || @lists.key?(k) || @children.key?(k) || @uploads.key?(k)
     end
 
@@ -100,7 +101,7 @@ module Cybertrain
     #   article"` (a 400 unless rescued)
     # @api public
     def require(key)
-      k = key.to_s
+      k = Key.string_of(key)
       child = @children[k]
       if child.nil? || child.empty?
         raise ParameterMissing, "param is missing or the value is empty: #{k}"
@@ -126,7 +127,7 @@ module Cybertrain
     # @return [UploadedFile, nil] nil when no file was sent under that name
     # @api public
     def upload(key)
-      @uploads[key.to_s]
+      @uploads[Key.string_of(key)]
     end
 
     # @param key [String, Symbol]
@@ -134,7 +135,7 @@ module Cybertrain
     #   chosen file with no bytes; never an input left empty)
     # @api public
     def upload?(key)
-      @uploads.key?(key.to_s)
+      @uploads.key?(Key.string_of(key))
     end
 
     # {.max_page} before any boot, which Runtime.reset! restores.
@@ -185,7 +186,7 @@ module Cybertrain
     # @return [Integer]
     # @api public
     def int(key, default:, min:, max:)
-      Params.clamp_int(@values[key.to_s], default, min, max)
+      Params.clamp_int(@values[Key.string_of(key)], default, min, max)
     end
 
     # The 1-based page number from `?page=N`, for {Relation#page}: 1 when
@@ -302,7 +303,7 @@ module Cybertrain
           raise ArgumentError, msg
         end
         name = names[0]
-        k = name.to_s
+        k = Key.string_of(name)
         filters = spec[name]
         case filters
         when Array
@@ -322,7 +323,7 @@ module Cybertrain
         Params.filter_not_array!("expect", k, filters.class.name.to_s)
         Params.permitted_hash
       else
-        k = spec.to_s
+        k = Key.string_of(spec)
         v = @values[k]
         Params.expect_missing!(k) if v.nil? || v.empty?
         out = Params.permitted_hash
@@ -366,7 +367,7 @@ module Cybertrain
     # from the other two (a no-op when absent), so a name is only ever one
     # kind at a time and the last write wins.
     def set_value(key, value)
-      k = key.to_s
+      k = Key.string_of(key)
       @lists.delete(k)
       @children.delete(k)
       @uploads.delete(k)
@@ -374,7 +375,7 @@ module Cybertrain
     end
 
     def add_list_value(key, value)
-      k = key.to_s
+      k = Key.string_of(key)
       @values.delete(k)
       @children.delete(k)
       @uploads.delete(k)
@@ -383,7 +384,7 @@ module Cybertrain
     end
 
     def child!(key)
-      k = key.to_s
+      k = Key.string_of(key)
       @values.delete(k)
       @lists.delete(k)
       @uploads.delete(k)
@@ -399,7 +400,7 @@ module Cybertrain
     # @param key [String, Symbol]
     # @param up [UploadedFile]
     def set_upload(key, up)
-      k = key.to_s
+      k = Key.string_of(key)
       @values.delete(k)
       @lists.delete(k)
       @children.delete(k)
@@ -540,7 +541,7 @@ module Cybertrain
           j = 0
           while j < names.length
             name = names[j]
-            k = name.to_s
+            k = Key.string_of(name)
             inner = f[name]
             case inner
             when Array
@@ -559,7 +560,7 @@ module Cybertrain
         when Array
           Params.nested_array_filter!
         else
-          k = f.to_s
+          k = Key.string_of(f)
           out[k] = @values[k] if @values.key?(k)
         end
         i += 1

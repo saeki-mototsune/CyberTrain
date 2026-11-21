@@ -7,6 +7,7 @@ require "cybertrain/logger"
 require "cybertrain/callback"
 require "cybertrain/feature"
 require "cybertrain/views"
+require "cybertrain/key"
 require "cybertrain/rendering"
 require "cybertrain/http_cache"
 require "cybertrain/format_collector"
@@ -678,7 +679,7 @@ module Cybertrain
     # {#respond_to} whose matching declaration's block rendered nothing,
     # the format it matched decides instead of the request's.
     def default_render(action)
-      name = action.to_s
+      name = Key.string_of(action)
       wanted = @respond_format == :none ? @request.format : @respond_format
       chosen = Rendering.implicit_format(self.class.name, controller_path, name, wanted, @request)
       if chosen == :none
@@ -715,7 +716,7 @@ module Cybertrain
     # @return [String]
     # @api public
     def t(key, options = {})
-      k = key.to_s
+      k = Key.string_of(key)
       k = "#{controller_path.tr("/", ".")}.#{@action_name}#{k}" if k.start_with?(".")
       return I18n.t(k, Template::Helpers.escaped_interpolations(options)) if I18n.html_key?(k)
 
@@ -939,16 +940,16 @@ module Cybertrain
         @response.body = Rendering.json_text(json)
         @response.content_type = "application/json; charset=utf-8"
       elsif !partial.nil?
-        render_partial(partial.to_s, locals)
+        render_partial(Key.string_of(partial), locals)
       else
         chosen = ""
         if layout == true
           chosen = controller_layout(@action_name)
         elsif layout != false
-          chosen = Rendering.layout_named(layout.to_s)
+          chosen = Rendering.layout_named(Key.string_of(layout))
         end
         wanted = @respond_format == :none ? :html : @respond_format
-        render_template(template.to_s, locals, layout: chosen, format: wanted)
+        render_template(Key.string_of(template), locals, layout: chosen, format: wanted)
       end
       @response.content_type = content_type unless content_type.nil?
       @response.performed!
@@ -1280,7 +1281,7 @@ module Cybertrain
     private
 
     def run_action(action, body)
-      @action_name = action.to_s
+      @action_name = Key.string_of(action)
       # The request's `where` (docs/design.md D88): the controller and action,
       # on the Context and on the thread's log Scope, which a RequestId
       # made for this request; nothing is written to the shared empty

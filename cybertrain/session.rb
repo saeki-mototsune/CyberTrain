@@ -2,6 +2,7 @@ require "cybertrain/crypto"
 require "cybertrain/encryptor"
 require "base64"
 require "json"
+require "cybertrain/key"
 
 module Cybertrain
   # A cookie-store session: a flat Hash<String,String> that round-trips
@@ -54,7 +55,7 @@ module Cybertrain
       keys = data.keys
       i = 0
       while i < keys.size
-        @data[keys[i].to_s] = data[keys[i]].to_s
+        @data[Key.string_of(keys[i])] = data[keys[i]].to_s
         i += 1
       end
       @changed = false
@@ -64,7 +65,7 @@ module Cybertrain
     # @return [String, nil]
     # @api public
     def [](key)
-      @data[key.to_s]
+      @data[Key.string_of(key)]
     end
 
     # @param key [String, Symbol]
@@ -72,7 +73,7 @@ module Cybertrain
     # @return [String]
     # @api public
     def []=(key, value)
-      k = key.to_s
+      k = Key.string_of(key)
       v = value.to_s
       @changed = true unless @data[k] == v
       @data[k] = v
@@ -82,7 +83,7 @@ module Cybertrain
     # @return [String, nil] the removed value
     # @api public
     def delete(key)
-      k = key.to_s
+      k = Key.string_of(key)
       @changed = true if @data.key?(k)
       @data.delete(k)
     end
@@ -91,7 +92,7 @@ module Cybertrain
     # @return [Boolean]
     # @api public
     def key?(key)
-      @data.key?(key.to_s)
+      @data.key?(Key.string_of(key))
     end
 
     # @return [Array<String>]

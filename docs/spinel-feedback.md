@@ -4841,3 +4841,46 @@ and which 2026.11.15.7033 compiles.
   block cannot complete and another answers a boxed value; or box the
   rescue's String there.
 - Not reported upstream.
+
+
+## Found while measuring the HTTP layer (2026-11-21)
+
+A baseline of examples/blog's request throughput (script/measure-http-layer)
+showed the production server's memory growing without bound under load.
+spikes/NOTES.md has it as rule 125.
+
+### AZ. A frozen String made at run time is never freed, and `Symbol#to_s` makes one at every call
+
+Rule 125. The runtime pins every heap String it freezes (`sp_str_freeze_val`
+and `sp_str_clone_val` call `sp_slab_pin`, "immortal, as a literal is"), and
+`sp_sym_to_s_new`, which `Symbol#to_s` and the Symbol arm of a boxed `to_s`
+call, answers a new frozen String each time. So this program grows by about
+110 MB on 2026.11.15.7033, where CRuby stays flat:
+
+```ruby
+syms = [:alpha, :beta, :gamma]
+i = 0
+n = 0
+while i < 1_000_000
+  n += syms[i % 3].to_s.size
+  i += 1
+end
+puts n
+```
+
+`("x" + i.to_s).freeze` in the same loop grows by about 124 MB. `sym.name`,
+`"#{sym}"` and an unfrozen String do not grow. `SPINEL_GC_STATS=1` reports
+the live heap flat (pinned Strings are not counted), which hides the growth
+from the collector's own report. In examples/blog, `params[:id]`,
+`session[:user_id]`, `t(:key)`, `where(title: ...)` and the like leaked 1 to
+4 KB a request: 29 MB to 725 MB in 100 s of `wrk`.
+
+- Today: the framework names a String-or-Symbol key with
+  `Cybertrain::Key.string_of` (`Symbol#name`), and freezes only Strings it makes
+  once; test/key_text.rb fails if the request path pins again. Application
+  code that writes `sym.to_s` on every request still leaks.
+- Asked of Spinel: let the collector free a frozen String that is not a
+  literal (keep pinning for literals and interned Strings, `String#-@`), or
+  answer `Symbol#to_s` with a String that is not pinned (CRuby's is a new
+  unfrozen String; `Symbol#name` is the cached frozen one).
+- Not reported upstream yet; the reduced program above is ready.

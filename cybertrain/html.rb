@@ -2,6 +2,7 @@
 # type views use to say "this string is already safe to drop into HTML",
 # and the tag builder (Html.tag and friends).
 require "cybertrain/generator/inflector"
+require "cybertrain/key"
 
 module Cybertrain
   # HTML escaping for controllers and models. Templates escape `<%= %>`
@@ -214,7 +215,7 @@ module Cybertrain
     # what the template helpers call, with a block's output as `inner`.
     # @api private
     def self.build_tag(name, attrs, inner, given)
-      tag_name = name.to_s
+      tag_name = Key.string_of(name)
       raise ArgumentError, "invalid element name '#{tag_name}'" unless element_name?(tag_name)
 
       void = void_element?(tag_name)
@@ -282,14 +283,14 @@ module Cybertrain
         value.each do |item|
           case item
           when nil then nil
-          else words << item.to_s
+          else words << Key.string_of(item)
           end
         end
         joined = words.join(" ")
         return " #{attr_name}=\"#{escape(joined)}\""
       when Hash then raise ArgumentError, "attribute '#{attr_name}' cannot be a Hash"
       end
-      " #{attr_name}=\"#{escape(value.to_s)}\""
+      " #{attr_name}=\"#{escape(Key.string_of(value))}\""
     end
 
     # Content for a tag or safe_join: a SafeString as it is, nil as nothing,
@@ -306,7 +307,7 @@ module Cybertrain
     # @api private
     def self.key_text(key)
       case key
-      when Symbol then key.to_s
+      when Symbol then key.name
       when String then key
       else key.to_s
       end

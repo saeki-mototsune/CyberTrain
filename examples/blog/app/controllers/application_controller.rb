@@ -43,9 +43,11 @@ class ApplicationController < Cybertrain::Controller
     nil
   end
 
-  # The layout's `<html lang="...">`: "en" or "ja".
+  # The layout's `<html lang="...">`: "en" or "ja". Symbol#name, not to_s:
+  # under Spinel each to_s of a Symbol is a new String that is never freed,
+  # and the layout asks for this on every page (spikes/NOTES.md rule 125).
   def html_lang
-    I18n.locale.to_s
+    I18n.locale.name
   end
 
   # This page's path in another language, for the layout's language
