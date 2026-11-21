@@ -157,7 +157,18 @@ module GuidePages
       end
 
       # Rendered HTML as one line of text, for <title> and attributes.
-      def self.flat(html) = html.to_s.gsub(/<[^>]*>/, "").gsub('"', "&quot;").split.join(" ")
+      def self.flat(html) = strip_tags(html.to_s).gsub('"', "&quot;").split.join(" ")
+
+      # Tags removed until none is left: one pass over "<scr<b>ipt>" would
+      # leave a new "<script>" behind.
+      def self.strip_tags(html)
+        loop do
+          stripped = html.gsub(/<[^>]*>/, "")
+          return stripped if stripped == html
+
+          html = stripped
+        end
+      end
 
       def initialize(src, english, page, words)
         @page, @words, @lang = page, words, src.lang

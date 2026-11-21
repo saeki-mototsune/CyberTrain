@@ -27,12 +27,23 @@ module GuidePages
   class Outline
     attr_reader :title, :sections, :links
 
+    # Tags removed until none is left: one pass over "<scr<b>ipt>" would
+    # leave a new "<script>" behind.
+    def self.strip_tags(html)
+      loop do
+        stripped = html.gsub(/<[^>]*>/, "")
+        return stripped if stripped == html
+
+        html = stripped
+      end
+    end
+
     # GFM heading anchor: markup and tags stripped, entities decoded (a
     # no-break space is a space), lowercased, only letters, digits, spaces,
     # "-" and "_" kept, spaces turned into "-".
     def self.slug(text)
       t = text.gsub(/!?\[([^\]]*)\]\([^)]*\)/, '\1')
-      t = t.gsub(/<[^>]*>/, "").delete("`*~")
+      t = strip_tags(t).delete("`*~")
       t = CGI.unescapeHTML(t.gsub("&nbsp;", " ")).tr("\u00A0", " ").gsub(/&[A-Za-z][A-Za-z0-9]*;/, "")
       t.downcase.gsub(/[^\p{L}\p{N} _-]/, "").tr(" ", "-")
     end
@@ -41,7 +52,7 @@ module GuidePages
     # stripped and entities decoded; the caption is not part of it.
     def self.figure_code(html)
       code = html[%r{<code\b[^>]*>(.*?)</code>}m, 1] || html[%r{<code\b[^>]*>(.*)}m, 1].to_s
-      text = CGI.unescapeHTML(code.gsub(/<[^>]*>/, "").gsub("&nbsp;", " ")).tr("\u00A0", " ")
+      text = CGI.unescapeHTML(strip_tags(code).gsub("&nbsp;", " ")).tr("\u00A0", " ")
       text.empty? || text.end_with?("\n") ? text : "#{text}\n"
     end
 

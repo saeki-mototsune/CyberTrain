@@ -167,7 +167,7 @@ module Cybertrain
         c.force_ssl_unless_given(false)
         c.sentry_dsn_unless_given("")
         c.hosts_from_env_unless_given(Array.new(0) { "" })
-        c.allowed_hosts << Client::TEST_HOST unless c.allowed_hosts.include?(Client::TEST_HOST)
+        c.allowed_hosts << Client::TEST_HOST unless c.allowed_hosts.any? { |h| h == Client::TEST_HOST }
         unless c.upload_root_given?
           c.upload_root_unless_given(TEST_UPLOADS)
           Bundle.empty_directory(TEST_UPLOADS)

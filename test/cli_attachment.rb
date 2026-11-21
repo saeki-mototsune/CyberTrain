@@ -863,4 +863,26 @@ test "the scaffold refuses a duplicate column or a bad attachment name before wr
   assert_includes read("refuse/app/controllers/items_controller.rb"), "  def set_post\n    if @item.set_post_attached?"
 end
 
+# callback_checks_more? reads a before_action/skip_before_action line with a
+# regex; its only:/except: lists must not backtrack exponentially.
+test "the callback line check keeps its verdicts and stays fast on pathological lines" do
+  spec = Cybertrain::CLI::AttachmentSpec.new("post", "cover", false)
+  check = lambda { |line| Cybertrain::CLI::Attachment.callback_checks_more?("  #{line}\n", spec) }
+  # Plain, listed and comma-separated forms are recognised (false: nothing to review).
+  assert_equal false, check.call("before_action :authenticate")
+  assert_equal false, check.call("before_action :authenticate, only: [:index, :new]")
+  assert_equal false, check.call("before_action :authenticate only: [ :index ,:new ] , except: []")
+  assert_equal false, check.call("allow_unauthenticated_access only: [:index, :show, :cover]")
+  # Dynamic or malformed declarations still need review (true).
+  assert_equal true, check.call("before_action :authenticate, only: [:index, \"x\"]")
+  assert_equal true, check.call("before_action :authenticate if admin?")
+  assert_equal true, check.call("before_action :authenticate, only: [:index")
+  # Pathological repetitions return at once and give the same verdict.
+  started = Time.now
+  assert_equal true, check.call("before_action :_" + " only:[]" * 40 + "!")
+  assert_equal true, check.call("before_action :_only:[:_" + " :_" * 40 + "!")
+  assert_equal true, check.call("before_action :a, only: [" + ":a " * 5000 + "!")
+  assert (Time.now - started) < 2.0, "callback line check took #{Time.now - started}s"
+end
+
 Cybertrain::Test.run!

@@ -1,8 +1,20 @@
 # Creates the GitHub release for a tag vX.Y.Z, with notes GitHub generates
 # from the pull requests merged since the previous tag. Runs on the tag push
-# (CONTRIBUTING.md "Releasing", step 2); a manual run takes an existing tag, for a tag
-# pushed before this workflow existed. A tag that already has a release fails
-# the run rather than overwriting it.
+# (CONTRIBUTING.md "Releasing", step 2); a manual run releases an existing
+# tag, for a tag pushed without a release: start it on the tag itself (Run
+# workflow, "Use workflow from", Tags, vX.Y.Z). A manual run started on a
+# branch is refused. A tag that already has a release fails the run rather
+# than overwriting it.
+#
+# The tag is never an input. Every run, pushed or manual, runs in the tag's
+# own context: the checks check out the commit the run started on
+# (github.sha), and what they save to the Actions cache (the Spinel toolchain,
+# the image layers) is scoped to the tag. A manual run on main that checked
+# out a tag given as an input would run that commit's code with main's cache
+# scope, and whatever it saved there (an unreviewed commit's toolchain, say)
+# would be restored by every later run on main and on every pull request.
+# It also means the tag's own copy of this workflow and of the ones it calls
+# is the one that runs.
 #
 # The release is created only when the tag passes every check first: the
 # version check below, the Gate (gate.yml), the full test suite on Linux and
@@ -13,12 +25,12 @@
 # it. If any of them fails, no release is created; fix it, move or re-push the
 # tag (or push a new one) and the checks run again.
 #
-# The version job resolves the tag to one commit, and every check and image
-# build checks out that commit, not the tag: a tag moved while a run is going
-# cannot make the jobs test different commits. Before the images are pushed
-# and again before the release is created, the run checks that the tag still
-# points to that commit, and stops if it does not (the run for the moved tag
-# tests the new commit). A tag moved after the first check, while the images
+# Every check and image build checks out the commit the run started on
+# (github.sha, which the version job also outputs as `sha`), not the tag: a
+# tag moved while a run is going cannot make the jobs test different commits.
+# Before the images are pushed and again before the release is created, the
+# run checks that the tag still points to that commit, and stops if it does
+# not (the run for the moved tag tests the new commit). A tag moved after the first check, while the images
 # are being pushed, still stops the release, but the images built from the
 # tested commit stay pushed; only a tag ruleset (a repository setting) keeps
 # the tag from moving at all.
@@ -45,11 +57,8 @@ name: Release
 on:
   push:
     tags: ["v*"]
+  # On the tag to release (see above): no inputs.
   workflow_dispatch:
-    inputs:
-      tag:
-        description: "Existing tag to release (vX.Y.Z)"
-        required: true
 
 # Each job below raises what it needs; the called workflows get read access only.
 permissions:
@@ -57,7 +66,7 @@ permissions:
 
 # One release run per tag; a second run for the same tag waits for the first.
 concurrency:
-  group: release-${{ inputs.tag || github.ref_name }}
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 jobs:
@@ -67,14 +76,22 @@ jobs:
     outputs:
       sha: ${{ steps.resolve.outputs.sha }}
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
+      TAG: ${{ github.ref_name }}
     steps:
+      - name: The run is on a tag
+        env:
+          REF: ${{ github.ref }}
+        run: |
+          case "$REF" in
+            refs/tags/v*) ;;
+            *) echo "::error::$REF is not a tag vX.Y.Z: start a manual run on the tag (Use workflow from, Tags)"; exit 1 ;;
+          esac
+
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ inputs.tag || github.ref_name }}
           persist-credentials: false
 
-      - name: Resolve the tag to one commit
+      - name: The commit the run started on
         id: resolve
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
@@ -91,17 +108,15 @@ jobs:
             echo "release $TAG already exists"; exit 1
           fi
 
+  # The called workflows check out github.sha, the commit the version job
+  # checked: they take no ref (see the top of this file).
   gate:
     needs: version
     uses: ./.github/workflows/gate.yml
-    with:
-      ref: ${{ needs.version.outputs.sha }}
 
   ci:
     needs: version
     uses: ./.github/workflows/ci.yml
-    with:
-      ref: ${{ needs.version.outputs.sha }}
 
   # A check only: blog-image.yml pushes nothing. It saves the image that
   # passed the smoke test as the artifact blog-image-tested, which
@@ -112,7 +127,6 @@ jobs:
       contents: read
     uses: ./.github/workflows/blog-image.yml
     with:
-      ref: ${{ needs.version.outputs.sha }}
       artifact: blog-image-tested
 
   # Between the checks and the first push: the tag still names what was tested.
@@ -121,7 +135,7 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
+      TAG: ${{ github.ref_name }}
     steps:
       - name: The tag still points to the tested commit
         env:
@@ -139,7 +153,7 @@ jobs:
     uses: ./.github/workflows/playground-image.yml
     with:
       ref: ${{ needs.version.outputs.sha }}
-      release_tag: ${{ inputs.tag || github.ref_name }}
+      release_tag: ${{ github.ref_name }}
 
   # Publishes the image the blog-image check tested: loads its artifact,
   # checks that it is that image (the ID the check recorded) and pushes it as
@@ -154,7 +168,7 @@ jobs:
       contents: read
       packages: write
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
+      TAG: ${{ github.ref_name }}
       IMAGE: ghcr.io/saeki-mototsune/cybertrain-blog
       IMAGE_ID: ${{ needs.blog-image.outputs.image_id }}
     steps:
@@ -188,7 +202,7 @@ jobs:
     permissions:
       contents: write
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
+      TAG: ${{ github.ref_name }}
     steps:
       - name: The tag still points to the tested commit
         env:
@@ -223,7 +237,7 @@ jobs:
       group: release-promote-latest
       cancel-in-progress: false
     env:
-      TAG: ${{ inputs.tag || github.ref_name }}
+      TAG: ${{ github.ref_name }}
       IMAGES: ghcr.io/saeki-mototsune/cybertrain-playground ghcr.io/saeki-mototsune/cybertrain-blog
     steps:
       - name: Find the newest release
@@ -274,4 +288,4 @@ jobs:
       contents: write
     uses: ./.github/workflows/spinel-prebuilt.yml
     with:
-      release: ${{ inputs.tag || github.ref_name }}
+      release: ${{ github.ref_name }}
