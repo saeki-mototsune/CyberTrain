@@ -51,6 +51,7 @@ none of them.
 | `differing/class_before_definition.rb` | AV | 17 | AV is closed |
 | `differing/socket_bytes.rb` | AW | 27 | AW is closed |
 | `differing/raising_helper_beside_lambda.rb` | rule 79 (the shape `Console.unknown_model` is written around, not the rule's own program) | 79 | rule 79 is closed |
+| `differing/json_parse_nesting.rb` | AX | none | AX is closed |
 
 ## The first four programs, 2026-11-11
 
@@ -207,7 +208,9 @@ as a control.
 One more was added later that day, on the same machine and tools and with
 the same control: the reduction of what stopped a test of
 cybertrain/console.rb from compiling when the typed values after the
-`raise` of its two raising helpers were removed (the last row).
+`raise` of its two raising helpers were removed (the row before the
+last), and a search for the depth at which `JSON.parse` raises (the last
+row).
 
 | Program | What it showed |
 | --- | --- |
@@ -221,6 +224,7 @@ cybertrain/console.rb from compiling when the typed values after the
 | `differing/class_before_definition.rb` | Rule 17, added 2026-11-21: a class used above its `class` statement runs, where CRuby raises NameError |
 | `differing/socket_bytes.rb` | Rule 27, added 2026-11-21: `IO#gets` on a socket answers an ASCII-8BIT String, as under CRuby (a UTF-8 one when built by `2026.11.04.7026`), and an append of a socket's bytes to a UTF-8 String that holds non-ASCII appends, where CRuby raises Encoding::CompatibilityError |
 | `differing/raising_helper_beside_lambda.rb` | Rule 79, added 2026-11-21: a rescuing method given, as blocks, a method that only raises and the call of a lambda that ends in it (stored where a lambda returning an object is stored later) does not build: "incompatible types when assigning to type 'sp_RbVal' from type 'const char *'" at the `yield`, with `2026.11.04.7026` too. With a typed value after the `raise` it builds and prints CRuby's line |
+| `differing/json_parse_nesting.rb` | AX (no rule), added 2026-11-21: `JSON.parse` of Arrays with nothing inside raises one level later than under CRuby, 102 for 101 and, under `max_nesting: 10`, 12 for 11; its other six lines match CRuby. Built by `2026.11.04.7026` every line differs: 200 levels parse whatever `max_nesting:` says, and the error is `JSON::ParserError: nesting too deep` |
 
 ## Running
 

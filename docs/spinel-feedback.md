@@ -4,8 +4,8 @@ This document is the one record of what Spinel does that CyberTrain has had
 to know about, and of where each behaviour stands: what happens, the
 program that shows it, what it did on each build tried, what is asked of
 Spinel, and whether it is closed. Each behaviour is an item whose
-identifier never changes: a digit (1 to 7), a letter (A to AW so far; the
-next is AX) or, for a behaviour first written as a rule of spikes/NOTES.md
+identifier never changes: a digit (1 to 7), a letter (A to AX so far; the
+next is AY) or, for a behaviour first written as a rule of spikes/NOTES.md
 and never lettered, "rule N". "Item register" lists them all.
 
 [spikes/](../spikes/README.md) is the other half and does not say where a
@@ -285,6 +285,7 @@ the cell names another build.
 | AU | bug | 52 | open (status 52) |  |
 | AV | bug | 17 | open (status 17): a class used above its definition runs compiled where CRuby raises NameError (rechecks/differing/class_before_definition.rb). A constant assigned with `=` and read before its assignment raises NameError as under CRuby (rechecks/constant_order.rb matches on the pin). Nothing in the framework is written around it: the rule's advice is to keep an order CRuby accepts |  |
 | AW | bug | 27 | open (status 27) for an append of socket bytes to a UTF-8 String that holds non-ASCII, which appends where CRuby raises; passes on the pin for `IO#gets` on a socket, which answers a byte String as CRuby does (Linux, 2026-11-21), and `readpartial`, `read(n)` and `read_nonblock` match on the pin (rechecks/socket_shapes.rb). Closed once both lines of rechecks/differing/socket_bytes.rb, `gets` and `append`, print CRuby's result on the pin. Framing by byte is no workaround to remove: it is right under both runtimes and stays in rule 27 as advice after AW is closed |  |
+| AX | bug |  | open ("Status by rule", row AX): `JSON.parse` does not count an innermost empty Array or Object against the nesting limit, so 101 nested Arrays with nothing inside parse where CRuby raises JSON::NestingError, and one level deeper with `max_nesting:` too (rechecks/differing/json_parse_nesting.rb). Documents that hold a value raise at the depth and with the class and message CRuby gives. No workaround and no rule: nothing in the framework depends on where the limit falls |  |
 | rule 1 | constraint | 1 | settled (1.4: no run-time code); the probes of a computed `send` and of reflection with a non-literal name match on the pin (rechecks/dispatch_shapes.rb) |  |
 | rule 2 | constraint | 2 | settled (1.4); a stored block handed to `instance_exec` still raises when reached on the pin (status 2) |  |
 | rule 3 | bug | 3 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
@@ -417,8 +418,8 @@ under the sections of phases 2, 3 and 4a; Y and Z under "Re-checked on
 2026-11-11"; AA to AH under "Written up on 2026-11-13"; AI, AJ to AO, AP
 and AQ, and AR under the sections of phases 4b, 5a and 5b and the phase 5b
 follow-ups; AS under "Found in the clean-up of 2026-11-15"; AT, AU, AV
-and AW, written up from rules 112, 52, 17 and 27 on 2026-11-21, are the
-last section.
+and AW, written up from rules 112, 52, 17 and 27 on 2026-11-21, and AX,
+found that day, are the last section.
 
 ### 1. What CyberTrain does today because of Spinel
 
@@ -618,6 +619,7 @@ not by design. Costs are in 2; what is by design is in 1.4.
 | AU | `String#strip` on a String with an invalid byte returns it where CRuby raises | 5 lines | No |
 | AV | A class used above its definition runs, where CRuby raises NameError (rule 17; added 2026-11-21 as "Rule 17", lettered the same day; listed under 1.4 until then) | 2 lines; spikes/rechecks/differing/class_before_definition.rb ("Status by rule", row 17 of both tables) | No |
 | AW | `IO#gets` on a socket answers a UTF-8 character String, and socket bytes append to a UTF-8 String that holds non-ASCII where CRuby raises (rule 27; added 2026-11-21 as "Rule 27", lettered the same day; listed under 1.4 until then). On 2026.11.15.7033 `gets` answers as CRuby does and the append still differs | spikes/rechecks/differing/socket_bytes.rb ("Status by rule", row 27 of both tables) | No |
+| AX | `JSON.parse` lets an empty Array or Object sit one level past the nesting limit, where CRuby raises JSON::NestingError (added 2026-11-21) | spikes/rechecks/differing/json_parse_nesting.rb ("Status by rule", row AX of both tables) | No |
 | V | `strftime` with a built pattern returns the pattern | Not reduced | No |
 | W | An ivar String passed to a stored lambda is refused | Not reduced | No |
 | X | Type inference does not converge in examples/blog's generator | Not reduced | No |
@@ -932,6 +934,7 @@ rule".
 | AU. `String#strip` on a String with an invalid byte returns it | yes (rule 52) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** (2026-11-15 and 2026-11-19; rule 52) |
 | AV. A class used above its definition runs, where CRuby raises NameError (rule 17) | yes (rule 17, recorded for constants read before their definition) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** for a class name (2026-11-15); a constant assigned with `=` raises NameError as under CRuby |
 | AW. `IO#gets` on a socket answers a UTF-8 character String; socket bytes append to a UTF-8 String where CRuby raises (rule 27) | yes (rule 27, recorded for socket buffers generally) | not checked | not checked | not checked | not checked | not checked | not checked | **yes** for `gets` and for the append (2026-11-15); `readpartial`, `read(n)` and `read_nonblock` answer byte Strings as under CRuby |
+| AX. `JSON.parse` does not count an innermost empty Array or Object against the nesting limit | not checked | not checked | not checked | not checked | not checked | not checked | not checked | **yes**, and more: the limit is 200 levels for every document, `max_nesting:` changes nothing, and the error is `JSON::ParserError: nesting too deep` (run on 2026-11-21 as the control of the run on 2026.11.15.7033) |
 
 ## Status by rule
 
@@ -1007,8 +1010,8 @@ moved up into spikes/rechecks/, as spikes/rechecks/README.md says a
 program that matches CRuby is; the other four stay in differing/. Later
 that day the programs of rows 17 and 27, inline until then, were saved
 there as class_before_definition.rb and socket_bytes.rb (AV and AW), which
-makes six, and raising_helper_beside_lambda.rb (row 79) was added, which
-makes seven.
+makes six, and raising_helper_beside_lambda.rb (row 79) and
+json_parse_nesting.rb (row AX) were added, which makes eight.
 
 | Rule | On 2026.11.15.7033 |
 | --- | --- |
@@ -1049,6 +1052,7 @@ makes seven.
 | 117 | Reduced program passes (spikes/phase5/queue_in_array.rb): prints `"hello"` and `"direct"`, as under CRuby; 2026.11.04.7026 raises "no implicit conversion of Hash into Integer (TypeError)". |
 | 122 | **Still there** (docs/spinel-feedback.md AR), run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6, not on the machine of the rows above: with rechecks/differing/require_in_regex.rb, `--strict-require` stops the build ("cannot load such file", naming the text of the regex), and without the flag the build warns that the require is ignored and the program prints `no match`, where CRuby prints `db`. 2026.11.04.7026 did the same in the same run. |
 | 123 | **Still there** (docs/spinel-feedback.md AS), run on 2026-11-21 on the same Linux machine and tools as row 122: rechecks/differing/env_nonliteral_key.rb, built with `spinel -I .` from the repository root (the framework at 79b38b68), prints `set: CYBERTRAIN_RECHECK_HOST` and `unset: default`, as 2026.11.04.7026 did in the same run; the value, `0.0.0.0`, was expected. Not reduced. |
+| AX (no rule) | **Still there** for an innermost empty container, found and run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6: rechecks/differing/json_parse_nesting.rb. CRuby prints "depth 100 parses, depth 101 raises JSON::NestingError: nesting of 101 is too deep" for Arrays around `1`, for Arrays with nothing inside and for Objects around `1`; the same with 10 and 11 under `max_nesting: 10` and with 300 and 301 under `max_nesting: 300`; and "every depth up to 400 parses" under `max_nesting: 0`. Built by 2026.11.15.7033 the program prints those lines but for two: "arrays, the innermost empty: depth 101 parses, depth 102 raises JSON::NestingError: nesting of 101 is too deep", and under `max_nesting: 10` "depth 11 parses, depth 12 raises JSON::NestingError: nesting of 11 is too deep". A second program, not saved, gave the same for an empty Object: 100 Arrays around `{}`, 100 Objects around `{}` and 100 Objects around `[]` raise "nesting of 101 is too deep" under CRuby and parse on 2026.11.15.7033. This is `JSON.parse`; `JSON.generate`'s limit (rules 33 and 61, test/server.rb's `/deep`) is another matter and was not part of this run. |
 | 1, 3 to 16, 18 to 24, 26, 28 to 32, 34 to 47, 50, 51, 53, 55 to 60, 62 to 77, 84, 85, 87, 95, 98, 99, 102, 103, 105, 106, 108, 111, 113 to 115, 118 to 121 | Not re-checked on this pin with a program of their own. Their status on 2026.11.04.7026 is in the next section, "On 2026.11.04.7026"; it is not carried over. The saved probes that hold a shape of some of them were run on 2026-11-21: the last row. |
 | rechecks/run.sh | Run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`, CRuby 3.3.6): all nineteen programs of rechecks/ compiled and printed their `.expected`. That is a **Probe passes** for each section's own small shape, with the limits spikes/rechecks/README.md states, for the shapes of rules 1 to 12, 14, 17 to 21, 26 to 35, 37, 39 to 48, 50 to 55, 60 to 62, 69, 72, 86 and 104 that those programs hold (for 2, 17, 27, 52, 54, 72, 86 and 104 only the half that already matched CRuby on 2026.11.04.7026). 2026.11.04.7026 was not run beside it that day. Run again on 2026-11-21 on the same machine and tools, after rechecks/nil_only_puts_openssl.rb, rechecks/float_range_boxed.rb and rechecks/builtin_superclass_with_module.rb moved up from rechecks/differing/ (rows 78, 86 and 104): all twenty-two programs compiled and printed their `.expected`. With those three the run also holds the shape of rule 78 and the halves of 86 and 104 that failed on 2026.11.04.7026 (a Range of Dates, row 86, is not in a saved program). Run once more on 2026-11-21 on the same machine and tools, after rules 33 and 61 were closed, rechecks/json_nesting_shapes.rb was deleted and the section of 33 and 61 left rechecks/json_error_shapes.rb (rows 33 and 61): all twenty-one programs compiled and printed their `.expected`. |
 
@@ -1140,6 +1144,7 @@ that day, saved as described there.
 | 121 | Works on this build: a record of a form that compiles and runs (phase 5b follow-ups, 2026-11-14; test/framework_names_compiles.rb), not of a defect. |
 | 122 | **Still there**, reduced on 2026-11-15 to three lines (in the rule; rechecks/differing/require_in_regex.rb): a require-shaped line inside a regex literal stops a `--strict-require` build, and without that flag the build passes with a warning and the match fails where CRuby's succeeds. |
 | 123 | **Still there**: found on this build (2026-11-15; rechecks/differing/env_nonliteral_key.rb, again 2026-11-19), in a program that requires two framework files; correct once cybertrain/core is required first. Not reduced (docs/spinel-feedback.md AS). |
+| AX (no rule) | **Still there**, and differently (docs/spinel-feedback.md AX): run on 2026-11-21 as the control of the row AX above, same machine and tools. Built by this build, rechecks/differing/json_parse_nesting.rb prints "depth 200 parses, depth 201 raises JSON::ParserError: nesting too deep" for Arrays around `1` and for Objects around `1`, with no option and under `max_nesting: 10`, `max_nesting: 0` and `max_nesting: 300` alike, and "depth 201 parses, depth 202 raises JSON::ParserError: nesting too deep" for Arrays with nothing inside, with no option and under `max_nesting: 10`: a fixed limit of 200 levels, `max_nesting:` without effect, the error a ParserError, and an innermost empty Array not counted. The unsaved second program printed `ok` for its three documents. |
 | 3, 19, 20, 21, 30, 33, 45, 50 | Probe passes (2026-11-13, docs/spinel-feedback.md 1.2; again on 2026-11-15, saved in rechecks/dispatch_shapes.rb (3, 30), io_shapes.rb (19), socket_bare_readpartial.rb (20), socket_shapes.rb (21), json_error_shapes.rb (33) and rescue_shapes.rb (45, 50)). 20: at `SPINEL_WORKERS=1` another green thread keeps running while one sits in a bare `readpartial` on an idle connection; the `wait_readable` stays, since its nil return is the idle timeout. 33: `rescue StandardError` and a bare `rescue` catch `JSON::ParserError`, and `rescue StandardError` catches `JSON.generate`'s `JSON::NestingError`. 33 and 61 are **retired in part**: the change "DB: rescue StandardError alone in the data layer's rollback arms" (2026-11-15) took the three-class clause out of db.rb, db/cli.rb, db/connection.rb, db/pool.rb and model.rb, checked there with a whole-framework compiled program and the transaction tests it names; Since 2026-11-20 no file under `cybertrain/` has the three-class clause (`git grep -n 'JSON::ParserError, StandardError' cybertrain` prints nothing). Four changes of 2026-11-19 and 2026-11-20 removed it, each with compiled tests whose snapshots did not change: the scheduler, the job executor and worker and the console, with test/json_rescue_background.rb added as the regression (a job handler, scheduled tasks, job threads and plain Threads raising both errors); the HTTP server, WebSocket and ErrorReporter files, with test/server.rb's `/json` and `/deep` cases; the controller, the middleware, Session and Flash (test/controller.rb, error_pages.rb, request_id.rb, session.rb, flash.rb); and dev/error_page.rb, dev/indicator.rb and test/database.rb (test/dev_error_page.rb, dev_indicator.rb, test_database.rb). Of the tests in `test/`, json_rescue_background.rb, server.rb and dev_error_page.rb (a body that does not parse, in `ErrorPage.json_dump`) raise a JSON error into a changed clause; for the controller and middleware clauses and for `Dev::ErrorPage#call` that was shown by compiled programs that were not saved (their commits describe them). `Cast.parse_json` still names the two JSON classes, in two arms and without `StandardError`; it was not changed (it was on 2026-11-21, on 2026.11.15.7033: one `rescue StandardError`, with a case in test/cast_types.rb that sends a malformed document and one nested 300 deep through it; the same case passed compiled by this build too, in a scratch copy of the tree). All of this is as `spin test` builds a program, on Linux x86_64, without GC stress. The other workarounds of this row stay until a change removes each with a test of the framework's own shape. |
 | 4, 5, 6, 35, 39, 41 | Probe passes (2026-11-15; rechecks/dispatch_shapes.rb for 4, 5 and 6, rechecks/type_shapes.rb for 35, 39 and 41): an inherited class method called as `self.class.foo`, a base chain method returning `self` with a subclass's typed `first`, `Method` objects in an Array and a Hash, `obj[k] = v` on a parameter behind a chain of `call(env)` objects, `SafeString#+` with a constructing `case`, and an Array-valued `attr_accessor :target` beside a String `target`. 35 and 41 were seen in the whole framework and never reduced, so this is not conclusive. |
 | 11, 37 | Cost rules, not wrong results. Probe output matches CRuby (2026-11-15, rechecks/type_shapes.rb), and for 11's probe, alone and inside that program, the generated C (`spinel -c`) keeps the two nil-initialised locals typed (`sp_String *`, `sp_oint`), not boxed. 37's generated C was not read. |
@@ -4549,7 +4554,7 @@ Four differences from CRuby that spikes/NOTES.md recorded as part of a
 rule and that had no item here, or, for AV and AW, only a "rule 17" and a
 "rule 27" row in "Item register". All four were run again that day with
 2026.11.15.7033 and 2026.11.04.7026 on Linux x86_64 (gcc 13.3.0, `-O 0`)
-beside CRuby 3.3.6.
+beside CRuby 3.3.6. A fifth, AX, was found that day and is no rule's.
 
 ### AT. `File#stat` on an open File stats its path, not the descriptor
 
@@ -4707,4 +4712,76 @@ their `bytesize`, as under CRuby, on both builds
   2026.11.15.7033; the `append` line does not.
 - Asked of Spinel: raise Encoding::CompatibilityError for the append, as
   CRuby does.
+- Not reported upstream.
+
+### AX. `JSON.parse` does not count an innermost empty Array or Object against the nesting limit
+
+Found on 2026-11-21 and run that day with 2026.11.15.7033 and
+2026.11.04.7026 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6.
+It has no rule in spikes/NOTES.md: no code is written differently
+because of it.
+
+```ruby
+require "json"
+begin
+  JSON.parse(("[" * 101) + ("]" * 101))
+  puts "parsed"
+rescue StandardError => e
+  puts "#{e.class.name}: #{e.message}"
+end
+```
+
+CRuby prints `JSON::NestingError: nesting of 101 is too deep`: its
+default `max_nesting` is 100, and an Array counts when it opens. Compiled
+by 2026.11.15.7033 the program prints `parsed`, and 102 levels raise the
+error CRuby raises for 101, message included. The innermost container is
+not counted while it is empty: with a `1` inside the innermost Array, 101
+levels raise as under CRuby, and so do 101 Objects around a `1`.
+spikes/rechecks/differing/json_parse_nesting.rb searches for the limit:
+for Arrays around `1`, Arrays with nothing inside and Objects around `1`
+it prints the deepest document that parses and what the next depth
+raises, with no option and under `max_nesting:` 10, 0 and 300 ("Status
+by rule", row AX of both tables, has every line).
+
+- On 2026.11.15.7033 two of its eight lines differ from CRuby's, both
+  for Arrays with nothing inside: 101 levels parse (CRuby: 100), and
+  under `max_nesting: 10` 11 levels parse (CRuby: 10). The other six
+  match: the limit of 100, the class JSON::NestingError, the message
+  `nesting of N is too deep`, `max_nesting:` as a limit and
+  `max_nesting: 0` as none. An empty Object is not counted either (100
+  Arrays or 100 Objects around `{}` parse, in a program that is not
+  saved).
+- On 2026.11.04.7026 every line differs: the limit is 200 levels whatever
+  `max_nesting:` says (10, 0 and 300 were tried), the error is
+  `JSON::ParserError: nesting too deep`, and an innermost empty Array is
+  not counted there either (201 parse). So 2026.11.15.7033 brought the
+  limit, the option and the error in line with CRuby, and left one level
+  for an empty container.
+- Today: nothing depends on it, and nothing is worked around. The
+  framework does not parse a request's JSON body: an action calls
+  `JSON.parse(request.body)` itself (cybertrain/http/request.rb), and an
+  error it does not rescue is a 500. The framework's own calls are
+  `Cast.parse_json` (json columns, `HttpClient`'s JSON responses, the
+  cache's stored arrays: cybertrain/cast.rb), `Session.from_json` and
+  `Flash.load` (an authenticated cookie's payload),
+  `Stream::WebSocketWriter.client_request` (a client's subscribe frame:
+  cybertrain/stream/websocket_server.rb) and, in
+  development only, `ErrorPage.json_dump` (a failed request's body of at
+  most 1 MiB). Each has `rescue StandardError` around the parse and
+  answers nil, an empty value or `""` for any failure, so the class of
+  the error does not matter to them either; none compares a depth, passes
+  `max_nesting:` or reads the message. The framework's two depth bounds
+  are its own counts and do not come from JSON: `Query::MAX_DEPTH` for
+  form and query parameters (cybertrain/http/query.rb) and
+  `ErrorPage::MAX_DUMP_DEPTH` for the development dump. What these calls
+  do rely on is that a limit exists, so that a deeply nested document
+  from outside raises and does not exhaust the stack, and one exists on
+  both builds. test/cast_types.rb's `parse_json` case uses 300 levels of
+  Objects, past the limit on CRuby and on both builds.
+- The harm is to an application that counts on the exact bound, for one
+  that sets `max_nesting:` to cap what it then walks recursively: a
+  document one level deeper than the cap gets through when its innermost
+  container is empty.
+- Asked of Spinel: count a container against the limit when it opens, as
+  CRuby does, so that `[` times 101 raises. Low in harm.
 - Not reported upstream.
