@@ -620,7 +620,10 @@ before the gem is pushed:
      pushed: check both packages before re-running the failed jobs.
    - It creates the GitHub release `vX.Y.Z`, with notes generated from the
      pull requests merged since the previous tag. For a tag pushed without
-     a release, run that workflow by hand with the tag.
+     a release, run that workflow by hand on the tag itself (Run workflow,
+     "Use workflow from", Tags, `vX.Y.Z`); a manual run started on a branch
+     is refused, so a release never runs a tag's code with the default
+     branch's cache.
    - Its `promote-latest` job points `latest` of both images at the newest
      release: the highest `X.Y.Z` that has a published release, whichever
      run it is in. Releases of different tags may run at the same time, and

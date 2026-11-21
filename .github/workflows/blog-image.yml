@@ -45,14 +45,11 @@ on:
       - "cybertrain/crypto.rb"
       - "cybertrain/generator/inflector.rb"
   workflow_dispatch:
-  # release.yml runs this file on the tag before it creates a release.
+  # release.yml runs this file on the tag before it creates a release, in
+  # the tag's own run: the checkout below takes the commit that run started
+  # on, and no ref from an input.
   workflow_call:
     inputs:
-      ref:
-        description: "Git ref to check out (default: the commit that triggered the run)"
-        type: string
-        required: false
-        default: ""
       artifact:
         description: "Save the tested image as a workflow artifact of this name (default: do not save it)"
         type: string
@@ -69,7 +66,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: blog-image-${{ inputs.ref || github.ref }}
+  group: blog-image-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -82,7 +79,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
           persist-credentials: false
 
       - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0

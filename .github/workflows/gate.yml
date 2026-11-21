@@ -19,14 +19,10 @@ on:
   # the status of 2026-11-11): the queue waits for the required checks on a
   # `merge_group` event. Until it is on, nothing sends the event.
   merge_group:
-  # release.yml runs this file on the tag before it creates a release.
+  # release.yml runs this file on the tag before it creates a release, in
+  # the tag's own run: the checkouts below take the commit that run started
+  # on, and no ref from an input.
   workflow_call:
-    inputs:
-      ref:
-        description: "Git ref to check out (default: the commit that triggered the run)"
-        type: string
-        required: false
-        default: ""
 
 permissions:
   contents: read
@@ -50,7 +46,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         with:
@@ -80,7 +75,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          ref: ${{ inputs.ref }}
       - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         with:
           ruby-version: "3.3"
@@ -108,7 +102,6 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: ${{ inputs.ref }}
           persist-credentials: false
       - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
         with:

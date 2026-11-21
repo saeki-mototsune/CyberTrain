@@ -430,7 +430,7 @@ module Cybertrain
           next if stripped.empty? || stripped.start_with?("#")
           next unless stripped.match?(/\b(?:before_action|skip_before_action|allow_unauthenticated_access)\b/)
 
-          return true unless stripped.match?(/\A(?:before_action\s+:[a-z_]\w*|skip_before_action\s+:[a-z_]\w*|allow_unauthenticated_access)(?:\s*,?\s*(?:only|except):\s*\[(?:\s*:[a-z_]\w*\s*,?)*\s*\])*\s*\z/)
+          return true unless stripped.match?(/\A(?:before_action\s+:[a-z_]\w*|skip_before_action\s+:[a-z_]\w*|allow_unauthenticated_access)(?:\s*(?:,\s*)?(?:only|except):\s*\[\s*(?::[a-z_]\w*\s*(?:,\s*)?)*\])*\s*\z/)
           # Ruby uses the last duplicate keyword; list_coverage reads the first.
           ["only:", "except:"].each do |key|
             at = stripped.index(key)
