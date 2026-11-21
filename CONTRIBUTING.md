@@ -303,19 +303,27 @@ upstream Spinel, matz/spinel's release `SPINEL_UPSTREAM_TAG` in `ci.yml`,
 rather than the fork. A failure there that the fork's run does not have is
 usually a shape upstream compiles differently from the fork
 (spikes/NOTES.md rule 126 is the one known so far).
-To reproduce it, build upstream once as the job does (`git clone --depth 1
---branch 2026.10.25 https://github.com/matz/spinel`, then `make deps`,
-`make -j"$(nproc)"`, `make install PREFIX=$HOME/.spinel-upstream/2026.10.25`),
-then run the job's `spin test` line with `~/.spinel-upstream/2026.10.25/bin`
-first on `PATH`, in an export of your tree outside the checkout, so the two
-compilers do not share `build/`:
+To reproduce it, build upstream once as the job does, with the tag read
+from `ci.yml`, then run `spin test` with upstream first on `PATH`, in an
+export of your tree outside the checkout, so the two compilers do not
+share `build/`:
 
 ```sh
+tag=$(sed -n 's/^  SPINEL_UPSTREAM_TAG: "\(.*\)"$/\1/p' .github/workflows/ci.yml)
+up=$HOME/.spinel-upstream/$tag
+src=$(mktemp -d)
+git clone -q --depth 1 --branch "$tag" https://github.com/matz/spinel "$src"
+(cd "$src" && make deps && make -j"$(nproc)" && make install PREFIX="$up")   # once per tag
+
 dir=$(mktemp -d)
 git archive HEAD | tar -x -C "$dir"   # commit first: the export is of HEAD
 cd "$dir"
-PATH=$HOME/.spinel-upstream/2026.10.25/bin:$PATH spin test test/http_standalone.rb test/http_response.rb
+PATH=$up/bin:$PATH spin test test/http_standalone.rb test/http_response.rb
 ```
+
+The last line runs two of the job's thirteen programs, the layer alone
+and the one rule 126 is about; for the whole job, give `spin test` the
+list in the job's last step instead.
 
 ## Conventions CI enforces
 

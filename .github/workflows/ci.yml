@@ -356,8 +356,10 @@ jobs:
         with:
           ruby-version: "3.3"
 
-      - name: Install zlib headers
-        run: sudo apt-get update && sudo apt-get install -y zlib1g-dev
+      # What the thirteen programs link: zlib (http_standalone,
+      # http_gunzip) and SQLite (query_extras, which loads the database).
+      - name: Install the SQLite and zlib headers
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev zlib1g-dev
 
       # ImageOS and ImageVersion are variables of the runner process, not of
       # the expression context (setup-spinel does the same).

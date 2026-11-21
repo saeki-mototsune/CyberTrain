@@ -4521,8 +4521,9 @@ the shell, to the same effect; again 2026-11-19).
   The same on the fork's 2026.11.15.7033 and on upstream 2026.10.25
   (2814693f), so it is not a fork regression. `require "cybertrain"` in
   place of the two requires prints `value`, and so does `json`, `uri` or
-  `cybertrain/http/response` in place of Query: Query pulls in URI's
-  code, which seems to be what switches the C. The emitted read is
+  `cybertrain/http/response` in place of Query. So URI's code alone does
+  not switch the C, though Query uses it; what in Query does is not
+  known. The emitted read is
   `_sp_ret_strbuf = NULL; _v2 = sp_env_str(getenv(sp_env_chk(SP_STR_B(sp_strbuf_read_pub(lv_name)), 0))); ... _sp_ret_strbuf ? (sp_String *)_sp_ret_strbuf : SP_STR_HDL(_v2)`;
   `sp_strbuf_read_pub` (spinel_rt.h:3222) sets `_sp_ret_strbuf` to the
   argument's handle while the argument is evaluated. An unset variable is
