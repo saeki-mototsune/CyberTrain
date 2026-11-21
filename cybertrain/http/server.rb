@@ -701,8 +701,8 @@ module Cybertrain
     # The writer with its rescue, in a plain method (spikes/NOTES.md rules
     # 32/45). False when it raised.
     # Either arm logs the `stream error:` line; a failure is then told to
-    # {Cybertrain.stream_failure} (reported, once cybertrain/error_reporter
-    # is loaded), under the request's log context (run_writer_scoped). A client
+    # {Cybertrain.stream_failure} (a no-op until a reporter is installed),
+    # under the request's log context (run_writer_scoped). A client
     # that went away (the closed peer serve rescues) is logged only.
     def run_writer(writer, sink)
       writer.write_body(sink)
@@ -729,13 +729,13 @@ module Cybertrain
       # not named: nothing proves Spinel's exception table has them (a
       # stack overflow is a SIGSEGV there anyway); the depth limits in Query
       # and the template Interpreter are the guard against those.
-      # ClientError maps and logs (a client's fault is its 4xx at info);
-      # ErrorPages and Dev::ErrorPage ask it too, this is the bare-app path.
+      # ClientError maps and logs (a client's fault is its 4xx at info); a
+      # framework's own error pages ask it too, this is the bare-app path.
       response = error_response(classify_scoped(e, request.log_context))
-      # The id a RequestId in the app gave the request, echoed on this
-      # answer too (the response the stack had is replaced). The header's
-      # name is written out: the HTTP layer loads alone
-      # (script/check-http-layer) and cannot name the middleware.
+      # The id the handler gave the request ({Request#request_id}), echoed
+      # on this answer too (the response the handler had is replaced). The
+      # header's name is written out: the HTTP layer loads alone
+      # (script/check-http-layer) and names no request-id scheme.
       id = request.request_id
       response.set_header("X-Request-Id", id) unless id.empty?
       response
@@ -743,9 +743,9 @@ module Cybertrain
 
     # {ClientError.classify} (which logs the error or rejection line) under
     # the request's log context ({Request#log_context}), swapped through
-    # {HttpLogSwitch.installed}: a RequestId in the app has already put the
-    # thread's own context back when the exception gets here, and the line
-    # must carry the request's id all the same (spec section 12.2). The
+    # {HttpLogSwitch.installed}: the handler's request-id scheme has
+    # already put the thread's own context back when the exception gets
+    # here, and the line must carry the request's id all the same. The
     # thread's context is back afterwards. Save, work, restore in
     # `ensure`, no rescue (spikes/NOTES.md rule 103).
     def classify_scoped(e, ctx)

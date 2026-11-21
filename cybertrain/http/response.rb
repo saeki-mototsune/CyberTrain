@@ -96,9 +96,9 @@ module Cybertrain
     # @api public
     attr_reader :body
 
-    # Sets the body. A body replaces a stream: an action that called
-    # Controller#stream and then render or head answers with the body, so
-    # the writer is dropped, as a redirect and an error reset drop it.
+    # Sets the body. A body replaces a stream: a handler that set a writer
+    # and then a body answers with the body, so the writer is dropped, as a
+    # redirect and an error reset drop it.
     # @param text [String]
     # @api public
     def body=(text)
@@ -129,7 +129,7 @@ module Cybertrain
       @headers.delete("")
       @cookies = []
       @performed = false
-      # Set by Controller#stream (or a middleware such as Stream::Endpoint);
+      # Set by whatever streams the body ({#body_writer=}, {#upgrade!});
       # nil for an ordinary response.
       @body_writer = nil
       @upgrade = false
@@ -410,7 +410,7 @@ module Cybertrain
     # The tail both reset policies share: status, text/plain content type
     # and the body ("" means the status text). Returns nil.
     def plain_error(status, body)
-      # An error after Controller#stream (or an upgrade) is an ordinary
+      # An error after a stream was started (or an upgrade) is an ordinary
       # response: no writer runs and nothing is sent chunked.
       @body_writer = nil
       @body_log_context = HttpLogContext::NONE

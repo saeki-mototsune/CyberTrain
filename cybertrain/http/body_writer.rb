@@ -31,8 +31,9 @@ module Cybertrain
     # after it, also when it raises: a streamed body or an upgraded
     # connection is written after the middleware that made the context has
     # returned. Save, work, restore in `ensure`; no rescue here
-    # (spikes/NOTES.md rule 103). What Test::Client#get_stream calls; the
-    # Server does the same around its rescuing run_writer.
+    # (spikes/NOTES.md rule 103). For a caller that writes a body itself
+    # (a test client, say); the Server does the same around its rescuing
+    # run_writer.
     # @param writer [BodyWriter]
     # @param sink [Sink]
     # @param ctx [HttpLogContext]

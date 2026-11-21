@@ -8,8 +8,8 @@ module Cybertrain
   # peer) is not a failure and is not told.
   #
   # The HTTP layer loads alone (script/check-http-layer), so it names no
-  # reporter: this base does nothing, and cybertrain/error_reporter
-  # installs the subclass that reports (ErrorReporter::StreamReport). An
+  # reporter: this base does nothing, and a framework's error reporter
+  # installs a subclass that reports ({Cybertrain.stream_failure=}). An
   # object with a method, not a stored block (spikes/NOTES.md rules 88 and
   # 103).
   # @api private

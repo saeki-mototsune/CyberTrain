@@ -665,7 +665,7 @@ module Cybertrain
     # the output, so a body that is small on the wire and huge inflated is
     # refused as soon as the ceiling is reached, not after), and a plain body
     # over the limit is refused as well. The bytes on the wire are bounded
-    # separately by the server (Config#max_body_bytes). Other encodings
+    # separately by the server (its max_body_bytes). Other encodings
     # (`deflate`, `br`) are not decoded: a 400. A multi-member gzip file is
     # inflated whole; bytes after the last member that are not a member of
     # their own make the body undecodable.

@@ -43,8 +43,8 @@ module Cybertrain
     # `superclass` still raises NoMethodError on a package's exception
     # class and, in a program that defines a module, on Ruby's own (NOTES
     # status 47, 54 and 104). The list stays until a change replaces it
-    # with a compiled test of these error paths. Matching by class name is
-    # what Controller#rescue_with_handler does for rescue_from.
+    # with a compiled test of these error paths. A framework's own handlers
+    # can match by class name the same way.
     #
     # Every subclass must be listed by its full name, which is what
     # ClientError.status_for compares. An app's own exception class, even
