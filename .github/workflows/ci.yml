@@ -97,7 +97,7 @@ env:
   # workflow): the release the CLI installs and the framework is tested against.
   # The cache key (.github/actions/setup-spinel) reads the tag from the checked-out
   # cybertrain/version.rb instead, the one place the pin is defined.
-  SPINEL_TAG: "2026.11.15.7033"
+  SPINEL_TAG: "2026.11.23.7035"
   # The upstream release (matz/spinel) the http-upstream job builds the HTTP
   # layer's tests with: the layer is to become a library of its own, which
   # must build with upstream Spinel as well as with the fork pinned above.

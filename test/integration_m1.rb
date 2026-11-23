@@ -15,7 +15,7 @@ test "the entry point exposes every M1 feature" do
   ctx.response.body = Cybertrain::Html.escape("<b>")
   assert_includes ctx.response.to_http, "&lt;b&gt;"
   travel_to(Time.utc(2026, 11, 11, 12)) { Cybertrain.logger.info("m1 ok") }
-  assert_equal "0.4.1", Cybertrain::VERSION
+  assert_equal "0.4.2", Cybertrain::VERSION
 end
 
 test "an App routes a request through the default stack" do

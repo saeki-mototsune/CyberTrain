@@ -424,14 +424,14 @@ error: blog already exists
 error: 'Bad Name' is not a valid app name (lowercase letters, digits and _)
 error: usage: cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
 ok   CLI new refuses an existing directory and a bad name
-cybertrain 0.4.1
+cybertrain 0.4.2
 Usage:
   cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
       Create an application in NAME, then run `spin lock` and
       `SPIN_DEBUG=1 spin run gen` in it (skipped with --skip-spin;
       gen and db are built in spin's debug mode). Its spin.toml
       depends on this cybertrain's release by default:
-        git tag v0.4.1 of https://github.com/saeki-mototsune/cybertrain
+        git tag v0.4.2 of https://github.com/saeki-mototsune/cybertrain
       --path DIR: the framework checkout at DIR (relative to the
       current directory; written as an absolute path).
       --version V: release V from the spin index, once cybertrain is
@@ -533,7 +533,7 @@ Usage:
       Both are 64 hex digits (32 random bytes). Keep the encryption
       key: data encrypted with it cannot be read without it.
   cybertrain setup [--force]
-      Install Spinel 2026.11.15.7033 into ~/.cybertrain (CYBERTRAIN_HOME)
+      Install Spinel 2026.11.23.7035 into ~/.cybertrain (CYBERTRAIN_HOME)
       unless a spinel of that release is already on PATH, and print
       the PATH line for ~/.cybertrain/bin. The commands above do the
       install by themselves the first time they need spin.
@@ -549,7 +549,7 @@ Usage:
       `SPIN_DEBUG=1 spin run gen` in it (skipped with --skip-spin;
       gen and db are built in spin's debug mode). Its spin.toml
       depends on this cybertrain's release by default:
-        git tag v0.4.1 of https://github.com/saeki-mototsune/cybertrain
+        git tag v0.4.2 of https://github.com/saeki-mototsune/cybertrain
       --path DIR: the framework checkout at DIR (relative to the
       current directory; written as an absolute path).
       --version V: release V from the spin index, once cybertrain is
@@ -651,7 +651,7 @@ Usage:
       Both are 64 hex digits (32 random bytes). Keep the encryption
       key: data encrypted with it cannot be read without it.
   cybertrain setup [--force]
-      Install Spinel 2026.11.15.7033 into ~/.cybertrain (CYBERTRAIN_HOME)
+      Install Spinel 2026.11.23.7035 into ~/.cybertrain (CYBERTRAIN_HOME)
       unless a spinel of that release is already on PATH, and print
       the PATH line for ~/.cybertrain/bin. The commands above do the
       install by themselves the first time they need spin.
@@ -666,7 +666,7 @@ Usage:
       `SPIN_DEBUG=1 spin run gen` in it (skipped with --skip-spin;
       gen and db are built in spin's debug mode). Its spin.toml
       depends on this cybertrain's release by default:
-        git tag v0.4.1 of https://github.com/saeki-mototsune/cybertrain
+        git tag v0.4.2 of https://github.com/saeki-mototsune/cybertrain
       --path DIR: the framework checkout at DIR (relative to the
       current directory; written as an absolute path).
       --version V: release V from the spin index, once cybertrain is
@@ -768,7 +768,7 @@ Usage:
       Both are 64 hex digits (32 random bytes). Keep the encryption
       key: data encrypted with it cannot be read without it.
   cybertrain setup [--force]
-      Install Spinel 2026.11.15.7033 into ~/.cybertrain (CYBERTRAIN_HOME)
+      Install Spinel 2026.11.23.7035 into ~/.cybertrain (CYBERTRAIN_HOME)
       unless a spinel of that release is already on PATH, and print
       the PATH line for ~/.cybertrain/bin. The commands above do the
       install by themselves the first time they need spin.
