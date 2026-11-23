@@ -95,7 +95,8 @@ Then run the smoke test: `bash playground/smoke.sh cybertrain-playground:local`
 | User | `dev`, uid/gid 1000, home `/home/dev`; nothing the blog needs to start or rebuild lives in the home directory |
 | Spinel | `CYBERTRAIN_HOME=/opt/cybertrain` (its `bin/` first on `PATH`), owned by dev |
 | spin's cache | `XDG_CACHE_HOME=/opt/cybertrain-cache`, owned by dev: the framework's package (`spin/`) and spinel's object cache for incremental builds (`spinel/`, filled by the image's build of the blog); `cybertrain new` and rebuilds write it |
-| Framework mirror | `/opt/cybertrain-mirror/cybertrain.git`, owned by dev, with two `insteadOf` rules in `/etc/gitconfig` |
+| Framework mirror | `/opt/cybertrain-mirror/cybertrain.git`, owned by dev, with two `insteadOf` rules in `/etc/gitconfig` (the cybertrain GitHub URL, with and without `.git`) |
+| spinel-http mirror | `/opt/cybertrain-mirror/spinel-http.git`, owned by dev: the commit the framework's `spin.lock` pins, on the branch (or tag) its `spin.toml` names, with two more `insteadOf` rules in `/etc/gitconfig` (the spinel-http GitHub URL, with and without `.git`) |
 | The blog | `/workspace/blog`, owned by dev: a git repository with one commit, already built |
 | Start script | `/usr/local/bin/playground-server [APP_DIR]` |
 | Profile | `/etc/profile.d/cybertrain-playground.sh`, also read by interactive shells through `/etc/bash.bashrc` |
@@ -105,7 +106,7 @@ Then run the smoke test: `bash playground/smoke.sh cybertrain-playground:local`
 Stages: `cli-src` (internal: exactly the files `cybertrain.gemspec`
 packages, so that a change to the framework alone keeps the gem and Spinel
 layers cached), `toolchain` (packages, the user, the CLI gem, Spinel, the
-mirror) and `playground` (the scripts and the blog).
+mirrors) and `playground` (the scripts and the blog).
 
 The blog is the tutorial after steps 02, 03, 04 and 07 (`cybertrain new
 blog`, the article scaffold, the root route, `cybertrain db migrate`) plus
