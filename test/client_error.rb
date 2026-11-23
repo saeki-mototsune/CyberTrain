@@ -45,10 +45,12 @@ test "status of the framework's own exceptions" do
   assert_equal 500, Cybertrain::ClientError.status_for(ArgumentError.new("x"))
 end
 
+# CLIENT_FAULTS holds the names Class#name answers: the layer is spinel-http's,
+# so SpinelHttp::MultipartMalformed for Cybertrain::MultipartMalformed.
 test "the multipart faults are listed as client faults" do
   names = ["MultipartMalformed", "MultipartTooManyParts", "MultipartPartTooLarge", "MultipartHeaderTooLarge"]
   names.each do |bare|
-    assert Cybertrain::ClientError::CLIENT_FAULTS.include?("Cybertrain::#{bare}")
+    assert Cybertrain::ClientError::CLIENT_FAULTS.include?("SpinelHttp::#{bare}")
   end
 end
 

@@ -8,6 +8,7 @@ require "cybertrain/test"
 require "cybertrain/generator"
 require "cybertrain/locales/bundled"
 require_relative "support/file_tree"
+require_relative "support/spinel_http"
 
 # gen/locales.rb (docs/design.md D79): the scan of
 # config/locales/**/*.yml, the merge across files, the emitted lookup, the
@@ -224,11 +225,13 @@ test "the generated gen/locales.rb loads on its own, without cybertrain/i18n pre
   # lookup answers.
   script = "require \"./#{FIXTURE}/gen/locales\"; " \
            "exit(Gen::Locales.lookup(\"ja.posts.index.title\") == \"\\u6295\\u7A3F\" && Gen::Locales.lookup_list(\"en.date.abbr_day_names\")[1] == \"Mon\" ? 0 : 3)"
-  assert system("ruby", "-I", ".", "-e", script)
+  # cybertrain/i18n loads cybertrain/key, spinel-http's Key.
+  spinel_http = SpinelHttpDir.path("#{TMP}/spinel-http-dir")
+  assert system("ruby", "-I", ".", "-I", spinel_http, "-e", script)
   # Without the require the same load fails: I18n is undefined.
   stripped = "#{TMP}/without_require.rb"
   File.write(stripped, source.sub("require \"cybertrain/i18n\"\n", ""))
-  refute system("ruby", "-I", ".", "-e", "begin; require \"#{stripped}\"; rescue NameError; exit 4; end")
+  refute system("ruby", "-I", ".", "-I", spinel_http, "-e", "begin; require \"#{stripped}\"; rescue NameError; exit 4; end")
 end
 
 test "gen --check reports a stale gen/locales.rb" do

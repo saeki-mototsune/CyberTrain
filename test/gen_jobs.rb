@@ -5,6 +5,7 @@ require "cybertrain/generator"
 require "cybertrain/generator/job_scan"
 require "cybertrain/generator/jobs_emitter"
 require_relative "support/file_tree"
+require_relative "support/spinel_http"
 
 # The job generator as text (CRuby-portable, no database): Gen::JobScan
 # reads app/jobs/**/*.rb, Gen::JobsEmitter writes gen/jobs.rb. The
@@ -400,15 +401,6 @@ def shim_aliases
   out
 end
 
-# The checkout of spinel-http spin.lock pins, as script/spinel_http_path.rb
-# finds it (fetched when missing).
-def spinel_http_dir
-  out = "#{TMP}/spinel-http-dir"
-  raise "script/spinel_http_path.rb failed" unless system("sh", "-c", "ruby script/spinel_http_path.rb > \"$1\"", "sh", out)
-
-  File.read(out).strip
-end
-
 # The files `require "cybertrain/core"` loads, directly or through the files
 # it requires, as "db/error" (cybertrain/ and .rb left out). The keywords
 # are built from pieces: spinel reads a line that looks like a require of a
@@ -463,7 +455,7 @@ test "FRAMEWORK_ERRORS names every exception class under cybertrain/, and PRELOA
   # that name (`SpinelHttp::Server::Rejected` as `Cybertrain::Server::Rejected`),
   # with the shim as its file.
   aliased = shim_aliases
-  dir = spinel_http_dir
+  dir = SpinelHttpDir.path("#{TMP}/spinel-http-dir")
   Dir.glob("#{dir}/spinel-http/**/*.rb").sort.each do |path|
     framework_class_lines(path).each do |line|
       parts = line[0].split("::")
