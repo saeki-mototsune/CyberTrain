@@ -1,10 +1,9 @@
 # Prebuilt Spinel for Claude Code cloud sessions (script/claude-cloud-setup),
 # attached to a cybertrain release.
 #
-# The Release workflow calls this after it creates the release vX.Y.Z. It
-# builds the latest release of the saeki-mototsune fork of Spinel (or the
+# It builds the latest release of the saeki-mototsune fork of Spinel (or the
 # tag given) in an ubuntu:24.04 container as root, which is what the cloud
-# VM runs, and attaches the installed tree to vX.Y.Z as two assets:
+# VM runs, and attaches the installed tree to a release vX.Y.Z as two assets:
 #
 #   spinel-<spinel tag>-linux-x86_64.tar.gz         the `make install`
 #                                                    prefix, its symlinks
@@ -18,8 +17,14 @@
 # when the latest release carries no build of the Spinel release it wants
 # (the fork released again since).
 #
-# Run it by hand to attach a build to a release made before this workflow,
-# or to rebuild one (the assets are replaced).
+# Two jobs: build packs the two files and uploads them as the workflow
+# artifact spinel-prebuilt; attach downloads that artifact and uploads it to
+# the release. The Release workflow calls this with `attach: false` beside
+# its checks, before the release exists, and attaches the artifact itself
+# once it has created the release (its spinel-prebuilt-attach job), so the
+# build does not wait for the checks. Run by hand (attach left on), it does
+# both: to attach a build to a release made before this workflow, or to
+# rebuild one (the assets are replaced).
 name: Spinel prebuilt
 
 on:
@@ -34,6 +39,11 @@ on:
         type: string
         required: false
         default: ""
+      attach:
+        description: "Attach the build to the release here (false: only upload the artifact spinel-prebuilt; the caller attaches it)"
+        type: boolean
+        required: false
+        default: true
   workflow_dispatch:
     inputs:
       release:
@@ -43,9 +53,18 @@ on:
         description: "Spinel tag of the fork to build (default: its latest release)"
         required: false
         default: ""
+      # Here too, so that `inputs.attach` is a boolean on both triggers:
+      # release.yml's own manual run is a workflow_dispatch event in this
+      # workflow as well, so the event cannot tell the two apart.
+      attach:
+        description: "Attach the build to the release (off: only upload the artifact spinel-prebuilt)"
+        type: boolean
+        required: false
+        default: true
 
+# The build reads only; the attach job alone may write to the release.
 permissions:
-  contents: write
+  contents: read
 
 env:
   SPINEL_GIT: https://github.com/saeki-mototsune/spinel.git
@@ -56,6 +75,8 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 30
     container: ubuntu:24.04
+    permissions:
+      contents: read
     steps:
       - name: Install the build packages and gh
         run: |
@@ -69,13 +90,20 @@ jobs:
           apt-get update -qq
           DEBIAN_FRONTEND=noninteractive apt-get install -y -qq gh > /dev/null
 
-      - name: Check the release and pick the Spinel tag
+      # Only when this run attaches: called with `attach: false`, the build
+      # starts before the release is created.
+      - name: Check the release
+        if: inputs.attach
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          INPUT_TAG: ${{ inputs.spinel-tag }}
         run: |
           gh release view "$RELEASE" --repo "$GITHUB_REPOSITORY" > /dev/null \
             || { echo "no release $RELEASE in $GITHUB_REPOSITORY"; exit 1; }
+
+      - name: Pick the Spinel tag
+        env:
+          INPUT_TAG: ${{ inputs.spinel-tag }}
+        run: |
           tag="$INPUT_TAG"
           if [ -z "$tag" ]; then
             tag="$(git ls-remote --tags --refs "$SPINEL_GIT" | sed 's#.*refs/tags/##' \
@@ -124,13 +152,43 @@ jobs:
           test "$(/tmp/smoke)" = "spinel 6"
           mv "$prefix.hidden" "$prefix"
 
-      - name: Pack and attach to the release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Pack
         run: |
           mkdir -p /tmp/out
           asset="spinel-$TAG-linux-$(uname -m).tar.gz"
           tar -C "/root/.cybertrain/spinel" -czf "/tmp/out/$asset" "$TAG"
           (cd /tmp/out && sha256sum "$asset" > "$asset.sha256")
           ls -l /tmp/out
-          gh release upload "$RELEASE" /tmp/out/* --repo "$GITHUB_REPOSITORY" --clobber
+
+      # overwrite: a re-run of this job replaces the artifact of the attempt
+      # before it. Already gzipped, so stored as it is.
+      - name: Upload the packed build
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: spinel-prebuilt
+          path: /tmp/out/
+          if-no-files-found: error
+          compression-level: 0
+          overwrite: true
+          retention-days: 7
+
+  # The asset and its checksum, as build packed them, onto the release.
+  attach:
+    needs: build
+    if: inputs.attach
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: spinel-prebuilt
+          path: out
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -l out
+          gh release upload "$RELEASE" out/* --repo "$GITHUB_REPOSITORY" --clobber
