@@ -4,8 +4,8 @@ This document is the one record of what Spinel does that CyberTrain has had
 to know about, and of where each behaviour stands: what happens, the
 program that shows it, what it did on each build tried, what is asked of
 Spinel, and whether it is closed. Each behaviour is an item whose
-identifier never changes: a digit (1 to 7), a letter (A to AZ so far; the
-next is BA) or, for a behaviour first written as a rule of spikes/NOTES.md
+identifier never changes: a digit (1 to 7), a letter (A to BA so far; the
+next is BB) or, for a behaviour first written as a rule of spikes/NOTES.md
 and never lettered, "rule N". "Item register" lists them all.
 
 [spikes/](../spikes/README.md) is the other half and does not say where a
@@ -287,6 +287,7 @@ the cell names another build.
 | AW | bug | 27 | open (status 27) for an append of socket bytes to a UTF-8 String that holds non-ASCII, which appends where CRuby raises; passes on the pin for `IO#gets` on a socket, which answers a byte String as CRuby does (Linux, 2026-11-21), and `readpartial`, `read(n)` and `read_nonblock` match on the pin (rechecks/socket_shapes.rb). Closed once both lines of rechecks/differing/socket_bytes.rb, `gets` and `append`, print CRuby's result on the pin. Framing by byte is no workaround to remove: it is right under both runtimes and stays in rule 27 as advice after AW is closed |  |
 | AX | bug |  | open ("Status by rule", row AX): `JSON.parse` does not count an innermost empty Array or Object against the nesting limit, so 101 nested Arrays with nothing inside parse where CRuby raises JSON::NestingError, and one level deeper with `max_nesting:` too (rechecks/differing/json_parse_nesting.rb). Documents that hold a value raise at the depth and with the class and message CRuby gives. No workaround and no rule: nothing in the framework depends on where the limit falls |  |
 | AY | bug | 124 | open (status 124): a rescuing method given, as blocks, a method that only raises and the call of a lambda that ends in it does not compile, "incompatible types when assigning to type 'sp_RbVal' from type 'const char *'" at the method's `yield` (rechecks/differing/raising_helper_beside_lambda.rb; 2026.11.04.7026 the same). Workaround kept: `Console.unknown_model` and `unknown_record` (cybertrain/console.rb) name a typed value after their `raise`. Closed once that program prints CRuby's line on the pin and test/console.rb's case "an unknown model or record raises through a rescuing caller" passes compiled with the two values removed |  |
+| BA | bug |  | open ("Status by rule", row BA): `Thread.new` passes the program's file name to `sp_Thread_spawn_fiber_at` as a bare C literal, which that function roots as a String, so a collection inside the thread record's allocation reads the byte in front of the literal (`sp_mark_string`'s `s[-1]`). Seen only under AddressSanitizer (rechecks/2026.11.15.7033/ba_thread_birth_file.rb, with `SPINEL_GC_THRESHOLD_KB=1`); a plain build reads a byte it then ignores. No workaround and no rule: nothing in the framework can avoid it short of not calling `Thread.new` |  |
 | rule 1 | constraint | 1 | settled (1.4: no run-time code); the probes of a computed `send` and of reflection with a non-literal name match on the pin (rechecks/dispatch_shapes.rb) |  |
 | rule 2 | constraint | 2 | settled (1.4); a stored block handed to `instance_exec` still raises when reached on the pin (status 2) |  |
 | rule 3 | bug | 3 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
@@ -622,6 +623,7 @@ not by design. Costs are in 2; what is by design is in 1.4.
 | AW | `IO#gets` on a socket answers a UTF-8 character String, and socket bytes append to a UTF-8 String that holds non-ASCII where CRuby raises (rule 27; added 2026-11-21 as "Rule 27", lettered the same day; listed under 1.4 until then). On 2026.11.15.7033 `gets` answers as CRuby does and the append still differs | spikes/rechecks/differing/socket_bytes.rb ("Status by rule", row 27 of both tables) | No |
 | AX | `JSON.parse` lets an empty Array or Object sit one level past the nesting limit, where CRuby raises JSON::NestingError (added 2026-11-21) | spikes/rechecks/differing/json_parse_nesting.rb ("Status by rule", row AX of both tables) | No |
 | AY | A rescuing method given, as blocks, a method that only raises and the call of a lambda that ends in it does not compile (rule 124; found 2026-11-21 under rule 79, given its own item the same day) | 23 lines; spikes/rechecks/differing/raising_helper_beside_lambda.rb ("Status by rule", row 124 of both tables) | No |
+| BA | A collection inside `Thread.new` reads the byte in front of the C literal holding the program's file name (found under AddressSanitizer on 2026-11-23; harmless in a plain build as far as seen) | 10 lines; spikes/rechecks/2026.11.15.7033/ba_thread_birth_file.rb ("Status by rule", row BA) | No |
 | V | `strftime` with a built pattern returns the pattern | Not reduced | No |
 | W | An ivar String passed to a stored lambda is refused | Not reduced | No |
 | X | Type inference does not converge in examples/blog's generator | Not reduced | No |
@@ -736,6 +738,12 @@ reported yet.
    the cadence rule is described under 5 and not written as a patch; it
    is what would take `SPINEL_GC_FULL_INTERVAL=8` out of the deploy
    files.
+
+Added on 2026-11-23, below the three in harm, and the cheapest to send:
+
+4. **BA**: a collection inside `Thread.new` reads the byte in front of
+   the C literal holding the program's file name. Seen only under
+   AddressSanitizer. 10 lines, and a one-line fix tried on the pin.
 
 ### 3. Seen in the framework, not reduced yet
 
@@ -1055,6 +1063,7 @@ json_parse_nesting.rb (row AX) were added, which makes eight.
 | 124 | **Still there** (docs/spinel-feedback.md AY), found and run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6: rechecks/differing/raising_helper_beside_lambda.rb prints `["no a", "no b"]` under CRuby and does not build, exit 1: `raising_helper_beside_lambda.rb:38: error: incompatible types when assigning to type 'sp_RbVal' from type 'const char *'`, line 38 being the `yield` of `g`, then `spinel: C compilation failed`. With `Rel.new("")` as a second line of `C.unknown` it builds and prints CRuby's line, and so does either of its two `out <<` lines alone. In the framework: test/console.rb with the typed values removed from `Console.unknown_model` and `unknown_record` does not build, the same error at test/console.rb:422, the `yield` of `message_raised` (4 times, in `_proc_main_15`); with them it passes. Row 79 has what else was built without the two values that day. |
 | 126 | Not a behaviour of the pin (docs/spinel-feedback.md F, fixed in 2026.10.26.7019 and matz/spinel #10260): the rule is for upstream 2026.10.25 (2814693f), on which, run on 2026-11-21 on Linux x86_64 (gcc 13.3.0), test/http_response.rb failed 2 of its cases in its old shape (`assert_nil res.drop_header(...)`) and passes in the rule's shape; built by this build it passes in both. |
 | AX (no rule) | **Still there** for an innermost empty container, found and run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`) beside CRuby 3.3.6: rechecks/differing/json_parse_nesting.rb. CRuby prints "depth 100 parses, depth 101 raises JSON::NestingError: nesting of 101 is too deep" for Arrays around `1`, for Arrays with nothing inside and for Objects around `1`; the same with 10 and 11 under `max_nesting: 10` and with 300 and 301 under `max_nesting: 300`; and "every depth up to 400 parses" under `max_nesting: 0`. Built by 2026.11.15.7033 the program prints those lines but for two: "arrays, the innermost empty: depth 101 parses, depth 102 raises JSON::NestingError: nesting of 101 is too deep", and under `max_nesting: 10` "depth 11 parses, depth 12 raises JSON::NestingError: nesting of 11 is too deep". A second program, not saved, gave the same for an empty Object: 100 Arrays around `{}`, 100 Objects around `{}` and 100 Objects around `[]` raise "nesting of 101 is too deep" under CRuby and parse on 2026.11.15.7033. This is `JSON.parse`; `JSON.generate`'s limit (rules 33 and 61, test/server.rb's `/deep`) is another matter and was not part of this run. |
+| BA (no rule) | **Still there** (docs/spinel-feedback.md BA), found and run on 2026-11-23 on Linux x86_64 (gcc 13.3.0) with a matched AddressSanitizer build (docs/performance-next.md, "Memory errors", runtime from the tag's `make build/rt-san/libspinel_rt_mt.a`) and `ASAN_OPTIONS=detect_leaks=0:fast_unwind_on_malloc=0:halt_on_error=0:use_sigaltstack=0`. rechecks/2026.11.15.7033/ba_thread_birth_file.rb prints `ok` under CRuby 3.3.6 and compiled, and with `SPINEL_GC_THRESHOLD_KB=1` reports one global-buffer-overflow, a read of size 1 in `sp_mark_string` (lib/sp_gc.h:804) from `sp_gc_mark_all` under `sp_gc_alloc` in `sp_Thread_spawn_fiber` (lib/sp_sched.c:3399), "1 bytes before global variable '*.LC2151'", the literal `"ba_thread_birth_file.rb"`: 3 of 3 runs, slab on and off (`SPINEL_GC_SLAB=0`). With the default threshold, 0 of 3. With the runtime rebuilt without `SP_GC_ROOT_STR(file)` in `sp_Thread_spawn_fiber_at` (lib/sp_sched.c:3381), 0 of 3, and J's server program, which reported the same site in 2 of 2 runs under J's load with `SPINEL_GC_THRESHOLD_KB=1`, reported nothing in 2 of 2. A plain build prints `ok` at either threshold. |
 | 1, 3 to 16, 18 to 24, 26, 28 to 32, 34 to 47, 50, 51, 53, 55 to 60, 62 to 77, 84, 85, 87, 95, 98, 99, 102, 103, 105, 106, 108, 111, 113 to 115, 118 to 121 | Not re-checked on this pin with a program of their own. Their status on 2026.11.04.7026 is in the next section, "On 2026.11.04.7026"; it is not carried over. The saved probes that hold a shape of some of them were run on 2026-11-21: the last row. |
 | rechecks/run.sh | Run on 2026-11-21 on Linux x86_64 (gcc 13.3.0, `-O 0`, CRuby 3.3.6): all nineteen programs of rechecks/ compiled and printed their `.expected`. That is a **Probe passes** for each section's own small shape, with the limits spikes/rechecks/README.md states, for the shapes of rules 1 to 12, 14, 17 to 21, 26 to 35, 37, 39 to 48, 50 to 55, 60 to 62, 69, 72, 86 and 104 that those programs hold (for 2, 17, 27, 52, 54, 72, 86 and 104 only the half that already matched CRuby on 2026.11.04.7026). 2026.11.04.7026 was not run beside it that day. Run again on 2026-11-21 on the same machine and tools, after rechecks/nil_only_puts_openssl.rb, rechecks/float_range_boxed.rb and rechecks/builtin_superclass_with_module.rb moved up from rechecks/differing/ (rows 78, 86 and 104): all twenty-two programs compiled and printed their `.expected`. With those three the run also holds the shape of rule 78 and the halves of 86 and 104 that failed on 2026.11.04.7026 (a Range of Dates, row 86, is not in a saved program). Run once more on 2026-11-21 on the same machine and tools, after rules 33 and 61 were closed, rechecks/json_nesting_shapes.rb was deleted and the section of 33 and 61 left rechecks/json_error_shapes.rb (rows 33 and 61): all twenty-one programs compiled and printed their `.expected`. |
 
@@ -2407,8 +2416,12 @@ on 2026-11-23 on the pin, 2026.11.15.7033, on Linux x86_64 (see
   `sp_gc_mark_all` while `Thread.new` allocated. It read the byte in
   front of the string literal `"srv.rb"` in the program's read-only
   data. It is a read, its value only selects how to mark, and a plain
-  build reads whatever byte lies there. It was not reduced further and
-  not reported upstream.
+  build reads whatever byte lies there. Reduced on 2026-11-23: it is a
+  Spinel item of its own, BA. The root is `sp_Thread_spawn_fiber_at`'s
+  `SP_GC_ROOT_STR(file)`, and the generated code passes it the file name
+  as a bare literal, `"srv.rb"`; the first matched runs met it because
+  `TCPServer.new`'s marker-prefixed literal sat in front of `"srv.rb"`
+  in the same function, so the byte read was in that literal's redzone.
 - **What it answers above.** 2026.09.12 passed because it predates
   3282ca43f, not because it has no slab: 2026.10.27.7020 and
   2026.11.04.7026 both carry that commit. "Where the chain breaks" is
@@ -5028,3 +5041,121 @@ from the collector's own report. In examples/blog, `params[:id]`,
   answer `Symbol#to_s` with a String that is not pinned (CRuby's is a new
   unfrozen String; `Symbol#name` is the cached frozen one).
 - Not reported upstream yet; the reduced program above is ready.
+
+## Found on 2026-11-23
+
+The one site other than J that the matched AddressSanitizer build of J's
+program reported (J, "Re-checked on the pin"), reduced the same day.
+
+### BA. A collection inside `Thread.new` reads the byte in front of the file name's C literal
+
+Found on 2026-11-23 on 2026.11.15.7033, Linux x86_64 (gcc 13.3.0), with a
+matched AddressSanitizer build (docs/performance-next.md, "Memory
+errors"). It has no rule in spikes/NOTES.md: nothing in the framework is
+written around it.
+
+`Thread.new { ... }` compiles to
+`sp_Thread_spawn_fiber_at(fiber, arg, "srv.rb", 6)`: the file and line of
+the call, kept for `Thread#inspect`. The file is a bare C literal, not
+one with the marker byte in front (`SPL`, `(&("\xff" "...")[1])`) that
+every Ruby String literal gets. `sp_Thread_spawn_fiber_at` (lib/sp_sched.c,
+line 3381 of the tag) starts with `SP_GC_ROOT_STR(file)`, which since
+5b61573819 ("Root a runtime helper's arguments across any call that can
+collect", 2026-08-07) roots the parameter as a String, and then calls
+`sp_Thread_spawn_fiber`, whose `sp_gc_alloc` of the thread record
+(line 3399) can collect. The collection marks that root through
+`sp_gc_mark_root_entry_flat`, tag 2, and `sp_mark_string` reads
+`file[-1]` to find the String's kind. For a bare literal that byte is
+not part of the object. The runtime's own comment over
+`sp_raise_frozen_array` (lib/sp_alloc.h) says the same of a bare literal
+handed to the marker: "[-1] is out of bounds", and matz/spinel#8793 made
+the runtime "read within bounds". The root serves no purpose here:
+`sp_thread`'s `birth_file` is commented "rodata" (lib/sp_sched.h), and
+neither `sp_thread_scan` nor `sp_Fiber_scan` marks it.
+
+```ruby
+require "socket"
+
+def spawn(i)
+  server = TCPServer.new("127.0.0.1", 0)
+  a = [i]; b = [i]; c = [i]; d = [i]; e = [i]; f = [i]; g = [i]; h = [i]
+  Thread.new { server.close; a + b + c + d + e + f + g + h }.join
+end
+
+Thread.new { 3000.times { |i| spawn(i) } }.join
+puts "ok"
+```
+
+spikes/rechecks/2026.11.15.7033/ba_thread_birth_file.rb, which prints
+`ok` under CRuby and compiled. What each part is for:
+
+- The read shows only when a collection runs inside the thread record's
+  allocation, and a collection starts at the first allocation after the
+  live bytes pass the threshold. `SPINEL_GC_THRESHOLD_KB=1` makes the
+  threshold small. The eight captured Arrays make the block's capture
+  struct, allocated just before the thread record, large enough to be
+  the allocation that passes it. Without them, 3,000 spawns collected
+  454 times and never there (counted in gdb). `SPINEL_GC_STRESS=1` gave
+  one collection in a threaded program and does not help.
+- AddressSanitizer reports the read only when the byte in front of the
+  literal is in a redzone, that is, when an instrumented literal comes
+  just before it in the generated C's read-only data. `TCPServer.new`
+  emits `(&("\xff" "tcpserver")[1])` into the same function, and gcc
+  puts it there. Without it the literal follows a frame description
+  string that AddressSanitizer does not instrument, and the read goes
+  unreported. A frozen Ruby literal (`name = "worker"`) is a static
+  struct and does not help.
+- The outer `Thread.new` runs `spawn` on a worker: the same holds there
+  as in J's server, whose accept loop is a thread.
+
+Built as docs/performance-next.md says and run with
+`ASAN_OPTIONS=detect_leaks=0:fast_unwind_on_malloc=0:halt_on_error=0:use_sigaltstack=0`
+and `SPINEL_GC_THRESHOLD_KB=1`, it reports a global-buffer-overflow, a
+read of size 1 in `sp_mark_string` (lib/sp_gc.h:804) from
+`sp_gc_mark_all`, `sp_stw_collect`, `sp_gc_alloc` in
+`sp_Thread_spawn_fiber` and `sp_Thread_spawn_fiber_at`, "1 bytes before
+global variable '*.LC2151'", the literal
+`"ba_thread_birth_file.rb"`, in 3 of 3 runs, with the slab on and with
+`SPINEL_GC_SLAB=0`, then prints `ok`. With the default threshold it
+reported nothing in 3 of 3 runs. (`use_sigaltstack=0`: without it this
+program, which lets its threads end, stops at its first thread's exit
+with "AddressSanitizer failed to deallocate 0x10000 bytes", the thread's
+alternate signal stack. J's server is killed and never gets there.)
+
+- **Fix tried.** The tag's runtime rebuilt with `SP_GC_ROOT_STR(file);`
+  taken out of `sp_Thread_spawn_fiber_at`, nothing else changed: the
+  program reported nothing in 3 of 3 runs, and J's server program under
+  J's load (8 connections at a time, 1 to 3 requests each, 3,200
+  connections, `SPINEL_WORKERS=1`, `SPINEL_GC_THRESHOLD_KB=1`) reported
+  nothing in 2 of 2, where the stock runtime reported this site, on
+  `"srv.rb"`, in 2 of 2. At the default threshold J's program did not
+  report it in one run with the slab on and one with it off on either
+  runtime; on the day of J's re-check it did in 4 of 5. The other fix is
+  on the compiler's side: emit the file as a marker-prefixed literal,
+  as it does for a Ruby String literal.
+- **Harm.** None seen. The byte only selects how to mark: 0xfe or 0xfa
+  marks a heap String, 0xfd marks the handle the header names, 0xf1 a
+  String born in its handle, and anything else does nothing. In a plain
+  build of the program gcc packs the literal after the NUL of the
+  previous string (`x/8xb` in gdb: `65 64 29 00` then `t.rb`, for the
+  same program saved as t.rb), so the marker reads 0 and returns. A
+  literal whose byte in front were one of those four values would be
+  taken for a heap String: a write into read-only data for 0xfe, a
+  pointer read from in front of the literal for 0xfd. Nothing places one
+  there that was seen, but nothing rules it out either: it depends on the
+  C compiler's layout of read-only data.
+- matz/spinel master 82b310264 (2026-11-23) has the same line in
+  `sp_Thread_spawn_fiber_at` and still passes a bare literal. No issue or
+  pull request upstream names `spawn_fiber_at` or `birth_file` (searched
+  2026-11-23).
+- Today: nothing in CyberTrain, which starts threads with `Thread.new`
+  and cannot avoid it. A matched AddressSanitizer run of a threaded
+  program can show this site; it is this item, not a new one, when the
+  stack ends in `sp_Thread_spawn_fiber_at` and the address is 1 byte
+  before the program's file name.
+- Asked of Spinel: drop the root of `file` in `sp_Thread_spawn_fiber_at`
+  (one line), or pass the file name as a marker-prefixed literal. Low in
+  harm, and worth sending: the reduced program, the fix and its run are
+  ready, and an AddressSanitizer job upstream would meet it on any
+  threaded program that collects at that point.
+- Not reported upstream yet.

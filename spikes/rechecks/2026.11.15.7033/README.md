@@ -21,6 +21,10 @@ Some need more than `spinel prog.rb -o prog`:
 - `r80_ffi_*.rb`: run with `SPINEL_WORKERS=1` and `SPINEL_WORKERS=2`.
 - `r83_gets_flush.rb`: run under a pty; `pty_drive.rb` (CRuby) drives it.
 - `r104_*.rb`: `--strict-require -I .` from the repository root.
+- `ba_thread_birth_file.rb`: a matched AddressSanitizer build
+  (docs/performance-next.md, "Memory errors") run with
+  `SPINEL_GC_THRESHOLD_KB=1`; written on 2026-11-23 on Linux x86_64 and
+  run with 2026.11.15.7033 only (docs/spinel-feedback.md BA).
 
 They are not part of `spin test` or the CI gate. Binaries, generated C and
 logs go outside the package tree (rule 98).
@@ -49,3 +53,4 @@ logs go outside the package tree (rule 98).
 | `r93_def_in_block.rb` | U | 93 | U is closed |
 | `r100_float_round.rb` | AF | 100 | AF is closed |
 | `r104_builtin_superclass.rb`, `r104_builtin_variants.rb` | AJ | 104 | AJ is closed |
+| `ba_thread_birth_file.rb` | BA |  | BA is closed |
