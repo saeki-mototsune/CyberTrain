@@ -99,15 +99,16 @@ at [.githooks/](.githooks/), after which:
   trailing whitespace, final newlines, LF line endings, merge-conflict
   markers, Ruby syntax (`ruby -c`), YAML files load; and, when the commit
   touches the framework, the CLI, the tests, the scripts or the playground's
-  Dockerfile, the repository checks: the version and Spinel-tag pins agree
+  or the blog's Dockerfile, the repository checks: the version and Spinel-tag pins agree
   (and `script/claude-cloud-setup` builds from
   `Cybertrain::SPINEL_REPOSITORY`), `script/check-reserved-names`,
   `check-client-faults`, `check-http-layer` and `check-core-closure` pass
   (see [Conventions](#conventions-ci-enforces) for what each guards),
   `script/ci-changes --self-test` passes, `cybertrain/locales/bundled.rb`
   is what `script/bundle-locales` writes, every file `cybertrain.gemspec`
-  lists exists, the CLI loads under CRuby and `playground/Dockerfile`
-  copies each of those files into its gem stage, the Playground image and
+  lists exists, the CLI loads under CRuby, `playground/Dockerfile` and
+  `examples/blog/Dockerfile` copy each of those files into their `cli-src`
+  stage (the blog runs `cybertrain setup` on that stage alone), the Playground image and
   Blog image workflows run for a pull request that changes one of them or a
   pin, every `test/*.rb` and `test/cruby/*.rb` has its `.expected` snapshot
   and every snapshot its test, and the generator run under CRuby leaves
@@ -659,16 +660,16 @@ before the gem is pushed:
 3. `gem build cybertrain.gemspec && gem push cybertrain-X.Y.Z.gem`.
 4. The tag runs [.github/workflows/release.yml](.github/workflows/release.yml);
    check that run. In order:
-   - It runs the Gate, the full CI (Linux and macOS, built against the
-     Spinel release the tag pins) and the blog image's build and smoke test
-     ([.github/workflows/blog-image.yml](.github/workflows/blog-image.yml))
+   - It runs, in parallel, the Gate, CI (built against the Spinel release
+     the tag pins) and the two images' builds and smoke tests
+     ([.github/workflows/blog-image.yml](.github/workflows/blog-image.yml),
+     [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml))
      on the tagged commit. If any of those fails, nothing is published.
    - It pushes, in parallel, the playground image
      `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z`
-     ([.github/workflows/playground-image.yml](.github/workflows/playground-image.yml))
      and the blog image `ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z`.
-     The blog image pushed is the one the smoke test ran on, kept as a
-     workflow artifact for 7 days, not a second build: to re-run its push
+     Each image pushed is the one its smoke test ran on, kept as a
+     workflow artifact for 7 days, not a second build: to re-run a push
      later than that, re-run the whole workflow. If one image push fails,
      no release is created, but the other image's `X.Y.Z` may already be
      pushed: check both packages before re-running the failed jobs.
@@ -686,7 +687,8 @@ before the gem is pushed:
      GitHub cancels all but the newest waiting one, which is harmless (each
      would move `latest` to the same image). Nothing else pushes `latest`;
      to repair it, re-run that job.
-   - Its `spinel-prebuilt` job attaches a Linux build of the fork's latest
+   - Its `spinel-prebuilt` job builds (beside the checks) and its
+     `spinel-prebuilt-attach` job attaches a Linux build of the fork's latest
      Spinel release to the release (`spinel-<tag>-linux-x86_64.tar.gz`, for
      Claude Code cloud sessions; see below); check that it passed.
 5. Once the framework is on the spin index, and to put it there the first
