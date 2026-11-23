@@ -99,15 +99,16 @@ at [.githooks/](.githooks/), after which:
   trailing whitespace, final newlines, LF line endings, merge-conflict
   markers, Ruby syntax (`ruby -c`), YAML files load; and, when the commit
   touches the framework, the CLI, the tests, the scripts or the playground's
-  Dockerfile, the repository checks: the version and Spinel-tag pins agree
+  or the blog's Dockerfile, the repository checks: the version and Spinel-tag pins agree
   (and `script/claude-cloud-setup` builds from
   `Cybertrain::SPINEL_REPOSITORY`), `script/check-reserved-names`,
   `check-client-faults`, `check-http-layer` and `check-core-closure` pass
   (see [Conventions](#conventions-ci-enforces) for what each guards),
   `script/ci-changes --self-test` passes, `cybertrain/locales/bundled.rb`
   is what `script/bundle-locales` writes, every file `cybertrain.gemspec`
-  lists exists, the CLI loads under CRuby and `playground/Dockerfile`
-  copies each of those files into its gem stage, the Playground image and
+  lists exists, the CLI loads under CRuby, `playground/Dockerfile` and
+  `examples/blog/Dockerfile` copy each of those files into their `cli-src`
+  stage (the blog runs `cybertrain setup` on that stage alone), the Playground image and
   Blog image workflows run for a pull request that changes one of them or a
   pin, every `test/*.rb` and `test/cruby/*.rb` has its `.expected` snapshot
   and every snapshot its test, and the generator run under CRuby leaves
