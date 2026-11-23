@@ -73,7 +73,9 @@ env:
 jobs:
   build:
     runs-on: ubuntu-26.04
-    timeout-minutes: 30
+    # Building Spinel takes about four minutes (above), the packages and the
+    # smoke test a minute more: fifteen is three times that.
+    timeout-minutes: 15
     container: ubuntu:24.04
     permissions:
       contents: read
