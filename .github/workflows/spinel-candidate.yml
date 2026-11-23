@@ -151,7 +151,7 @@ jobs:
           - leg: blog
     runs-on: ubuntu-26.04
     # As ci.yml's e2e: provisional until the first runs are read.
-    timeout-minutes: ${{ matrix.leg == 'blog' && 60 || 45 }}
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -194,9 +194,16 @@ jobs:
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
 
+      # As ci.yml's: `cc` is clang here, which compiles the blog's one test
+      # program in about 3 minutes where gcc takes about 27.
       - name: Example app tests
         if: matrix.leg == 'blog'
         run: |
+          command -v clang > /dev/null || { sudo apt-get update && sudo apt-get install -y clang; }
+          mkdir -p "$RUNNER_TEMP/clang-cc"
+          ln -sf "$(command -v clang)" "$RUNNER_TEMP/clang-cc/cc"
+          export PATH="$RUNNER_TEMP/clang-cc:$PATH"
+          cc --version | head -n 1
           cd examples/blog
           cybertrain test
           SPIN_DEBUG=1 spin run gen -- --check

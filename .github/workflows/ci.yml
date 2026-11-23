@@ -111,8 +111,7 @@ env:
 # framework-tests-macos, e2e, e2e-macos) have provisional limits, set from
 # the time each is expected to take, until their first runs are read.
 # Raise a limit when the suite has grown into it, not when one run was slow.
-# Every job should end within 30 minutes; the blog's leg of `e2e` does not
-# yet (about 30, its one compile).
+# Every job should end within 30 minutes.
 jobs:
   # Whether this run needs the jobs that compile (framework-tests,
   # http-upstream, e2e, setup-cybertrain and the macOS jobs): `framework`
@@ -480,9 +479,8 @@ jobs:
   #                failures and exits on test/fixtures/test_app), then the
   #                framework as a git dependency. About 14 minutes.
   #   blog         examples/blog: gen/ fresh, its tests, gen --check. About
-  #                30 minutes, nearly all of it the C compile of the blog's
-  #                one test program (docs/design.md, D34, the status of
-  #                2026-11-23).
+  #                10 minutes, most of it the blog's one test program,
+  #                compiled with clang ("Example app tests" says why).
   #
   # Every script prints the seconds elapsed on each line (`+Ns`), so a log
   # shows which phase took the time.
@@ -511,9 +509,9 @@ jobs:
           - leg: test-command
           - leg: blog
     runs-on: ubuntu-26.04
-    # Provisional until the first runs of the legs are read: 45 for the
-    # legs expected to take 15 to 25 minutes, 60 for the blog's (about 30).
-    timeout-minutes: ${{ matrix.leg == 'blog' && 60 || 45 }}
+    # Provisional until the first runs of the legs are read: the legs are
+    # expected to take 10 to 25 minutes.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -580,10 +578,26 @@ jobs:
       # (the "Generated code is fresh" step above is that guard); it proves
       # the test run wrote nothing gen would not write. SPIN_DEBUG=1: the
       # mode `cybertrain test` builds gen in, so gen is not built again.
-      # The one compile of gen/tests.rb is nearly all of this leg's time.
+      #
+      # `cc` is clang in this step. The blog's one test program is 36 MB of
+      # C whose `Gen::Tests.run_case` is a single 2.6 MB function, and gcc
+      # spends about 27 minutes on it (at -O1 still more than 20) where
+      # clang takes 3 (docs/design.md, D34, the status of 2026-11-23).
+      # spinel runs the `cc` on PATH and reads no CC, so a directory with
+      # `cc` -> clang goes first on PATH. Measured locally (4 cores, 7033):
+      # `cybertrain test` 6m47s with clang against 31m03s with gcc, the
+      # same 157 tests and 1558 assertions passing. What the leg no longer
+      # shows is the blog's tests in a gcc build: gcc still builds gen
+      # (the step above), and the other legs compile, test, build and
+      # serve their applications with gcc, as Linux users do.
       - name: Example app tests
         if: matrix.leg == 'blog'
         run: |
+          command -v clang > /dev/null || { sudo apt-get update && sudo apt-get install -y clang; }
+          mkdir -p "$RUNNER_TEMP/clang-cc"
+          ln -sf "$(command -v clang)" "$RUNNER_TEMP/clang-cc/cc"
+          export PATH="$RUNNER_TEMP/clang-cc:$PATH"
+          cc --version | head -n 1
           cd examples/blog
           cybertrain test
           SPIN_DEBUG=1 spin run gen -- --check
