@@ -296,34 +296,10 @@ applications use in their own CI
 on a newly generated application, so a change to that action is tested like
 any other.
 
-Its `http-upstream` job builds the HTTP layer's own tests (the files that
-will move with `cybertrain/http/` into a library of its own, and
-`test/http_standalone.rb`, which loads the layer and nothing else) with
-upstream Spinel, matz/spinel's release `SPINEL_UPSTREAM_TAG` in `ci.yml`,
-rather than the fork. A failure there that the fork's run does not have is
-usually a shape upstream compiles differently from the fork
-(spikes/NOTES.md rule 126 is the one known so far).
-To reproduce it, build upstream once as the job does, with the tag read
-from `ci.yml`, then run `spin test` with upstream first on `PATH`, in an
-export of your tree outside the checkout, so the two compilers do not
-share `build/`:
-
-```sh
-tag=$(sed -n 's/^  SPINEL_UPSTREAM_TAG: "\(.*\)"$/\1/p' .github/workflows/ci.yml)
-up=$HOME/.spinel-upstream/$tag
-src=$(mktemp -d)
-git clone -q --depth 1 --branch "$tag" https://github.com/matz/spinel "$src"
-(cd "$src" && make deps && make -j"$(nproc)" && make install PREFIX="$up")   # once per tag
-
-dir=$(mktemp -d)
-git archive HEAD | tar -x -C "$dir"   # commit first: the export is of HEAD
-cd "$dir"
-PATH=$up/bin:$PATH spin test test/http_standalone.rb test/http_response.rb
-```
-
-The last line runs two of the job's thirteen programs, the layer alone
-and the one rule 126 is about; for the whole job, give `spin test` the
-list in the job's last step instead.
+The HTTP layer is [spinel-http](https://github.com/saeki-mototsune/spinel-http)
+(docs/design.md D91), whose own CI builds and tests it under upstream
+Spinel as well as the fork; cybertrain's CI builds it only with the fork,
+as a dependency.
 
 ## Conventions CI enforces
 
@@ -355,8 +331,10 @@ way; the script or workflow step that checks it says so in its comment.
   the exception's class name, not walked with `is_a?`
   ([spikes/NOTES.md](spikes/NOTES.md), rules 47 and 54, has why)
   (`script/check-client-faults`).
-- **The HTTP layer stands alone.** `cybertrain/http/*` must load without the
-  rest of the framework, so it can be lifted out (`script/check-http-layer`).
+- **The HTTP layer stands alone.** It is spinel-http, a library of its own
+  that loads nothing of cybertrain; spinel-http's `script/check-standalone`
+  guards that in its repository. `cybertrain/http/*.rb` holds only the
+  files that keep its require paths and `Cybertrain::` names as aliases.
 - **The core does not name an optional subsystem.** No file that
   `cybertrain/core.rb` requires, directly or not, may be a subsystem's file
   or name its classes (`Job`, `Scheduler`, ...) or call a method a
