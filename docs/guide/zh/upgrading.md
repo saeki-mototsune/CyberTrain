@@ -1,5 +1,5 @@
 ---
-source_sha256: 3b77d2617cd72b5408dc3b644e5e07aa60e3bd9447dd017c64e5538dd71329b1
+source_sha256: 1cb9b3e64fe318d289c631fe4208fe60ad0804f122583b822b2149454db538f6
 ---
 # 升级
 
@@ -168,7 +168,7 @@ cybertrain build
 - 不带 `format:` 或带格式名的 `time_tag` 通过 `I18n.l` 格式化（在英语页面中与以前的英语文本相同）。
 - gen 写出 `gen/locales.rb`（没有 `config/locales/` 时为空）并加载 `app/mailers/**/*.rb`；`cybertrain new` 写出 `config/locales/en.yml`，较早的应用也可以添加它。
 - `allow_unauthenticated_access` 现在是框架的方法；0.4 的生成器写进 `ApplicationController` 的那个仍然有效并优先。再次运行 `cybertrain generate authentication` 会加入密码重置、锁定、保持登录、账户页面和管理员用户，并为 0.4 写的文件打印差异（[从 0.4：认证](#from-04-authentication)）。
-- HTTP 层成为一个独立的库 spinel-http，框架依赖它（[HTTP 服务器](how-it-works.md#the-http-server)）。spin 也为应用锁定它，所以上面重新锁定之后，`spin.lock` 里还有一个 `[lock.spinel-http]` 表：请提交它。之前的版本写的锁文件没有这个表；spin 仍会通过框架找到 spinel-http，应用可以构建，但它没有被锁定，`cybertrain new` 写的 CI 步骤 `spin.lock is current` 会失败，直到运行 `cybertrain spin lock` 并提交锁文件。`Cybertrain::Server`、`Request` 等这一层的名字和 `require "cybertrain/http/..."` 路径保持不变；类的 `name`（日志行里打印的那样）变成 `SpinelHttp::Server`。
+- HTTP 层成为一个独立的库 spinel-http，框架依赖它（[HTTP 服务器](how-it-works.md#the-http-server)）。spin 也为应用锁定它，所以上面重新锁定之后，`spin.lock` 里还有一个 `[lock.spinel-http]` 表：请提交它。之前的版本写的锁文件没有这个表；spin 仍会通过框架找到 spinel-http，应用可以构建，但它没有被锁定，`cybertrain new` 写的 CI 步骤 `spin.lock is current` 会失败，直到运行 `cybertrain spin lock` 并提交锁文件。`Cybertrain::Server`、`Request` 等这一层的名字和 `require "cybertrain/http/..."` 路径保持不变；类的 `name`（日志行里打印的那样）变成 `SpinelHttp::Server`。上传文件的 `inspect`（`#<SpinelHttp::UploadedFile ...>`）和错误事件的 `error_class`（Sentry 的 `exception.type`）也一样：在这些地方匹配 `"Cybertrain::QueryMalformed"` 的测试或告警，现在看到的是 `"SpinelHttp::QueryMalformed"`（`assert_raises` 的字符串形式仍接受 `Cybertrain::` 的名字）。重新打开层的类来添加方法的代码仍可以写 `Cybertrain::Request`，但通过这个名字添加的常量在编译后的程序中从类外读取时会引发 `NameError`：请改为重新打开 `SpinelHttp::Request`（真正的名字）来添加。
 
 ### 从 0.4：模型与数据库
 

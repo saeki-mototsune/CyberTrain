@@ -316,7 +316,16 @@ What changes for an application written for 0.4:
   `cybertrain spin lock` is run and the lock committed.
   `Cybertrain::Server`, `Request` and the layer's other names, and its
   `require "cybertrain/http/..."` paths, stay; a class's `name`, as a log
-  line prints it, reads `SpinelHttp::Server`.
+  line prints it, reads `SpinelHttp::Server`. So do an uploaded file's
+  `inspect` (`#<SpinelHttp::UploadedFile ...>`) and an error event's
+  `error_class` (Sentry's `exception.type`): a test or an alert that
+  matches `"Cybertrain::QueryMalformed"` there now sees
+  `"SpinelHttp::QueryMalformed"` (the String form of `assert_raises` still
+  takes the `Cybertrain::` name). Code that reopens a layer class to add
+  methods may still name it `Cybertrain::Request`, but a constant added
+  through that name is a `NameError` in the compiled program when read
+  from outside the class: add it by reopening `SpinelHttp::Request` (the
+  real name) instead.
 
 ### From 0.4: models and the database
 
