@@ -129,7 +129,11 @@ end
 receiver.stop
 exit(got == count ? 0 : 1)
 RUBY
-  ruby -I"$ROOT" "$1/smtp_receiver.rb" "$1/smtp.port" "$1/mail" "$2" > "$1/smtp.log" 2>&1 &
+  # The receiver loads the framework, whose cybertrain/http/*.rb require
+  # spinel-http (docs/design.md D91): its checkout goes on the load path too.
+  local spinel_http
+  spinel_http=$(ruby "$ROOT/script/spinel_http_path.rb") || fail "script/spinel_http_path.rb found no spinel-http"
+  ruby -I"$ROOT" -I"$spinel_http" "$1/smtp_receiver.rb" "$1/smtp.port" "$1/mail" "$2" > "$1/smtp.log" 2>&1 &
   SMTP_PID=$!
   for _ in $(seq 1 40); do
     [ -f "$1/smtp.port" ] && return 0
