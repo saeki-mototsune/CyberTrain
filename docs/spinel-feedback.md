@@ -245,7 +245,7 @@ the cell names another build.
 | G | bug |  | closed | 2026.10.26.7019 (#10262); never had a workaround |
 | H | bug | 77 | closed | 2026.10.27.7020 (#10415); test/db_with_value.rb covers the plain form. The body of rule 77 was cut on 2026-11-21, and what only it held is in H |
 | I | bug |  | closed | 2026.11.04.7026 (#10735, #10786); never had a workaround |
-| J | bug |  | not re-checked on the pin (last: fails with `SPINEL_GC_SLAB=0` on 2026.11.04.7026, 3 runs of 3; the default is unknown) |  |
+| J | bug |  | closed | 2026-11-23, #249: withdrawn as not a Spinel behaviour (the report came from an AddressSanitizer build that sanitized the program and not the runtime; see J, "What J turned out to be"); never had a workaround |
 | K | bug | 78 | passes on the pin, workaround kept (status 78) |  |
 | L | constraint | 22 | settled: documented upstream (da4485a5) |  |
 | M | bug | 83 | passes on the pin, workaround kept (status 83) |  |
@@ -601,7 +601,6 @@ not by design. Costs are in 2; what is by design is in 1.4.
 | --- | --- | --- | --- |
 | Z | A stored block called with a base-class receiver runs the base class's method | 22 lines; fails on master 1c0cc5e35 | No |
 | Y | A lambda written into a module-body ivar is called with an Integer in place of its argument | 14 lines; fails on master 1c0cc5e35 | No |
-| J | With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs; the default is unknown | In J | No |
 | AB | A foreign call holds its OS worker, `blocking: true` or not | 22 lines | No |
 | AC | `URI.decode_www_form_component` is quadratic on non-ASCII text | 8 lines | No |
 | AD | `String#byteindex` accepts an offset inside a character | 5 lines | No |
@@ -652,6 +651,9 @@ shapes found in review, and rules 64, 65 and 66 in the shapes checked.
 **By design, or settled.** B, D, L, 1 (accepted), the two refusals
 ("A refusal of a never-reached class-method call", "A refusal inside a
 block that never runs") and everything in 1.4.
+
+**Withdrawn.** J (2026-11-23): not a Spinel bug. Its report came from how
+the AddressSanitizer binary was built (see J, "What J turned out to be").
 
 ## What is asked of Spinel now
 
@@ -719,7 +721,8 @@ On 2026-11-11 none of these had an upstream issue or a fixing commit
 2026-11-04 to 494deaac by subject), and none was reported. Eight were
 listed then: S, Z, Y, R, U, J, 5 and Q. S, R, U, the Float half of Q and
 the sweeper half of 5 (5 (b)) are merged since and are in the table under
-1. Four are left, in order of harm, 5 with its first half only. The
+1, and J is withdrawn (2026-11-23: not a Spinel bug, see J). Three are
+left, in order of harm, 5 with its first half only. The
 first two give a wrong result with no error at compile time, each has a
 workaround in the framework that an application author has to know as
 well, and both fail on master 1c0cc5e35 as on the pin (2026-11-13); neither is
@@ -729,14 +732,7 @@ reported yet.
    class's method, not the subclass's override. 22 lines.
 2. **Y**: a lambda written into a module-body ivar is called with an
    Integer in place of its argument. 14 lines.
-3. **J**: with the slab off, AddressSanitizer finds a thread's captured
-   variables freed before it runs. Whether the default is affected is
-   still open. (matz/spinel#11138, merged 2026-11-06, fixed another
-   object freed while still referenced that showed with
-   `SPINEL_GC_SLAB=0`, an interned frozen String; it does not touch a
-   thread's captures, and J's program is to be run again on a tag that
-   carries it. It was not run on 1c0cc5e35.)
-4. **5 (a)**: at one worker 83% of collections are full. The change to
+3. **5 (a)**: at one worker 83% of collections are full. The change to
    the cadence rule is described under 5 and not written as a patch; it
    is what would take `SPINEL_GC_FULL_INTERVAL=8` out of the deploy
    files.
@@ -811,7 +807,7 @@ run on master 1c0cc5e35:
 | K | `Logger#write_now`'s `@io.write` instead of `@io.puts` | **Ready**: a nine-line reduced program and a one-line fix in src/codegen_call_io.c, tested on a build of 2026.11.04.7026 (see K). **Sent and merged**: matz/spinel#11129 (2026-11-06), which reads the argument through `emit_to_s_expr` and covers `print` as well. Needs a fork tag that carries it |
 | 5 (a) | `SPINEL_GC_FULL_INTERVAL=8` in the deploy files | A change to the full-collection cadence rule (`SP_GC_PROMOTED_DEAD_CUT`), a policy change that upstream's benchmarks would have to support; not written yet |
 | 5 (b) | none (a gain of about 5% on one CPU) | Small: start no sweeper in `sp_cs_start_sweepers` (lib/sp_sched.c) when `SPINEL_GC_SWEEPERS` is unset and the process may use one CPU; not written or measured as a patch. **Sent and merged**: matz/spinel#11646 (2026-11-12), measured there on Linux/aarch64 held to one CPU (see 5), with its test made stricter by #11697 (2026-11-13). Needs a fork tag that carries it |
-| J | none | Nothing yet: where the capture struct becomes unreachable is not known |
+| J | none | Nothing: J is not a Spinel bug. Its report came from a binary whose program was compiled with AddressSanitizer and whose runtime was not (see J). The second report under J, the frozen String, was real: sent and merged as matz/spinel#11138 (2026-11-06), which the pin carries |
 | L | `Application.spinel_workers` (`workers + 1` above 1) | **Ready to report**: the 15-line program and its table in L show it without a server; a choice of fix for upstream (main pumps while it joins, or N helpers when main only waits), plus the separate placement of a helper's spawns. **Settled upstream as documented behaviour**: docs/thread.md on master says a program whose main only starts and joins threads has N-1 threads of work and is to be given `SPINEL_WORKERS=N+1` (da4485a5, 2026-11-06), which is what `Application.spinel_workers` does. Nothing more is asked |
 | `"#{v}"` copies | the idioms of rule 56 | Not as stated in the table: CRuby's `"#{s}"` also answers a new, unfrozen String that `<<` does not share with `s`, so the copy can only be skipped where the result is never mutated |
 | `str << int` | the idioms of rule 56 | A codegen change appending the byte directly; a speed gain, not a correctness fix; not written |
@@ -893,7 +889,7 @@ rule".
 | G. `<<` of a binary String keeps UTF-8, then a Regexp raises | no | **yes** | **fixed** | **fixed** (#10262) | **fixed** (its program prints Ruby's result) | not re-checked | not re-checked | **fixed** (its program prints Ruby's result) |
 | H. A forwarded block's value loses an application class | no | not checked (predates b6ca774) | **yes** (new; worked around) | **yes** | **fixed** (#10415) | **fixed** (test/db_with_value.rb uses the block's own value) | not re-checked | **fixed** (its two programs print Ruby's result) |
 | I. A constant written `Array.new(n) { Obj.new }` is refused | no | no | no | not checked | not checked | no | **yes** (new; from 8594f2be2, matz/spinel#10527) | **fixed** (#10735, #10786: both forms of the reduced program print Ruby's result; examples/blog builds) |
-| J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs | not reproduced (2 of 2 runs under AddressSanitizer; it has no slab) | not checked | not checked | not checked | not checked | **yes** with `SPINEL_GC_SLAB=0`; the default is unknown | **yes** with `SPINEL_GC_SLAB=0` | **yes** with `SPINEL_GC_SLAB=0` (3 of 3 runs); the default is unknown |
+| J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs | not reproduced (2 of 2 runs under AddressSanitizer; it has no slab) | not checked | not checked | not checked | not checked | **yes** with `SPINEL_GC_SLAB=0`; the default is unknown | **yes** with `SPINEL_GC_SLAB=0` | **yes** with `SPINEL_GC_SLAB=0` (3 of 3 runs); the default is unknown. Withdrawn on 2026-11-23: every run in this row used the mixed build (see J) |
 | `OpenSSL::Digest#to_s` is untyped | no (the package has none) | yes (why 3 shows in test/http_client.rb) | **fixed** (returns a String) | **fixed** (#10256) | not re-checked | not re-checked | not re-checked | not re-checked (test/http_client.rb passes) |
 | Two shapes found in review (a Hash through a chain of locals into a constant; a `case` of 17 or more Array arms) | not checked | not checked | not checked | **yes** | **fixed** (#10416, #10417) | not re-checked | not re-checked | not re-checked |
 | K. `puts` on a nil-only receiver does not compile with the TLS layer in the program | not checked | not checked | **yes** (rule 78; worked around) | not checked | not checked | not checked | not checked | **yes** (worked around; reduced, fix tested, see K) |
@@ -1268,6 +1264,16 @@ which hides a freed object from AddressSanitizer (the slab recycles its
 slots itself; 2026.09.12 has no slab): on 2026.10.27.7020 a check has to
 run with `SPINEL_GC_SLAB=0`, which found J.
 
+Added on 2026-11-23: the 2026.10.27.7020 half of that check used the
+`--cc=<wrapper>` build, which from 2026.10.25-7018 on compiles the
+program with the sanitizer and links a runtime built without it (see J,
+"What J turned out to be"). The two disagree on the layout of
+`sp_Fiber`; whether that matters to a program that starts no thread or
+fiber, as this loop does, was not checked. Repeat it with a matched
+build (docs/performance-next.md, "Memory errors") before relying on
+it. The 2026.09.12 half, and the original finding on 2026.09.12, are
+not affected: that build's layouts agree.
+
 ### 2. A parameter used only through `to_s` is narrowed to one caller's type
 
 `Html.escape(value)` was typed as taking an Integer because one caller
@@ -1572,7 +1578,8 @@ with the interval fixed at 8. Peak RSS is 14 to 15 MB in every row.
   whenever the slab allocator is on (`sp_gc_age_on` is cleared when
   `sp_slab_on`). With the slab off (`SPINEL_GC_SLAB=0`) aging cuts the
   full share from 83% to 51%, but the slab off costs 30% on its own (and
-  is where J shows), so that is not a way out today.
+  is the only setting J showed in, though J turned out to be the
+  AddressSanitizer build, see J), so that is not a way out today.
 - **The sweep goes to a thread that shares the CPU.** Since the
   concurrent sweep (f98add994, 2026-09-14, measured on a 32-core machine)
   the collector releases the world and hands the sweep to sweeper threads,
@@ -1703,7 +1710,8 @@ still present, and D still raises, by design. H is fixed by #10415, merged
 #10786 (merged 2026-11-01 and 2026-11-02), which 2026.11.03.7025 and
 2026.11.04.7026 carry. J is on 2026.10.27.7020, 49ccdced and
 2026.11.04.7026, seen only with the object slab off, and not reproduced
-on 2026.09.12 (2 of 2 runs).
+on 2026.09.12 (2 of 2 runs); it was withdrawn on 2026-11-23 as not a
+Spinel bug (see J).
 
 On 2026.10.25-7018, the ten `spin test` failures:
 
@@ -2249,6 +2257,14 @@ slot is refused.
 
 ### J. With the slab off, AddressSanitizer finds a thread's captured variables freed before it runs
 
+**Withdrawn on 2026-11-23: not a Spinel bug.** The report comes from how
+the AddressSanitizer binary was built: the program with the sanitizer,
+the runtime without. The second report below, the frozen String, was a
+real bug, and is fixed upstream (matz/spinel#11138) and in the pin. See
+"What J turned out to be" at the end of this item. The text up to there
+is the record of what was seen, and that subsection answers its open
+questions.
+
 Found on 2026-10-30 on 2026.10.27.7020 while re-measuring 5, and present on
 the fork's master 49ccdced and on the pinned 2026.11.04.7026 (re-checked
 on 2026-11-04: 3 of 3 runs, the same 64-byte object from
@@ -2337,6 +2353,104 @@ Srv.new.run((ARGV[0] || "3570").to_i)
   the thread first runs, and add the program above to the tests with an
   AddressSanitizer job that runs with `SPINEL_GC_SLAB=0`, since the slab
   hides this class of bug from AddressSanitizer.
+
+#### What J turned out to be (2026-11-06, re-checked 2026-11-23)
+
+Looked into on 2026-11-06 on matz/spinel master 4dac9fa36, macOS arm64,
+with the program above under the same load (8 connections at a time, one
+to three requests each, `SPINEL_GC_SLAB=0 SPINEL_WORKERS=1`). Re-checked
+on 2026-11-23 on the pin, 2026.11.15.7033, on Linux x86_64 (see
+"Re-checked on the pin" below).
+
+- **Cause.** The AddressSanitizer build used here, `spinel app.rb
+  --cc=<wrapper running cc -fsanitize=address ...>` (spikes/NOTES.md
+  rule 58, docs/performance-next.md), compiles only the program with the
+  sanitizer and links Spinel's stock runtime archive, built without it.
+  Since 3282ca43f ("The runtime announces its stack switches to
+  AddressSanitizer", 2026-10-12) the layout of `sp_Fiber` depends on
+  that flag: `sp_fiber_ctx` (lib/sp_fiber_ctx.h) holds one pointer in a
+  plain build and three fields under the sanitizer, and `sp_Fiber`
+  starts with two of them, so every later field sits 32 bytes further in
+  the program than in the runtime (`user_data` at offset 112 against
+  80). The generated code stores the block's capture struct at its
+  `user_data`. The runtime's fiber scan reads its own `user_data`, finds
+  NULL, and never marks the struct. The next collection frees it, and
+  the fiber body reads it on its first line. The header's own comment
+  says both sides must be built with the flag. The pin carries 3282ca43f
+  and has the same two layouts.
+- **Evidence (macOS arm64, master 4dac9fa36).** The same load on three
+  builds. The mixed build (as above) reported the use-after-free in
+  `_fiber_body_Srv_spawn_connection_1` in 7 of 7 runs. A matched build
+  (runtime and program both with the sanitizer, the runtime from
+  Spinel's `make build/rt-san/libspinel_rt_mt.a`) served 2,400
+  connections twice and 3,200 once with no report. A plain build did not
+  crash. With a temporary log in the runtime, the mixed build's runtime
+  read a NULL `user_data` at all 152 thread starts of a run, and the
+  matched build's read the capture at 3,201 of 3,201. Giving
+  `sp_fiber_ctx` its three fields in every build, as an experiment, made
+  the mixed build pass 3,200 connections.
+- **Re-checked on the pin (Linux x86_64, 2026.11.15.7033, 2026-11-23).**
+  The program above, the pin's own `bin/spinel`, the runtime from the
+  tag's `make build/rt-san/libspinel_rt_mt.a`, and the load above from a
+  Python client. With `SPINEL_GC_SLAB=0`, the mixed build stopped at once
+  in 3 of 3 runs, before it served a connection, with a
+  heap-buffer-overflow in `sp_Srv_run` (srv.rb line 6, the
+  `Thread.new { ... }.join`). The program writes a field of an
+  `sp_Fiber` that the runtime allocated 32 bytes smaller. This is the
+  same mismatch, met earlier than on macOS. The matched build served
+  3,200 connections in each of three runs with the slab off and two with
+  it on, and reported no use-after-free and no heap error. In four of
+  those five runs it reported one other site, and only that one (with
+  `halt_on_error=0`; the first two matched runs, without it, stopped
+  there): a one-byte global-buffer-overflow in `sp_mark_string`
+  (lib/sp_gc.h, the tag-byte test `s[-1]`), reached from a root entry in
+  `sp_gc_mark_all` while `Thread.new` allocated. It read the byte in
+  front of the string literal `"srv.rb"` in the program's read-only
+  data. It is a read, its value only selects how to mark, and a plain
+  build reads whatever byte lies there. It was not reduced further and
+  not reported upstream.
+- **What it answers above.** 2026.09.12 passed because it predates
+  3282ca43f, not because it has no slab: 2026.10.27.7020 and
+  2026.11.04.7026 both carry that commit. "Where the chain breaks" is
+  nowhere in Spinel: the registry, the thread record, the write barrier
+  and the fiber scan are right. The wild reads inside `rescue
+  StandardError` in the slab-on AddressSanitizer build are the same
+  mismatch: every `sp_Fiber` field after the two contexts is read and
+  written at the wrong offset. And "whether the default is affected":
+  it is not, since a plain build has one layout on both sides.
+- **The second report was real**, and did not depend on the build
+  method (confirmed with a matched build on macOS). A frozen heap String
+  is meant to live for ever, and the `String#-@` / `#dedup` intern table
+  and `Module#name`'s cache hold such Strings without being roots. A pin
+  bit in the slab kept such a String alive, and that bit did nothing for
+  a block the slab does not own. So the sweep freed the String while the
+  table still pointed at it. That happened to every interned String with
+  `SPINEL_GC_SLAB=0`, and, **in the default settings, to one over the
+  slab's largest class (2,048 bytes with its headers)**. In the default
+  settings the next dedup of equal contents answered a mutable String
+  that had taken the freed block: `-("ab" * 2000)` twice across a
+  `GC.start` printed `[false, true, 4001, false]` where CRuby prints
+  `[true, false, 4000, true]`, in 30 of 30 runs over ten collector
+  settings. Fixed by matz/spinel#11138 (a794e3f2c), merged 2026-11-06,
+  which the pin carries: the pin of a block outside the slab is recorded
+  in a table that every collection marks. The plain-build SIGSEGV of
+  examples/blog with the slab off (6 of 31 loaded runs) fits this bug,
+  since `Module#name` is read on every request. examples/blog was not
+  run again with the fix. Nobody checked whether CyberTrain interns a
+  String that large with the slab on.
+- **What to do in CyberTrain.** Build AddressSanitizer binaries with a
+  runtime built with the sanitizer too, as docs/performance-next.md
+  says under "Memory errors". The `--cc=<wrapper>` recipe is wrong on
+  every build that carries 3282ca43f: 2026.10.25-7018, 2026.10.26.7019,
+  2026.10.27.7020, 2026.11.03.7025, 2026.11.04.7026 and 2026.11.15.7033
+  all do (`git merge-base --is-ancestor`), and 2026.09.12 does not. Any
+  AddressSanitizer result in this document made with that recipe on
+  those builds, a report or a clean run, was made with the two layouts
+  apart. Repeat it with a matched build before relying on it, including
+  1's "not reproduced under ASan" on 2026.10.27.7020. Nothing was sent
+  upstream for this. A build-time check that the program and the runtime
+  agree on the flag would turn the mismatch into a link error. Nobody
+  has proposed one.
 
 ### L. `SPINEL_WORKERS=N` counts main, which a server keeps waiting: 2 runs on one worker
 
