@@ -176,13 +176,13 @@ end
 
 test "an exact version spelled '0.Y.Z' or \"= 0.Y.Z\" is the release spin selects for it" do
   toml("[dependencies]\ncybertrain = '0.5.0'\n")
-  assert_includes FrameworkVersion.problem(".", "0.4.1"), "cybertrain 0.5.0 (spin.toml)"
+  assert_includes FrameworkVersion.problem(".", "0.4.0"), "cybertrain 0.5.0 (spin.toml)"
   assert_equal "", FrameworkVersion.problem(".", "0.5.0")
   toml("[dependencies]\ncybertrain = \"= 0.5.0\"\n")
-  assert_includes FrameworkVersion.problem(".", "0.4.1"), "cybertrain 0.5.0 (spin.toml)"
+  assert_includes FrameworkVersion.problem(".", "0.4.0"), "cybertrain 0.5.0 (spin.toml)"
   assert_equal "", FrameworkVersion.problem(".", "0.5.0")
   toml("[dependencies]\ncybertrain = { version = '0.5.0' }\n")
-  assert_includes FrameworkVersion.problem(".", "0.4.1"), "cybertrain 0.5.0 (spin.toml)"
+  assert_includes FrameworkVersion.problem(".", "0.4.0"), "cybertrain 0.5.0 (spin.toml)"
   # spin reads "= 1" as the number 0: the release it looks for is 0.5.0.
   toml("[dependencies]\ncybertrain = \"= 1.5.0\"\n")
   assert_includes FrameworkVersion.problem(".", "1.5.0"), "cybertrain 0.5.0 (spin.toml)"
