@@ -533,15 +533,19 @@ up as issues, is [spinel-feedback.md](spinel-feedback.md).
 
   ```sh
   make build/rt-san/libspinel_rt_mt.a
-  spinel -c --no-line-map app.rb -o app.c
+  spinel -c -O0 --no-line-map app.rb -o app.c
   cc -O0 -g -fno-omit-frame-pointer -fsanitize=address,undefined \
+     -fsanitize-recover=address \
      -ffp-contract=off -DSP_THREADS -ftls-model=initial-exec \
      -DSP_INT_OVERFLOW_MODE_RAISE -Ilib -Ilib/regexp -c app.c -o app.o
   cc -fsanitize=address,undefined -g app.o \
      build/rt-san/libspinel_rt_mt.a -lm -lpthread -o app
   ```
 
-  Run it with `ASAN_OPTIONS=detect_leaks=0:fast_unwind_on_malloc=0`.
+  Run it with
+  `ASAN_OPTIONS=detect_leaks=0:fast_unwind_on_malloc=0:halt_on_error=0`.
+  `-O0` to `spinel` matches the `cc -O0` after it: at `-O0` the driver
+  asks for the larger fiber and main stacks that unoptimised C needs.
   These lines worked on 2026.11.15.7033 (Linux x86_64, 2026-11-23) for
   J's program, a threaded program with no packages. They have not been
   run on a CyberTrain binary yet. The defines are the ones the pin's
@@ -552,11 +556,17 @@ up as issues, is [spinel-feedback.md](spinel-feedback.md).
   is what `make rt-san-check` runs. A program without threads links
   build/rt-san/libspinel_rt.a without the two thread flags. One that
   uses bundled packages (openssl, FFI) also links their objects under
-  build/rt-san/packages-mt and their libraries. A matched build of J's
+  build/rt-san/packages-mt and the libraries its C names on its
+  `/* SPINEL_LINK: ... */` lines. The archive target does
+  not build those objects (only `make rt-san-check` has them as
+  prerequisites), so make each by its path first, for example
+  `make build/rt-san/packages-mt/openssl/sp_openssl.o`; the Makefile's
+  `RT_SAN_PKG_MT_OBJS` lists them. A matched build of J's
   program reports one site that is not J: a one-byte read in front of a
   string literal in `sp_mark_string`, the collector's tag-byte test.
-  The runtime archive is built with `-fsanitize-recover=address`, so
-  `halt_on_error=0` in `ASAN_OPTIONS` lets a run go on past it.
+  The runtime archive and the program are built with
+  `-fsanitize-recover=address`, so `halt_on_error=0` lets a run go on
+  past it.
   The object slab (on by default; 2026.09.12 had none) recycles freed
   slots itself, so with it on AddressSanitizer does not see a freed
   object being read: run a matched build both ways, with
