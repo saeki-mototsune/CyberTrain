@@ -533,6 +533,7 @@ change in someone else's code arrives as a pull request, not as a surprise:
 |---|---|---|
 | Actions (`uses:` in `.github/workflows/` and `.github/actions/`) | A commit, with the release in a comment: `actions/checkout@<commit> # vX.Y.Z` | Dependabot ([.github/dependabot.yml](.github/dependabot.yml)): one pull request a week for all of them |
 | Spinel | `Cybertrain::SPINEL_TAG`, one release, equal to `SPINEL_TAG` in `ci.yml` | The Bump version workflow ([Releasing](#releasing)) |
+| spinel-http, the HTTP layer | `ref` (a branch or a tag) in `spin.toml`, the commit in `spin.lock` | By hand, after a spinel-http release ([Working on spinel-http](#working-on-spinel-http)) |
 | Gems a workflow installs (`yard`, `kramdown`, `kramdown-parser-gfm`, `rouge`, `kamal`) | `-v "~> X.Y"`: a fixed minor, the newest patch | By hand, in every workflow that installs the gem and in [docs/guide/README.md](docs/guide/README.md) |
 | `prism`, for building Spinel | The exact version Spinel's Makefile names | With Spinel |
 | Ruby for the scripts and the CLI | `ruby-version: "3.3"` | By hand |
@@ -576,6 +577,74 @@ When a gem's constraint moves, run what uses it before pushing:
 `script/api-docs` (yard, kramdown) and `script/guide-pages --out <tmpdir>`
 with the tests under `script/guide-pages.d/test/` (kramdown, rouge); the
 Blog image workflow loads `config/deploy.yml` with Kamal.
+
+## Working on spinel-http
+
+The HTTP layer is
+[spinel-http](https://github.com/saeki-mototsune/spinel-http)
+(docs/design.md D91), a library in a repository of its own, under the
+module `SpinelHttp`. cybertrain depends on it in `spin.toml`, a git
+dependency whose `ref` is a branch or a tag (never a commit: spin resolves
+the `ref` with `git clone --branch`), and `spin.lock` pins the commit.
+Applications get it through the framework, so `cybertrain new` writes
+nothing for it. The files in `cybertrain/http/` are shims: each requires
+its spinel-http file and keeps the old `Cybertrain::` names as constant
+aliases (`Cybertrain::Server = SpinelHttp::Server`, one class under two
+names) and the old require path. A change to the layer is made in
+spinel-http, with its tests there, and its README says how to run them
+under upstream Spinel and the fork; spinel-http's NOTES.md holds the rules
+its code follows, upstream workarounds included. This repository keeps the
+tests that need cybertrain around the layer (strong parameters, the
+locale, request ids and log scopes, the aliases themselves:
+`test/spinel_http_aliases.rb`).
+
+Two more rules from the aliases: reopen a layer class to add methods
+through its `Cybertrain::` name or its real one, but add a constant only
+by the real name (`module SpinelHttp; class Request`) or at cybertrain's own
+module level, since under the pinned Spinel a constant added through the
+alias is a `NameError` when read from outside the class; and NOTES rule 34,
+one method name with one return type, spans both repositories
+(`script/check-reserved-names` reads spinel-http's files too).
+
+A change reaches cybertrain in two steps:
+
+1. Release spinel-http: merge the change there, set `version` in its
+   `spin.toml` to X.Y.Z, and push the tag,
+   `git tag vX.Y.Z && git push origin vX.Y.Z`. spinel-http's CI tests the
+   commit under upstream Spinel and the fork.
+2. Move cybertrain to it, in one pull request: set `ref = "vX.Y.Z"` on the
+   `spinel-http` line of `spin.toml`, then relock. `spin lock` keeps a
+   git dependency's locked commit whatever `ref` has become, so remove the
+   lock first:
+
+   ```sh
+   rm spin.lock && spin lock      # locked 1 package(s)
+   git diff spin.lock             # the new commit under [lock.spinel-http]
+   ```
+
+   cybertrain's CI then builds and tests the framework and the example
+   application against that commit. Applications get it with the next
+   cybertrain release, when they relock
+   ([docs/guide/upgrading.md](docs/guide/upgrading.md)).
+
+To work on both at once, point cybertrain at your spinel-http checkout with
+a temporary `path` dependency, and never commit it:
+
+```toml
+spinel-http = { path = "../spinel-http" }
+```
+
+Then `spin lock` (it writes `path = "../spinel-http"` into `spin.lock`),
+and build and test as usual: `spin flags`, and with it every script that
+finds spinel-http (`script/spinel_http_path.rb`), name your checkout.
+Before committing, put both files back, `git checkout spin.toml spin.lock`,
+and land the spinel-http change first, as above; a pull request carrying
+the `path` line fails in CI, whose checkout has no `../spinel-http`.
+
+Publishing spinel-http on the spin index is done from its repository
+(`spin publish`, run with upstream Spinel), by the maintainer. Once a
+release is there, cybertrain may name it by its exact version instead of
+the git `ref` (D91).
 
 ## Releasing
 

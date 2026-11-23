@@ -1,5 +1,5 @@
 ---
-source_sha256: 45a936279cc9a0eb9a65fd3141efb6218521a5d3bb4a7b17ee0efb2db4fe9659
+source_sha256: 3b77d2617cd72b5408dc3b644e5e07aa60e3bd9447dd017c64e5538dd71329b1
 ---
 # 升级
 
@@ -50,7 +50,7 @@ rm spin.lock
 cybertrain spin lock
 ```
 
-它打印 `locked 1 package(s)`，`git diff spin.lock` 显示 `[lock.cybertrain]` 下新的 `version` 和新的 `ref`（标签对应的提交）。不执行 `rm` 的话，`spin lock` 会保留已锁定的提交，差异为空。有其他依赖的应用，或者依赖 spin 索引中某个版本的应用，按[把应用迁移到新版本](install.md#moving-an-app-to-a-new-release)所述重新锁定。
+它打印 `locked 2 package(s)`，`git diff spin.lock` 显示 `[lock.cybertrain]` 下新的 `version` 和新的 `ref`（标签对应的提交），框架依赖的 HTTP 层换了版本时，还在 `[lock.spinel-http]` 下显示它（[HTTP 服务器](how-it-works.md#the-http-server)）。不执行 `rm` 的话，`spin lock` 会保留已锁定的提交，差异为空。有其他依赖的应用，或者依赖 spin 索引中某个版本的应用，按[把应用迁移到新版本](install.md#moving-an-app-to-a-new-release)所述重新锁定。
 
 `cybertrain new` 写出的文件中还有两个写明了版本。应用里有它们时一并修改：
 
@@ -168,6 +168,7 @@ cybertrain build
 - 不带 `format:` 或带格式名的 `time_tag` 通过 `I18n.l` 格式化（在英语页面中与以前的英语文本相同）。
 - gen 写出 `gen/locales.rb`（没有 `config/locales/` 时为空）并加载 `app/mailers/**/*.rb`；`cybertrain new` 写出 `config/locales/en.yml`，较早的应用也可以添加它。
 - `allow_unauthenticated_access` 现在是框架的方法；0.4 的生成器写进 `ApplicationController` 的那个仍然有效并优先。再次运行 `cybertrain generate authentication` 会加入密码重置、锁定、保持登录、账户页面和管理员用户，并为 0.4 写的文件打印差异（[从 0.4：认证](#from-04-authentication)）。
+- HTTP 层成为一个独立的库 spinel-http，框架依赖它（[HTTP 服务器](how-it-works.md#the-http-server)）。spin 也为应用锁定它，所以上面重新锁定之后，`spin.lock` 里还有一个 `[lock.spinel-http]` 表：请提交它。之前的版本写的锁文件没有这个表；spin 仍会通过框架找到 spinel-http，应用可以构建，但它没有被锁定，`cybertrain new` 写的 CI 步骤 `spin.lock is current` 会失败，直到运行 `cybertrain spin lock` 并提交锁文件。`Cybertrain::Server`、`Request` 等这一层的名字和 `require "cybertrain/http/..."` 路径保持不变；类的 `name`（日志行里打印的那样）变成 `SpinelHttp::Server`。
 
 ### 从 0.4：模型与数据库
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: d29713ab9a0a7d9c68b0dee1b1c47c3b269ecf60b632ed1961477498dcd853a7
+source_sha256: f99d8abbfba8092d6c2a52866127e06e828d05c87e0cb4fe6a5ac406028699d5
 ---
 # インストール
 
@@ -126,7 +126,7 @@ cybertrain spin lock
 cybertrain spin run gen
 ```
 
-`spin lock` は、git の依存について固定済みのコミットを、`spin.toml` の `ref` が何に変わっても保ちます。先にロックを消すのはそのためです。ほかにも依存があるアプリでは、代わりに `spin.lock` から `[lock.cybertrain]` のテーブルだけを消せば、ほかの固定は残ります。
+`spin lock` は、git の依存について固定済みのコミットを、`spin.toml` の `ref` が何に変わっても保ちます。先にロックを消すのはそのためです。ほかにも依存があるアプリでは、代わりに `spin.lock` から `[lock.cybertrain]` のテーブルと `[lock.spinel-http]` のテーブル（フレームワークが依存する HTTP の層）だけを消せば、ほかの固定は残ります。
 
 [インデックスのバージョン](#an-index-version)に依存するアプリに `rm` は要りません。その場合は `spin lock` が固定を動かすからです。まず `cybertrain spin search cybertrain` を実行して spin のインデックスのコピーを更新し、`spin.toml` の `cybertrain =` の行のバージョンを新しいリリースに変えてから、`cybertrain spin lock` と `cybertrain spin run gen` を実行します。
 

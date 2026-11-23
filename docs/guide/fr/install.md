@@ -1,5 +1,5 @@
 ---
-source_sha256: d29713ab9a0a7d9c68b0dee1b1c47c3b269ecf60b632ed1961477498dcd853a7
+source_sha256: f99d8abbfba8092d6c2a52866127e06e828d05c87e0cb4fe6a5ac406028699d5
 ---
 # Installer cybertrain
 
@@ -323,8 +323,9 @@ cybertrain spin run gen
 `spin lock` garde le commit qu’il a verrouillé pour une dépendance git, quel
 que soit le `ref` désormais écrit dans `spin.toml`&nbsp;: c’est pourquoi le
 verrou est supprimé d’abord. Dans une application qui a d’autres dépendances,
-vous pouvez à la place supprimer de `spin.lock` la seule table
-`[lock.cybertrain]` et garder les autres verrous.
+vous pouvez à la place supprimer de `spin.lock` les seules tables
+`[lock.cybertrain]` et `[lock.spinel-http]` (la couche HTTP dont dépend le
+framework) et garder les autres verrous.
 
 Une application qui dépend d’[une version de l’index](#an-index-version) n’a
 pas besoin du `rm`, puisque là `spin lock` déplace le verrou&nbsp;:

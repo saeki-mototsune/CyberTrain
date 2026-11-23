@@ -343,7 +343,7 @@ follows the rule even where a probe passes.
 | Sockets: `wait_readable` before every `readpartial`; a socket reaches its thread through a method parameter; `connect_nonblock` instead of `connect_timeout:` | 20, 21, 72 | http/server.rb, http/body_writer.rb, net/socket.rb, websocket.rb | test/server.rb, test/response_stream.rb, test/main_roles.rb, test/http_client.rb | rule 20, rule 21, O, rule 72 |
 | `SPINEL_WORKERS` is set to `workers + 1` (1 for a single worker) before the first thread; development serves on one worker; no lock on the request path (the logger's one-write `Logger::LOCK` is the measured exception, rule 115) | 22, 57 | application.rb (`spinel_workers_for`), template/engine.rb, http/server.rb | test/dev_application.rb, test/template_embedded.rb, test/db_busy_wait.rb; bench/run's two-core run | L, item 7 |
 | A large generated table (an application's dictionary, the bundled ones) is a Hash filled at load by methods of at most 50 stores, never one literal | 101 | generator/locales_emitter.rb, locales/bundled.rb | build time only: test/gen_locales.rb compiles it; one literal of 2,000 keys takes some 13 s of cc | AI |
-| In the HTTP layer and its tests, a call that always answers nil is a statement, its result asserted after, never an argument (`dropped = res.drop_header(...)`, then `assert_nil dropped`) | 126 | test/http_response.rb | test/http_response.rb under upstream 2026.10.25 (CI's http-upstream job) | F |
+| In the HTTP layer and its tests, a call that always answers nil is a statement, its result asserted after, never an argument (`dropped = res.drop_header(...)`, then `assert_nil dropped`) | 126 | spinel-http since 2026-11-23 (its NOTES.md rule 1) | spinel-http's test/http_response.rb under upstream 2026.10.25 (spinel-http's CI) | F |
 | `exit` only on the main thread: a feeds supervisor sets a flag the main thread acts on | 91 | background/supervisor.rb, roles/feeds.rb | test/feeds_exit.rb | T |
 | `Logger#write_now` writes with `@io.write`; the console flushes after each prompt | 78, 83 | logger.rb, console.rb | test/logger_flush.rb, test/main_console.rb; test/logger_tls.rb was written for 78 and no longer fails without it (status 78) | K, M |
 | Integer-only Ranges: a Time range is `where_between`; `time_tag`'s `format:` (and `I18n.l`) walks the pattern itself instead of calling `strftime` with a built one | 86, 96 | relation.rb, validator.rb, template/helpers.rb, strftime.rb | test/relation_where.rb, test/validators.rb, test/helpers.rb | Q, V |
@@ -2422,7 +2422,8 @@ decision, and 77 explicitly retires a workaround.
      frozen run-time String be collected.
 
 126. Under upstream Spinel 2026.10.25 (matz/spinel's release, which CI's
-     `http-upstream` job builds the HTTP layer's tests with) a call of a
+     `http-upstream` job built the HTTP layer's tests with until
+     2026-11-23) a call of a
      method that always answers nil, written as the argument of a
      parameter typed otherwise, compiles to `NULL`: the call and its side
      effects are gone. `assert_nil res.drop_header("Location")` became
@@ -2437,8 +2438,11 @@ decision, and 77 explicitly retires a workaround.
      (test/http_response.rb, four calls of `drop_header` and
      `client_error!`). Nothing in cybertrain/http/ failed this way under
      upstream.
-     Kept until the http-upstream job's SPINEL_UPSTREAM_TAG includes
-     matz/spinel #10260 (docs/spinel-feedback.md F).
+     Moved 2026-11-23: the HTTP layer and those tests are spinel-http's
+     now (docs/design.md D91), and the rule is its NOTES.md rule 1, kept
+     until the upstream tag its CI builds includes matz/spinel #10260; the
+     http-upstream job is gone, and nothing left in cybertrain is written
+     to this rule (docs/spinel-feedback.md F).
 
 <a id="numbers-worth-remembering"></a>
 

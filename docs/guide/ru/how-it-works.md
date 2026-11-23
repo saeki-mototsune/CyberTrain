@@ -1,6 +1,6 @@
 ---
 description: Как CyberTrain-приложение собирается и запускается (генерация кода при сборке, необязательные подсистемы, интерпретируемые представления, HTTP-сервер, SQLite через FFI, цикл разработки) и отличия от Rails.
-source_sha256: 3fdb7f0673a0194bd548b024455478697a34e83364317a70e2856800271ac272
+source_sha256: 23f7faa5ecc00ece78c01fdb34adea7dc1c3f7ebff067343998c1f4ce15cdce9
 ---
 
 # Как это работает
@@ -176,9 +176,12 @@ Spinel нет `eval`, поэтому это замкнутая граммати�
 зависаний.
 
 Сервер вызывает `HttpHandler` (`call(request) -> Response`); `ContextHandler`
-связывает его со стеком middleware, поэтому HTTP-слой (`cybertrain/http/`, а
-также `Params` и `Logger`) не зависит от остального фреймворка; это обеспечивает
-`script/check-http-layer` в CI.
+связывает его со стеком middleware. HTTP-слой — отдельная библиотека,
+[spinel-http](https://github.com/saeki-mototsune/spinel-http), которая ничего
+не загружает из фреймворка; spin получает её вместе с фреймворком, как
+зависимость. Её классы сохраняют имена `Cybertrain::`: `Cybertrain::Server` —
+это `SpinelHttp::Server`, один класс под двумя именами, и его `name` отвечает
+`"SpinelHttp::Server"`.
 
 ## SQLite через FFI
 

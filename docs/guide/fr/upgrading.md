@@ -1,5 +1,5 @@
 ---
-source_sha256: 45a936279cc9a0eb9a65fd3141efb6218521a5d3bb4a7b17ee0efb2db4fe9659
+source_sha256: 3b77d2617cd72b5408dc3b644e5e07aa60e3bd9447dd017c64e5538dd71329b1
 ---
 # Mise à jour
 
@@ -50,7 +50,7 @@ rm spin.lock
 cybertrain spin lock
 ```
 
-La commande affiche `locked 1 package(s)`, et `git diff spin.lock` montre la nouvelle `version` et un nouveau `ref` (le commit du tag) sous `[lock.cybertrain]`. Sans le `rm`, `spin lock` garde le commit qu’il avait verrouillé et le diff est vide. Une application qui a d’autres dépendances, ou qui dépend d’une version de l’index spin, se reverrouille comme le décrit [Passer une application à une nouvelle version](install.md#moving-an-app-to-a-new-release).
+La commande affiche `locked 2 package(s)`, et `git diff spin.lock` montre la nouvelle `version` et un nouveau `ref` (le commit du tag) sous `[lock.cybertrain]`, et sous `[lock.spinel-http]` la version de la couche HTTP dont dépend le framework ([Le serveur HTTP](how-it-works.md#the-http-server)), quand le framework en a changé. Sans le `rm`, `spin lock` garde les commits qu’il avait verrouillés et le diff est vide. Une application qui a d’autres dépendances, ou qui dépend d’une version de l’index spin, se reverrouille comme le décrit [Passer une application à une nouvelle version](install.md#moving-an-app-to-a-new-release).
 
 Deux fichiers écrits par `cybertrain new` nomment aussi la version. Changez-les si l’application les a&nbsp;:
 
@@ -168,6 +168,7 @@ Ce qui change pour une application écrite pour 0.4&nbsp;:
 - `time_tag` sans `format:`, ou avec un nom de format, formate par `I18n.l` (le même texte anglais qu’avant dans une page en anglais).
 - gen écrit `gen/locales.rb` (vide sans `config/locales/`) et charge `app/mailers/**/*.rb`&nbsp;; `cybertrain new` écrit `config/locales/en.yml`, qu’une application plus ancienne peut ajouter.
 - `allow_unauthenticated_access` est désormais une méthode du framework&nbsp;; celle que le générateur de 0.4 a écrite dans `ApplicationController` fonctionne toujours et l’emporte. Relancer `cybertrain generate authentication` ajoute la réinitialisation du mot de passe, le verrouillage, «&nbsp;rester connecté&nbsp;», la page de compte et les administrateurs, et affiche des diffs pour les fichiers que 0.4 a écrits ([Depuis 0.4&nbsp;: authentification](#from-04-authentication)).
+- La couche HTTP est une bibliothèque à part, spinel-http, dont dépend le framework ([Le serveur HTTP](how-it-works.md#the-http-server)). spin la verrouille aussi pour l’application&nbsp;: après le reverrouillage ci-dessus, `spin.lock` a aussi une table `[lock.spinel-http]`, à committer. Un verrou écrit par une version antérieure n’en a pas&nbsp;; spin trouve quand même spinel-http par le framework et l’application se construit, mais rien ne la fixe, et l’étape de CI `spin.lock is current` qu’écrit `cybertrain new` échoue jusqu’à ce que `cybertrain spin lock` soit lancé et le verrou committé. `Cybertrain::Server`, `Request` et les autres noms de la couche, ainsi que ses chemins `require "cybertrain/http/..."`, restent&nbsp;; le `name` d’une classe, tel qu’une ligne de journal l’affiche, devient `SpinelHttp::Server`.
 
 ### Depuis 0.4&nbsp;: modèles et base de données
 

@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、可选的子系统、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: 3fdb7f0673a0194bd548b024455478697a34e83364317a70e2856800271ac272
+source_sha256: 23f7faa5ecc00ece78c01fdb34adea7dc1c3f7ebff067343998c1f4ce15cdce9
 ---
 # 工作原理
 
@@ -83,7 +83,7 @@ gen 把 `bin/<app>.rb` 当作文本读取，只看其中字面写出的 `require
 
 `Cybertrain::Server` 是纯 Ruby 实现的 HTTP/1.1：`TCPServer#accept` 加上每个连接一个 Spinel 绿色线程（M:N 调度，没有 GVL），带类型的 `Request`/`Response`，没有 Rack 层。TLS/HTTP/2 交给反向代理处理。`SPINEL_WORKERS` 默认为 `1`——实验发现，对于这种 I/O 密集型、100 个并发连接的场景，这样更快且不会卡顿。
 
-服务器调用一个 `HttpHandler`（`call(request) -> Response`）；`ContextHandler` 把它与中间件栈连接起来，所以 HTTP 层（`cybertrain/http/`，以及 `Params` 和 `Logger`）不依赖框架的其他部分；`script/check-http-layer` 在 CI 中强制保证这一点。
+服务器调用一个 `HttpHandler`（`call(request) -> Response`）；`ContextHandler` 把它与中间件栈连接起来。HTTP 层是一个独立的库 [spinel-http](https://github.com/saeki-mototsune/spinel-http)，它不加载框架的任何部分；spin 把它作为框架的依赖一起获取。它的类保留 `Cybertrain::` 的名字：`Cybertrain::Server` 就是 `SpinelHttp::Server`，一个类有两个名字，它的 `name` 返回 `"SpinelHttp::Server"`。
 
 ## 通过 FFI 使用 SQLite
 
