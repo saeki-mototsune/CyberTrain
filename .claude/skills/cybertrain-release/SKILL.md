@@ -27,19 +27,22 @@ ruby .claude/skills/cybertrain-release/scripts/release-status.rb
 見るところ:
 
 - `already_released` が true なら main は前回タグから進んでいない。リリースするものがないと伝えて止める。
-- `merged_prs` が手順 1 の対象。
+- `merged_prs` が手順 1 の対象。ほとんどの PR は、マージコミットの本文から取った `title` を持っている。
+- `prs_without_title` は、マージ時に本文が空だったためタイトルの分からない PR 番号。
+- `compatibility_paragraphs_since_tag` は、前回タグ以降に `docs/design.md` に追加された "Compatibility" 段落と、それが属する決定 (Dnn)。
+- `upgrading_sections` は、アップグレードガイド (英語と 4 つの翻訳) にあるリリースの節の一覧。
 - `pins` と `spinel` が手順 2 の材料。
-- `workflows_on_main.spinel_candidate` が false なら、Spinel candidate ワークフローはまだ main にない (手順 3 参照)。
+- `workflows_on_main` が false のワークフローは、まだ main にないので起動できない。
 - `warnings` が空でなければ、その内容をユーザーに伝える。
 
 ## 1. PR の概要とバージョン番号
 
-### タイトルと本文を集める
+### タイトルを補う
 
-スクリプトが返すのは PR 番号だけ (マージコミットの件名にタイトルが入らないため)。タイトルは GitHub からまとめて取る:
+タイトルが足りないのは `prs_without_title` の分だけ。それを GitHub から 1 回で取る:
 
-- `mcp__github__list_pull_requests` を `state: "closed"`, `base: "main"`, `sort: "updated"`, `direction: "desc"`, `perPage: 100`, `fields: ["number","title","merged_at","labels","user"]` で呼び、`merged_prs` の番号と突き合わせる。足りなければ `page` を進める。本文は大きいので、ここでは取らない。
-- タイトルだけで中身が分からない PR、互換性に関わりそうな PR だけ `mcp__github__pull_request_read` (`method: "get"`) で本文を読む。全部読む必要はない。
+- `mcp__github__list_pull_requests` を `state: "closed"`, `base: "main"`, `sort: "updated"`, `direction: "desc"`, `perPage: 100`, `fields: ["number","title"]` で呼ぶ。`prs_without_title` の番号だけを拾い、残りは捨てる (このリストにはマージされずに閉じた PR や前回タグより前の PR も混ざる)。fields を絞ること。`body` や `user` まで取ると数万トークンになる。拾えない番号が残ったら、その番号だけ `mcp__github__pull_request_read` (`method: "get"`) で読む。
+- タイトルだけでは中身が分からない PR に限って本文を読む。全部は読まない。
 
 ### 分類してまとめる
 
@@ -61,10 +64,20 @@ ruby .claude/skills/cybertrain-release/scripts/release-status.rb
 
 `docs/compatibility.md` の規則: 1.0 前は、互換性の変更を含むならマイナー (0.x → 0.x+1)、含まないならパッチ (0.x.y → 0.x.y+1)。
 
-- 互換性の変更があればマイナーを提案し、`docs/guide/upgrading.md` の "Notes by version" に今回の節 ("From 0.x to 0.y") があるか、4 つの翻訳にもあるかを確認する。なければ「bump PR をマージする前に書く必要がある」と明記する (CONTRIBUTING.md の Releasing 手順 1)。
-- 迷う PR があれば、どの PR がなぜ迷うのかを書いたうえでユーザーに決めてもらう。
+互換性の変更かどうかは、大きな PR の本文を片端から読んで判断しない。安く確実な順に見る:
 
-**バージョン番号はユーザーに確認してから**次に進む。番号は手順 4 でそのまま使う。
+1. タイトルが `compatibility:` で始まる PR
+2. `compatibility_paragraphs_since_tag`。決定ごとに互換性への影響が書いてある。「none broken」のように影響なしと書かれた段落もあるので、本文を読んで判断する。決定の見出しの issue 番号や日付を手がかりに、対応する PR を探す。
+3. それでも迷う PR だけ本文を読む
+
+互換性の変更があればマイナーを提案し、アップグレードガイドを確認する:
+
+- `upgrading_sections` の 5 ファイルすべてに、今回の節 ("From 0.x to 0.y" とその訳) があるか。ないファイルがあれば「bump PR をマージする前に書く必要がある」と明記する (CONTRIBUTING.md の Releasing 手順 1)。
+- 節があれば、上で見つけた互換性の変更が英語版 `docs/guide/upgrading.md` の節の中で扱われているかを照らし合わせる (キーワードで grep すれば足りる)。漏れていそうなものは、どの決定・PR かを添えて挙げる。ガイドの漏れはここでしか見つからない。
+
+迷う PR があれば、どの PR がなぜ迷うのかを書いて、ユーザーに決めてもらう。
+
+バージョン番号は手順 4 でそのまま使う。**ユーザーへの確認は手順 2 の Spinel の確認とまとめて 1 回で行う** (下記)。
 
 ## 2. Spinel のバージョン確認
 
@@ -73,14 +86,28 @@ ruby .claude/skills/cybertrain-release/scripts/release-status.rb
 - `pin_is_latest: true` → 「ピン (`SPINEL_TAG`) はフォークの最新タグと同じ。Spinel は据え置き」と伝え、手順 3 は飛ばす。
 - `newer_than_pin` にタグがある → 新しいタグの一覧と、検証候補として最新のもの (`latest_tag`) を示す。
 
-新しいタグに何が入ったかも見ておくと、candidate の結果を読むときに役立つ。フォークは公開リポジトリなので、scratchpad に blob なしで clone して差分のコミットを見る:
+新しいタグに何が入ったかも見ておくと、candidate の結果を読むときに役立つ。フォークは公開リポジトリなので、scratchpad に blob なしで clone する。上流のマージを取り込むため、差分は数千コミットになることがある。全部は読まず、PR のマージだけに絞る:
 
 ```bash
 git clone --quiet --bare --filter=blob:none https://github.com/saeki-mototsune/spinel.git <scratchpad>/spinel.git
-git -C <scratchpad>/spinel.git log --oneline <現在のピン>..<候補タグ>
+git -C <scratchpad>/spinel.git log --merges --format=%s <現在のピン>..<候補タグ> \
+  | sed -n 's/^Merge PR \(#[0-9]*\): /\1 /p' > <scratchpad>/spinel-prs.txt
+wc -l <scratchpad>/spinel-prs.txt
 ```
 
-`docs/spinel-feedback.md` の未解決項目 (open なもの) に関係しそうな修正があれば、それも挙げる。新しいリリースで直っていれば、bump 後に spikes/NOTES.md の回避策を外せる可能性がある (この作業自体はリリースとは別件として提案するだけ)。
+上流 (matz/spinel) の PR は `Merge PR #12401: タイトル` という件名で入っているので、これで上流 PR の番号とタイトルだけが 1 行ずつ残る。フォーク側の `Merge branch 'matz:master'` などは落ちる。
+
+未解決の項目は `docs/spinel-feedback.md` の "## What is asked of Spinel now" の下、"### 2. Bugs still open" (と "### 3. Seen in the framework, not reduced yet") にある。項目ごとの上流 issue/PR 番号や症状のキーワードで、上の出力を grep する。当たりがあれば「直った可能性がある項目」として挙げる。コミットのタイトルから推測しただけなので、確かめるには各項目の再現プログラム (spikes/) を新しいタグで動かす必要がある、と添える。直っていれば spikes/NOTES.md の回避策を外せる可能性がある。その作業はリリースとは別件として提案するだけにする。
+
+### ここでユーザーに 1 回だけ確認する
+
+手順 1 と 2 の結果を見せたうえで、次をまとめて聞く (AskUserQuestion が使えるなら 1 回の呼び出しで):
+
+- 次のバージョン番号 (推奨と理由を添えて)
+- Spinel を新しいタグに上げる候補にするか (候補にするなら、手順 3 で candidate を回す)
+- candidate で macOS も回すか (既定はいいえ)
+
+この確認の答えが、手順 3 と 4 でワークフローを起動してよいという了承になる。起動直前に同じことを聞き直さない。ただし起動する値 (タグや番号) が確認時から変わった場合は、もう一度聞く。
 
 ## 3. Spinel candidate ワークフロー
 
@@ -88,10 +115,14 @@ git -C <scratchpad>/spinel.git log --oneline <現在のピン>..<候補タグ>
 
 ### 前提: main にあること
 
-`workflow_dispatch` のワークフローは、デフォルトブランチにファイルがないと起動できない。`workflows_on_main.spinel_candidate` が false なら:
+`workflow_dispatch` のワークフローは、デフォルトブランチにファイルがないと起動できない。`workflows_on_main.spinel_candidate` が false なら、起動はできない。そのことと、追加する PR があればその URL (`mcp__github__list_pull_requests`, `state: "open"`) を伝える。その間は、手順 4 のうち Spinel を据え置く bump だけを進められる。
 
-- `.github/workflows/spinel-candidate.yml` を追加する PR がまだマージされていない。`mcp__github__list_pull_requests` (`state: "open"`) でタイトルに "Spinel candidate" を含む PR を探し、URL を示して「マージ後に実行できる」と伝える。
-- その間に進められるのは手順 4 のうち Spinel を動かさない bump だけ。新しい Spinel に上げたいなら、candidate の結果を待つよう勧める。
+### 同じタグの run が既にないか
+
+起動する前に、`mcp__github__actions_list` (`method: list_workflow_runs`, `resource_id: spinel-candidate.yml`) で最近の run を見る。run の表示名には入力が出ないので、新しいものから `list_workflow_jobs` で `resolve` ジョブを開くか、summary の見出し ("Spinel candidate <タグ>") でタグを確かめる。
+
+- 同じタグで実行中のものがあれば、新しく起動せずにそれを待つ (concurrency の設定で、2 本目は 1 本目が終わるまで待たされるだけ)。
+- 同じタグで、今の main と同じ commit (`head_sha`) で成功した run があれば、それを結果として使ってよい。commit が古ければ、main がその後に変わっているので回し直す。
 
 ### 実行
 
@@ -100,9 +131,7 @@ git -C <scratchpad>/spinel.git log --oneline <現在のピン>..<候補タグ>
 | 入力 | 値 |
 |---|---|
 | `spinel-tag` | 検証するタグ (例: `YYYY.MM.DD.NNNN`) |
-| `macos` | macOS で全テストも回すか。既定 false。macOS ランナーは数が少なく遅いので、ユーザーが望むときだけ true |
-
-Actions の起動は外部に作用する操作なので、**タグと macos の値を示して確認を取ってから**起動する:
+| `macos` | 真偽値。macOS で全テストも回すか。既定 false。macOS ランナーは数が少なく遅いので、ユーザーが望むときだけ true |
 
 ```
 mcp__github__actions_run_trigger
@@ -110,8 +139,10 @@ mcp__github__actions_run_trigger
   owner: saeki-mototsune, repo: CyberTrain
   workflow_id: spinel-candidate.yml
   ref: main
-  inputs: { "spinel-tag": "<タグ>", "macos": "false" }
+  inputs: { "spinel-tag": "<タグ>", "macos": false }
 ```
+
+(GitHub の API は workflow_dispatch の入力を文字列として受け取る。ツールが真偽値を受け付けなければ `"false"` / `"true"` を渡す。)
 
 起動後、`mcp__github__actions_list` (`method: list_workflow_runs`, `resource_id: spinel-candidate.yml`, `workflow_runs_filter: {event: "workflow_dispatch"}`) で今起動した run を見つけ、run の URL をユーザーに伝える。
 
@@ -141,7 +172,7 @@ apps ジョブは最長 3 時間、macOS は最長 4 時間かかる。短い間
 
 新しい Spinel タグを入れるのは、そのタグで candidate が通ったときだけ。通っていないタグでは入れない (bump PR の CI で初めて壊れていると分かると、リリースが止まる)。
 
-これも外部に作用するので、**2 つの値を示して確認を取ってから**起動する:
+手順 2 の終わりの確認で決まった値で起動する。candidate の結果を受けて `spinel_tag` を空に変える場合は、変えることをユーザーに伝えてから起動する:
 
 ```
 mcp__github__actions_run_trigger
@@ -170,7 +201,9 @@ mcp__github__actions_run_trigger
 
 - PR 概要: N 本 (要約ファイル: <パス>)
 - バージョン: 現在 → X.Y.Z (パッチ / マイナー、理由)
+- 互換性の変更: <決定・PR の一覧> / アップグレードガイド: 5 ファイルとも節あり or 不足 <ファイル> / 漏れの可能性 <項目>
 - Spinel: ピン <タグ> / フォーク最新 <タグ> → 据え置き or <タグ> へ
+- 新タグで直った可能性がある spinel-feedback 項目: <項目と根拠のコミット> (再現プログラムでの確認は別件)
 - Spinel candidate: 未実行 / 実行中 <run URL> / 合格 / 不合格 (落ちたジョブ)
 - Bump version: <run URL> → PR <URL>
 
