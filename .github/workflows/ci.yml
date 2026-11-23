@@ -589,7 +589,9 @@ jobs:
 
       # --skip-spin: there is no Spinel yet, installing it is the action's
       # job. So the git route's spin.lock is written here, in the form `spin
-      # lock` writes it (the last step fails when spin's own differs); the
+      # lock` writes it (the last step fails when spin's own differs): the
+      # framework's table, then the spinel-http table the framework's own
+      # spin.lock pins, which spin locks for the application too (D91); the
       # path route has none, as the action's comment says.
       - name: Generate an application at the workspace root
         env:
@@ -609,6 +611,8 @@ jobs:
               echo "version = \"$version\""
               echo "git = \"file://$framework\""
               echo "ref = \"$sha\""
+              echo
+              awk '/^\[/ { p = ($0 == "[lock.spinel-http]") } p && NF' "$framework/spin.lock"
             } > app/spin.lock
           else
             ruby -I "$framework" "$framework/exe/cybertrain" new app --path "$framework" --skip-spin
