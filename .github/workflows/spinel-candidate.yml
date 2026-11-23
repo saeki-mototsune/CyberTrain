@@ -8,14 +8,17 @@
 # through .github/actions/spinel-candidate), installs it with `cybertrain setup`,
 # and runs:
 #
-#   framework-tests  every framework test program (`spin test`), in four
-#                    shards, as ci.yml's framework-tests job does
-#   apps             the generated applications end to end: the generators'
-#                    tests, `cybertrain test`, the sign-up authentication
-#                    variant served, and examples/blog regenerating clean and
-#                    passing its tests
-#   macos            the whole of `spin test` on macOS, when the input
-#                    `macos` is set (macOS runners are scarce)
+#   framework-tests  every framework test program, in ten shards, as
+#                    ci.yml's framework-tests job does
+#   e2e              the generated applications and the example end to
+#                    end, one leg per runner, as ci.yml's e2e job does: the
+#                    authentication variants and upgrades, the generators'
+#                    tests, `cybertrain test`, and examples/blog
+#                    regenerating clean and passing its tests
+#   macos-tests      when the input `macos` is set (macOS runners are
+#   macos-e2e        scarce): the programs ci.yml's framework-tests-macos
+#                    runs, in two shards, and the sign-up variant, as its
+#                    e2e-macos job does
 #   rechecks         spikes/rechecks/run.sh, the retained compiler probes
 #                    (informational: a probe that now differs is something
 #                    to write in docs/spinel-feedback.md, not a failure of
@@ -24,7 +27,12 @@
 #
 # A pass here says the candidate can be pinned: run the Bump version
 # workflow with it, and let CI on that pull request run the rest (the CRuby
-# preview, the setup-cybertrain action, the other auth variants). What a bump also
+# preview and its end to end, the setup-cybertrain action, the HTTP layer
+# under upstream Spinel, the git dependency).
+#
+# The jobs below mirror ci.yml's (framework-tests, e2e,
+# framework-tests-macos, e2e-macos), with the spinel-candidate action in
+# place of setup-spinel: when those change, change these with them. What a bump also
 # re-checks by hand is in spikes/NOTES.md, "Workarounds that shape the design".
 name: Spinel candidate
 
@@ -35,7 +43,7 @@ on:
         description: "Spinel tag of the fork to check (YYYY.MM.DD or YYYY.MM.DD.N)"
         required: true
       macos:
-        description: "Also run the whole suite on macOS"
+        description: "Also run the macOS jobs (the OS-sensitive tests and the sign-up end to end)"
         type: boolean
         required: false
         default: false
@@ -98,9 +106,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     runs-on: ubuntu-26.04
-    timeout-minutes: 60
+    # As ci.yml's framework-tests: provisional until the first runs are read.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -112,14 +121,37 @@ jobs:
           spinel-commit: ${{ needs.resolve.outputs.commit }}
 
       - name: Framework tests
-        run: script/test-shard ${{ matrix.shard }} 4
+        run: script/test-shard ${{ matrix.shard }} ${{ strategy.job-total }}
 
-  # What applications see: the steps of ci.yml's `test` job that build and
-  # run generated applications and the example, with the candidate.
-  apps:
+  # What applications see: the legs of ci.yml's e2e job, with the
+  # candidate. Not its git dependency step: the candidate is an uncommitted
+  # bump of this checkout, and a git dependency fetches the commit.
+  e2e:
     needs: resolve
+    name: e2e (${{ matrix.leg }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - leg: auth-signup
+            auth: signup
+            cli: gem
+          - leg: auth-invite
+            auth: invite
+          - leg: auth-confirmable
+            auth: confirmable
+          - leg: auth-upgrade04-patch
+            auth: upgrade04-patch
+          - leg: auth-upgrade04-force
+            auth: upgrade04-force
+          - leg: auth-upgrade04-confirmable
+            auth: upgrade04-confirmable
+          - leg: generators
+          - leg: test-command
+          - leg: blog
     runs-on: ubuntu-26.04
-    timeout-minutes: 180
+    # As ci.yml's e2e: provisional until the first runs are read.
+    timeout-minutes: ${{ matrix.leg == 'blog' && 60 || 45 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -130,18 +162,25 @@ jobs:
           spinel-tag: ${{ needs.resolve.outputs.tag }}
           spinel-commit: ${{ needs.resolve.outputs.commit }}
 
+      - name: Authentication end to end (${{ matrix.auth }})
+        if: matrix.auth
+        env:
+          VARIANT: ${{ matrix.auth }}
+          CYBERTRAIN_E2E_CLI: ${{ matrix.cli || 'checkout' }}
+        run: script/auth-e2e "$VARIANT"
+
       - name: Generated applications' tests pass
+        if: matrix.leg == 'generators'
         run: script/generators-e2e
 
       - name: cybertrain test end to end
+        if: matrix.leg == 'test-command'
         run: script/test-command-e2e
-
-      - name: Authentication end to end (sign-up)
-        run: script/auth-e2e signup
 
       # Before the blog's tests, which run gen themselves (ci.yml, "Generated
       # code is fresh"): the candidate must not change what gen writes.
       - name: Generated code is fresh (examples/blog)
+        if: matrix.leg == 'blog'
         run: |
           cd examples/blog
           SPIN_DEBUG=1 spin run gen
@@ -156,16 +195,24 @@ jobs:
           TAG: ${{ needs.resolve.outputs.tag }}
 
       - name: Example app tests
+        if: matrix.leg == 'blog'
         run: |
           cd examples/blog
           cybertrain test
           SPIN_DEBUG=1 spin run gen -- --check
 
-  macos:
+  # ci.yml's framework-tests-macos: the programs the `macos` rule of
+  # script/ci-changes names, in two shards.
+  macos-tests:
     needs: resolve
     if: inputs.macos
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
     runs-on: macos-latest
-    timeout-minutes: 240
+    # As ci.yml's: provisional until the first runs are read.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -176,8 +223,32 @@ jobs:
           spinel-tag: ${{ needs.resolve.outputs.tag }}
           spinel-commit: ${{ needs.resolve.outputs.commit }}
 
-      - name: Framework tests
-        run: spin test
+      - name: Framework tests (the programs macOS runs)
+        run: |
+          script/test-shard --list --macos ${{ matrix.shard }} ${{ strategy.job-total }}
+          script/test-shard --macos ${{ matrix.shard }} ${{ strategy.job-total }}
+
+  # ci.yml's e2e-macos: the sign-up variant through the installed gem.
+  macos-e2e:
+    needs: resolve
+    if: inputs.macos
+    runs-on: macos-latest
+    # As ci.yml's: provisional until the first runs are read.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/spinel-candidate
+        with:
+          spinel-tag: ${{ needs.resolve.outputs.tag }}
+          spinel-commit: ${{ needs.resolve.outputs.commit }}
+
+      - name: Authentication end to end (signup)
+        env:
+          CYBERTRAIN_E2E_CLI: gem
+        run: script/auth-e2e signup
 
   # Informational: a probe that differs fails its step but not the job (nor
   # the run), and the step's outcome goes to the summary through `outcome`.
@@ -205,7 +276,7 @@ jobs:
         run: spikes/rechecks/run.sh
 
   summary:
-    needs: [resolve, framework-tests, apps, macos, rechecks]
+    needs: [resolve, framework-tests, e2e, macos-tests, macos-e2e, rechecks]
     if: always()
     runs-on: ubuntu-26.04
     timeout-minutes: 5
@@ -217,8 +288,9 @@ jobs:
           PINNED: ${{ needs.resolve.outputs.pinned }}
           RESOLVE: ${{ needs.resolve.result }}
           FRAMEWORK: ${{ needs.framework-tests.result }}
-          APPS: ${{ needs.apps.result }}
-          MACOS: ${{ needs.macos.result }}
+          E2E: ${{ needs.e2e.result }}
+          MACOS_TESTS: ${{ needs.macos-tests.result }}
+          MACOS_E2E: ${{ needs.macos-e2e.result }}
           RECHECKS: ${{ needs.rechecks.outputs.outcome || needs.rechecks.result }}
           INPUT_TAG: ${{ inputs.spinel-tag }}
         run: |
@@ -233,16 +305,19 @@ jobs:
             echo "| --- | --- | --- |"
             echo "| resolve | $RESOLVE | yes |"
             echo "| framework-tests | $FRAMEWORK | yes |"
-            echo "| apps | $APPS | yes |"
-            echo "| macos | $MACOS | when run |"
+            echo "| e2e | $E2E | yes |"
+            echo "| macos-tests | $MACOS_TESTS | when run |"
+            echo "| macos-e2e | $MACOS_E2E | when run |"
             echo "| rechecks | $RECHECKS | no (record a probe that differs in docs/spinel-feedback.md) |"
           } >> "$GITHUB_STEP_SUMMARY"
           cat "$GITHUB_STEP_SUMMARY"
           ok=true
-          for result in "$RESOLVE" "$FRAMEWORK" "$APPS"; do
+          for result in "$RESOLVE" "$FRAMEWORK" "$E2E"; do
             [ "$result" = success ] || ok=false
           done
-          case "$MACOS" in success | skipped) ;; *) ok=false ;; esac
+          for result in "$MACOS_TESTS" "$MACOS_E2E"; do
+            case "$result" in success | skipped) ;; *) ok=false ;; esac
+          done
           if [ "$ok" = true ]; then
             echo "Spinel $TAG: cybertrain works with it"
           else

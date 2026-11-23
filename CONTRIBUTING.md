@@ -149,14 +149,18 @@ whole suite to one run before the pull request. The suite is 240 programs;
 the last recorded local time is 14 minutes for 82 programs on 4 cores
 ([docs/design.md](docs/design.md), D34), so allow several times that.
 
-On Ubuntu, CI divides the programs into four shards, the `framework-tests` jobs
-in [.github/workflows/ci.yml](.github/workflows/ci.yml); on macOS they run in
-one job, `test (macos-latest)`. To reproduce a failing job `framework-tests (2)`,
+On Ubuntu, CI divides the programs into ten shards, the `framework-tests` jobs
+in [.github/workflows/ci.yml](.github/workflows/ci.yml). macOS runs only the
+programs whose behaviour has differed between the systems (the CLI, the
+servers, sockets, SQLite, the job threads, OpenSSL: the `macos` rule of
+[script/ci-changes](script/ci-changes) names them), in two shards, the
+`framework-tests-macos` jobs. To reproduce a failing job `framework-tests (2)`,
 run its shard:
 
 ```sh
-script/test-shard 2 4          # the sorted test/*.rb at positions 2, 6, 10, ...
-script/test-shard --list 2 4   # which programs those are
+script/test-shard 2 10                 # the sorted test/*.rb at positions 2, 12, 22, ...
+script/test-shard --list 2 10          # which programs those are
+script/test-shard --list --macos 0 2   # framework-tests-macos (0)'s programs
 ```
 
 When you change behaviour on purpose, the snapshot changes with it:
@@ -274,21 +278,21 @@ development server.
 ### What CI runs
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the
-framework's tests and the example application on Ubuntu and, for the
-changes step 4 of [Pull requests](#pull-requests) lists and on `main`, on
-macOS; it builds
-and installs the gem, and scaffolds, builds and serves applications end to
-end. Three of those end-to-end checks are scripts you can run yourself after
-changing a generator or the test command: `script/auth-e2e signup` (or
-`invite`, `confirmable`, `upgrade04`, the last also runnable a third at a
-time as `upgrade04-patch`, `upgrade04-force` and `upgrade04-confirmable`),
-`script/generators-e2e` and
-`script/test-command-e2e`. Each makes its applications in a scratch
-directory and compiles them, so they are slow (a comment in `ci.yml`
-records 114 minutes for the four variants of `script/auth-e2e` together on
-a 4-core machine); run the one variant you changed. Each line they print
-carries the seconds elapsed (`+Ns`), so a log shows which phase took the
-time.
+framework's tests and, in its `e2e` job, applications end to end on Ubuntu;
+for the changes step 4 of [Pull requests](#pull-requests) lists and on
+`main`, it also runs the programs that have differed on macOS and one
+application end to end there. It builds and installs the gem, and
+scaffolds, builds and serves applications. The `e2e` job runs one leg per
+runner, each a script you can run yourself after changing a generator or
+the test command: `script/auth-e2e signup` (or `invite`, `confirmable`,
+`upgrade04-patch`, `upgrade04-force`, `upgrade04-confirmable`, or
+`upgrade04` for the last three; the sign-up leg, and macOS's, run the
+installed gem with `CYBERTRAIN_E2E_CLI=gem`), `script/generators-e2e`,
+`script/test-command-e2e`, and examples/blog's tests (above). Each makes
+its applications in a scratch directory and compiles them, so they are
+slow (12 to 16 minutes a variant of `script/auth-e2e` on a 4-core machine);
+run the one you changed. Each line they print carries the seconds elapsed
+(`+Ns`), so a log shows which phase took the time.
 
 CI also builds the API reference with YARD (any warning fails it:
 `script/api-docs`, the `api-docs` job). A change to nothing but
@@ -634,7 +638,7 @@ before the gem is pushed:
    checkout, without committing, and runs the framework tests, the
    generated applications end to end, examples/blog and the compiler
    rechecks (`spikes/rechecks/run.sh`, informational) against that
-   release, and macOS's whole suite when asked.
+   release, and CI's macOS jobs when asked.
 
    Before merging a minor release's bump, check that the release's upgrade
    notes are written: a section under "Notes by version" in

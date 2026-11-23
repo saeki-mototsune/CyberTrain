@@ -48,10 +48,17 @@
 # (`+Ns`), so a CI log shows where the minutes go.
 #
 # Runs locally with the pinned toolchain (the CLI puts it on PATH, installing
-# it the first time) and in CI (.github/workflows/ci.yml, "Authentication end
-# to end"). Each variant builds the app and its tests: minutes, not seconds.
+# it the first time) and in CI (.github/workflows/ci.yml, the `e2e` job: one
+# leg per variant, and the `e2e-macos` job's sign-up). Each variant builds
+# the app and its tests: minutes, not seconds.
+#
+# The CLI is this checkout's (`ruby -I. exe/cybertrain`), or, with
+# CYBERTRAIN_E2E_CLI=gem, the `cybertrain` on PATH: the gem setup-spinel
+# builds and installs, so that one CI leg runs what users install, which
+# carries only the files cybertrain.gemspec lists.
 #
 # usage: script/auth-e2e VARIANT...
+#        CYBERTRAIN_E2E_CLI=gem script/auth-e2e VARIANT...
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -72,9 +79,24 @@ for variant in "$@"; do
   esac
 done
 
-cybertrain() {
-  ruby -I"$ROOT" "$ROOT/exe/cybertrain" "$@"
-}
+case "${CYBERTRAIN_E2E_CLI:-checkout}" in
+  checkout)
+    cybertrain() {
+      ruby -I"$ROOT" "$ROOT/exe/cybertrain" "$@"
+    }
+    ;;
+  gem)
+    command -v cybertrain > /dev/null || { echo "auth-e2e: CYBERTRAIN_E2E_CLI=gem, but no cybertrain on PATH" >&2; exit 2; }
+    echo "auth-e2e: the installed gem's CLI, $(command -v cybertrain)"
+    cybertrain() {
+      command cybertrain "$@"
+    }
+    ;;
+  *)
+    echo "auth-e2e: CYBERTRAIN_E2E_CLI is checkout or gem, not $CYBERTRAIN_E2E_CLI" >&2
+    exit 2
+    ;;
+esac
 
 fail() {
   echo "auth-e2e [$VARIANT]: FAIL: $*" >&2
