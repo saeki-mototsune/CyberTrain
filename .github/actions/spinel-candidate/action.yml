@@ -1,0 +1,65 @@
+# spinel-candidate: what setup-spinel does, for a Spinel release that is not
+# (yet) the pin. The Spinel candidate workflow
+# (.github/workflows/spinel-candidate.yml) runs it in every job. It moves the
+# checkout to the release as the Bump version workflow would
+# (script/bump-version with the current VERSION: Cybertrain::SPINEL_TAG,
+# ci.yml's SPINEL_TAG and the numbers the tests expect; nothing committed),
+# then runs setup-spinel, which builds the gem from that checkout and
+# installs the release with `cybertrain setup`.
+#
+# setup-spinel's cache is keyed by the tag alone. A tag that was moved to
+# another commit after a build was cached would restore the old build, so
+# the commit the tag names now is checked against the revision the installed
+# spinel reports, and a mismatch rebuilds (`cybertrain setup --force`).
+name: Set up a Spinel candidate
+description: Point the checkout at a Spinel release other than the pin and install that release.
+
+inputs:
+  spinel-tag:
+    description: "Spinel release of Cybertrain::SPINEL_REPOSITORY to install (YYYY.MM.DD or YYYY.MM.DD.N)"
+    required: true
+  spinel-commit:
+    description: "The full commit the tag names (git ls-remote), checked against the installed spinel"
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Point the checkout at the candidate
+      shell: bash
+      env:
+        TAG: ${{ inputs.spinel-tag }}
+      run: |
+        version=$(sed -n 's/^ *VERSION = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
+        pinned=$(sed -n 's/^ *SPINEL_TAG = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
+        if [ "$TAG" = "$pinned" ]; then
+          echo "Spinel $TAG is already the pin; nothing to move"
+        else
+          script/bump-version "$version" "$TAG"
+        fi
+        git diff --stat
+
+    - uses: ./.github/actions/setup-spinel
+
+    - name: The installed spinel is the candidate's commit
+      shell: bash
+      env:
+        TAG: ${{ inputs.spinel-tag }}
+        COMMIT: ${{ inputs.spinel-commit }}
+      run: |
+        # "spinel 2026.11.15.7033 (a2f3bfaa) [gcc 13.3.0 (cc)]"
+        revision() { spinel --version | sed -n 's/^spinel [^ ]* (\([0-9a-f]*\)).*/\1/p'; }
+        rev=$(revision)
+        echo "installed: $(spinel --version)"
+        echo "tag $TAG names $COMMIT"
+        if [ -z "$rev" ] || [ "${COMMIT#"$rev"}" = "$COMMIT" ]; then
+          echo "::warning::the cached Spinel $TAG is revision ${rev:-unknown}, not $COMMIT (the tag moved); rebuilding"
+          cybertrain setup --force
+          rev=$(revision)
+          if [ -z "$rev" ] || [ "${COMMIT#"$rev"}" = "$COMMIT" ]; then
+            echo "spinel reports revision ${rev:-unknown} after the rebuild, not $COMMIT"
+            exit 1
+          fi
+        fi
+        spinel --version | grep -q "^spinel $TAG (" || { echo "spinel does not report release $TAG"; exit 1; }
+        spin --version
