@@ -23,15 +23,24 @@
 #
 # then `cybertrain db migrate`, and `cybertrain test` must exit 0 with
 # exactly EXPECTED_TESTS tests and 0 failures, every test file reported;
-# `spin run gen -- --check` must find gen/ fresh after it.
+# then `cybertrain build`, after which `spin run gen -- --check` must find
+# gen/ fresh. The built binary is then migrated and served on a free port,
+# and the post scaffold's attachment taken through it as a browser would:
+# the form is multipart with the file input; a POST with the form's CSRF
+# token and cookie is a 303 to the new post, one without the token a 403;
+# the download is the same bytes with the headers send_blob sets
+# (content-type, nosniff, a sandboxing CSP, content-disposition); a post
+# that does not exist has no file; the file is under storage/uploads.
 #
 # One edit by hand: comments.yml's rows name articles(:two), not :one. As
 # in Rails, the comment fixtures referencing articles(:one) would make the
 # articles scaffold's "should destroy article" hit the foreign key (the
 # parent of a fixture row cannot be destroyed); an application changes the
 # label or the test, and this script does the former.
-# One application, one compile of its test bundle. The first failure stops
-# the script and leaves the scratch directory in place to look at.
+# One application, one compile of its test bundle and one build. Every line
+# of progress carries the seconds since the script started (`+Ns`). The
+# first failure stops the script and leaves the scratch directory in place
+# to look at.
 #
 # usage: script/generators-e2e
 set -euo pipefail
@@ -53,8 +62,18 @@ fail() {
 }
 
 step() {
-  echo "generators-e2e: $*"
+  echo "generators-e2e +${SECONDS}s: $*"
 }
+
+SERVER_PID=""
+stop_server() {
+  if [ -n "$SERVER_PID" ]; then
+    kill "$SERVER_PID" 2>/dev/null || true
+    wait "$SERVER_PID" 2>/dev/null || true
+    SERVER_PID=""
+  fi
+}
+trap stop_server EXIT
 
 cybertrain() {
   ruby -I"$ROOT" "$ROOT/exe/cybertrain" "$@"
@@ -100,7 +119,7 @@ step "cybertrain test (gen, one compile, the run)"
 started=$(date +%s)
 status=0
 (cd "$APP" && cybertrain test) > "$WORK/test.out" 2> "$WORK/test.err" || status=$?
-echo "generators-e2e: cybertrain test took $(( $(date +%s) - started ))s"
+step "cybertrain test took $(( $(date +%s) - started ))s"
 cat "$WORK/test.out"
 if [ "$status" -ne 0 ]; then
   tail -n 40 "$WORK/test.err" >&2
@@ -121,8 +140,65 @@ for file in test/components/card_component_test.rb test/controllers/articles_con
   grep -qx "$file" "$WORK/test.out" || fail "no tests of $file ran"
 done
 
+step "cybertrain build"
+run_logged build cybertrain build
+test -x "$APP/dist/shop" || fail "no dist/shop"
+
 step "SPIN_DEBUG=1 spin run gen -- --check"
 run_logged gen-check env SPIN_DEBUG=1 ruby -I"$ROOT" "$ROOT/exe/cybertrain" spin run gen -- --check
+
+step "serve dist/shop: upload a post's cover and download it"
+DIST="$APP/dist"
+PIXEL="$WORK/pixel.png"
+printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\xff' > "$PIXEL"
+export CYBERTRAIN_SECRET_KEY_BASE=generators-e2e-secret-generators-e2e-secret
+run_logged shop-migrate sh -c "cd dist && ./shop migrate"
+port=$(ruby -rsocket -e 'server = TCPServer.new("127.0.0.1", 0); puts server.addr[1]; server.close')
+base="http://127.0.0.1:$port"
+(cd "$DIST" && PORT=$port exec ./shop) > "$WORK/server.log" 2>&1 &
+SERVER_PID=$!
+up=""
+for _ in $(seq 1 60); do
+  if curl -fsS -o /dev/null "$base/up.html" 2>/dev/null; then
+    up=yes
+    break
+  fi
+  sleep 0.5
+done
+[ -n "$up" ] || { tail -n 40 "$WORK/server.log" >&2; fail "the server did not answer on port $port"; }
+
+# expect_equal WHAT EXPECTED ACTUAL
+expect_equal() {
+  [ "$2" = "$3" ] || { tail -n 40 "$WORK/server.log" >&2; fail "$1: expected '$2', got '$3'"; }
+}
+# expect_header WHAT REGEXP FILE (case-insensitive, like header names)
+expect_header() {
+  grep -qi "$2" "$3" || { cat "$3" >&2; fail "$1: no header matching $2"; }
+}
+
+curl -fsS -D "$WORK/new.h" -o "$WORK/new.html" "$base/posts/new" || fail "GET /posts/new"
+grep -q 'enctype="multipart/form-data"' "$WORK/new.html" || fail "GET /posts/new: the form is not multipart"
+grep -q '<input type="file" name="post\[cover\]"' "$WORK/new.html" || fail "GET /posts/new: no file input for post[cover]"
+cookie=$(grep -i '^set-cookie:' "$WORK/new.h" | sed 's/^[^:]*: *//; s/;.*//' | head -n 1)
+[ -n "$cookie" ] || fail "GET /posts/new: no session cookie"
+token=$(sed -n 's/.*name="authenticity_token" value="\([0-9a-f]*\)".*/\1/p' "$WORK/new.html" | head -n 1)
+[ -n "$token" ] || fail "GET /posts/new: no authenticity_token"
+expect_equal "POST /posts (multipart, with the token)" "303 $base/posts/1" \
+  "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -b "$cookie" \
+     -F "authenticity_token=$token" -F "post[title]=Hello" -F "post[cover]=@$PIXEL;type=image/png" "$base/posts")"
+# Without the token the multipart form is refused like any other.
+expect_equal "POST /posts (multipart, no token)" "403" \
+  "$(curl -sS -o /dev/null -w '%{http_code}' -b "$cookie" -F "post[title]=x" -F "post[cover]=@$PIXEL" "$base/posts")"
+curl -fsS -D "$WORK/cover.h" -o "$WORK/cover.bin" "$base/posts/1/cover" || fail "GET /posts/1/cover"
+cmp -s "$WORK/cover.bin" "$PIXEL" || fail "GET /posts/1/cover: not the bytes uploaded"
+expect_header "GET /posts/1/cover" '^content-type: image/png' "$WORK/cover.h"
+expect_header "GET /posts/1/cover" '^x-content-type-options: nosniff' "$WORK/cover.h"
+expect_header "GET /posts/1/cover" "^content-security-policy: default-src 'none'; sandbox" "$WORK/cover.h"
+expect_header "GET /posts/1/cover" '^content-disposition: inline; filename="pixel.png"' "$WORK/cover.h"
+# A record that does not exist has no file.
+expect_equal "GET /posts/2/cover" "404" "$(curl -sS -o /dev/null -w '%{http_code}' "$base/posts/2/cover")"
+[ -n "$(find "$DIST/storage/uploads" -type f 2>/dev/null)" ] || fail "no file under dist/storage/uploads"
+stop_server
 
 rm -rf "$WORK"
 step "PASS"

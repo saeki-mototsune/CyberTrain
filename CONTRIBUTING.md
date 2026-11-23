@@ -280,11 +280,15 @@ macOS; it builds
 and installs the gem, and scaffolds, builds and serves applications end to
 end. Three of those end-to-end checks are scripts you can run yourself after
 changing a generator or the test command: `script/auth-e2e signup` (or
-`invite`, `confirmable`, `upgrade04`), `script/generators-e2e` and
+`invite`, `confirmable`, `upgrade04`, the last also runnable a third at a
+time as `upgrade04-patch`, `upgrade04-force` and `upgrade04-confirmable`),
+`script/generators-e2e` and
 `script/test-command-e2e`. Each makes its applications in a scratch
 directory and compiles them, so they are slow (a comment in `ci.yml`
 records 114 minutes for the four variants of `script/auth-e2e` together on
-a 4-core machine); run the one variant you changed.
+a 4-core machine); run the one variant you changed. Each line they print
+carries the seconds elapsed (`+Ns`), so a log shows which phase took the
+time.
 
 CI also builds the API reference with YARD (any warning fails it:
 `script/api-docs`, the `api-docs` job). A change to nothing but
