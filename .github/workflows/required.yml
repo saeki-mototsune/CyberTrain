@@ -115,6 +115,24 @@ jobs:
           else
             set -- -f status=in_progress
           fi
-          gh api --method POST "repos/$GITHUB_REPOSITORY/check-runs" \
-            -f name=required -f head_sha="$HEAD_SHA" "$@" \
-            -f "output[title]=$title" -f "output[summary]=$summary" > /dev/null
+          # Update the commit's open `required` check run when there is one,
+          # instead of adding another: every run of this workflow used to
+          # POST a new one, and the earlier ones stayed "in progress" in the
+          # pull request's checks for ever (six on one commit). A completed
+          # one is left as it is and a new one is created after it, so that
+          # a re-run still turns a success back into "in progress" (the
+          # ruleset reads the newest check run of the name). The concurrency
+          # group above runs one of these at a time per commit, so two runs
+          # never both find none and create two.
+          open_id=$(gh api --paginate \
+            "repos/$GITHUB_REPOSITORY/commits/$HEAD_SHA/check-runs?check_name=required&per_page=100" \
+            --jq '.check_runs[] | select(.app.slug == "github-actions" and .status != "completed") | .id' |
+            sort -n | tail -n 1)
+          if [ -n "$open_id" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/check-runs/$open_id" "$@" \
+              -f "output[title]=$title" -f "output[summary]=$summary" > /dev/null
+          else
+            gh api --method POST "repos/$GITHUB_REPOSITORY/check-runs" \
+              -f name=required -f head_sha="$HEAD_SHA" "$@" \
+              -f "output[title]=$title" -f "output[summary]=$summary" > /dev/null
+          fi
