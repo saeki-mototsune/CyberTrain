@@ -179,10 +179,16 @@ jobs:
       - name: Framework tests
         run: spin test
 
+  # Informational: a probe that differs fails its step but not the job (nor
+  # the run), and the step's outcome goes to the summary through `outcome`.
+  # Not a job-level continue-on-error: that would report the job to
+  # `needs` as a success, and the summary could not show the difference.
   rechecks:
     needs: resolve
     runs-on: ubuntu-26.04
     timeout-minutes: 30
+    outputs:
+      outcome: ${{ steps.rechecks.outcome }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -194,6 +200,8 @@ jobs:
           spinel-commit: ${{ needs.resolve.outputs.commit }}
 
       - name: Retained compiler rechecks
+        id: rechecks
+        continue-on-error: true
         run: spikes/rechecks/run.sh
 
   summary:
@@ -211,7 +219,7 @@ jobs:
           FRAMEWORK: ${{ needs.framework-tests.result }}
           APPS: ${{ needs.apps.result }}
           MACOS: ${{ needs.macos.result }}
-          RECHECKS: ${{ needs.rechecks.result }}
+          RECHECKS: ${{ needs.rechecks.outputs.outcome || needs.rechecks.result }}
           INPUT_TAG: ${{ inputs.spinel-tag }}
         run: |
           {
