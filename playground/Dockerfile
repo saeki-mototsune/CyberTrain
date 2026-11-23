@@ -66,11 +66,18 @@ RUN set -eux; \
     install -d -o dev -g dev /opt/cybertrain /opt/cybertrain-cache /opt/cybertrain-mirror /workspace
 
 # `cybertrain new` writes git = "https://github.com/saeki-mototsune/cybertrain";
-# these rules make git (and so spin) clone the mirror below instead.
+# these rules make git (and so spin) clone the mirror below instead. The
+# framework's own spin.toml names spinel-http (docs/design.md D91) by its
+# GitHub URL, which a new app's `spin lock` clones too: the last two rules
+# send it to the spinel-http mirror below.
 RUN git config --system url."file:///opt/cybertrain-mirror/cybertrain.git".insteadOf \
         "https://github.com/saeki-mototsune/cybertrain" \
  && git config --system --add url."file:///opt/cybertrain-mirror/cybertrain.git".insteadOf \
-        "https://github.com/saeki-mototsune/cybertrain.git"
+        "https://github.com/saeki-mototsune/cybertrain.git" \
+ && git config --system url."file:///opt/cybertrain-mirror/spinel-http.git".insteadOf \
+        "https://github.com/saeki-mototsune/spinel-http" \
+ && git config --system --add url."file:///opt/cybertrain-mirror/spinel-http.git".insteadOf \
+        "https://github.com/saeki-mototsune/spinel-http.git"
 
 # The CLI gem, built from this checkout's cybertrain.gemspec (not rubygems.org).
 RUN --mount=type=bind,from=cli-src,source=/src,target=/tmp/cli-src \
@@ -105,6 +112,36 @@ RUN --mount=type=bind,source=.git,target=/tmp/checkout.git \
     git -C "$mirror" fetch -q --depth 1 --no-tags --upload-pack "git -c safe.directory='*' upload-pack" /tmp/checkout.git "+HEAD:refs/heads/main"; \
     git -C "$mirror" tag -f "v$version" main; \
     git -C "$mirror" rev-parse --verify -q "refs/tags/v$version" >/dev/null
+
+# The spinel-http mirror: the commit the framework's spin.lock pins, as a
+# one-commit bare repository whose branch (or, for a v-tag, tag) is the ref
+# the framework's spin.toml names, so that a new app's `spin lock`, which
+# resolves that ref with `git clone --branch`, finds it with no network.
+# Both files are read from the framework mirror (the build context holds
+# neither); the commit is fetched from the URL spin.toml names, with the
+# system rules above turned off (GIT_CONFIG_NOSYSTEM), since they send that
+# URL here.
+RUN set -eu; \
+    framework=/opt/cybertrain-mirror/cybertrain.git; \
+    mirror=/opt/cybertrain-mirror/spinel-http.git; \
+    git -C "$framework" show main:spin.toml > /tmp/spin.toml; \
+    git -C "$framework" show main:spin.lock > /tmp/spin.lock; \
+    url="$(ruby -e 'print File.read("/tmp/spin.toml")[/^spinel-http\s*=.*\bgit\s*=\s*"([^"]+)"/, 1].to_s')"; \
+    ref="$(ruby -e 'print File.read("/tmp/spin.toml")[/^spinel-http\s*=.*\bref\s*=\s*"([^"]+)"/, 1].to_s')"; \
+    sha="$(ruby -e 'print File.read("/tmp/spin.lock")[/^\[lock\.spinel-http\]\n(?:[^\[\n].*\n)*?ref = "([0-9a-f]{40})"/, 1].to_s')"; \
+    rm /tmp/spin.toml /tmp/spin.lock; \
+    if [ -z "$url" ] || [ -z "$ref" ] || [ -z "$sha" ]; then \
+      echo "playground/Dockerfile: spin.toml and spin.lock must name spinel-http's git URL, ref and locked commit" >&2; \
+      exit 1; \
+    fi; \
+    git init -q --bare --initial-branch=main "$mirror"; \
+    GIT_CONFIG_NOSYSTEM=1 git -C "$mirror" fetch -q --depth 1 --no-tags "$url" "$sha"; \
+    git -C "$mirror" update-ref refs/heads/main "$sha"; \
+    case "$ref" in \
+      v[0-9]*) git -C "$mirror" tag -f "$ref" "$sha" ;; \
+      *) git -C "$mirror" update-ref "refs/heads/$ref" "$sha" ;; \
+    esac; \
+    git -C "$mirror" cat-file -e "$sha^{commit}"
 
 # ---------------------------------------------------------------------------
 FROM toolchain AS playground

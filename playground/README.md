@@ -2,8 +2,8 @@
 
 `ghcr.io/saeki-mototsune/cybertrain-playground` is cybertrain ready to try
 without installing anything: Ubuntu 24.04 with the `cybertrain` CLI built
-from this repository and the Spinel release `Cybertrain::SPINEL_TAG` names built from source, a mirror of
-the framework so that `cybertrain new` needs no network, and the tutorial's
+from this repository and the Spinel release `Cybertrain::SPINEL_TAG` names built from source, mirrors of
+the framework and of spinel-http, its HTTP layer, so that `cybertrain new` needs no network, and the tutorial's
 blog in `/workspace/blog`, created, scaffolded, migrated and built once.
 [.devcontainer/devcontainer.json](../.devcontainer/devcontainer.json) opens
 it in GitHub Codespaces ([the playground page](https://www.cybertrain.dev/playground.html)
@@ -74,7 +74,8 @@ docker build -f playground/Dockerfile --target playground -t cybertrain-playgrou
   that builds it.
 - The build needs the network: Docker Hub (the `ubuntu:24.04` base image and
   the `docker/dockerfile:1` syntax image), Ubuntu's package mirrors,
-  github.com (Spinel's source) and rubygems.org (Spinel's `make deps`
+  github.com (Spinel's source, and the spinel-http commit the framework's
+  `spin.lock` pins) and rubygems.org (Spinel's `make deps`
   downloads the prism and rbs gems). The `cybertrain` gem itself is built
   from this checkout's `cybertrain.gemspec`, not downloaded.
 - A clean build took 156 s on 10 CPUs (Apple M5, linux/arm64), 41.5 s of it
@@ -144,10 +145,16 @@ extensions.
 The mirror is this checkout's HEAD as a one-commit bare repository with the
 tag `v<VERSION>` forced onto it. A new app's `spin.toml` points at
 `https://github.com/saeki-mototsune/cybertrain`, tag `v<VERSION>`, and the
-`insteadOf` rules send that URL, with or without `.git`, to the mirror, so
-`cybertrain new` works with no network. git replaces that prefix with the
-mirror's path: the framework's URL gets the mirror, and another repository
-whose name starts that way (`…/cybertrain-foo` becomes
+`insteadOf` rules send that URL, with or without `.git`, to the mirror. The
+framework depends on spinel-http (docs/design.md D91), which a new app's
+`spin lock` clones from `https://github.com/saeki-mototsune/spinel-http` at
+the `ref` the framework's `spin.toml` names: a second mirror,
+`/opt/cybertrain-mirror/spinel-http.git`, holds the commit the framework's
+`spin.lock` pins under that ref (fetched from GitHub when the image is
+built), and two more `insteadOf` rules send that URL there. So
+`cybertrain new` works with no network. git replaces each prefix with the
+mirror's path: the framework's and spinel-http's URLs get their mirrors, and
+another repository whose name starts that way (`…/cybertrain-foo` becomes
 `…/cybertrain.git-foo`) cannot be cloned; to reach GitHub itself:
 
 ```sh
@@ -261,7 +268,7 @@ the address probe and the bind, not from `docker run`); A9, CRuby answered
 | C1-C4 | `CODESPACES=true`: the cookie keeps the default, `SameSite=Lax` without `Secure` or `Partitioned`; the banner shows the forwarded URL; interactive and login shells started with `PATH=/usr/bin:/bin` find `spin` in `/opt/cybertrain/bin`; with a stand-in for VS Code's `code` on `PATH`, `playground-server` opens `PLAYGROUND.md` and then the forwarded URL with `--openExternal` |
 | F1 | `CYBERTRAIN_SESSION_SAME_SITE=lax` stops the app at boot, under CRuby and as the compiled binary, which the supervisor tries as soon as the startup build finds it up to date: the log names the valid values and says the binary failed, and the server answers 503 with a page that names them for both (the supervisor outlives its children, so the container does not exit) |
 | E1 | A `cp -a` copy of the blog starts without compiling (its binary and the shim's libraries keep the image's mtimes once the startup build has ended) |
-| B1-B3 | No network: the repository URL reaches the mirror; `cybertrain new` in `/workspace` locks the blog's commit; the new app builds |
+| B1-B3 | No network: the repository URL reaches the mirror; `cybertrain new` in `/workspace` locks the blog's commits (the framework's and spinel-http's, from their mirrors); the new app builds |
 
 ## CI and publishing
 
