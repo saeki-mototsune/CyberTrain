@@ -253,7 +253,7 @@ create test/test_helper.rb
 create test/integration/health_test.rb
 create test/fixtures/.keep
 create test/support/.keep
-note: spin selects the lowest release that satisfies ">= 0.4.1" and spin.lock pins it, so a range does not follow new releases; name one release (--version X.Y.Z) to choose it
+note: spin selects the lowest release that satisfies ">= 0.4.0" and spin.lock pins it, so a range does not follow new releases; name one release (--version X.Y.Z) to choose it
 ok   CLI new --version notes that a range selects the lowest matching release
 create spin.toml
 create .gitignore

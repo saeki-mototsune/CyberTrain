@@ -81,6 +81,23 @@ edits = {
   CI_YML => ->(t) { set_pin(t, /^\s*SPINEL_TAG: "([^"]+)"/, new_spinel, CI_YML) }
 }
 moves = [[old_version, new_version], [old_spinel, new_spinel]].reject { |from, to| from == to }
+
+# A snapshot is rewritten by text, so every old number in it must come from
+# the release itself (Cybertrain::VERSION, SPINEL_TAG), never from a literal
+# in the test that prints it: that one would not move, and the rewritten
+# snapshot would no longer match the run. Stop before writing anything.
+collisions = TESTS.select { |f| f.end_with?(".expected") }.flat_map do |snapshot|
+  source = snapshot.delete_suffix(".expected")
+  next [] unless File.exist?(source)
+  File.readlines(source).each_with_index.flat_map do |line, i|
+    moves.select { |from, _| line.match?(exact(from)) }.map { |from, _| "#{source}:#{i + 1}: #{from}" }
+  end
+end
+unless collisions.empty?
+  die "these tests spell the release being replaced as a literal, so their snapshots " \
+      "cannot be rewritten by text; use a past release there instead:\n  #{collisions.join("\n  ")}"
+end
+
 TESTS.each do |file|
   edits[file] = ->(t) { moves.reduce(t) { |acc, (from, to)| acc.gsub(exact(from), to) } }
 end
