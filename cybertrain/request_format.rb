@@ -6,7 +6,9 @@
 # (cybertrain/http/request.rb, `Cybertrain::Request = SpinelHttp::Request`)
 # and adds methods only (a constant added that way is defined nowhere under
 # the fork: spikes/spinel-http/step3/README.md, 3d). The router, the
-# controller, rendering and the HTTP cache require it.
+# controller, rendering and the HTTP cache require it, and so does the
+# request shim, which this file requires back (whichever loads first, the
+# alias exists before the reopening below).
 #
 # The layer's `initialize` cannot be added to, so the three ivars start
 # unset on every Request: `@format_extension` reads as `""` until the router
