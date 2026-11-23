@@ -38,7 +38,10 @@ done
 # line whose text starts with an ivar (`# @headers in place`) gets it in
 # backticks so YARD does not take it for a tag. Only a line with one space
 # after the `#` is matched (prose or a tag line): the indented code of an
-# `@example` (`#   @page = ...`) is left as written.
+# `@example` (`#   @page = ...`) is left as written. spinel-http 0.1.1
+# rewords its one such line (response.rb's drop_header comment), but the
+# reference documents the commit spin.lock pins, which still has it, and
+# a later one may add another: the rewrite stays.
 http=$(ruby script/spinel_http_path.rb) || exit 1
 copy=tmp/api-docs/spinel-http
 rm -rf site/api "$copy"
