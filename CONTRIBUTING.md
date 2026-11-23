@@ -623,6 +623,15 @@ before the gem is pushed:
    request, and the run waits until both have started and fails if they
    have not. Renew the secret when the token expires.
 
+   Before moving to another Spinel release, check it with the **Spinel
+   candidate** workflow
+   ([.github/workflows/spinel-candidate.yml](.github/workflows/spinel-candidate.yml),
+   run by hand with the Spinel tag): it applies the same bump in its own
+   checkout, without committing, and runs the framework tests, the
+   generated applications end to end, examples/blog and the compiler
+   rechecks (`spikes/rechecks/run.sh`, informational) against that
+   release, and macOS's whole suite when asked.
+
    Before merging a minor release's bump, check that the release's upgrade
    notes are written: a section under "Notes by version" in
    [docs/guide/upgrading.md](docs/guide/upgrading.md), in the four

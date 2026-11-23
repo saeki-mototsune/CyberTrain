@@ -1,0 +1,251 @@
+# Spinel candidate: does cybertrain work on a given release of the Spinel fork
+# (Cybertrain::SPINEL_REPOSITORY), before that release is pinned and before a
+# cybertrain release ships with it? Run by hand (Actions, "Spinel candidate",
+# Run workflow) with the Spinel tag, on the branch to check (normally main).
+#
+# Nothing is committed or published. Every job points its checkout at the
+# candidate the way the Bump version workflow would (script/bump-version,
+# through .github/actions/spinel-candidate), installs it with `cybertrain setup`,
+# and runs:
+#
+#   framework-tests  every framework test program (`spin test`), in four
+#                    shards, as ci.yml's framework-tests job does
+#   apps             the generated applications end to end: the generators'
+#                    tests, `cybertrain test`, the sign-up authentication
+#                    variant served, and examples/blog regenerating clean and
+#                    passing its tests
+#   macos            the whole of `spin test` on macOS, when the input
+#                    `macos` is set (macOS runners are scarce)
+#   rechecks         spikes/rechecks/run.sh, the retained compiler probes
+#                    (informational: a probe that now differs is something
+#                    to write in docs/spinel-feedback.md, not a failure of
+#                    the candidate)
+#   summary          one table of the results; fails when a required job did
+#
+# A pass here says the candidate can be pinned: run the Bump version
+# workflow with it, and let CI on that pull request run the rest (the CRuby
+# preview, the setup-cybertrain action, the other auth variants). What a bump also
+# re-checks by hand is in spikes/NOTES.md, "Workarounds that shape the design".
+name: Spinel candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      spinel-tag:
+        description: "Spinel tag of the fork to check (YYYY.MM.DD or YYYY.MM.DD.N)"
+        required: true
+      macos:
+        description: "Also run the whole suite on macOS"
+        type: boolean
+        required: false
+        default: false
+
+# One run per candidate tag at a time; a second run of the same tag waits.
+concurrency:
+  group: spinel-candidate-${{ inputs.spinel-tag }}
+  cancel-in-progress: false
+
+# Every job only reads the repository.
+permissions:
+  contents: read
+
+env:
+  SPINEL_GIT: https://github.com/saeki-mototsune/spinel.git
+
+jobs:
+  # The tag exists in the fork, and the commit it names (each job checks the
+  # spinel it installed against it). The fork's repository is the one
+  # Cybertrain::SPINEL_REPOSITORY names; this file's SPINEL_GIT must agree.
+  resolve:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+      commit: ${{ steps.tag.outputs.commit }}
+      pinned: ${{ steps.tag.outputs.pinned }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Resolve the tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.spinel-tag }}
+        run: |
+          tag=$(printf '%s' "$INPUT_TAG" | tr -d '[:space:]')
+          printf '%s\n' "$tag" | grep -Eq '^[0-9]{4}\.[0-9]{2}\.[0-9]{2}(\.[0-9]+)?$' \
+            || { echo "::error::'$INPUT_TAG' is not a Spinel release tag (YYYY.MM.DD or YYYY.MM.DD.N)"; exit 1; }
+          repo=$(sed -n 's/^ *SPINEL_REPOSITORY = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
+          test "$repo.git" = "$SPINEL_GIT" \
+            || { echo "::error::SPINEL_GIT $SPINEL_GIT is not Cybertrain::SPINEL_REPOSITORY ($repo)"; exit 1; }
+          # An annotated tag lists its object and, with ^{}, the commit.
+          commit=$(git ls-remote "$SPINEL_GIT" "refs/tags/$tag" "refs/tags/$tag^{}" | tail -n 1 | cut -f 1)
+          test -n "$commit" || { echo "::error::no tag $tag in $SPINEL_GIT"; exit 1; }
+          pinned=$(sed -n 's/^ *SPINEL_TAG = "\([^"]*\)".*/\1/p' cybertrain/version.rb | head -n 1)
+          echo "candidate Spinel $tag ($commit); pinned now: $pinned"
+          if [ "$tag" = "$pinned" ]; then
+            echo "::notice::$tag is already the pin: this run re-checks the pinned release"
+          fi
+          {
+            echo "tag=$tag"
+            echo "commit=$commit"
+            echo "pinned=$pinned"
+          } >> "$GITHUB_OUTPUT"
+
+  framework-tests:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/spinel-candidate
+        with:
+          spinel-tag: ${{ needs.resolve.outputs.tag }}
+          spinel-commit: ${{ needs.resolve.outputs.commit }}
+
+      - name: Framework tests
+        run: script/test-shard ${{ matrix.shard }} 4
+
+  # What applications see: the steps of ci.yml's `test` job that build and
+  # run generated applications and the example, with the candidate.
+  apps:
+    needs: resolve
+    runs-on: ubuntu-26.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/spinel-candidate
+        with:
+          spinel-tag: ${{ needs.resolve.outputs.tag }}
+          spinel-commit: ${{ needs.resolve.outputs.commit }}
+
+      - name: Generated applications' tests pass
+        run: script/generators-e2e
+
+      - name: cybertrain test end to end
+        run: script/test-command-e2e
+
+      - name: Authentication end to end (sign-up)
+        run: script/auth-e2e signup
+
+      # Before the blog's tests, which run gen themselves (ci.yml, "Generated
+      # code is fresh"): the candidate must not change what gen writes.
+      - name: Generated code is fresh (examples/blog)
+        run: |
+          cd examples/blog
+          SPIN_DEBUG=1 spin run gen
+          changed=$(git status --porcelain --untracked-files=all -- gen/)
+          if [ -n "$changed" ]; then
+            echo "examples/blog/gen/ is not what \`spin run gen\` writes with Spinel $TAG:"
+            echo "$changed"
+            git diff -- gen/
+            exit 1
+          fi
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+
+      - name: Example app tests
+        run: |
+          cd examples/blog
+          cybertrain test
+          SPIN_DEBUG=1 spin run gen -- --check
+
+  macos:
+    needs: resolve
+    if: inputs.macos
+    runs-on: macos-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/spinel-candidate
+        with:
+          spinel-tag: ${{ needs.resolve.outputs.tag }}
+          spinel-commit: ${{ needs.resolve.outputs.commit }}
+
+      - name: Framework tests
+        run: spin test
+
+  # Informational: a probe that differs fails its step but not the job (nor
+  # the run), and the step's outcome goes to the summary through `outcome`.
+  # Not a job-level continue-on-error: that would report the job to
+  # `needs` as a success, and the summary could not show the difference.
+  rechecks:
+    needs: resolve
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
+    outputs:
+      outcome: ${{ steps.rechecks.outcome }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/spinel-candidate
+        with:
+          spinel-tag: ${{ needs.resolve.outputs.tag }}
+          spinel-commit: ${{ needs.resolve.outputs.commit }}
+
+      - name: Retained compiler rechecks
+        id: rechecks
+        continue-on-error: true
+        run: spikes/rechecks/run.sh
+
+  summary:
+    needs: [resolve, framework-tests, apps, macos, rechecks]
+    if: always()
+    runs-on: ubuntu-26.04
+    timeout-minutes: 5
+    steps:
+      - name: Results
+        env:
+          TAG: ${{ needs.resolve.outputs.tag }}
+          COMMIT: ${{ needs.resolve.outputs.commit }}
+          PINNED: ${{ needs.resolve.outputs.pinned }}
+          RESOLVE: ${{ needs.resolve.result }}
+          FRAMEWORK: ${{ needs.framework-tests.result }}
+          APPS: ${{ needs.apps.result }}
+          MACOS: ${{ needs.macos.result }}
+          RECHECKS: ${{ needs.rechecks.outputs.outcome || needs.rechecks.result }}
+          INPUT_TAG: ${{ inputs.spinel-tag }}
+        run: |
+          {
+            echo "## Spinel candidate ${TAG:-(unresolved)}"
+            echo
+            if [ -n "$TAG" ]; then
+              echo "Commit \`$COMMIT\` of $SPINEL_GIT; the pin is $PINNED."
+              echo
+            fi
+            echo "| Job | Result | Required |"
+            echo "| --- | --- | --- |"
+            echo "| resolve | $RESOLVE | yes |"
+            echo "| framework-tests | $FRAMEWORK | yes |"
+            echo "| apps | $APPS | yes |"
+            echo "| macos | $MACOS | when run |"
+            echo "| rechecks | $RECHECKS | no (record a probe that differs in docs/spinel-feedback.md) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          cat "$GITHUB_STEP_SUMMARY"
+          ok=true
+          for result in "$RESOLVE" "$FRAMEWORK" "$APPS"; do
+            [ "$result" = success ] || ok=false
+          done
+          case "$MACOS" in success | skipped) ;; *) ok=false ;; esac
+          if [ "$ok" = true ]; then
+            echo "Spinel $TAG: cybertrain works with it"
+          else
+            echo "::error::Spinel ${TAG:-$INPUT_TAG}: a required job did not pass"
+            exit 1
+          fi
