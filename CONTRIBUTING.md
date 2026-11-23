@@ -102,7 +102,7 @@ at [.githooks/](.githooks/), after which:
   Dockerfile, the repository checks: the version and Spinel-tag pins agree
   (and `script/claude-cloud-setup` builds from
   `Cybertrain::SPINEL_REPOSITORY`), `script/check-reserved-names`,
-  `check-client-faults`, `check-http-layer` and `check-core-closure` pass
+  `check-client-faults` and `check-core-closure` pass
   (see [Conventions](#conventions-ci-enforces) for what each guards),
   `script/ci-changes --self-test` passes, `cybertrain/locales/bundled.rb`
   is what `script/bundle-locales` writes, every file `cybertrain.gemspec`

@@ -118,7 +118,7 @@ test "a large non-ASCII value full of '+' decodes to spaces without a library gs
 end
 
 test "Query.decode (shared by Query and Cookies) decodes clean escapes" do
-  # The malformed case is in test/query.rb.
+  # The malformed case is in spinel-http's test/query.rb.
   assert_equal "a b", Cybertrain::Query.decode("a+b")
   assert_equal "A B", Cybertrain::Query.decode("%41%20B")
   assert_equal "", Cybertrain::Query.decode("")

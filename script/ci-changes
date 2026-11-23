@@ -15,15 +15,17 @@
 #
 #   false  docs/api/**, script/api-docs, .yardopts (the API reference only)
 #   true   .github/workflows/ci.yml, script/test-shard, script/ci-changes,
-#          script/auth-e2e, script/test-command-e2e, script/generators-e2e
+#          script/auth-e2e, script/test-command-e2e, script/generators-e2e,
+#          script/spinel_http_path.rb (test/gen_jobs.rb runs it)
 #   false  what on.paths leaves out: site/**, **.md, script/**, .githooks/**,
 #          .github/workflows/** (in a change that started the workflow
 #          through another file)
 #   true   everything else
 #
 # cruby_preview (the framework's tests and the generator under CRuby, no
-# Spinel): true for cybertrain/**, cybertrain.rb, test/**,
-# script/preview-parity, script/test-cruby, .github/workflows/ci.yml,
+# Spinel): true for cybertrain/**, cybertrain.rb, test/**, spin.toml and
+# spin.lock (spinel-http's pin), script/spinel_http_path.rb (which finds
+# it), script/preview-parity, script/test-cruby, .github/workflows/ci.yml,
 # script/ci-changes and .github/actions/setup-cybertrain/** (whose lock
 # step test/cruby/setup_action_lock.rb runs) (and a quoted path); false for
 # everything else. For the two scripts it is the only job that runs:
@@ -32,7 +34,7 @@
 # preview_e2e (script/preview-e2e: `cybertrain server` on a copy of
 # examples/blog, built with Spinel): true for what that run reads, which
 # is the framework (cybertrain/**, cybertrain.rb), the CLI it starts
-# (exe/**), examples/blog/**, spin.toml (the packages), the script itself,
+# (exe/**), examples/blog/**, spin.toml and spin.lock (the packages), the script itself,
 # the toolchain's action (.github/actions/setup-spinel/**), ci.yml and
 # script/ci-changes (and a quoted path); false for everything else, the
 # framework's tests (test/**) included. For script/preview-e2e alone it is
@@ -59,7 +61,7 @@
 #                cybertrain/dev/**, cybertrain/dev.rb, cybertrain/preview/**,
 #                cybertrain/preview.rb, cybertrain/http/**, cybertrain/net/**,
 #                cybertrain/roles/**, cybertrain/runtime.rb, spin.toml,
-#                cybertrain.gemspec, test/cli_*, test/server*, test/dev_*,
+#                spin.lock, cybertrain.gemspec, test/cli_*, test/server*, test/dev_*,
 #                test/cruby/**, test/db_sqlite*, test/job_threads*, *.darwin,
 #                .github/actions/**, ci.yml, script/ci-changes,
 #                script/test-cruby, script/auth-e2e, script/test-command-e2e,
@@ -68,7 +70,7 @@
 #                cybertrain/cli.rb, exe/**, cybertrain/generator/**,
 #                cybertrain/generator.rb, cybertrain/version.rb,
 #                cybertrain/app_name.rb, cybertrain/ident.rb,
-#                cybertrain/shell.rb, spin.toml, cybertrain.gemspec, ci.yml,
+#                cybertrain/shell.rb, spin.toml, spin.lock, cybertrain.gemspec, ci.yml,
 #                script/ci-changes
 #
 # One path that says true is enough. A path this file does not know says
@@ -86,16 +88,16 @@ decide() {
   setup_action=false
   while IFS= read -r path; do
     case "$path" in
-      cybertrain/* | cybertrain.rb | test/* | script/preview-parity | script/test-cruby | .github/workflows/ci.yml | script/ci-changes | .github/actions/setup-cybertrain/* | \"*) cruby=true ;;
+      cybertrain/* | cybertrain.rb | test/* | spin.toml | spin.lock | script/spinel_http_path.rb | script/preview-parity | script/test-cruby | .github/workflows/ci.yml | script/ci-changes | .github/actions/setup-cybertrain/* | \"*) cruby=true ;;
     esac
     case "$path" in
-      cybertrain/* | cybertrain.rb | exe/* | examples/blog/* | spin.toml | script/preview-e2e | .github/actions/setup-spinel/* | .github/workflows/ci.yml | script/ci-changes | \"*) e2e=true ;;
+      cybertrain/* | cybertrain.rb | exe/* | examples/blog/* | spin.toml | spin.lock | script/preview-e2e | .github/actions/setup-spinel/* | .github/workflows/ci.yml | script/ci-changes | \"*) e2e=true ;;
     esac
     case "$path" in
       cybertrain/cli/* | cybertrain/cli.rb | exe/* | cybertrain/shell.rb | cybertrain/version.rb | \
         cybertrain/dev/* | cybertrain/dev.rb | cybertrain/preview/* | cybertrain/preview.rb | \
         cybertrain/http/* | cybertrain/net/* | cybertrain/roles/* | cybertrain/runtime.rb | \
-        spin.toml | cybertrain.gemspec | test/cli_* | test/server* | test/dev_* | test/cruby/* | \
+        spin.toml | spin.lock | cybertrain.gemspec | test/cli_* | test/server* | test/dev_* | test/cruby/* | \
         test/db_sqlite* | test/job_threads* | *.darwin | .github/actions/* | .github/workflows/ci.yml | \
         script/ci-changes | script/test-cruby | script/auth-e2e | script/test-command-e2e | \
         script/generators-e2e | \"*) macos=true ;;
@@ -103,13 +105,13 @@ decide() {
     case "$path" in
       .github/actions/setup-cybertrain/* | cybertrain/cli/* | cybertrain/cli.rb | exe/* | \
         cybertrain/generator/* | cybertrain/generator.rb | cybertrain/version.rb | \
-        cybertrain/app_name.rb | cybertrain/ident.rb | cybertrain/shell.rb | spin.toml | \
+        cybertrain/app_name.rb | cybertrain/ident.rb | cybertrain/shell.rb | spin.toml | spin.lock | \
         cybertrain.gemspec | .github/workflows/ci.yml | script/ci-changes | \"*) setup_action=true ;;
     esac
     case "$path" in
       "") ;;
       docs/api/* | script/api-docs | .yardopts) ;;
-      .github/workflows/ci.yml | script/test-shard | script/ci-changes | script/auth-e2e | script/test-command-e2e | script/generators-e2e) framework=true ;;
+      .github/workflows/ci.yml | script/test-shard | script/ci-changes | script/auth-e2e | script/test-command-e2e | script/generators-e2e | script/spinel_http_path.rb) framework=true ;;
       site/* | *.md | script/* | .githooks/* | .github/workflows/*) ;;
       *) framework=true ;;
     esac
@@ -162,6 +164,8 @@ if [ "${1:-}" = "--self-test" ]; then
   expect true script/generators-e2e
   expect true test/fixtures/test_app.expected/all.out
   expect true spin.toml
+  expect true spin.lock
+  expect true script/spinel_http_path.rb
   expect true cybertrain.gemspec
   expect true playground/Dockerfile
   expect true docs/guide/images/a.png
@@ -175,6 +179,8 @@ if [ "${1:-}" = "--self-test" ]; then
   expect_cruby true test/cruby/parity-gaps.txt
   expect_cruby true script/preview-parity
   expect_cruby true script/test-cruby
+  expect_cruby true spin.lock
+  expect_cruby true script/spinel_http_path.rb
   expect_cruby true .github/workflows/ci.yml
   expect_cruby true .github/actions/setup-cybertrain/action.yml
   expect_cruby true '"docs/api/caf\303\251.rb"'
@@ -190,6 +196,7 @@ if [ "${1:-}" = "--self-test" ]; then
   expect_e2e true exe/cybertrain
   expect_e2e true examples/blog/app/models/article.rb
   expect_e2e true spin.toml
+  expect_e2e true spin.lock
   expect_e2e true script/preview-e2e
   expect_e2e true .github/actions/setup-spinel/action.yml
   expect_e2e true .github/workflows/ci.yml
@@ -215,6 +222,7 @@ if [ "${1:-}" = "--self-test" ]; then
   expect_macos true test/cruby/dev_server.rb.expected.darwin
   expect_macos true test/job_threads.rb
   expect_macos true spin.toml
+  expect_macos true spin.lock
   expect_macos true .github/actions/setup-spinel/action.yml
   expect_macos true .github/workflows/ci.yml
   expect_macos true script/auth-e2e
@@ -233,6 +241,7 @@ if [ "${1:-}" = "--self-test" ]; then
   expect_setup true cybertrain/generator/scaffold.rb
   expect_setup true cybertrain/version.rb
   expect_setup true spin.toml
+  expect_setup true spin.lock
   expect_setup true .github/workflows/ci.yml
   expect_setup true '"cybertrain/caf\303\251.rb"'
   expect_setup false cybertrain/router.rb test/router.rb

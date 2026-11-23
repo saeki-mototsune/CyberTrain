@@ -7,7 +7,10 @@
 # This reads the source, lexically (no Spinel, CRuby's standard library
 # only): it follows the `require "cybertrain/..."` and `require_relative`
 # calls (either quote, anywhere on a line outside a comment or a string)
-# from cybertrain/core.rb to the files under cybertrain/ they name, and
+# from cybertrain/core.rb to the files under cybertrain/ they name, and the
+# `require "spinel-http/..."` calls into spinel-http's source (the HTTP
+# layer, docs/design.md D91: the checkout spin.lock pins, found by
+# script/spinel_http_path.rb, its files listed as spinel-http/NAME.rb), and
 # fails, listing each, when
 #   (a) a file of a subsystem in SUBSYSTEMS is in that closure (with the
 #       chain of requires that brings it in), or
@@ -33,6 +36,8 @@
 # usage: script/check-core-closure              self-test, then check
 #        script/check-core-closure --list       also print the closure
 #        script/check-core-closure --self-test  only the lexing's own cases
+require_relative "spinel_http_path"
+
 ROOT = File.expand_path("..", __dir__)
 ENTRY = "cybertrain/core.rb"
 
@@ -57,7 +62,7 @@ SUBSYSTEMS = {
     files: %w[
       cybertrain/streams.rb cybertrain/stream.rb cybertrain/stream/** cybertrain/turbo.rb
       cybertrain/turbo_stream_renderer.rb cybertrain/template/turbo_stream_builder.rb cybertrain/http/sse.rb
-      cybertrain/test/broadcasts.rb
+      spinel-http/sse.rb cybertrain/test/broadcasts.rb
     ],
     constants: %w[Stream Turbo TurboStreams TurboStreamBuilder StreamsFeature SSE SSEWriter WsReader WebSocketWriter StreamRequest],
     # Controller#turbo_stream (cybertrain/streams.rb) and the helpers
@@ -111,6 +116,8 @@ SUBSYSTEMS = {
 TEXT_FILES = %w[cybertrain/locales/bundled.rb].freeze
 
 def source_path(spec, from)
+  return File.join(SpinelHttpPath.root, "#{spec}.rb") if spinel_http?(spec)
+
   path = File.join(ROOT, "#{spec}.rb")
   return path if spec.start_with?("cybertrain/") || spec == "cybertrain"
 
@@ -141,13 +148,27 @@ def requires_in(line)
 
     relative_call = !Regexp.last_match(1).nil?
     spec = Regexp.last_match(3)
-    out << spec if relative_call || spec == "cybertrain" || spec.start_with?("cybertrain/")
+    out << spec if relative_call || spec == "cybertrain" || spec.start_with?("cybertrain/") || spinel_http?(spec)
   end
   out
 end
 
+# Whether a require names spinel-http's source.
+def spinel_http?(spec)
+  spec == "spinel-http" || spec.start_with?("spinel-http/")
+end
+
+# A file's name in the messages: relative to the repository, or to
+# spinel-http's checkout (spinel-http/NAME.rb).
 def relative(path)
-  path.delete_prefix("#{ROOT}/")
+  return path.delete_prefix("#{ROOT}/") if path.start_with?("#{ROOT}/")
+
+  path.delete_prefix("#{SpinelHttpPath.root}/")
+end
+
+# The absolute path of a file named as relative() names it.
+def absolute(file)
+  spinel_http?(file.delete_suffix(".rb")) ? File.join(SpinelHttpPath.root, file) : File.join(ROOT, file)
 end
 
 # Ruby's keywords after which an operand comes (so `/` and `%` open a
@@ -387,7 +408,7 @@ until queue.empty?
   file = queue.shift
   requires_of(file).each do |spec, path, n|
     unless File.file?(path)
-      missing << "#{relative(file)}:#{n}: requires #{spec.inspect}, which is not a file under the repository"
+      missing << "#{relative(file)}:#{n}: requires #{spec.inspect}, which is not a file under the repository or spinel-http"
       next
     end
     next if parent.key?(path)
@@ -423,7 +444,7 @@ SUBSYSTEMS.each do |name, row|
   closure.each do |file|
     next unless file == "cybertrain.rb" || matches?(row[:files], file)
 
-    failures << "#{file} is a #{name} file in the core's closure: #{chain(parent, File.join(ROOT, file))}"
+    failures << "#{file} is a #{name} file in the core's closure: #{chain(parent, absolute(file))}"
   end
 end
 
@@ -431,7 +452,7 @@ closure.each do |file|
   next if file == "cybertrain.rb" || SUBSYSTEMS.values.any? { |row| matches?(row[:files], file) } # reported above
 
   in_begin_block = false
-  File.foreach(File.join(ROOT, file), encoding: "UTF-8").with_index(1) do |line, n|
+  File.foreach(absolute(file), encoding: "UTF-8").with_index(1) do |line, n|
     if line.start_with?("=begin")
       in_begin_block = true
       next

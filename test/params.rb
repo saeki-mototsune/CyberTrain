@@ -1,71 +1,10 @@
+# cybertrain's strong parameters (require, permit, expect and
+# ParameterMissing, added by reopening the layer's Params in
+# cybertrain/params.rb). The Params structure itself is spinel-http's, and
+# so are its cases (its test/params.rb).
 require "cybertrain/params"
 require "cybertrain/http/query"
 require "cybertrain/test"
-
-test "set_value stores and reads a scalar" do
-  p = Cybertrain::Params.new
-  p.set_value("id", "1")
-  assert_equal "1", p["id"]
-  assert_equal "1", p[:id]
-  assert_nil p["missing"]
-end
-
-test "add_list_value builds a list, absent key returns empty array" do
-  p = Cybertrain::Params.new
-  p.add_list_value("tags", "a")
-  p.add_list_value("tags", "b")
-  assert_equal ["a", "b"], p.list("tags")
-  assert_equal ["a", "b"], p.list(:tags)
-  assert_equal [], p.list("nope")
-end
-
-test "child! creates and returns a nested Params, nested() never stores" do
-  p = Cybertrain::Params.new
-  child = p.child!("post")
-  child.set_value("title", "hi")
-  assert_equal "hi", p.nested("post")["title"]
-  # nested() on an absent key returns a fresh, empty Params and does not
-  # add it to the parent.
-  fresh = p.nested("absent")
-  assert fresh.empty?
-  refute p.key?("absent")
-end
-
-test "key? is true for scalars, lists and nested params" do
-  p = Cybertrain::Params.new
-  p.set_value("id", "1")
-  p.add_list_value("tags", "a")
-  p.child!("post").set_value("title", "hi")
-  assert p.key?("id")
-  assert p.key?("tags")
-  assert p.key?("post")
-  refute p.key?("nope")
-end
-
-test "inspect lists scalars, then lists, then nested, each in insertion order (Params has no keys)" do
-  p = Cybertrain::Params.new
-  p.set_value("b", "1")
-  p.add_list_value("y", "1")
-  p.child!("z")
-  p.set_value("a", "2")
-  p.add_list_value("x", "2")
-  p.child!("w")
-  assert_equal "{\"b\"=>\"1\", \"a\"=>\"2\", \"y\"=>[\"1\"], \"x\"=>[\"2\"], \"z\"=>{}, \"w\"=>{}}", p.inspect
-  ["b", "a", "y", "x", "z", "w"].each { |k| assert p.key?(k) }
-end
-
-test "set_path assembles nested params from a Query.split_key-shaped path" do
-  p = Cybertrain::Params.new
-  p.set_path(["id"], "1")
-  p.set_path(["tags", ""], "a")
-  p.set_path(["tags", ""], "b")
-  p.set_path(["post", "title"], "hi")
-  p.set_path(["post", "tags", ""], "x")
-  assert_equal "1", p["id"]
-  assert_equal ["a", "b"], p.list("tags")
-  assert_equal "hi", p.nested("post")["title"]
-  assert_equal ["x"], p.nested("post").list("tags")
-end
 
 test "require returns the nested Params when present and non-empty" do
   p = Cybertrain::Params.new
@@ -177,124 +116,8 @@ test "a list sent where a scalar is permitted is dropped, not coerced" do
   assert_equal({}, params_from("post[title][]=x").require(:post).permit(:title))
 end
 
-test "a name can only be one kind at a time: last write wins, like Rack" do
-  p = Cybertrain::Params.new
-  p.set_value("a", "1")
-  p.add_list_value("a", "2")
-  assert_nil p["a"]
-  assert_equal ["2"], p.list("a")
-  assert p.key?("a")
-  assert_equal({}, p.to_h)
-
-  p.child!("a").set_value("b", "3")
-  assert_equal [], p.list("a")
-  assert_equal "3", p.nested("a")["b"]
-  assert p.key?("a")
-  assert_equal [], p.list("a")
-
-  p.set_value("a", "4")
-  assert_equal "4", p["a"]
-  assert p.nested("a").empty?
-  assert p.key?("a")
-  assert_equal({ "a" => "4" }, p.to_h)
-end
-
-test "to_h returns only scalars, empty? and inspect are deterministic" do
-  p = Cybertrain::Params.new
-  assert p.empty?
-  p.set_value("id", "1")
-  p.add_list_value("tags", "a")
-  p.add_list_value("tags", "b")
-  p.child!("post").set_value("title", "x")
-  refute p.empty?
-  assert_equal({ "id" => "1" }, p.to_h)
-  assert_equal "{\"id\"=>\"1\", \"tags\"=>[\"a\", \"b\"], \"post\"=>{\"title\"=>\"x\"}}", p.inspect
-end
-
 def upload_named(name, data)
   Cybertrain::UploadedFile.new(name, "image/png", data.b)
-end
-
-test "set_upload stores a file; upload is nil when absent, upload? says which" do
-  p = Cybertrain::Params.new
-  assert_nil p.upload("cover")
-  refute p.upload?("cover")
-  p.set_upload("cover", upload_named("a.png", "AAAA"))
-  assert p.upload?("cover")
-  assert p.upload?(:cover)
-  up = p.upload(:cover)
-  assert_equal false, up.nil?
-  assert_equal "a.png", up.original_filename
-  assert_equal 4, up.body_bytes.bytesize
-  assert p.key?("cover")
-  # A file is not a String, a list or a nested Params.
-  assert_nil p["cover"]
-  assert_equal [], p.list("cover")
-  assert p.nested("cover").empty?
-  assert_equal({}, p.to_h)
-end
-
-test "the nullable upload return works in an if, the way a controller uses it" do
-  p = Cybertrain::Params.new
-  p.set_upload("cover", upload_named("c.png", "1"))
-  seen = "none"
-  file = p.upload(:cover)
-  seen = file.original_filename if file
-  assert_equal "c.png", seen
-  seen = "none"
-  other = p.upload(:missing)
-  seen = other.original_filename if other
-  assert_equal "none", seen
-  assert_equal "none", (other ? "some" : "none")
-end
-
-test "an empty file still counts as sent" do
-  p = Cybertrain::Params.new
-  p.set_upload("cover", Cybertrain::UploadedFile.blank)
-  assert p.upload?("cover")
-  assert p.upload("cover").empty?
-  refute p.empty?
-end
-
-test "a file evicts a String, a list and a nested Params of the same name" do
-  p = Cybertrain::Params.new
-  p.set_value("a", "1")
-  p.add_list_value("b", "2")
-  p.child!("c").set_value("k", "v")
-  p.set_upload("a", upload_named("a.png", "1"))
-  p.set_upload("b", upload_named("b.png", "22"))
-  p.set_upload("c", upload_named("c.png", "333"))
-  assert_nil p["a"]
-  assert_equal [], p.list("b")
-  assert p.nested("c").empty?
-  assert_equal "a.png", p.upload("a").original_filename
-  assert_equal "b.png", p.upload("b").original_filename
-  assert_equal "c.png", p.upload("c").original_filename
-  assert_equal "{\"a\"=>#<Cybertrain::UploadedFile \"a.png\" 1 bytes>, \"b\"=>#<Cybertrain::UploadedFile \"b.png\" 2 bytes>, \"c\"=>#<Cybertrain::UploadedFile \"c.png\" 3 bytes>}", p.inspect
-end
-
-test "set_value, add_list_value and child! evict a file of the same name" do
-  p = Cybertrain::Params.new
-  p.set_upload("a", upload_named("a.png", "1"))
-  p.set_value("a", "s")
-  refute p.upload?("a")
-  assert_nil p.upload("a")
-  assert_equal "s", p["a"]
-
-  p.set_upload("b", upload_named("b.png", "1"))
-  p.add_list_value("b", "x")
-  refute p.upload?("b")
-  assert_equal ["x"], p.list("b")
-
-  p.set_upload("c", upload_named("c.png", "1"))
-  p.child!("c").set_value("k", "v")
-  refute p.upload?("c")
-  assert_equal "v", p.nested("c")["k"]
-
-  # Last write wins between two files, too.
-  p.set_upload("d", upload_named("one.png", "1"))
-  p.set_upload("d", upload_named("two.png", "1"))
-  assert_equal "two.png", p.upload("d").original_filename
 end
 
 test "set_upload_path nests like set_path and never appends" do
@@ -338,15 +161,6 @@ test "permit never returns a file" do
   assert_equal({ "title" => "hi" }, p.to_h)
 end
 
-test "uploads are inspected after scalars, lists and nested Params" do
-  p = Cybertrain::Params.new
-  p.set_upload("f", upload_named("f.png", "1"))
-  p.set_value("s", "1")
-  p.add_list_value("l", "1")
-  p.child!("n")
-  assert_equal "{\"s\"=>\"1\", \"l\"=>[\"1\"], \"n\"=>{}, \"f\"=>#<Cybertrain::UploadedFile \"f.png\" 1 bytes>}", p.inspect
-end
-
 test "a file's bytes survive the Params unchanged (NUL and high bytes)" do
   p = Cybertrain::Params.new
   data = "\x00\xFF\x00PNG\x80".b
@@ -356,58 +170,6 @@ test "a file's bytes survive the Params unchanged (NUL and high bytes)" do
   assert_equal 0, got.body_bytes.getbyte(0)
   assert_equal 255, got.body_bytes.getbyte(1)
   assert_equal 128, got.body_bytes.getbyte(6)
-end
-
-test "int reads a bounded decimal and never raises" do
-  p = Cybertrain::Params.new
-  p.set_value("n", "42")
-  p.set_value("neg", "-3")
-  p.set_value("big", "123456789012345678")
-  p.set_value("huge", "99999999999999999999")
-  p.set_value("junk", "12abc")
-  p.set_value("blank", "")
-  p.set_value("space", " 7")
-  p.set_value("sign", "-")
-  p.add_list_value("list", "5")
-  assert_equal 42, p.int("n", default: 1, min: 1, max: 100)
-  assert_equal 10, p.int("n", default: 1, min: 1, max: 10)
-  assert_equal 1, p.int("neg", default: 9, min: 1, max: 100)
-  assert_equal(-3, p.int("neg", default: 9, min: -10, max: 100))
-  assert_equal 123456789012345678, p.int("big", default: 0, min: 0, max: 999_999_999_999_999_999)
-  assert_equal 500, p.int("big", default: 0, min: 0, max: 500)
-  # 20 digits: String#to_i would raise RangeError past 2**63-1 under Spinel
-  # (NOTES rule 25), so the read refuses more than 18 digits.
-  assert_equal 9, p.int("huge", default: 9, min: 1, max: 100)
-  assert_equal 9, p.int("junk", default: 9, min: 1, max: 100)
-  assert_equal 9, p.int("blank", default: 9, min: 1, max: 100)
-  assert_equal 9, p.int("space", default: 9, min: 1, max: 100)
-  assert_equal 9, p.int("sign", default: 9, min: 1, max: 100)
-  assert_equal 9, p.int("list", default: 9, min: 1, max: 100)
-  assert_equal 9, p.int("absent", default: 9, min: 1, max: 100)
-end
-
-test "parse_int accepts an optional minus and at most 18 digits" do
-  assert_equal 0, Cybertrain::Params.parse_int("0", 5)
-  assert_equal(-999_999_999_999_999_999, Cybertrain::Params.parse_int("-999999999999999999", 5))
-  assert_equal 5, Cybertrain::Params.parse_int("1234567890123456789", 5)
-  assert_equal 5, Cybertrain::Params.parse_int("+1", 5)
-  assert_equal 5, Cybertrain::Params.parse_int("1.5", 5)
-end
-
-test "page_number is 1-based and clamped to Params.max_page" do
-  p = Cybertrain::Params.new
-  assert_equal 1, p.page_number
-  p.set_value("page", "7")
-  assert_equal 7, p.page_number
-  p.set_value("page", "0")
-  assert_equal 1, p.page_number
-  p.set_value("page", "50000")
-  assert_equal 10_000, p.page_number
-  Cybertrain::Params.max_page = 20
-  assert_equal 20, p.page_number
-  Cybertrain::Params.max_page = 10_000
-  p.set_value("page", "99999999999999999999999999")
-  assert_equal 1, p.page_number
 end
 
 Cybertrain::Test.run!

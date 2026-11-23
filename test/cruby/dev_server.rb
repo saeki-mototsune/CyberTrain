@@ -20,6 +20,10 @@ require "timeout"
 
 DevServer = Cybertrain::CLI::DevServer
 REPO = File.expand_path("../..", __dir__)
+# spinel-http, which the framework requires: the -I directory
+# script/test-cruby gives (the checkout spin.lock pins).
+SPINEL_HTTP = $LOAD_PATH.find { |dir| File.file?(File.join(dir, "spinel-http.rb")) } ||
+              abort("test/cruby/dev_server.rb: spinel-http is not on the load path (run it with script/test-cruby)")
 RUBY_VERSION_ON_PATH = IO.popen(["ruby", "-e", "print RUBY_VERSION"], &:read)
 
 def now = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -38,8 +42,8 @@ PROC = File.directory?("/proc/self")
 def framework_port_message(host, port, reason = "IN_USE")
   script = 'require "cybertrain/roles/server"; e = Cybertrain::PortInUse.new(ARGV[0], Integer(ARGV[1]), ' \
            "Cybertrain::PortInUse.const_get(ARGV[2])); print Cybertrain::Roles::ServerRunner.port_message(e)"
-  out, status = Open3.capture2(RbConfig.ruby, "-E", "UTF-8", "-I", REPO, "-r", "cybertrain/preview", "-e", script,
-                               host, port.to_s, reason)
+  out, status = Open3.capture2(RbConfig.ruby, "-E", "UTF-8", "-I", REPO, "-I", SPINEL_HTTP, "-r", "cybertrain/preview",
+                               "-e", script, host, port.to_s, reason)
   raise "framework_port_message: the child failed (#{status.inspect}): #{out}" unless status.success?
 
   out

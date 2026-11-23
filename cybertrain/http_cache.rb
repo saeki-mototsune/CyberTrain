@@ -13,6 +13,7 @@
 require "digest"
 require "cybertrain/assets"
 require "cybertrain/http/request"
+require "cybertrain/request_format"
 require "cybertrain/generator/inflector"
 
 module Cybertrain

@@ -1,7 +1,8 @@
 #!/bin/sh
 # Run the CRuby-only tests: test/cruby/*.rb, which exercise the preview's own
 # code (cybertrain/preview/) and so cannot be compiled by Spinel. Each file
-# runs as `ruby -E UTF-8 -I. <file>` and its stdout and stderr, together, are
+# runs as `ruby -E UTF-8 -I. -I <spinel-http> <file>` (spinel-http's checkout,
+# below) and its stdout and stderr, together, are
 # compared with test/cruby/<name>.rb.expected, the way `spin test` compares a
 # compiled test. `spin test` and script/test-shard glob test/*.rb only and
 # never see these.
@@ -31,6 +32,11 @@ fi
 
 system=$(uname -s | tr '[:upper:]' '[:lower:]')
 
+# spinel-http, the HTTP layer the framework requires (docs/design.md D91):
+# the checkout spin.lock pins, fetched when missing, goes on the load path
+# beside the repository, as `spin flags` puts it for a compiled test.
+spinel_http=$(ruby script/spinel_http_path.rb) || exit 2
+
 work=$(mktemp -d) || exit 2
 trap 'rm -rf "$work"' EXIT
 
@@ -45,7 +51,7 @@ for file in "$@"; do
     snapshot="$file.expected.$system"
   fi
   out="$work/out"
-  ruby -E UTF-8 -I. "$file" > "$out" 2>&1
+  ruby -E UTF-8 -I. -I "$spinel_http" "$file" > "$out" 2>&1
   rc=$?
   if [ "$regen" = true ]; then
     # A failing run is never kept as its own expectation.

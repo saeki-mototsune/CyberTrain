@@ -19,6 +19,7 @@ require "cybertrain/html"
 require "cybertrain/views"
 require "cybertrain/template/helpers"
 require "cybertrain/http/request"
+require "cybertrain/request_format"
 require "cybertrain/key"
 
 module Cybertrain
