@@ -1063,6 +1063,12 @@ decision, and 77 explicitly retires a workaround.
     the benchmark's seeding runs, found with an AddressSanitizer build:
     `spinel app.rb --cc=<wrapper running cc -fsanitize=address
     -fno-sanitize-address-use-after-scope -g> ASAN_OPTIONS=fast_unwind_on_malloc=0`).
+    That recipe is sound on 2026.09.12 only. From 2026.10.25-7018 on (the
+    pin included) it builds the program with the sanitizer and the runtime
+    without. The two then disagree on `sp_Fiber`'s layout, and a threaded
+    program reports memory errors that are not there (docs/spinel-feedback.md
+    J). Build the runtime with the sanitizer too, as docs/performance-next.md
+    says under "Memory errors".
     Bind the String to a local first, or go through an ordinary method
     (`SafeString.of`), whose parameters are rooted on entry. Changing
     allocation counts moves the window, which is why single reverts of the

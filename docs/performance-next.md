@@ -518,16 +518,52 @@ up as issues, is [spinel-feedback.md](spinel-feedback.md).
   break on are `sp_PolyArray_new` and `sp_String_new_inline_len`).
 - Time: `bench/run`, and for a quick comparison alternate two binaries
   several times (the spread is 5 to 8%).
-- Memory errors: an AddressSanitizer build is
-  `spinel app.rb --cc=<script running cc -fsanitize=address
-  -fno-sanitize-address-use-after-scope -fno-omit-frame-pointer -g>` with
-  `ASAN_OPTIONS=detect_leaks=0:fast_unwind_on_malloc=0`. The object slab
-  (on by default; 2026.09.12 had none) recycles freed slots itself, so
-  with it on AddressSanitizer does not see a freed object being read. Run
-  the build both ways: with `SPINEL_GC_SLAB=0`, which is how J was found
-  (it fails on 2026.10.27.7020, fork master 49ccdced and 2026.11.04.7026),
-  and with the slab on, the configuration that ships, which no
-  AddressSanitizer run has cleared (spinel-feedback.md J).
+- Memory errors: an AddressSanitizer build needs the runtime built with
+  the sanitizer as well as the program. Do not use the recipe this
+  document used to give, `spinel app.rb --cc=<script running cc
+  -fsanitize=address ...>`: it compiles only the program with the
+  sanitizer and links Spinel's stock runtime. From 2026.10.25-7018 on
+  (every Spinel that carries 3282ca43f, the pin included) the layout of
+  `sp_Fiber` depends on that flag. The two sides then disagree by 32
+  bytes, and a threaded program reports memory errors that are not there.
+  That was J (spinel-feedback.md J, "What J turned out to be"). On
+  2026.09.12 the two layouts agreed and the old recipe was sound. The
+  matched build, in a checkout of the pinned tag (`Cybertrain::SPINEL_TAG`
+  of `Cybertrain::SPINEL_REPOSITORY`), with `spinel` the pin's own:
+
+  ```sh
+  make build/rt-san/libspinel_rt_mt.a
+  spinel -c --no-line-map app.rb -o app.c
+  cc -O0 -g -fno-omit-frame-pointer -fsanitize=address,undefined \
+     -ffp-contract=off -DSP_THREADS -ftls-model=initial-exec \
+     -DSP_INT_OVERFLOW_MODE_RAISE -Ilib -Ilib/regexp -c app.c -o app.o
+  cc -fsanitize=address,undefined -g app.o \
+     build/rt-san/libspinel_rt_mt.a -lm -lpthread -o app
+  ```
+
+  Run it with `ASAN_OPTIONS=detect_leaks=0:fast_unwind_on_malloc=0`.
+  These lines worked on 2026.11.15.7033 (Linux x86_64, 2026-11-23) for
+  J's program, a threaded program with no packages. They have not been
+  run on a CyberTrain binary yet. The defines are the ones the pin's
+  driver passes to `cc` for a threaded program, and the runtime archive
+  is built with `-fsanitize=address,undefined`, so the program is too.
+  For another Spinel, take them from what its driver runs (`--cc=` a
+  script that logs its arguments) and from tools/rt_san_check.sh, which
+  is what `make rt-san-check` runs. A program without threads links
+  build/rt-san/libspinel_rt.a without the two thread flags. One that
+  uses bundled packages (openssl, FFI) also links their objects under
+  build/rt-san/packages-mt and their libraries. A matched build of J's
+  program reports one site that is not J: a one-byte read in front of a
+  string literal in `sp_mark_string`, the collector's tag-byte test.
+  The runtime archive is built with `-fsanitize-recover=address`, so
+  `halt_on_error=0` in `ASAN_OPTIONS` lets a run go on past it.
+  The object slab (on by default; 2026.09.12 had none) recycles freed
+  slots itself, so with it on AddressSanitizer does not see a freed
+  object being read: run a matched build both ways, with
+  `SPINEL_GC_SLAB=0` and with the slab on, the configuration that ships.
+  No matched AddressSanitizer run of a CyberTrain binary has been made
+  either way. The runs recorded so far on 2026.10.27.7020 and later used
+  the old recipe, and have to be repeated before they count.
 - Collector behaviour: `SPINEL_GC_STATS=1` prints collections, how many
   were full and the share of wall time once a second; `SPINEL_GC_PHASES=1`
   prints the mark, the sweep, the stop-the-world wait and the slab release
