@@ -245,7 +245,7 @@ the cell names another build.
 | G | bug |  | closed | 2026.10.26.7019 (#10262); never had a workaround |
 | H | bug | 77 | closed | 2026.10.27.7020 (#10415); test/db_with_value.rb covers the plain form. The body of rule 77 was cut on 2026-11-21, and what only it held is in H |
 | I | bug |  | closed | 2026.11.04.7026 (#10735, #10786); never had a workaround |
-| J | bug |  | closed | 2026-11-23, PR_REF: withdrawn as not a Spinel behaviour (the report came from an AddressSanitizer build that sanitized the program and not the runtime; see J, "What J turned out to be"); never had a workaround |
+| J | bug |  | closed | 2026-11-23, #249: withdrawn as not a Spinel behaviour (the report came from an AddressSanitizer build that sanitized the program and not the runtime; see J, "What J turned out to be"); never had a workaround |
 | K | bug | 78 | passes on the pin, workaround kept (status 78) |  |
 | L | constraint | 22 | settled: documented upstream (da4485a5) |  |
 | M | bug | 83 | passes on the pin, workaround kept (status 83) |  |
