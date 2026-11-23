@@ -12,7 +12,8 @@
 #
 # Byte scans, no IPAddr (not in Spinel's library) and no Regexp. Every
 # parameter is read through a `to_s` local (spikes/NOTES.md rule 62). The
-# parsing itself is Cybertrain::IpAddress (cybertrain/http/ip_address.rb).
+# parsing itself is Cybertrain::IpAddress, spinel-http's SpinelHttp::IpAddress
+# (spinel-http/ip_address.rb, aliased by cybertrain/http/ip_address.rb).
 require "cybertrain/http/ip_address"
 
 module Cybertrain
