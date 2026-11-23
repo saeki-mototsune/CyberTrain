@@ -24,6 +24,14 @@ the framework at all: `spin run gen` writes it into each application's
 [examples/blog](https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog)
 generates ({Article}, {ArticleRelation}, {Gen::UrlHelpers}).
 
+The HTTP layer, the request, the response, the parameters, uploads,
+cookies and the stream sink among them, is the library
+[spinel-http](https://github.com/saeki-mototsune/spinel-http), which the
+framework depends on. Its classes are documented here under the names an
+application uses, `Cybertrain::Request` and the rest: each is one class
+with two names, and its `name` answers the real one
+(`Cybertrain::Request.name` is `"SpinelHttp::Request"`).
+
 ## Where things are
 
 | You write | Reference |

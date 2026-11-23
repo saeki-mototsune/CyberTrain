@@ -25,7 +25,31 @@ for gem in yard kramdown kramdown-parser-gfm; do
   fi
 done
 
-rm -rf site/api
+# The HTTP layer is spinel-http (docs/design.md D91), whose files keep the
+# public methods' doc comments; cybertrain's cybertrain/http/*.rb are alias
+# shims that .yardopts leaves out. Applications name those classes
+# Cybertrain::Request, Cybertrain::Params, ... (one class under two names),
+# and cybertrain's own comments and docs/api/README.md link them so, and
+# cybertrain/params.rb and request_format.rb add to them. So the reference
+# reads a copy of spinel-http/*.rb (the checkout spin.lock pins, found by
+# script/spinel_http_path.rb) with `SpinelHttp` read as `Cybertrain`, and
+# each class has one page with all its public methods. The entry file
+# spinel-http.rb is not read (its VERSION is spinel-http's), and a comment
+# line that starts with an ivar (`@headers in place`) gets it in backticks
+# so YARD does not take it for a tag.
+http=$(ruby script/spinel_http_path.rb) || exit 1
+copy=tmp/api-docs/spinel-http
+rm -rf site/api "$copy"
+mkdir -p "$copy" || exit 1
+ruby -ryard -e '
+  src, dst = ARGV
+  Dir[File.join(src, "spinel-http", "*.rb")].sort.each do |path|
+    text = File.read(path).gsub("SpinelHttp", "Cybertrain")
+    text = text.gsub(/^(\s*#\s+)@(\w+)/) do
+      YARD::Tags::Library.instance.has_tag?($2) ? $& : "#{$1}`@#{$2}`"
+    end
+    File.write(File.join(dst, File.basename(path)), text)
+  end' "$http" "$copy" || exit 1
 # Gem.bin_path, not `yard` on PATH: a version manager may not have put the
-# gem's executable there.
-exec ruby -e 'load Gem.bin_path("yard", "yard")' -- doc --no-save --fail-on-warning --no-progress
+# gem's executable there. The files given here are read with .yardopts' own.
+exec ruby -e 'load Gem.bin_path("yard", "yard")' -- doc --no-save --fail-on-warning --no-progress "$copy"/*.rb

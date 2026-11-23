@@ -75,3 +75,18 @@ module YARD
     end
   end
 end
+
+# 5. spinel-http's classes under the names applications use. script/api-docs
+#    gives YARD a copy of spinel-http's files with `SpinelHttp` read as
+#    `Cybertrain` (one class under two names, docs/design.md D91);
+#    cybertrain/i18n.rb reopens `module SpinelHttp` by its real name, so the
+#    same reading is applied here, and its methods land on the class's one
+#    page.
+module CybertrainReadSpinelHttp
+  def process
+    return super unless statement[0].source == "SpinelHttp" && namespace.root?
+
+    parse_block(statement[1], namespace: YARD::CodeObjects::ModuleObject.new(:root, "Cybertrain"))
+  end
+end
+YARD::Handlers::Ruby::ModuleHandler.prepend(CybertrainReadSpinelHttp)

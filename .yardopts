@@ -7,5 +7,6 @@
 --template-path docs/api/templates
 --no-private
 --output-dir site/api
+--exclude cybertrain/http/(?!parameter_filter\.rb)
 cybertrain/**/*.rb
 docs/api/stubs/*.rb
