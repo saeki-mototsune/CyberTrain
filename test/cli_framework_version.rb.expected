@@ -29,43 +29,43 @@ ok   without a lock, a branch, a commit, a range or no ref names no release: no 
 ok   spin.toml is read as spin reads it: comments, spaced headers, the last line for a key
 ok   an exact version spelled '0.Y.Z' or "= 0.Y.Z" is the release spin selects for it
 ok   no spin.toml, or no cybertrain dependency: no check
-error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.1.
+error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.2.
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
   gem install cybertrain -v 999.0.0    # the command the application is on
-or point the cybertrain dependency in spin.toml at 0.4.1 (ref = "v0.4.1"), then relock from nothing (spin lock keeps a locked git commit)
+or point the cybertrain dependency in spin.toml at 0.4.2 (ref = "v0.4.2"), then relock from nothing (spin lock keeps a locked git commit)
   rm spin.lock && cybertrain spin lock
-error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.1.
+error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.2.
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
   gem install cybertrain -v 999.0.0    # the command the application is on
-or point the cybertrain dependency in spin.toml at 0.4.1 (ref = "v0.4.1"), then relock from nothing (spin lock keeps a locked git commit)
+or point the cybertrain dependency in spin.toml at 0.4.2 (ref = "v0.4.2"), then relock from nothing (spin lock keeps a locked git commit)
   rm spin.lock && cybertrain spin lock
-error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.1.
+error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.2.
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
   gem install cybertrain -v 999.0.0    # the command the application is on
-or point the cybertrain dependency in spin.toml at 0.4.1 (ref = "v0.4.1"), then relock from nothing (spin lock keeps a locked git commit)
+or point the cybertrain dependency in spin.toml at 0.4.2 (ref = "v0.4.2"), then relock from nothing (spin lock keeps a locked git commit)
   rm spin.lock && cybertrain spin lock
-error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.1.
+error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.2.
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
   gem install cybertrain -v 999.0.0    # the command the application is on
-or point the cybertrain dependency in spin.toml at 0.4.1 (ref = "v0.4.1"), then relock from nothing (spin lock keeps a locked git commit)
+or point the cybertrain dependency in spin.toml at 0.4.2 (ref = "v0.4.2"), then relock from nothing (spin lock keeps a locked git commit)
   rm spin.lock && cybertrain spin lock
-error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.1.
+error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.2.
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
   gem install cybertrain -v 999.0.0    # the command the application is on
-or point the cybertrain dependency in spin.toml at 0.4.1 (ref = "v0.4.1"), then relock from nothing (spin lock keeps a locked git commit)
+or point the cybertrain dependency in spin.toml at 0.4.2 (ref = "v0.4.2"), then relock from nothing (spin lock keeps a locked git commit)
   rm spin.lock && cybertrain spin lock
-error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.1.
+error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.2.
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
   gem install cybertrain -v 999.0.0    # the command the application is on
-or point the cybertrain dependency in spin.toml at 0.4.1 (ref = "v0.4.1"), then relock from nothing (spin lock keeps a locked git commit)
+or point the cybertrain dependency in spin.toml at 0.4.2 (ref = "v0.4.2"), then relock from nothing (spin lock keeps a locked git commit)
   rm spin.lock && cybertrain spin lock
-error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.1.
+error: this application's framework is cybertrain 999.0.0 (spin.lock), but this cybertrain command is 0.4.2.
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
   gem install cybertrain -v 999.0.0    # the command the application is on
-or point the cybertrain dependency in spin.toml at 0.4.1 (ref = "v0.4.1"), then relock from nothing (spin lock keeps a locked git commit)
+or point the cybertrain dependency in spin.toml at 0.4.2 (ref = "v0.4.2"), then relock from nothing (spin lock keeps a locked git commit)
   rm spin.lock && cybertrain spin lock
 usage: cybertrain spin ARGS... (for example: cybertrain spin test)
-cybertrain 0.4.1
+cybertrain 0.4.2
 ok   the application commands stop before spin; spin and version do not check
 ok   an application on the command's own release, or on a path, passes the CLI's check
 15 tests, 70 assertions, 0 failures
