@@ -425,8 +425,8 @@ statically linked one. It needs, on the machine that runs it:
 
 docs/guide/install.md has the build-time packages, docs/deploy.md and
 docs/deploy.en.md the server's (`libsqlite3-0 zlib1g libssl3t64
-libjemalloc2` on Ubuntu 24.04, what examples/blog's Dockerfile installs in
-its runtime stage). Building in the same image family as the runtime
+libjemalloc2` on Ubuntu 24.04, and `tzdata`: what examples/blog's
+Dockerfile installs in its runtime stage). Building in the same image family as the runtime
 stage, as that Dockerfile does, satisfies every row.
 
 <a id="rules-every-framework-file-must-follow-derived-from-the-spikes"></a>
