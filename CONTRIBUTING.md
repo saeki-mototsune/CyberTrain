@@ -492,8 +492,14 @@ blank second line) and leaves merge, revert, fixup! and squash! commits alone.
    preview, the HTTP server, the pins, the actions; `macos` in
    [script/ci-changes](script/ci-changes) has the list), and the
    `setup-cybertrain` job only when the action, `cybertrain new` or the pins
-   change; `main` runs both after every merge. Add the label `ci:macos` to
-   run macOS anyway (it is read when CI starts: push, or close and reopen).
+   change, and the end-to-end legs (`e2e`, and `e2e-macos` when macOS runs
+   too) only when the change can reach what a generated application builds,
+   tests or serves: not for a change to the framework's own test programs
+   and their snapshots (`test/*.rb`), the CRuby preview or the
+   documentation alone (`e2e` in the same script has the rule); `main` runs
+   all of them after every merge. Add the label `ci:macos` to run macOS
+   anyway, or `ci:e2e` to run the end-to-end legs anyway (a label is read
+   when CI starts: push, or close and reopen).
    The `required` check waits for all of them and is what `main` asks for
    (see [Branch rules](#branch-rules)). A failure you believe is unrelated
    to your change is still worth a sentence in the pull request.

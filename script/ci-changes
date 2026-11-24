@@ -1,9 +1,11 @@
 #!/bin/sh
 # Which CI jobs a change needs: reads the changed paths, one a line, on
 # stdin and prints `framework=true|false`, `cruby_preview=true|false`,
-# `preview_e2e=true|false`, `macos=true|false` and `setup_action=true|false`. The `changes` job of .github/workflows/ci.yml
+# `preview_e2e=true|false`, `macos=true|false`, `setup_action=true|false`
+# and `e2e=true|false`. The `changes` job of .github/workflows/ci.yml
 # runs it. The jobs that compile (the framework tests, the end-to-end legs,
-# the setup-cybertrain action's) run only on `framework=true`; the
+# the setup-cybertrain action's) run only on `framework=true`, the
+# end-to-end legs (`e2e`, `e2e-macos`) only on `e2e=true` as well; the
 # cruby-preview job only on `cruby_preview=true`; the preview-e2e job only
 # on `preview_e2e=true`. The api-docs job runs on every CI run and is not
 # decided here.
@@ -81,6 +83,38 @@
 #                cybertrain/shell.rb, spin.toml, cybertrain.gemspec, ci.yml,
 #                script/ci-changes
 #
+# e2e (the `e2e` job's legs and `e2e-macos`: applications generated,
+# built, tested and served, examples/blog, test/fixtures/auth_04_app and
+# test_app) narrows a pull request only, as macos does: the `changes` job
+# sets it to true on every other event and when the pull request has the
+# label `ci:e2e`. It is `framework` less what no leg reads: the legs
+# compile the framework's runtime (cybertrain/**, cybertrain.rb), run its
+# CLI (exe/**, cybertrain/cli/**, the gem cybertrain.gemspec builds), the
+# generators and their templates, against the pins (spin.toml,
+# cybertrain/version.rb, ci.yml's SPINEL_TAG) and the toolchain's action,
+# so all of that stays in. What it leaves out, each shown unread by every
+# leg (docs/design.md, D34, the status of 2026-11-24, "e2e on a pull
+# request"):
+#
+#   false  test/** but the fixtures the legs copy: the framework's own test
+#          programs, their snapshots, test/support/, test/cruby/ and every
+#          other fixture (only `spin test` and the CRuby jobs read them)
+#   false  cybertrain/preview/**, cybertrain/preview.rb (the CRuby preview:
+#          Spinel never compiles it, and no leg runs `cybertrain server`),
+#          cybertrain/cli/dev_server/**, cybertrain/cli/dev_server.rb (the
+#          supervisor, which exe/cybertrain loads for `server` alone)
+#   false  .github/actions/setup-cybertrain/** (the setup-cybertrain job's),
+#          .github/actions/spinel-candidate/** (spinel-candidate.yml's)
+#   false  docs/**, spikes/**, bench/**, playground/** (nothing the CLI or
+#          the framework reads at run time; the Playground image workflow
+#          builds playground/)
+#   false  script/test-shard, and every path `framework` says false for
+#   true   test/fixtures/auth_04_app/**, test/fixtures/test_app/**,
+#          test/fixtures/test_app_extra/**, test/fixtures/test_app.expected/**
+#   true   script/auth-e2e, script/generators-e2e, script/test-command-e2e,
+#          .github/workflows/ci.yml, script/ci-changes
+#   true   everything else `framework` says true for
+#
 # One path that says true is enough. A path this file does not know says
 # true, and so does one git printed quoted (an unusual character in the
 # name): the jobs run when in doubt.
@@ -95,6 +129,7 @@ decide() {
   e2e=false
   macos=false
   setup_action=false
+  legs=false
   while IFS= read -r path; do
     case "$path" in
       cybertrain/* | cybertrain.rb | test/* | script/preview-parity | script/test-cruby | .github/workflows/ci.yml | script/ci-changes | .github/actions/setup-cybertrain/* | \"*) cruby=true ;;
@@ -121,6 +156,18 @@ decide() {
     case "$path" in
       "") ;;
       docs/api/* | script/api-docs | .yardopts) ;;
+      .github/workflows/ci.yml | script/ci-changes | script/auth-e2e | script/test-command-e2e | script/generators-e2e) legs=true ;;
+      site/* | *.md | script/* | .githooks/* | .github/workflows/*) ;;
+      test/fixtures/auth_04_app/* | test/fixtures/test_app/* | test/fixtures/test_app_extra/* | test/fixtures/test_app.expected/*) legs=true ;;
+      test/*) ;;
+      cybertrain/preview/* | cybertrain/preview.rb | cybertrain/cli/dev_server/* | cybertrain/cli/dev_server.rb) ;;
+      .github/actions/setup-cybertrain/* | .github/actions/spinel-candidate/*) ;;
+      docs/* | spikes/* | bench/* | playground/*) ;;
+      *) legs=true ;;
+    esac
+    case "$path" in
+      "") ;;
+      docs/api/* | script/api-docs | .yardopts) ;;
       .github/workflows/ci.yml | script/test-shard | script/ci-changes | script/auth-e2e | script/test-command-e2e | script/generators-e2e) framework=true ;;
       site/* | *.md | script/* | .githooks/* | .github/workflows/*) ;;
       *) framework=true ;;
@@ -131,6 +178,7 @@ decide() {
   echo "preview_e2e=$e2e"
   echo "macos=$macos"
   echo "setup_action=$setup_action"
+  echo "e2e=$legs"
 }
 
 # The test programs (test/*.rb, sorted in the C locale as script/test-shard
@@ -162,6 +210,7 @@ expect_cruby() { expect_key cruby_preview "$@"; }
 expect_e2e() { expect_key preview_e2e "$@"; }
 expect_macos() { expect_key macos "$@"; }
 expect_setup() { expect_key setup_action "$@"; }
+expect_legs() { expect_key e2e "$@"; }
 
 if [ "${1:-}" = "--self-test" ]; then
   failed=0
@@ -276,6 +325,45 @@ if [ "${1:-}" = "--self-test" ]; then
   expect_setup false .github/actions/setup-spinel/action.yml
   expect_setup false examples/blog/app/models/article.rb
   expect_setup false docs/api/README.md
+  # The end-to-end legs: what an application's build, tests or binary reads.
+  expect_legs true cybertrain/router.rb
+  expect_legs true cybertrain.rb
+  expect_legs true cybertrain/cli/authentication.rb
+  expect_legs true cybertrain/generator/scaffold.rb
+  expect_legs true cybertrain/test/smtp_receiver.rb
+  expect_legs true cybertrain/version.rb
+  expect_legs true cybertrain/dev/supervision.rb
+  expect_legs true exe/cybertrain
+  expect_legs true bin/cybertrain.rb
+  expect_legs true spin.toml
+  expect_legs true cybertrain.gemspec
+  expect_legs true examples/blog/app/models/article.rb
+  expect_legs true test/fixtures/auth_04_app/app/models/user.rb
+  expect_legs true test/fixtures/test_app/test/models/article_test.rb
+  expect_legs true test/fixtures/test_app_extra/failing_test.rb
+  expect_legs true test/fixtures/test_app.expected/all.out
+  expect_legs true script/auth-e2e
+  expect_legs true script/generators-e2e
+  expect_legs true script/test-command-e2e
+  expect_legs true .github/actions/setup-spinel/action.yml
+  expect_legs true .github/workflows/ci.yml
+  expect_legs true script/ci-changes
+  expect_legs true '"cybertrain/caf\303\251.rb"'
+  expect_legs true test/router.rb cybertrain/router.rb
+  expect_legs true docs/guide/upgrading.md test/fixtures/auth_04_app/config/routes.rb
+  # The framework's own tests and snapshots, docs: the case this exists for.
+  expect_legs false test/router.rb
+  expect_legs false test/router.rb.expected test/model.rb test/support/file_tree.rb
+  expect_legs false test/cli_authentication_upgrade.rb test/fixtures/auth_04_app.upgrade.diff
+  expect_legs false test/cruby/dev_server.rb.expected.darwin test/cruby/parity-gaps.txt
+  expect_legs false test/fixtures/gen_app/config/routes.rb
+  expect_legs false docs/guide/images/a.png docs/design.md README.md site/index.html
+  expect_legs false cybertrain/preview/ffi.rb cybertrain/preview.rb
+  expect_legs false cybertrain/cli/dev_server.rb cybertrain/cli/dev_server/processes.rb
+  expect_legs false .github/actions/setup-cybertrain/action.yml .github/actions/spinel-candidate/action.yml
+  expect_legs false spikes/rechecks/run.sh bench/run playground/Dockerfile
+  expect_legs false script/test-shard script/preview-e2e script/preview-parity script/test-cruby
+  expect_legs false docs/api/README.md script/api-docs .yardopts script/gate .githooks/pre-commit .github/workflows/pages.yml
   if [ "$failed" = 0 ]; then echo "script/ci-changes: self-test passed"; fi
   exit "$failed"
 fi

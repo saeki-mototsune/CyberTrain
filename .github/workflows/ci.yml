@@ -118,12 +118,15 @@ jobs:
   # is false when every changed file is one only the API reference reads,
   # or one `paths` above leaves out (script/ci-changes); `cruby_preview`
   # and `preview_e2e` decide the cruby-preview and preview-e2e jobs the
-  # same way. `macos` and `setup_action` narrow a pull request only (every
-  # macOS job and leg: framework-tests-macos, e2e-macos, cruby-preview's
-  # and setup-cybertrain's; and the setup-cybertrain job): on main, a
-  # merge group and a release they are true, and the label `ci:macos` on a
-  # pull request sets `macos` (read from the event, so add the label, then
-  # push or close and reopen).
+  # same way. `macos`, `setup_action` and `e2e` narrow a pull request only
+  # (every macOS job and leg: framework-tests-macos, e2e-macos,
+  # cruby-preview's and setup-cybertrain's; the setup-cybertrain job; the
+  # end-to-end legs, e2e and e2e-macos): on main, a merge group and a
+  # release they are true, and on a pull request the label `ci:macos` sets
+  # `macos` and the label `ci:e2e` sets `e2e` (read from the event, so add
+  # the label, then push or close and reopen). `e2e` is false for a change
+  # no leg reads, such as one to the framework's own tests (test/*.rb and
+  # their snapshots) or to the CRuby preview alone.
   # A release run (a run on a tag: this file's own push runs only on main)
   # runs everything, and so does a run whose changed files cannot be listed.
   changes:
@@ -136,6 +139,7 @@ jobs:
       preview_e2e: ${{ steps.decide.outputs.preview_e2e }}
       macos: ${{ steps.decide.outputs.macos }}
       setup_action: ${{ steps.decide.outputs.setup_action }}
+      e2e: ${{ steps.decide.outputs.e2e }}
     steps:
       # Two commits: on a pull request the checkout is the merge commit, whose
       # first parent is the base branch; on main, the commit before a merge.
@@ -153,6 +157,7 @@ jobs:
           BEFORE: ${{ github.event.before }}
           MERGE_GROUP_BASE: ${{ github.event.merge_group.base_sha }}
           MACOS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:macos') }}
+          E2E_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:e2e') }}
         run: |
           base=""
           if [ "$REF_TYPE" = tag ]; then
@@ -176,6 +181,7 @@ jobs:
               echo "preview_e2e=true"
               echo "macos=true"
               echo "setup_action=true"
+              echo "e2e=true"
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -184,11 +190,17 @@ jobs:
           sed 's/^/  /' "$RUNNER_TEMP/changed"
           script/ci-changes < "$RUNNER_TEMP/changed" > "$RUNNER_TEMP/decided"
           if [ "$EVENT" != pull_request ]; then
-            echo "not a pull request: the macOS legs and setup-cybertrain run whatever changed"
-            sed -i 's/^macos=.*/macos=true/; s/^setup_action=.*/setup_action=true/' "$RUNNER_TEMP/decided"
-          elif [ "$MACOS_LABEL" = true ]; then
-            echo "label ci:macos: the macOS legs run"
-            sed -i 's/^macos=.*/macos=true/' "$RUNNER_TEMP/decided"
+            echo "not a pull request: the macOS legs, setup-cybertrain and the end-to-end legs run whatever changed"
+            sed -i 's/^macos=.*/macos=true/; s/^setup_action=.*/setup_action=true/; s/^e2e=.*/e2e=true/' "$RUNNER_TEMP/decided"
+          else
+            if [ "$MACOS_LABEL" = true ]; then
+              echo "label ci:macos: the macOS legs run"
+              sed -i 's/^macos=.*/macos=true/' "$RUNNER_TEMP/decided"
+            fi
+            if [ "$E2E_LABEL" = true ]; then
+              echo "label ci:e2e: the end-to-end legs run"
+              sed -i 's/^e2e=.*/e2e=true/' "$RUNNER_TEMP/decided"
+            fi
           fi
           tee -a "$GITHUB_OUTPUT" < "$RUNNER_TEMP/decided"
 
@@ -483,9 +495,16 @@ jobs:
   #
   # Every script prints the seconds elapsed on each line (`+Ns`), so a log
   # shows which phase took the time.
+  #
+  # On a pull request the legs run only when `e2e` says so: a change that
+  # can reach what a generated application compiles, runs or serves
+  # (script/ci-changes has the rule; a change to the framework's own test
+  # programs or their snapshots alone is not one), or the label `ci:e2e`.
+  # Skipped, the job is `skipped` and CI's run still concludes `success`,
+  # which is what `required` (required.yml) reads.
   e2e:
     needs: changes
-    if: needs.changes.outputs.framework == 'true'
+    if: needs.changes.outputs.framework == 'true' && needs.changes.outputs.e2e == 'true'
     name: e2e (${{ matrix.leg }})
     strategy:
       fail-fast: false
@@ -596,10 +615,11 @@ jobs:
   # generators, `cybertrain test`, build, the binary served, the mail sent
   # by its job thread), through the installed gem as on Ubuntu. The other
   # legs of `e2e` exercise the generators and the test command, whose
-  # output does not depend on the system. Runs when `macos` says so.
+  # output does not depend on the system. Runs when both `macos` and `e2e`
+  # say so.
   e2e-macos:
     needs: changes
-    if: needs.changes.outputs.framework == 'true' && needs.changes.outputs.macos == 'true'
+    if: needs.changes.outputs.framework == 'true' && needs.changes.outputs.macos == 'true' && needs.changes.outputs.e2e == 'true'
     runs-on: macos-latest
     # Provisional until the first runs are read: script/auth-e2e's six
     # variants took 52 minutes together on macOS in the old `test` job
