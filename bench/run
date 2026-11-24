@@ -569,11 +569,14 @@ options[:configs].each do |name|
 end
 
 # Startup: time from spawn to the first 200 for GET /, and the memory then,
-# on the first configuration's CPUs (the database is already there).
+# on the first configuration's CPUs, from a fresh database with the user and
+# nothing else: GET / is the article list, which counts every article's
+# comments, so the thousands the POST runs left would be timed too.
 say "==> startup"
 results["startup"] = {}
 config = CONFIGS.fetch(options[:configs].first)
 %w[cybertrain rails].each do |framework|
+  reset_database(framework)
   boots = Array.new(options[:boots]) do
     server = Server.new(framework, config)
     servers << server
