@@ -1,9 +1,11 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-# Benchmarks examples/blog, built with `cybertrain build`, against
-# bench/rails_blog, the same blog in Rails 8.1 on Puma, on this machine.
-# docs/benchmark.md describes the method and the recorded results.
+# Benchmarks the app `cybertrain new` and `cybertrain generate scaffold`
+# write, generated into bench/tmp/ from this checkout and built with
+# `cybertrain build`, against bench/rails_app, what `rails new` and
+# `bin/rails generate scaffold` write in Rails 8.1, on Puma, on this
+# machine. docs/benchmark.md describes the method and the recorded results.
 #
 # usage: bench/run [--no-build] [--configs 1cpu,2cpu] [--duration S]
 #                  [--runs N] [--warmup S] [--boots N] [--out FILE] [--quick]
@@ -13,15 +15,16 @@
 #                                        which Rails 8 turns on in production
 #
 # Needs Linux with at least 4 CPUs (taskset, /proc), wrk, and what building
-# each app needs: Spinel for examples/blog (`cybertrain setup`), and Bundler
-# with the gems in bench/rails_blog/Gemfile.lock for Rails.
+# each app needs: Spinel (`cybertrain setup`) and spin's package cache or the
+# network (`cybertrain new` runs `spin lock`) for CyberTrain, and Bundler
+# with the gems in bench/rails_app/Gemfile.lock for Rails.
 #
 # Each server is pinned with taskset to the CPUs its configuration names and
 # wrk to CPUs 2-3, so the load generator never competes with the server.
-# For each framework and configuration: start the server on a fresh database
-# with one user, seed it over HTTP through the app's own forms (signed in as
-# that user, 30 articles; then, as a visitor, 10 comments on the first), warm
-# up, then run wrk against each endpoint as that visitor. Startup time,
+# For each framework and configuration: start the server on a fresh database,
+# seed it over HTTP through the scaffold's own form (30 articles, as a
+# visitor: neither scaffold has sign-in), warm up, then run wrk against each
+# endpoint as that visitor. Startup time,
 # memory and deploy size are measured too. The results are written as JSON
 # (bench/results/<date>.json unless --out) and summarized on stdout.
 require "etc"
@@ -36,9 +39,11 @@ require "time"
 require "uri"
 
 ROOT = File.expand_path("..", __dir__)
-BLOG = File.join(ROOT, "examples", "blog")
-RAILS_APP = File.join(ROOT, "bench", "rails_blog")
+RAILS_APP = File.join(ROOT, "bench", "rails_app")
 WORK = File.join(ROOT, "bench", "tmp")
+# The generated CyberTrain app, and the copy of its dist/ the server runs from.
+CT_NAME = "bench_app"
+CT_APP = File.join(WORK, CT_NAME)
 CT_DIR = File.join(WORK, "cybertrain")
 
 # Server CPUs, Spinel worker threads, Puma worker processes and malloc.
@@ -56,20 +61,15 @@ CONFIGS = {
 CLIENT_CPUS = "2,3"
 
 ARTICLES = 30
-COMMENTS = 10
-
-# The user both apps' seeding signs in as (creating an article needs one).
-USER_EMAIL = "bench@example.com"
-USER_PASSWORD = "bench-password-1"
 
 # The static request is each app's digested stylesheet, whose path
 # (/assets/application-<digest>.css) is read from the page the app serves:
 # :stylesheet stands for it until then.
 ENDPOINTS = [
-  { id: "index", method: "GET", path: "/articles", what: "GET /articles (30 articles, comment counts)" },
-  { id: "show", method: "GET", path: "/articles/1", what: "GET /articles/1 (an article, 10 comments, 12 forms)" },
+  { id: "index", method: "GET", path: "/articles", what: "GET /articles (the scaffold's list, 30 articles)" },
+  { id: "show", method: "GET", path: "/articles/1", what: "GET /articles/1 (the scaffold's article page)" },
   { id: "static", method: "GET", path: :stylesheet, what: "GET /assets/application-<digest>.css (the digested stylesheet)" },
-  { id: "create", method: "POST", path: "/articles/2/comments", what: "POST /articles/2/comments (insert, job, broadcast, 303)" },
+  { id: "create", method: "POST", path: "/articles", what: "POST /articles (validate, insert, redirect)" },
 ].freeze
 CONNECTIONS = [1, 16].freeze
 
@@ -78,7 +78,7 @@ PORTS = { "cybertrain" => 3201, "rails" => 3202 }.freeze
 options = { build: true, configs: CONFIGS.keys, duration: 10, runs: 3, warmup: 10, boots: 5, out: nil }
 OptionParser.new do |o|
   o.banner = "usage: bench/run [options]"
-  o.on("--no-build", "reuse examples/blog/dist/ instead of running cybertrain build") { options[:build] = false }
+  o.on("--no-build", "reuse bench/tmp/#{CT_NAME}/dist/ instead of generating and building the app") { options[:build] = false }
   o.on("--configs LIST", "comma-separated: #{CONFIGS.keys.join(",")}") { |v| options[:configs] = v.split(",") }
   o.on("--duration S", Integer, "seconds per wrk run (10)") { |v| options[:duration] = v }
   o.on("--runs N", Integer, "wrk runs per endpoint and concurrency; the median is reported (3)") { |v| options[:runs] = v }
@@ -136,9 +136,6 @@ RAILS_ENV = {
   "BUNDLE_GEMFILE" => File.join(RAILS_APP, "Gemfile"),
   "RAILS_ENV" => "production",
   "SECRET_KEY_BASE" => SecureRandom.hex(64),
-  # Solid Queue runs in the Puma process (config/puma.rb, async mode), as
-  # examples/blog runs its jobs in its server process.
-  "SOLID_QUEUE_IN_PUMA" => "1",
   "GEM_HOME" => nil, "GEM_PATH" => nil, "RUBYLIB" => nil, "RUBYOPT" => nil,
 }.freeze
 CT_ENV = { "CYBERTRAIN_SECRET_KEY_BASE" => SecureRandom.hex(64) }.freeze
@@ -150,39 +147,58 @@ FileUtils.mkdir_p(WORK)
 
 # --- build both apps --------------------------------------------------------
 
+# The CyberTrain CLI of this checkout, under the Ruby running this script.
+def cybertrain(*args, chdir:)
+  capture(RbConfig.ruby, "-I#{ROOT}", File.join(ROOT, "exe", "cybertrain"), *args, chdir: chdir)
+end
+
+# The CyberTrain app is generated afresh from this checkout on every run, so
+# it is always what the generator writes today: `cybertrain new` with --path
+# (the app depends on this checkout, not on a release), the scaffold, the
+# root route the tutorial adds (its step 04), the migration, and the
+# production build. Nothing else is changed.
 build_seconds = nil
 if options[:build]
-  say "==> cybertrain build (examples/blog)"
+  say "==> cybertrain new #{CT_NAME}, generate scaffold, db migrate (into bench/tmp/)"
+  FileUtils.rm_rf(CT_APP)
+  cybertrain("new", CT_NAME, "--path", ROOT, chdir: WORK)
+  cybertrain("generate", "scaffold", "article", "title:string", "body:text", chdir: CT_APP)
+  routes = File.join(CT_APP, "config", "routes.rb")
+  drawn = File.read(routes)
+  raise "unexpected config/routes.rb:\n#{drawn}" unless drawn.include?("Cybertrain::Routes.draw do\n  resources :articles\n")
+
+  File.write(routes, drawn.sub("Cybertrain::Routes.draw do\n", "Cybertrain::Routes.draw do\n  root \"articles#index\"\n"))
+  cybertrain("db", "migrate", chdir: CT_APP)
+  say "==> cybertrain build"
   started = monotonic
-  capture(RbConfig.ruby, "-I#{ROOT}", File.join(ROOT, "bin", "cybertrain.rb"), "build", chdir: BLOG)
+  cybertrain("build", chdir: CT_APP)
   build_seconds = (monotonic - started).round(1)
   say "    #{build_seconds} s"
 end
-abort "examples/blog/dist/blog is missing: run without --no-build" unless File.executable?(File.join(BLOG, "dist", "blog"))
+CT_BINARY = File.join(CT_APP, "dist", CT_NAME)
+abort "#{CT_BINARY.delete_prefix("#{ROOT}/")} is missing: run without --no-build" unless File.executable?(CT_BINARY)
 FileUtils.rm_rf(CT_DIR)
 FileUtils.mkdir_p(CT_DIR)
-FileUtils.cp(File.join(BLOG, "dist", "blog"), CT_DIR, preserve: true)
-FileUtils.cp_r(File.join(BLOG, "dist", "public"), CT_DIR)
+FileUtils.cp(CT_BINARY, CT_DIR, preserve: true)
+FileUtils.cp_r(File.join(CT_APP, "dist", "public"), CT_DIR)
 %w[storage tmp].each { |d| FileUtils.mkdir_p(File.join(CT_DIR, d)) }
 
-say "==> bundle install, assets:precompile (bench/rails_blog)"
+say "==> bundle install, assets:precompile (bench/rails_app)"
 capture(RAILS_ENV, "bundle", "install", "--quiet", chdir: RAILS_APP)
 # Propshaft digests app/assets into public/assets, which Rails then serves
-# as static files (examples/blog's are in dist/public/assets).
+# as static files (CyberTrain's are in dist/public/assets).
 capture(RAILS_ENV, "bin/rails", "assets:clobber", "assets:precompile", chdir: RAILS_APP)
 
 def reset_database(framework)
   case framework
   when "cybertrain"
     Dir.glob(File.join(CT_DIR, "storage", "production.sqlite3*")).each { |f| File.delete(f) }
-    capture(CT_ENV, "./blog", "migrate", chdir: CT_DIR)
-    capture(CT_ENV, "./blog", "user", USER_EMAIL, USER_PASSWORD, chdir: CT_DIR)
+    capture(CT_ENV, "./#{CT_NAME}", "migrate", chdir: CT_DIR)
   when "rails"
-    # The primary database and Solid Cache's, Solid Queue's and Solid Cable's.
+    # The primary database and Solid Cache's, Solid Queue's and Solid Cable's
+    # (the generated config/database.yml names all four).
     Dir.glob(File.join(RAILS_APP, "storage", "production*.sqlite3*")).each { |f| File.delete(f) }
     capture(RAILS_ENV, "bin/rails", "db:prepare", chdir: RAILS_APP)
-    capture(RAILS_ENV, "bin/rails", "runner",
-            "User.create!(email_address: #{USER_EMAIL.dump}, password: #{USER_PASSWORD.dump})", chdir: RAILS_APP)
   end
 end
 
@@ -205,7 +221,7 @@ class Server
     started = monotonic
     if @framework == "cybertrain"
       env = CT_ENV.merge(preload).merge("PORT" => @port.to_s, "SPINEL_WORKERS" => @config[:ct_workers].to_s)
-      @pid = Process.spawn(env, "taskset", "-c", cpus, "./blog", chdir: CT_DIR, out: File::NULL, err: log)
+      @pid = Process.spawn(env, "taskset", "-c", cpus, "./#{CT_NAME}", chdir: CT_DIR, out: File::NULL, err: log)
     else
       workers = @config[:puma_workers]
       env = RAILS_ENV.merge(preload).merge("PORT" => @port.to_s, "WEB_CONCURRENCY" => workers&.to_s)
@@ -274,7 +290,7 @@ class Server
 
   def ready?
     Net::HTTP.start("127.0.0.1", @port, open_timeout: 0.2, read_timeout: 5) do |http|
-      http.get("/").code == "200"
+      http.get("/", "User-Agent" => USER_AGENT).code == "200"
     end
   rescue SystemCallError, Net::OpenTimeout, Net::ReadTimeout, EOFError, IOError
     false
@@ -316,6 +332,7 @@ class Browser
   def request(req)
     req["Cookie"] = cookie if cookie
     req["Accept"] = ACCEPT
+    req["User-Agent"] = USER_AGENT
     res = Net::HTTP.start("127.0.0.1", @port) { |http| http.request(req) }
     (res.get_fields("set-cookie") || []).each do |line|
       name, value = line.split(";").first.split("=", 2)
@@ -330,48 +347,36 @@ class Browser
   end
 end
 
-# What a browser asks for when it follows a link or submits a plain form
-# (Turbo off): both apps answer the comment POST with a redirect then. With
-# Net::HTTP's default `*/*` Rails would pick the first format of the
-# action's respond_to, the Turbo Stream.
+# What a browser asks for when it follows a link or submits a plain form:
+# both apps answer the POST with a redirect then.
 ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+# A current browser's: the generated Rails ApplicationController checks it
+# (`allow_browser versions: :modern`), as it would a real visitor's.
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36"
 
 LOREM = "Spinel compiles Ruby ahead of time into C, and CyberTrain builds a whole web " \
         "application into one native binary: routes, controllers, models, views and the " \
         "HTTP server, with SQLite for storage."
 
 def seed(port)
-  # Writing an article needs a signed-in user (both apps send a visitor to
-  # the sign-in page), so the author signs in first.
-  author = Browser.new(port)
-  res = author.post("/session", "authenticity_token" => author.token("/session/new", "/session"),
-                                "email_address" => USER_EMAIL, "password" => USER_PASSWORD)
-  unless %w[302 303].include?(res.code) && !res["location"].to_s.include?("/session/new")
-    raise "signing in: #{res.code} to #{res["location"]}"
-  end
-
-  (1..ARTICLES).each do |i|
-    res = author.post("/articles", "authenticity_token" => author.token("/articles/new", "/articles"),
-                                   "article[title]" => "Article #{i}", "article[body]" => "#{i}. #{LOREM}")
-    raise "creating article #{i}: #{res.code} #{res.body[0, 200]}" unless res.code == "303"
-  end
-  # The comments and the measured requests are a visitor's, who has not
-  # signed in: commenting needs no account in either app.
+  # A visitor writes the articles through the scaffold's form (neither
+  # scaffold has sign-in), then keeps this visit's cookie and the form's
+  # token for the measured requests.
   b = Browser.new(port)
-  (1..COMMENTS).each do |j|
-    res = b.post("/articles/1/comments", "authenticity_token" => b.token("/articles/1", "/articles/1/comments"),
-                                         "comment[commenter]" => "Reader #{j}",
-                                         "comment[body]" => "Comment #{j}: a native binary is a nice thing to deploy.")
-    raise "creating comment #{j}: #{res.code}" unless res.code == "303"
+  (1..ARTICLES).each do |i|
+    res = b.post("/articles", "authenticity_token" => b.token("/articles/new", "/articles"),
+                              "article[title]" => "Article #{i}", "article[body]" => "#{i}. #{LOREM}")
+    # Rails' scaffold redirects with 302, CyberTrain's with 303.
+    raise "creating article #{i}: #{res.code} #{res.body[0, 200]}" unless %w[302 303].include?(res.code)
   end
-  # Read the last flash away, then keep this visit's cookie and the comment
-  # form's token for the measured requests.
-  b.get("/articles/2")
-  token = b.token("/articles/2", "/articles/2/comments")
+  # Read the last flash away.
+  b.get("/articles/1")
+  token = b.token("/articles/new", "/articles")
   index = b.get("/articles").body
   show = b.get("/articles/1").body
-  raise "index lists #{index.scan("<tr>").size - 1} articles, not #{ARTICLES}" unless index.scan("<tr>").size - 1 == ARTICLES
-  raise "show lists #{show.scan('class="comment"').size} comments, not #{COMMENTS}" unless show.scan('class="comment"').size == COMMENTS
+  listed = index.scan(%r{href="/articles/(\d+)"}).flatten.uniq.size
+  raise "index links #{listed} articles, not #{ARTICLES}" unless listed == ARTICLES
+  raise "show does not show article 1's body" unless show.include?("1. #{LOREM}")
 
   link = index[/<link[^>]*rel="stylesheet"[^>]*>/] or raise "no stylesheet link in the article list"
   stylesheet = link[/href="([^"]+)"/, 1]
@@ -417,12 +422,12 @@ def wrk(port, endpoint, connections, seconds, session)
   url = "http://127.0.0.1:#{port}#{endpoint_path(endpoint, session)}"
   threads = [connections, 2].min
   cmd = ["taskset", "-c", CLIENT_CPUS, "wrk", "-t#{threads}", "-c#{connections}", "-d#{seconds}s", "--latency",
-         "-H", "Cookie: #{session[:cookie]}", "-H", "Accept: #{ACCEPT}"]
+         "-H", "Cookie: #{session[:cookie]}", "-H", "Accept: #{ACCEPT}", "-H", "User-Agent: #{USER_AGENT}"]
   env = {}
   if endpoint[:method] == "POST"
     cmd += ["-s", POST_LUA]
     env["BENCH_BODY"] = URI.encode_www_form("authenticity_token" => session[:token],
-                                            "comment[commenter]" => "wrk", "comment[body]" => "A comment from the load generator.")
+                                            "article[title]" => "From wrk", "article[body]" => "An article from the load generator.")
   end
   out = capture(env, *cmd, url)
   latency = out.match(/^\s+Latency\s+(\S+)/)
@@ -472,9 +477,10 @@ end
 
 def cybertrain_sizes
   {
-    "binary_bytes" => File.size(File.join(CT_DIR, "blog")),
+    "app_name" => CT_NAME,
+    "binary_bytes" => File.size(File.join(CT_DIR, CT_NAME)),
     "public_bytes" => du_bytes(File.join(CT_DIR, "public")),
-    "shared_libraries" => capture("ldd", File.join(CT_DIR, "blog")).lines.map { |l| l.strip.split.first }.reject { |l| l.start_with?("linux-vdso") },
+    "shared_libraries" => capture("ldd", File.join(CT_DIR, CT_NAME)).lines.map { |l| l.strip.split.first }.reject { |l| l.start_with?("linux-vdso") },
   }
 end
 
@@ -493,6 +499,8 @@ def environment
   {
     "date" => Time.now.utc.iso8601,
     "commit" => capture("git", "rev-parse", "--short", "HEAD", chdir: ROOT).strip,
+    # The last commit that changed the framework or the CLI the app is built with.
+    "framework_commit" => capture("git", "log", "-1", "--format=%h", "--", "cybertrain", "exe", "bin", chdir: ROOT).strip,
     "cpu" => cpu,
     "cpus" => Etc.nprocessors,
     "memory_gb" => (File.read("/proc/meminfo")[/^MemTotal:\s+(\d+)/, 1].to_i / 1024.0 / 1024).round(1),
@@ -517,7 +525,7 @@ end
 results = {
   "environment" => environment,
   "settings" => options.slice(:duration, :runs, :warmup, :boots).transform_keys(&:to_s)
-                       .merge("articles" => ARTICLES, "comments" => COMMENTS, "client_cpus" => CLIENT_CPUS),
+                       .merge("articles" => ARTICLES, "client_cpus" => CLIENT_CPUS),
   "endpoints" => ENDPOINTS.to_h { |e| [e[:id], e[:what]] },
   "build_seconds" => { "cybertrain" => build_seconds },
   "sizes" => { "cybertrain" => cybertrain_sizes, "rails" => rails_sizes },
@@ -542,9 +550,9 @@ options[:configs].each do |name|
     File.write(File.join(WORK, "#{framework}-show.html"), session[:pages]["show"])
     memory_seeded = server.memory_kb
     # Each endpoint is warmed up just before it is measured, in the order of
-    # ENDPOINTS, so the GETs see the seeded data alone: the comment POST (and
-    # its warm-up) comes last. The list counts every article's comments, so
-    # thousands of posted comments would change what it measures.
+    # ENDPOINTS, so the GETs see the seeded data alone: the POST (and its
+    # warm-up) comes last, since the list shows every article and the
+    # thousands the POST adds would change what it measures.
     endpoints = {}
     ENDPOINTS.each do |e|
       wrk(server.port, e, 16, options[:warmup], session)
@@ -569,9 +577,9 @@ options[:configs].each do |name|
 end
 
 # Startup: time from spawn to the first 200 for GET /, and the memory then,
-# on the first configuration's CPUs, from a fresh database with the user and
-# nothing else: GET / is the article list, which counts every article's
-# comments, so the thousands the POST runs left would be timed too.
+# on the first configuration's CPUs, from a fresh, empty database: GET / is
+# the article list, so the thousands of articles the POST runs left would be
+# timed too.
 say "==> startup"
 results["startup"] = {}
 config = CONFIGS.fetch(options[:configs].first)

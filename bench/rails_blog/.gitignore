@@ -1,7 +1,0 @@
-/.bundle/
-/log/*
-/tmp/*
-/storage/*
-/vendor/bundle/
-/config/master.key
-/public/assets
