@@ -479,7 +479,7 @@ jobs:
   #                failures and exits on test/fixtures/test_app), then the
   #                framework as a git dependency. About 14 minutes.
   #   blog         examples/blog: gen/ fresh, its tests, gen --check. About
-  #                5 minutes, most of it the blog's one test program.
+  #                8 minutes, most of it the blog's one test program.
   #
   # Every script prints the seconds elapsed on each line (`+Ns`), so a log
   # shows which phase took the time.
@@ -578,10 +578,12 @@ jobs:
       # the test run wrote nothing gen would not write. SPIN_DEBUG=1: the
       # mode `cybertrain test` builds gen in, so gen is not built again.
       #
-      # The blog's one test program is 36 MB of C, compiled by gcc, the
-      # runner's `cc`, at -O0 as `cybertrain test` always compiles it:
-      # 2m49s for the whole step locally (4 cores, 7033), where gcc's -O2
-      # took 31 minutes (docs/design.md, D34, the status of 2026-11-24).
+      # The blog's one test program is compiled by gcc, the runner's `cc`,
+      # at spinel's default -O2, as `cybertrain test` always compiles it.
+      # gen writes one small method per test, so no C function holds every
+      # test: 6m09s for the whole step locally (4 cores, 7033), where one
+      # run_case holding them all took gcc 31 minutes (docs/design.md, D34,
+      # the statuses of 2026-11-24).
       - name: Example app tests
         if: matrix.leg == 'blog'
         run: |

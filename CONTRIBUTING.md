@@ -248,8 +248,10 @@ first time is untracked, and `git diff` passes over it. CI fails on either.
 `cybertrain test`, not `spin test`: the blog's tests are test classes, which
 only `cybertrain test` runs; `spin test` there would compile
 `test/test_helper.rb` alone and call it ok. `cybertrain test` compiles the
-blog's test program unoptimised (`-O 0`), in about 2.5 minutes on 4 cores with
-gcc; at gcc's `-O2` it took about half an hour (docs/design.md, D83).
+blog's test program as `cybertrain build` compiles the application
+(spinel's default `-O2`), in about 6 minutes on 4 cores; gen writes one
+small method per test so that gcc does not spend half an hour on one huge
+function (docs/design.md, D83).
 
 ### The CRuby preview's checks
 

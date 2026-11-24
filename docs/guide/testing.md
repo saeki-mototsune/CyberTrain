@@ -104,10 +104,9 @@ cybertrain test -n /article/                            # the tests whose name c
 mode, as every command of the CLI builds it), which writes `gen/tests.rb` (the
 program) and a rewritten copy of each test class under `gen/test/`, both
 committed with the rest of `gen/`; it then compiles `gen/tests.rb` into
-`build/test/tests` when any input is newer than that binary, and runs it. The
-test program is compiled unoptimised (`-O 0`), unlike `cybertrain build`: it
-is one large program, which the C compiler takes many times longer to
-optimise than its tests take to run. Every `test/**/*_test.rb` and every other `test/*.rb` but
+`build/test/tests` (a release build, as `cybertrain build` compiles the
+application) when any input is newer than that binary, and runs it. Every
+`test/**/*_test.rb` and every other `test/*.rb` but
 `test/test_helper.rb` is in it; `test/support/` (required by the helper) and
 `test/fixtures/` hold no tests. The program deletes `storage/test.sqlite3`,
 migrates a new one and boots the application on it before the first test (no
@@ -177,11 +176,11 @@ run took 656 s, the binary is 10.2 MB), and a later `cybertrain test
 test/controllers` with nothing changed reused the binary and started in
 about 1 s (the blog's own run, 2026-11-13); the blog's application with
 three test files of eight tests compiled in 162 to 233 s at a peak of
-about 2.2 GB, into an 8.1 MB binary (2026-11-12). Those programs were
-compiled optimised (`-O2`); unoptimised, examples/blog's 157 tests took 2
-minutes 49 seconds for a whole first `cybertrain test` on a 4-core machine,
-about 2.5 minutes of it the compile and 2 seconds the run, where the same run
-optimised had taken 31 minutes (2026-11-24). Write several tests before running
+about 2.2 GB, into an 8.1 MB binary (2026-11-12). Since 2026-11-24 gen
+writes each test as a small method of its own, which the C compiler
+optimises far faster than the one large method it wrote before: a whole
+first `cybertrain test` of examples/blog's 157 tests took about 6 minutes
+on a 4-core machine, where it had taken 31. Write several tests before running
 them, and narrow the run, not the build, while you work on one.
 
 `gen/tests.rb` is refused, and `cybertrain test` exits 1 with the reason

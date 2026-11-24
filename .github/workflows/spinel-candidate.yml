@@ -195,7 +195,7 @@ jobs:
           TAG: ${{ needs.resolve.outputs.tag }}
 
       # As ci.yml's: the runner's gcc compiles the blog's one test program,
-      # at -O0 as `cybertrain test` always does.
+      # at -O2 as `cybertrain test` always does.
       - name: Example app tests
         if: matrix.leg == 'blog'
         run: |

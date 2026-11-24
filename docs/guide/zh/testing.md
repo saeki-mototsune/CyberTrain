@@ -1,5 +1,5 @@
 ---
-source_sha256: b1a23911b78a6035e3898226e021376cf7df3872738c6244d59a27dfe3f56c01
+source_sha256: 6e23ce19069d28de5d3a3a07a86ec79bf0b74c537bf284d5e8df84fcbb180b83
 ---
 # 测试应用
 
@@ -81,7 +81,7 @@ cybertrain test -n test_creates_an_article              # 或按方法名
 cybertrain test -n /article/                            # 名称包含 "article" 的测试
 ```
 
-`cybertrain test` 运行 `SPIN_DEBUG=1 spin run gen`（和 CLI 的所有命令一样，gen 以 spin 的调试模式构建），它写出 `gen/tests.rb`（程序）以及 `gen/test/` 下每个测试类改写后的副本，两者都和 `gen/` 的其余部分一起提交；然后只要有输入比 `build/test/tests` 新，就把 `gen/tests.rb` 编译成它，再运行它。与 `cybertrain build` 不同，测试程序不经优化编译（`-O 0`）：它是一个很大的程序，C 编译器优化它所花的时间是运行其测试的许多倍。所有 `test/**/*_test.rb`，以及除 `test/test_helper.rb` 之外的所有其他 `test/*.rb` 都在其中；`test/support/`（由辅助文件加载）和 `test/fixtures/` 中没有测试。程序在第一个测试之前删除 `storage/test.sqlite3`，迁移出一个新的数据库并在其上启动应用（不启动作业、调度器或订阅线程：作业由测试自己运行）。这个文件的规则见[测试数据库](#the-test-database)。
+`cybertrain test` 运行 `SPIN_DEBUG=1 spin run gen`（和 CLI 的所有命令一样，gen 以 spin 的调试模式构建），它写出 `gen/tests.rb`（程序）以及 `gen/test/` 下每个测试类改写后的副本，两者都和 `gen/` 的其余部分一起提交；然后只要有输入比 `build/test/tests` 新，就把 `gen/tests.rb` 编译成它（发布构建，和 `cybertrain build` 编译应用的方式一样），再运行它。所有 `test/**/*_test.rb`，以及除 `test/test_helper.rb` 之外的所有其他 `test/*.rb` 都在其中；`test/support/`（由辅助文件加载）和 `test/fixtures/` 中没有测试。程序在第一个测试之前删除 `storage/test.sqlite3`，迁移出一个新的数据库并在其上启动应用（不启动作业、调度器或订阅线程：作业由测试自己运行）。这个文件的规则见[测试数据库](#the-test-database)。
 
 无论 `bin/<app>.rb` require 了什么，测试程序都会 require `cybertrain`，也就是所有子系统：`perform_enqueued_jobs`、`assert_emails`、`assert_broadcasts` 和 `Test::SentryReceiver` 在使用 `cybertrain/core` 的应用中同样可用；而提到某个子系统却没有写它那一行的代码，测试能通过，到 `spin build` 才会停下（[子系统](how-it-works.md#subsystems)）。
 
@@ -102,7 +102,7 @@ test/models/article_test.rb
 
 参数：`-n NAME` 保留名称或方法名为 NAME 的测试，`-n /TEXT/` 保留名称或方法名中以纯文本形式包含 TEXT 的测试（`.`、`?` 和 `()` 就是它们自己）。包含 `^ $ \ * + [ ] { } |` 之一的 TEXT 不是正则表达式，会以退出状态 2 被拒绝：`-n /^test_create/: the text between the slashes is a plain substring of the test name, not a regexp (^ would be looked for as itself); write the text to look for (-n /test_create/)`。文件或目录保留其中的测试；`FILE:LINE` 会被拒绝（`line filters are not supported; give the file, and -n for the name`）；`--` 结束选项。一个测试都没保留的筛选会在合计之前输出 `no test matched the filter`，并以 0 退出。在 `test/` 下添加或删除文件会重新编译程序。
 
-**一次修改的代价。** 文件参数和 `-n` 选择运行哪些测试，而不是编译什么：程序总是包含所有测试，所以改变筛选会复用二进制文件；而修改任何一个测试（或构建程序所用的任何其他东西）都会先重新构建 `bin/gen`，再重新编译整个程序。以下是 2026-11-12 和 2026-11-13 在一台共享的 4 vCPU 云机器上测得的数字（你自己的机器会不同）：examples/blog 的 21 个文件、149 个测试第一次编译用了约 527 秒（第一次运行总共 656 秒，二进制文件 10.2 MB），之后不做改动运行 `cybertrain test test/controllers`，复用了二进制文件，约 1 秒就开始（博客自己的运行，2026-11-13）；博客的应用加上三个测试文件（八个测试）编译用了 162 到 233 秒，内存峰值约 2.2 GB，生成 8.1 MB 的二进制文件（2026-11-12）。这些程序是经优化（`-O2`）编译的；不经优化时，在一台 4 核机器上，examples/blog 的 157 个测试第一次完整运行 `cybertrain test` 用了 2 分 49 秒，其中约 2.5 分钟是编译，2 秒是运行，而同样的运行经优化时用了 31 分钟（2026-11-24）。先写好几个测试再一起运行；专注于某一个测试时，缩小的是运行范围，而不是构建。
+**一次修改的代价。** 文件参数和 `-n` 选择运行哪些测试，而不是编译什么：程序总是包含所有测试，所以改变筛选会复用二进制文件；而修改任何一个测试（或构建程序所用的任何其他东西）都会先重新构建 `bin/gen`，再重新编译整个程序。以下是 2026-11-12 和 2026-11-13 在一台共享的 4 vCPU 云机器上测得的数字（你自己的机器会不同）：examples/blog 的 21 个文件、149 个测试第一次编译用了约 527 秒（第一次运行总共 656 秒，二进制文件 10.2 MB），之后不做改动运行 `cybertrain test test/controllers`，复用了二进制文件，约 1 秒就开始（博客自己的运行，2026-11-13）；博客的应用加上三个测试文件（八个测试）编译用了 162 到 233 秒，内存峰值约 2.2 GB，生成 8.1 MB 的二进制文件（2026-11-12）。自 2026-11-24 起，gen 把每个测试写成一个单独的小方法，C 编译器优化它们比优化以前那一个大方法快得多：在一台 4 核机器上，examples/blog 的 157 个测试第一次完整运行 `cybertrain test` 用了约 6 分钟，以前要 31 分钟。先写好几个测试再一起运行；专注于某一个测试时，缩小的是运行范围，而不是构建。
 
 当两个测试文件或支持文件定义了同一个顶层方法或常量时（在一个程序中它们会变成一个：把共享的辅助方法移到 `test/support/`，或移进类里），`gen/tests.rb` 会被拒绝，`cybertrain test` 不编译，给出原因并以 1 退出；[gen 在测试类中拒绝的写法](#what-gen-refuses-in-a-test-class)中的其他情况也一样。
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: b1a23911b78a6035e3898226e021376cf7df3872738c6244d59a27dfe3f56c01
+source_sha256: 6e23ce19069d28de5d3a3a07a86ec79bf0b74c537bf284d5e8df84fcbb180b83
 ---
 # Tester une application
 
@@ -114,11 +114,9 @@ cybertrain test -n /article/                            # les tests dont le nom 
 mode de débogage de spin, comme toutes les commandes du CLI le construisent),
 qui écrit `gen/tests.rb` (le programme) et une copie réécrite de chaque classe
 de test sous `gen/test/`, tous deux validés avec le reste de `gen/`&nbsp;; il
-compile ensuite `gen/tests.rb` en `build/test/tests` dès qu’une entrée est
-plus récente que ce binaire, et l’exécute. Le programme de test est compilé
-sans optimisation (`-O 0`), contrairement à `cybertrain build`&nbsp;: c’est un
-seul grand programme, que le compilateur C mettrait bien plus de temps à
-optimiser que ses tests n’en mettent à s’exécuter.
+compile ensuite `gen/tests.rb` en `build/test/tests` (une compilation de
+production, comme `cybertrain build` compile l’application) dès qu’une
+entrée est plus récente que ce binaire, et l’exécute.
 Chaque `test/**/*_test.rb` et chaque autre `test/*.rb` sauf
 `test/test_helper.rb` en font partie&nbsp;; `test/support/` (chargé par le
 helper) et `test/fixtures/` ne contiennent pas de tests. Le programme supprime
@@ -197,12 +195,11 @@ le binaire fait 10,2 Mo), et une deuxième exécution sans changement un `cybert
 réutilisé le binaire et démarré en environ 1 s (l’exécution du blog
 lui-même, 2026-11-13)&nbsp;; l’application du blog avec trois fichiers de
 test de huit tests a compilé en 162 à 233 s avec un pic d’environ 2,2 Go,
-en un binaire de 8,1 Mo (2026-11-12). Ces programmes étaient compilés avec
-optimisation (`-O2`)&nbsp;; sans optimisation, les 157 tests d’examples/blog
-ont pris 2 minutes 49 secondes pour un premier `cybertrain test` complet sur
-une machine à 4 cœurs, dont environ 2,5 minutes de compilation et 2 secondes
-d’exécution, là où la même exécution avec optimisation avait pris 31 minutes
-(2026-11-24). Écrivez plusieurs tests avant de les exécuter, et
+en un binaire de 8,1 Mo (2026-11-12). Depuis le 2026-11-24, gen écrit
+chaque test comme une petite méthode à part, que le compilateur C optimise
+bien plus vite que la seule grande méthode qu’il écrivait auparavant&nbsp;:
+un premier `cybertrain test` complet des 157 tests d’examples/blog a pris
+environ 6 minutes sur une machine à 4 cœurs, là où il en prenait 31. Écrivez plusieurs tests avant de les exécuter, et
 restreignez l’exécution, pas la compilation, pendant que vous travaillez
 sur l’un d’eux.
 
