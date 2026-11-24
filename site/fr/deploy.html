@@ -77,7 +77,7 @@
   <header class="doc-hero">
     <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>Déployer</span></p>
     <h1>Déployer en&nbsp;production</h1>
-    <p class="doc-intro">Une application CyberTrain se livre sous la forme d’un seul binaire natif et d’un dossier à côté. Elle ne parle que le HTTP simple&nbsp;: c’est donc ce qui se trouve devant elle qui assure le HTTPS, kamal-proxy si vous déployez avec Kamal, ou Caddy sur un serveur que vous gérez vous-même. Cette page explique comment les pièces s’assemblent et en quoi les deux méthodes diffèrent&nbsp;; les guides liés à chaque étape donnent toutes les commandes.</p>
+    <p class="doc-intro">Une application CyberTrain se livre sous la forme d’un seul binaire natif avec un dossier à côté, et n’a pas besoin de Ruby pour tourner. Le binaire ne parle que le HTTP simple&nbsp;: kamal-proxy (avec Kamal) ou Caddy (sur un serveur que vous gérez vous-même) assure le HTTPS devant lui. Cette page montre comment les pièces s’assemblent et en quoi les deux méthodes diffèrent&nbsp;; les guides liés à chaque étape donnent toutes les commandes.</p>
     <dl class="doc-meta">
       <div><dt>Il vous faut</dt><dd>Un serveur Linux accessible en SSH, et un nom de domaine</dd></div>
       <div><dt>Ce qui tourne</dt><dd>Un binaire derrière un proxy inverse, avec SQLite à côté</dd></div>
@@ -109,7 +109,7 @@
     <p class="stage"><span class="stage-k">Vous êtes ici<span class="sr-only">:</span></span>Exécution <span aria-hidden="true">&middot;</span> <code>dist/</code></p>
     <h2 id="h-what-runs"><span class="step-num" aria-hidden="true">01</span>Ce qui tourne en production</h2>
     <p class="why"><span class="why-k">Pourquoi</span><span class="why-t">Savoir ce que fait le binaire, et ce qu’il laisse à d’autres, décide du reste de l’installation.</span></p>
-    <p><code>cybertrain build</code> compile le framework, vos contrôleurs et modèles et l’interpréteur de gabarits dans <code>dist/blog</code>, avec toutes les vues intégrées, et copie <code>public/</code> à côté. Rien d’autre n’est installé là où il tourne&nbsp;: ni Ruby, ni gems.</p>
+    <p><code>cybertrain build</code> compile le framework, vos contrôleurs et modèles et l’interpréteur de gabarits dans <code>dist/blog</code>, avec toutes les vues intégrées, et place <code>public/</code>, <code>storage/</code> et <code>tmp/</code> à côté. Rien d’autre n’est installé là où il tourne&nbsp;: ni Ruby, ni gems.</p>
     <figure class="code" data-lang="text">
 <figcaption><span class="code-path">production</span><span class="code-lang">text</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Code&nbsp;: ce qui tourne en production"><code><span class="ln">browser ──HTTPS──▶ reverse proxy (kamal-proxy or Caddy)</span>
@@ -226,10 +226,12 @@
     <ul class="points">
       <li><strong>Chaque modification est un déploiement.</strong> Les vues sont intégrées à la compilation, donc même une modification de vue seule demande une reconstruction et un redémarrage. Committez <code>gen/</code> avec la modification&nbsp;: le script de déploiement s’arrête sur un <code>gen/</code> périmé.</li>
       <li><strong>Les migrations passent avant que le nouveau code ne serve&nbsp;:</strong> dans le script de déploiement, ou au démarrage du conteneur. Supprimez une colonne lors d’un déploiement ultérieur, quand plus aucun code en service ne la lit.</li>
-      <li><strong>Sauvegardez avec <code>.backup</code> de SQLite,</strong> pas en copiant le fichier&nbsp;: la copie est cohérente même pendant que l’application écrit.</li>
+      <li><strong>Sauvegardez avec <code>./blog db backup</code>,</strong> pas en copiant le fichier&nbsp;: la copie est cohérente pendant que l’application continue de servir, et <code>--keep 14</code> garde les 14 plus récentes. <a href="guide/background-and-operations.html#operations-backups-vacuum-health-check">Sauvegardes</a>.</li>
       <li><strong>Revenir en arrière par-delà une migration</strong> implique de ramener aussi la base, avec <code>db rollback</code> depuis la version la plus récente, avant de basculer.</li>
       <li><strong>L’arrêt est en douceur&nbsp;:</strong> sur <code>SIGTERM</code>, le serveur cesse d’accepter, termine les requêtes en cours et quitte, au bout de 10 secondes au plus.</li>
       <li><strong>Un binaire, plusieurs rôles.</strong> Avec le sous-système des jobs, <code>./blog worker</code> exécute les jobs et les tâches planifiées sans HTTP&nbsp;; avec celui des feeds, <code>./blog feeds</code> gère les abonnements WebSocket. <code>GET /up</code> répond 503 quand la base de données, le worker ou un feed n’est pas en bon état. <a href="guide/background-and-operations.html#process-roles">Rôles des processus</a>.</li>
+      <li><strong>Chaque ligne de journal porte l’identifiant de la requête,</strong> renvoyé aussi dans <code>X-Request-Id</code>&nbsp;: un seul grep retrouve une requête et les jobs qu’elle a mis en file. <code>CYBERTRAIN_LOG_FORMAT=json</code> écrit des lignes JSON pour un collecteur de journaux, et <code>CYBERTRAIN_SENTRY_DSN</code> envoie les signalements d’erreurs à Sentry ou GlitchTip. <a href="guide/logs-and-errors.html">Journaux et signalement des erreurs</a>.</li>
+      <li><strong>Une nouvelle version de CyberTrain</strong> s’adopte toujours de la même façon, de l’installation de la nouvelle commande au déploiement. <a href="guide/upgrading.html">Mise à jour</a>.</li>
     </ul>
   </section>
 
@@ -238,7 +240,8 @@
     <ul class="next-list">
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><span class="next-t"><code>docs/deploy-kamal.md</code></span><span class="next-d">Déployer avec Kamal, pas à pas.</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><span class="next-t"><code>docs/deploy.en.md</code></span><span class="next-d">Un serveur Ubuntu avec systemd et Caddy, du début aux sauvegardes (en japonais&nbsp;: <code>docs/deploy.md</code>).</span></a></li>
-      <li><a href="tutorial.html#ship"><span class="next-t">Compiler pour le déploiement</span><span class="next-d">La dernière étape du tutoriel&nbsp;: <code>cybertrain build</code> et <code>dist/</code>.</span></a></li>
+      <li><a href="guide/advanced-tutorial.html#ship"><span class="next-t">Compiler pour le déploiement</span><span class="next-d">La dernière étape du tutoriel avancé&nbsp;: <code>cybertrain build</code> et <code>dist/</code>.</span></a></li>
+      <li><a href="guide/upgrading.html"><span class="next-t">Mise à jour</span><span class="next-d">Faire passer une application déployée à une nouvelle version de CyberTrain.</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">Le blog terminé, avec sa configuration Kamal.</span></a></li>
     </ul>
   </section>

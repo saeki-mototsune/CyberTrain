@@ -80,11 +80,11 @@
     <div class="hero-copy">
       <div class="hero-main">
         <p class="tagline">Des applications web à la Rails, compilées en un seul binaire&nbsp;natif.</p>
-        <p class="pitch">CyberTrain est un framework d’applications web à la Rails écrit nativement pour Spinel, le compilateur Ruby AOT de matz. Vous gardez le vocabulaire (<code>resources</code>, <code>before_action</code>, <code>validates</code>, <code>form_with</code>, scaffolds), tandis que <code>cybertrain build</code> compile les contrôleurs, les modèles, les vues et le framework lui-même en un seul binaire natif, sans Rack, sans gems à l’exécution et sans interpréteur Ruby dans l’artefact.</p>
+        <p class="pitch">Écrivez routes, contrôleurs, modèles et vues ERB comme dans Rails, scaffolds compris. <code>cybertrain build</code> les compile, avec le framework, en un seul binaire natif grâce à Spinel, le compilateur Ruby AOT de matz&nbsp;: ni Rack, ni gems, ni interpréteur Ruby en production.</p>
         <div class="cta-row">
-          <a class="btn btn-primary" href="tutorial.html">Commencer<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+          <a class="btn btn-primary" href="tutorial.html">Commencer le tutoriel<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
           <a class="btn btn-ghost" href="playground.html">Essayer dans le navigateur</a>
-          <a class="btn btn-ghost" href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">Voir sur GitHub</a>
+          <a class="btn btn-ghost" href="guide/index.html">Lire les guides</a>
         </div>
       </div>
       <div class="hero-term" id="quick-start">
@@ -92,23 +92,23 @@
         <figure class="code code-term" data-lang="shell">
 <figcaption><span class="code-path">terminal &mdash; n’importe quel répertoire, puis&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Code&nbsp;: terminal, démarrage rapide"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># installe Spinel la première fois (quelques minutes)</span></span>
+<span class="ln cmd">cybertrain new blog  <span class="c"># installe Spinel la 1re fois (minutes)</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
-<span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000/articles</span></span>
-<span class="ln cmd">cybertrain build             <span class="c"># production: dist/blog, dist/public/, dist/storage/, dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
+<span class="ln cmd">cybertrain server    <span class="c"># http://127.0.0.1:3000/articles</span></span>
+<span class="ln cmd">cybertrain build     <span class="c"># production : un seul binaire dans dist/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
 </figure>
-        <p class="term-note">Nécessite Ruby&nbsp;3.2+ pour la commande <code>cybertrain</code> et, en développement, pour l’aperçu CRuby (qui charge aussi <code>fiddle</code>&nbsp;; la production n’a pas besoin de Ruby), ainsi que <code>git</code>, <code>make</code>, <code>curl</code>, un compilateur C et les en-têtes de SQLite&nbsp;3, zlib et OpenSSL&nbsp;: <a href="guide/install.html#requirements">avant de commencer</a>. Lancez le build avec <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code>, en définissant <code>CYBERTRAIN_SECRET_KEY_BASE</code>.</p>
+        <p class="term-note">Il faut Ruby&nbsp;3.2+ (avec <code>fiddle</code>), <code>git</code>, <code>make</code>, <code>curl</code>, un compilateur C et les en-têtes de SQLite&nbsp;3, zlib et OpenSSL&nbsp;; <code>cybertrain doctor</code> les vérifie (<a href="guide/install.html#requirements">prérequis</a>). Le build, lui, se passe de Ruby&nbsp;: <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code>, avec <code>CYBERTRAIN_SECRET_KEY_BASE</code> défini.</p>
       </div>
     </div>
   </div>
   <div class="wrap">
-    <ul class="spec-strip" aria-label="En bref">
-      <li><span class="spec-k">Serveur</span><span class="spec-v">HTTP/1.1, sans Rack</span></li>
-      <li><span class="spec-k">Exécution</span><span class="spec-v">Ni gems, ni interpréteur</span></li>
-      <li><span class="spec-k">Base de données</span><span class="spec-v">SQLite via la FFI de Spinel</span></li>
-      <li><span class="spec-k">CI</span><span class="spec-v">Linux et macOS</span></li>
+    <ul class="spec-strip spec-why" aria-label="Pourquoi CyberTrain">
+      <li><span class="spec-k">À la Rails</span><span class="spec-v">Le vocabulaire que vous connaissez</span><span class="spec-d"><code>resources</code>, <code>before_action</code>, <code>validates</code>, <code>form_with</code> et les scaffolds, comme dans Rails.</span></li>
+      <li><span class="spec-k">Un seul binaire</span><span class="spec-v">Pas de Ruby en production</span><span class="spec-d">Votre application et le framework, compilés dans <code>dist/</code>&nbsp;: ni Rack, ni gems, ni interpréteur.</span></li>
+      <li><span class="spec-k">Rapide et sobre</span><span class="spec-v">Mesuré face à Rails 8.1</span><span class="spec-d">Plus de requêtes par seconde, pour une fraction de la mémoire&nbsp;: <a href="#performance">les chiffres</a>.</span></li>
+      <li><span class="spec-k">Simple à déployer</span><span class="spec-v">Un binaire, un fichier SQLite</span><span class="spec-d">Derrière Caddy ou kamal-proxy&nbsp;; <code>cybertrain new</code> écrit la configuration Kamal. <a href="deploy.html">Déployer</a>.</span></li>
     </ul>
     <div class="is-not">
       <div class="is-not-head">
@@ -116,7 +116,7 @@
         <p class="is-not-intro">Pour les développeurs Rails qui veulent un seul binaire natif et qui s’accommodent d’un projet jeune et d’un sous-ensemble de Ruby.</p>
       </div>
       <ul class="not-list">
-        <li><h3>Pas compatible Rails ni Rack</h3><p>Aucune compatibilité Rack et aucune gem à l’exécution&nbsp;: uniquement les paquets <code>spin-index</code> propres à Spinel qui compilent avec son sous-ensemble de Ruby.</p></li>
+        <li><h3>Pas du code Rails exécuté tel quel</h3><p>Une application s’écrit dans le sous-ensemble de Ruby de Spinel, avec l’API de CyberTrain&nbsp;: pas de Rack, et aucune gem à l’exécution hormis les paquets <code>spin-index</code> propres à Spinel. Porter à la main une application Rails est un objectif, et une base SQLite créée par une application Rails peut être <a href="guide/models.html#taking-over-a-database-rails-created">reprise telle quelle</a>.</p></li>
         <li><h3>Pas prêt pour la production</h3><p>CyberTrain est en pré-alpha. Le blog d’exemple est testé par la CI sous Linux et macOS.</p></li>
       </ul>
     </div>
@@ -225,55 +225,29 @@
   <div class="wrap"><div class="sec-grid">
     <div class="sec-head"><span class="sec-num" aria-hidden="true">02</span><p class="sec-label">Ce qui fonctionne</p></div>
     <div class="sec-body">
-      <h2 id="feat-h">La partie de Rails dont vous vous servez en premier, écrite nativement pour Spinel.</h2>
+      <h2 id="feat-h">Ce que vous utilisez dans Rails, déjà là.</h2>
+      <p class="lead">Tout ce qui suit fonctionne de bout en bout aujourd’hui, et <code>examples/blog</code>, le blog du guide Getting Started de Rails, est construit dessus. Les jobs, Turbo Streams, les feeds, le mail, le cache, la limitation de débit et les rapports d’erreur tiennent chacun en une ligne <code>require</code>&nbsp;: une application ne compile que ce qu’elle utilise.</p>
     </div>
     <ul class="features sec-full">
-      <li class="feature"><span class="feat-idx" aria-hidden="true">01</span><h3>Serveur HTTP natif</h3><p>Serveur HTTP/1.1 en Ruby pur, avec un green thread par connexion et des requêtes et réponses typées. Pas de couche Rack&nbsp;; placez nginx ou Caddy devant pour le TLS.</p><p class="feat-ref"><code>TCPServer#accept</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">02</span><h3>Routage et contrôleurs</h3><p><code>resources</code>, routes imbriquées, <code>before_action</code>, <code>after_action</code> et <code>rescue_from</code>, générés en Ruby pur à la compilation. Les strong params et le flash suivi d’une redirection fonctionnent comme dans Rails.</p><p class="feat-ref"><code>config/routes.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">03</span><h3>Sessions, flash, CSRF</h3><p>Les sessions par cookie chiffré (AES-256-GCM), les messages flash et la protection CSRF sont activés par défaut. Les formulaires portent le jeton automatiquement&nbsp;; les POST falsifiés reçoivent une 403.</p><p class="feat-ref"><code>_cybertrain_session</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">04</span><h3>Templates façon ERB</h3><p>Les vues ressemblent à de l’ERB Rails, avec layouts, partiels, <code>form_with</code> et <code>link_to</code>. En développement, elles sont lues depuis le disque, donc les modifications ne demandent pas de recompilation. <code>cybertrain build</code> les intègre.</p><p class="feat-ref"><code>app/views/**/*.html.erb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">05</span><h3>Modèles SQLite</h3><p>Validations, callbacks et associations déduites des clés étrangères. Dialogue avec SQLite via la FFI de Spinel, avec un pool de connexions&nbsp;; chaque requête utilise des paramètres liés.</p><p class="feat-ref"><code>ffi_func · ffi_lib</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">06</span><h3>Migrations et scaffolds</h3><p><code>cybertrain generate scaffold</code> écrit la migration, le modèle, le contrôleur et cinq vues. <code>cybertrain db migrate</code> génère, applique les migrations, réécrit <code>db/schema.rb</code> et génère à nouveau.</p><p class="feat-ref"><code>db/migrate/*.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">07</span><h3>Boucle de dev à chaud</h3><p><code>cybertrain server</code> surveille votre code et, après une modification Ruby, répond en moins d’une seconde depuis un aperçu CRuby pendant que Spinel compile en arrière-plan&nbsp;; le binaire compilé reprend ensuite le même port. Un build échoué laisse l’aperçu servir et affiche la sortie du compilateur.</p><p class="feat-ref"><code>X-Cybertrain-Runtime: cruby|spinel</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">08</span><h3>Tests</h3><p>Des classes de test à la Rails (<code>ActiveSupport::TestCase</code>, <code>ActionDispatch::IntegrationTest</code>) avec des fixtures&nbsp;; les générateurs les écrivent. <code>cybertrain test</code> les compile en un seul programme et l’exécute.</p><p class="feat-ref"><code>test/**/*_test.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">09</span><h3>Jobs en arrière-plan</h3><p>Des classes de job avec reprises, planifications cron et une page des jobs, conservés dans la base SQLite de l’application. <code>./blog worker</code> les exécute dans un processus à part.</p><p class="feat-ref"><code>app/jobs/*.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">10</span><h3>Turbo Streams</h3><p><code>turbo_stream_from</code> dans une vue et <code>broadcast_append_to</code> depuis une action ou un job, par Server-Sent Events ou WebSocket.</p><p class="feat-ref"><code>require "cybertrain/streams"</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">11</span><h3>Connexion et envoi de fichiers</h3><p><code>cybertrain generate authentication</code> (inscription ou sur invitation seulement, réinitialisation du mot de passe, confirmation) et <code>cybertrain generate attachment</code> écrivent du code qui est à vous et que vous pouvez modifier.</p><p class="feat-ref"><code>cybertrain generate</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">12</span><h3>Seulement ce que vous utilisez</h3><p>Les jobs, Turbo Streams, les feeds, le mailer, le cache et la limitation de débit tiennent chacun en une ligne <code>require</code>&nbsp;; une nouvelle application ne compile que le cœur.</p><p class="feat-ref"><code>require "cybertrain/core"</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">01</span><h3>Routage et contrôleurs</h3><p><code>resources</code>, namespaces, formats et <code>respond_to</code>, <code>before_action</code>, concerns et strong parameters, générés en Ruby pur à la compilation.</p><p class="feat-ref"><a href="guide/requests.html">Requêtes</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">02</span><h3>Vues ERB et composants</h3><p>Layouts, partiels, <code>form_with</code>, les helpers de nombres et de Turbo, les composants de vue et les helpers d’application. En développement, les vues sont lues depuis le disque&nbsp;: une modification ne demande pas de recompilation.</p><p class="feat-ref"><a href="guide/template-language.html">Langage de templates</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">03</span><h3>Modèles SQLite</h3><p>Migrations, validateurs de Rails, associations déduites des clés étrangères ou déclarées en une ligne, avec <code>includes</code>, colonnes decimal, json et date, colonnes chiffrées. Chaque requête utilise des paramètres liés.</p><p class="feat-ref"><a href="guide/models.html">Modèles et base de données</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">04</span><h3>Scaffolds et générateurs</h3><p><code>cybertrain generate scaffold</code> écrit la migration, le modèle, le contrôleur, les vues et les tests&nbsp;; les helpers, composants et jobs ont aussi leurs générateurs. Le code qu’ils écrivent est à vous.</p><p class="feat-ref"><a href="guide/install.html#the-cybertrain-command">La commande cybertrain</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">05</span><h3>Boucle de dev à chaud</h3><p><code>cybertrain server</code> surveille votre code et, après une modification Ruby, répond en moins d’une seconde depuis un aperçu CRuby pendant que Spinel compile en arrière-plan&nbsp;; le binaire compilé reprend ensuite le même port. Un build échoué laisse l’aperçu servir et affiche la sortie du compilateur.</p><p class="feat-ref"><a href="guide/how-it-works.html#the-development-loop">La boucle de développement</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">06</span><h3>Connexion, générée</h3><p><code>cybertrain generate authentication</code> écrit dans votre application la connexion, l’inscription ou l’accès sur invitation, la réinitialisation du mot de passe, la confirmation, le verrouillage, «&nbsp;se souvenir de moi&nbsp;», une page de compte et des administrateurs.</p><p class="feat-ref"><a href="guide/authentication.html">Authentification</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">07</span><h3>Sûr par défaut</h3><p>Sessions par cookie chiffré (AES-256-GCM), flash et protection CSRF sont activés par défaut&nbsp;; Content Security Policy, <code>force_ssl</code>, contrôle des hôtes et limitation de débit sont intégrés.</p><p class="feat-ref"><a href="guide/requests.html#cookies-and-the-session">Cookies et session</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">08</span><h3>Jobs en arrière-plan</h3><p>Des classes de job avec reprises, planifications <code>every</code> et <code>cron</code> et une page des jobs, conservés dans la base SQLite de l’application. <code>./blog worker</code> les exécute dans un processus à part.</p><p class="feat-ref"><a href="guide/background-and-operations.html">Tâches de fond</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">09</span><h3>Turbo Streams</h3><p><code>turbo_stream_from</code> dans une vue et <code>broadcast_append_to</code> depuis une action ou un job, par Server-Sent Events ou WebSocket.</p><p class="feat-ref"><a href="guide/realtime.html">Temps réel</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">10</span><h3>Assets et traductions</h3><p>Feuilles de style, images et JavaScript avec empreinte et import map&nbsp;; <code>t</code> et <code>l</code> de Rails avec des dictionnaires compilés dans le binaire, anglais et japonais fournis.</p><p class="feat-ref"><a href="guide/assets.html">Assets</a> <span aria-hidden="true">&middot;</span> <a href="guide/i18n.html">Internationalisation</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">11</span><h3>Tests</h3><p>Des classes de test à la Rails (<code>ActiveSupport::TestCase</code>, <code>ActionDispatch::IntegrationTest</code>) avec fixtures, <code>assert_select</code> et voyage dans le temps&nbsp;; les générateurs les écrivent. <code>cybertrain test</code> les compile en un seul programme et l’exécute.</p><p class="feat-ref"><a href="guide/testing.html">Tests</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">12</span><h3>Journaux, erreurs, appels sortants</h3><p>Des lignes de journal avec identifiant de requête et tags, des lignes JSON pour un collecteur, des rapports d’erreur vers Sentry ou GlitchTip, et des clients HTTP, SMTP et WebSocket pour les services qu’appelle une application.</p><p class="feat-ref"><a href="guide/logs-and-errors.html">Journaux et erreurs</a> <span aria-hidden="true">&middot;</span> <a href="guide/external-services.html">Appels sortants</a></p></li>
     </ul>
-  </div></div>
-</section>
-
-<section class="sec" id="framework-and-cli" aria-labelledby="parts-h">
-  <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">03</span><p class="sec-label">Framework et CLI</p></div>
-    <div class="sec-body">
-      <h2 id="parts-h">Un nom, deux parties.</h2>
-      <p class="lead"><code>gem install cybertrain</code> installe une commande, pas le framework. Le framework est un paquet Spinel dont votre application dépend et qu’elle compile avec elle. La gem vous fournit la commande <code>cybertrain</code>, qui crée l’application, installe Spinel et lance les outils de Spinel pour vous.</p>
-    </div>
-    <div class="sec-full parts">
-      <article class="part" aria-labelledby="part-fw">
-        <div class="part-head"><p class="part-k">Paquet Spinel</p><h3 id="part-fw">Le framework</h3></div>
-        <p class="part-what">La bibliothèque sur laquelle repose votre application.</p>
-        <div class="part-fact"><p class="fact-k">Contenu</p><p>Le serveur HTTP, le routage et les contrôleurs, les sessions et la protection CSRF, l’interpréteur de templates, les modèles SQLite et les migrations, les sous-systèmes optionnels (jobs, Turbo Streams, mail, cache), le framework de test, ainsi que le générateur de code derrière <code>spin run gen</code>.</p></div>
-        <div class="part-fact"><p class="fact-k">Comment l’obtenir</p><p>Vous ne l’installez pas. Le <code>spin.toml</code> de votre application désigne le tag de version de ce dépôt qui correspond à votre commande <code>cybertrain</code>, et <code>spin lock</code> le récupère dans le cache de spin et épingle le commit dans <code>spin.lock</code>. Rien n’est copié dans votre application.</p></div>
-      </article>
-      <article class="part" aria-labelledby="part-cli">
-        <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli">La commande <code>cybertrain</code></h3></div>
-        <p class="part-what">L’outil qui crée, compile et lance votre application.</p>
-        <div class="part-fact"><p class="fact-k">Contenu</p><p>Uniquement la commande <code>cybertrain</code>&nbsp;: <code>new</code>, <code>generate</code> (scaffold, authentication, attachment, job, component, helper), <code>db</code>, <code>server</code>, <code>build</code>, <code>test</code>, <code>secret</code>, <code>spin</code>, <code>setup</code> et <code>doctor</code>. Ni le framework ni Spinel ne sont dans la gem.</p></div>
-        <div class="part-fact"><p class="fact-k">Comment l’obtenir</p><p><code>gem install cybertrain</code>. À la première utilisation, elle compile la version épinglée de Spinel dans <code>~/.cybertrain</code>, sauf si cette version est déjà dans votre <code>PATH</code>.</p></div>
-      </article>
-    </div>
-    <div class="sec-full">
-      <p class="footnote">Les deux sont publiés à partir du même tag, et la commande refuse de compiler une application dont le framework est d’une autre version. <a href="guide/install.html#moving-an-app-to-a-new-release">Comment une application passe à une nouvelle version</a> est expliqué dans le guide d’installation.</p>
-    </div>
   </div></div>
 </section>
 
 <section class="sec" id="how-it-works" aria-labelledby="how-h">
   <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">04</span><p class="sec-label">Fonctionnement</p></div>
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">03</span><p class="sec-label">Fonctionnement</p></div>
     <div class="sec-body">
       <h2 id="how-h">La métaprogrammation a lieu une seule fois, à la compilation.</h2>
       <p class="lead">Spinel compile à l’avance et n’a pas d’<code>eval</code>. Là où Rails recourt à <code>method_missing</code> et à <code>define_method</code> à l’exécution, <code>spin run gen</code> écrit donc du Ruby pur que vous pouvez lire et commiter, et seules les vues sont interprétées.</p>
@@ -290,7 +264,7 @@
         <li><span class="step-n" aria-hidden="true">1</span><h3>Générer à la compilation</h3><p><code>spin run gen</code> lit <code>db/schema.rb</code> et <code>config/routes.rb</code>, analyse <code>app/controllers</code> et <code>app/models</code>, et écrit du Ruby pur et lisible dans <code>gen/</code>. <code>cybertrain db migrate</code>, <code>server</code> et <code>build</code> le lancent pour vous.</p></li>
         <li><span class="step-n" aria-hidden="true">2</span><h3>Commiter <code>gen/</code></h3><p>Il est versionné car <code>spin build</code> et <code>spin test</code> n’ont pas de hook pour générer d’abord. La CI relance <code>spin run gen</code> et échoue en cas de diff&nbsp;: du code généré périmé ne peut donc pas être fusionné.</p></li>
         <li><span class="step-n" aria-hidden="true">3</span><h3>Interpréter les vues</h3><p>Un interpréteur d’arbre (tree-walking) rend les <code>app/views/**/*.html.erb</code>, lus depuis le disque en développement et intégrés par <code>cybertrain build</code>. Spinel n’a pas d’<code>eval</code>, il s’agit donc d’une grammaire fermée, pas de vrai Ruby.</p></li>
-        <li><span class="step-n" aria-hidden="true">4</span><h3>Servir avec des green threads, stocker dans SQLite</h3><p>Un serveur HTTP/1.1 en Ruby pur exécute un green thread Spinel par connexion. Les modèles dialoguent avec SQLite via <code>ffi_func</code>/<code>ffi_lib</code>, avec un pool de 4&nbsp;connexions.</p></li>
+        <li><span class="step-n" aria-hidden="true">4</span><h3>Servir avec des green threads, stocker dans SQLite</h3><p>Un serveur HTTP/1.1 en Ruby pur, spinel-http, exécute un green thread Spinel par connexion. Les modèles dialoguent avec SQLite via <code>ffi_func</code>/<code>ffi_lib</code>, avec un pool de 4&nbsp;connexions.</p></li>
         <li><span class="step-n" aria-hidden="true">5</span><h3>Aperçu, puis compilation, en développement</h3><p><code>cybertrain server</code> sert tout de suite une modification Ruby depuis un aperçu CRuby, compile le binaire en arrière-plan et lui passe le port quand la compilation se termine (environ une minute sur examples/blog). Un build échoué laisse l’aperçu servir, avec la sortie du compilateur en bannière&nbsp;; <code>cybertrain server --spinel</code> lance la boucle compilée seule.</p></li>
       </ol>
       <div class="cmp-foot">
@@ -302,7 +276,7 @@
 
 <section class="sec" id="rails-vs-cybertrain" aria-labelledby="cmp-h">
   <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">05</span><p class="sec-label">Rails vs CyberTrain</p></div>
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">04</span><p class="sec-label">Rails vs CyberTrain</p></div>
     <div class="sec-body">
       <h2 id="cmp-h">Même vocabulaire. Des règles différentes, écrites noir sur blanc.</h2>
       <p class="lead">Un compilateur AOT change quelques habitudes. Voici celles que vous rencontrerez en premier.</p>
@@ -328,6 +302,33 @@
         <p>Liste non exhaustive.</p>
         <a class="more" href="guide/how-it-works.html#differences-from-rails">Le tableau complet</a>
       </div>
+    </div>
+  </div></div>
+</section>
+
+<section class="sec" id="framework-and-cli" aria-labelledby="parts-h">
+  <div class="wrap"><div class="sec-grid">
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">05</span><p class="sec-label">Framework et CLI</p></div>
+    <div class="sec-body">
+      <h2 id="parts-h">Un nom, deux parties.</h2>
+      <p class="lead"><code>gem install cybertrain</code> installe une commande, pas le framework. Le framework est un paquet Spinel dont votre application dépend et qu’elle compile avec elle. La gem vous fournit la commande <code>cybertrain</code>, qui crée l’application, installe Spinel et lance les outils de Spinel pour vous.</p>
+    </div>
+    <div class="sec-full parts">
+      <article class="part" aria-labelledby="part-fw">
+        <div class="part-head"><p class="part-k">Paquet Spinel</p><h3 id="part-fw">Le framework</h3></div>
+        <p class="part-what">La bibliothèque sur laquelle repose votre application.</p>
+        <div class="part-fact"><p class="fact-k">Contenu</p><p>Le routage et les contrôleurs, les sessions et la protection CSRF, l’interpréteur de templates, les modèles SQLite et les migrations, les sous-systèmes optionnels (jobs, Turbo Streams, mail, cache), le framework de test, ainsi que le générateur de code derrière <code>spin run gen</code>. Le serveur HTTP est <a href="https://github.com/saeki-mototsune/spinel-http" rel="noopener">spinel-http</a>, une bibliothèque à part dont dépend le framework.</p></div>
+        <div class="part-fact"><p class="fact-k">Comment l’obtenir</p><p>Vous ne l’installez pas. Le <code>spin.toml</code> de votre application désigne le tag de version de ce dépôt qui correspond à votre commande <code>cybertrain</code>, et <code>spin lock</code> le récupère, avec spinel-http, dans le cache de spin et épingle les deux commits dans <code>spin.lock</code>. Rien n’est copié dans votre application.</p></div>
+      </article>
+      <article class="part" aria-labelledby="part-cli">
+        <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli">La commande <code>cybertrain</code></h3></div>
+        <p class="part-what">L’outil qui crée, compile et lance votre application.</p>
+        <div class="part-fact"><p class="fact-k">Contenu</p><p>Uniquement la commande <code>cybertrain</code>&nbsp;: <code>new</code>, <code>generate</code> (scaffold, authentication, attachment, job, component, helper), <code>db</code>, <code>server</code>, <code>build</code>, <code>test</code>, <code>secret</code>, <code>spin</code>, <code>setup</code>, <code>doctor</code> et <code>version</code>. Ni le framework ni Spinel ne sont dans la gem.</p></div>
+        <div class="part-fact"><p class="fact-k">Comment l’obtenir</p><p><code>gem install cybertrain</code>. À la première utilisation, elle compile la version épinglée de Spinel dans <code>~/.cybertrain</code>, sauf si cette version est déjà dans votre <code>PATH</code>.</p></div>
+      </article>
+    </div>
+    <div class="sec-full">
+      <p class="footnote">Les deux sont publiés à partir du même tag, et la commande refuse de compiler une application dont le framework est d’une autre version. Le guide <a href="guide/upgrading.html">Mise à jour</a> explique, étape par étape, comment faire passer une application à une nouvelle version.</p>
     </div>
   </div></div>
 </section>
@@ -374,9 +375,11 @@
   <div class="wrap closer-inner">
     <div class="closer-main">
       <h2 id="close-h">Construisez nativement le blog du guide Getting Started de Rails.</h2>
-      <p class="lead">Des articles avec commentaires, de <code>cybertrain new</code> à <code>cybertrain build</code>, en dix-neuf étapes.</p>
+      <p class="lead">Des articles avec commentaires, de <code>cybertrain new</code> à <code>cybertrain build</code>, étape par étape. Envie de jeter un œil d’abord&nbsp;? Le bac à sable ouvre le blog dans votre navigateur, sans rien installer.</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="tutorial.html">Commencer<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+        <a class="btn btn-primary" href="tutorial.html">Commencer le tutoriel<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+        <a class="btn btn-ghost" href="playground.html">Ouvrir le bac à sable</a>
+        <a class="btn btn-ghost" href="guide/index.html">Parcourir les guides</a>
       </div>
     </div>
     <nav class="outline" aria-label="Plan du tutoriel">
@@ -394,14 +397,17 @@
         <li><a href="tutorial.html#nested-routes"><span class="ol-n">09</span>Imbriquer les routes</a></li>
         <li><a href="tutorial.html#comments-controller"><span class="ol-n">10</span>Le contrôleur CommentsController</a></li>
         <li><a href="tutorial.html#views"><span class="ol-n">11</span>Vues et partiels</a></li>
-        <li><a href="tutorial.html#component"><span class="ol-n">12</span>Un composant et un helper</a></li>
-        <li><a href="tutorial.html#turbo"><span class="ol-n">13</span>Des commentaires en direct avec Turbo</a></li>
-        <li><a href="tutorial.html#job"><span class="ol-n">14</span>Un job d’arrière-plan</a></li>
-        <li><a href="tutorial.html#json"><span class="ol-n">15</span>Répondre en JSON</a></li>
-        <li><a href="tutorial.html#test"><span class="ol-n">16</span>Tester</a></li>
-        <li><a href="tutorial.html#authentication"><span class="ol-n">17</span>Ajouter la connexion</a></li>
-        <li><a href="tutorial.html#attachments"><span class="ol-n">18</span>Ajouter une image de couverture</a></li>
-        <li><a href="tutorial.html#ship"><span class="ol-n">19</span>Compiler pour le déploiement</a></li>
+        <li><a href="tutorial.html#test"><span class="ol-n">12</span>Tester</a></li>
+      </ol>
+      <p class="outline-k">Tutoriel avancé</p>
+      <ol start="13">
+        <li><a href="guide/advanced-tutorial.html#component"><span class="ol-n">13</span>Un composant et un helper</a></li>
+        <li><a href="guide/advanced-tutorial.html#turbo"><span class="ol-n">14</span>Des commentaires en direct avec Turbo</a></li>
+        <li><a href="guide/advanced-tutorial.html#job"><span class="ol-n">15</span>Un job d’arrière-plan</a></li>
+        <li><a href="guide/advanced-tutorial.html#json"><span class="ol-n">16</span>Répondre en JSON</a></li>
+        <li><a href="guide/advanced-tutorial.html#authentication"><span class="ol-n">17</span>Ajouter la connexion</a></li>
+        <li><a href="guide/advanced-tutorial.html#attachments"><span class="ol-n">18</span>Ajouter une image de couverture</a></li>
+        <li><a href="guide/advanced-tutorial.html#ship"><span class="ol-n">19</span>Compiler pour le déploiement</a></li>
       </ol>
     </nav>
   </div>

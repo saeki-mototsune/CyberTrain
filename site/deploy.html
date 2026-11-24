@@ -77,7 +77,7 @@
   <header class="doc-hero">
     <p class="crumb"><a href="index.html">CyberTrain</a><span aria-hidden="true"> / </span><span>Deploy</span></p>
     <h1>Deploy to&nbsp;production</h1>
-    <p class="doc-intro">A CyberTrain app ships as one native binary and a folder beside it. It speaks plain HTTP, so something in front of it terminates HTTPS: kamal-proxy when you deploy with Kamal, or Caddy on a server you run yourself. This page explains how the pieces fit and how the two ways compare; the guides linked at each step have every command.</p>
+    <p class="doc-intro">A CyberTrain app ships as one native binary with a folder beside it, and needs no Ruby to run. The binary speaks plain HTTP, so kamal-proxy (with Kamal) or Caddy (on a server you run yourself) terminates HTTPS in front of it. This page shows how the pieces fit and how the two ways compare; the guides linked from each step have every command.</p>
     <dl class="doc-meta">
       <div><dt>You need</dt><dd>A Linux server you can SSH into, and a domain</dd></div>
       <div><dt>You run</dt><dd>One binary, behind a reverse proxy, with SQLite beside it</dd></div>
@@ -109,7 +109,7 @@
     <p class="stage"><span class="stage-k">You are here<span class="sr-only">:</span></span>Run time <span aria-hidden="true">&middot;</span> <code>dist/</code></p>
     <h2 id="h-what-runs"><span class="step-num" aria-hidden="true">01</span>What runs in production</h2>
     <p class="why"><span class="why-k">Why</span><span class="why-t">Knowing what the binary does, and what it leaves to others, decides the rest of the setup.</span></p>
-    <p><code>cybertrain build</code> compiles the framework, your controllers and models and the template interpreter into <code>dist/blog</code>, with every view embedded, and copies <code>public/</code> beside it. Nothing else is installed where it runs: no Ruby, no gems.</p>
+    <p><code>cybertrain build</code> compiles the framework, your controllers and models and the template interpreter into <code>dist/blog</code>, with every view embedded, and puts <code>public/</code>, <code>storage/</code> and <code>tmp/</code> beside it. Nothing else is installed where it runs: no Ruby, no gems.</p>
     <figure class="code" data-lang="text">
 <figcaption><span class="code-path">production</span><span class="code-lang">text</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Code: what runs in production"><code><span class="ln">browser ──HTTPS──▶ reverse proxy (kamal-proxy or Caddy)</span>
@@ -226,10 +226,12 @@
     <ul class="points">
       <li><strong>Every change is a deploy.</strong> Views are embedded at build time, so even a view-only change needs a rebuild and a restart. Commit <code>gen/</code> with the change: the deploy script stops on a stale <code>gen/</code>.</li>
       <li><strong>Migrations run before the new code serves:</strong> in the deploy script, or when the container starts. Remove a column in a later deploy, once no running code reads it.</li>
-      <li><strong>Back up with SQLite&rsquo;s <code>.backup</code>,</strong> not by copying the file: it takes a consistent copy while the app writes.</li>
+      <li><strong>Back up with <code>./blog db backup</code>,</strong> not by copying the file: it takes a consistent copy while the app keeps serving, and <code>--keep 14</code> keeps the newest 14. <a href="guide/background-and-operations.html#operations-backups-vacuum-health-check">Backups</a>.</li>
       <li><strong>Rolling back past a migration</strong> means rolling the database back too, with <code>db rollback</code> from the newer release, before you switch.</li>
       <li><strong>Stopping is graceful:</strong> on <code>SIGTERM</code> the server stops accepting, finishes the requests in flight and exits, after 10 seconds at most.</li>
       <li><strong>One binary, several roles.</strong> With the jobs subsystem required, <code>./blog worker</code> runs the jobs and scheduled tasks without HTTP; with the feeds subsystem, <code>./blog feeds</code> runs the WebSocket subscriptions. <code>GET /up</code> answers 503 when the database, the worker or a feed is not healthy. <a href="guide/background-and-operations.html#process-roles">Process roles</a>.</li>
+      <li><strong>Every log line carries a request id,</strong> also sent back in <code>X-Request-Id</code>, so one grep finds a request and the jobs it queued. <code>CYBERTRAIN_LOG_FORMAT=json</code> writes JSON lines for a log collector, and <code>CYBERTRAIN_SENTRY_DSN</code> sends error reports to Sentry or GlitchTip. <a href="guide/logs-and-errors.html">Logs and error reporting</a>.</li>
+      <li><strong>A new CyberTrain release</strong> is taken up the same way every time, from installing the new command to the deploy. <a href="guide/upgrading.html">Upgrading</a>.</li>
     </ul>
   </section>
 
@@ -238,7 +240,8 @@
     <ul class="next-list">
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><span class="next-t"><code>docs/deploy-kamal.md</code></span><span class="next-d">Deploying with Kamal, step by step.</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><span class="next-t"><code>docs/deploy.en.md</code></span><span class="next-d">An Ubuntu server with systemd and Caddy, from start to backups (in Japanese: <code>docs/deploy.md</code>).</span></a></li>
-      <li><a href="tutorial.html#ship"><span class="next-t">Build for deployment</span><span class="next-d">The tutorial&rsquo;s last step: <code>cybertrain build</code> and <code>dist/</code>.</span></a></li>
+      <li><a href="guide/advanced-tutorial.html#ship"><span class="next-t">Build for deployment</span><span class="next-d">The advanced tutorial&rsquo;s last step: <code>cybertrain build</code> and <code>dist/</code>.</span></a></li>
+      <li><a href="guide/upgrading.html"><span class="next-t">Upgrading</span><span class="next-d">Moving a deployed app to a new CyberTrain release.</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">The finished blog, with its Kamal setup.</span></a></li>
     </ul>
   </section>
