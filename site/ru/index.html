@@ -116,7 +116,7 @@
         <p class="is-not-intro">Для Rails-разработчиков, которым нужен один нативный бинарный файл и которых не смущают молодой проект и подмножество Ruby.</p>
       </div>
       <ul class="not-list">
-        <li><h3>Не совместим с Rails и Rack</h3><p>Нет совместимости с Rack и нет гемов во время выполнения: только собственные пакеты Spinel из <code>spin-index</code>, которые компилируются в рамках его подмножества Ruby.</p></li>
+        <li><h3>Код Rails не запускается как есть</h3><p>Приложение пишется на подмножестве Ruby, которое понимает Spinel, под API CyberTrain: без Rack и без гемов во время выполнения, кроме собственных пакетов Spinel из <code>spin-index</code>. Ручной перенос приложения Rails — одна из целей, а базу SQLite, созданную приложением Rails, можно <a href="guide/models.html#taking-over-a-database-rails-created">взять как есть</a>.</p></li>
         <li><h3>Не готов к продакшену</h3><p>CyberTrain находится в стадии пре-альфа. Пример блога проверяется в CI на Linux и macOS.</p></li>
       </ul>
     </div>
@@ -255,18 +255,18 @@
       <article class="part" aria-labelledby="part-fw">
         <div class="part-head"><p class="part-k">Пакет Spinel</p><h3 id="part-fw">Фреймворк</h3></div>
         <p class="part-what">Библиотека, на которой построено ваше приложение.</p>
-        <div class="part-fact"><p class="fact-k">Что внутри</p><p>HTTP-сервер, маршрутизация и контроллеры, сессии и защита от CSRF, интерпретатор шаблонов, модели и миграции SQLite, необязательные подсистемы (задания, Turbo Streams, почта, кэш), тестовый фреймворк, а также генератор кода, стоящий за <code>spin run gen</code>.</p></div>
-        <div class="part-fact"><p class="fact-k">Как получить</p><p>Устанавливать его не нужно. В <code>spin.toml</code> вашего приложения указан релизный тег этого репозитория, соответствующий вашей команде <code>cybertrain</code>, а <code>spin lock</code> загружает его в кэш spin и фиксирует коммит в <code>spin.lock</code>. В ваше приложение ничего не копируется.</p></div>
+        <div class="part-fact"><p class="fact-k">Что внутри</p><p>Маршрутизация и контроллеры, сессии и защита от CSRF, интерпретатор шаблонов, модели и миграции SQLite, необязательные подсистемы (задания, Turbo Streams, почта, кэш), тестовый фреймворк, а также генератор кода, стоящий за <code>spin run gen</code>. HTTP-сервер — это <a href="https://github.com/saeki-mototsune/spinel-http" rel="noopener">spinel-http</a>, отдельная библиотека, от которой зависит фреймворк.</p></div>
+        <div class="part-fact"><p class="fact-k">Как получить</p><p>Устанавливать его не нужно. В <code>spin.toml</code> вашего приложения указан релизный тег этого репозитория, соответствующий вашей команде <code>cybertrain</code>, а <code>spin lock</code> загружает его вместе со spinel-http в кэш spin и фиксирует оба коммита в <code>spin.lock</code>. В ваше приложение ничего не копируется.</p></div>
       </article>
       <article class="part" aria-labelledby="part-cli">
         <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli">Команда <code>cybertrain</code></h3></div>
         <p class="part-what">Инструмент, который создаёт, собирает и запускает ваше приложение.</p>
-        <div class="part-fact"><p class="fact-k">Что внутри</p><p>Только команда <code>cybertrain</code>: <code>new</code>, <code>generate</code> (scaffold, authentication, attachment, job, component, helper), <code>db</code>, <code>server</code>, <code>build</code>, <code>test</code>, <code>secret</code>, <code>spin</code>, <code>setup</code> и <code>doctor</code>. Ни фреймворка, ни Spinel в геме нет.</p></div>
+        <div class="part-fact"><p class="fact-k">Что внутри</p><p>Только команда <code>cybertrain</code>: <code>new</code>, <code>generate</code> (scaffold, authentication, attachment, job, component, helper), <code>db</code>, <code>server</code>, <code>build</code>, <code>test</code>, <code>secret</code>, <code>spin</code>, <code>setup</code>, <code>doctor</code> и <code>version</code>. Ни фреймворка, ни Spinel в геме нет.</p></div>
         <div class="part-fact"><p class="fact-k">Как получить</p><p><code>gem install cybertrain</code>. При первом использовании она собирает зафиксированный релиз Spinel в <code>~/.cybertrain</code>, если этот релиз ещё не доступен в вашем <code>PATH</code>.</p></div>
       </article>
     </div>
     <div class="sec-full">
-      <p class="footnote">Обе части выпускаются из одного тега, и команда отказывается собирать приложение, фреймворк которого относится к другому релизу. <a href="guide/install.html#moving-an-app-to-a-new-release">Как приложение переходит на новый релиз</a> — в руководстве по установке.</p>
+      <p class="footnote">Обе части выпускаются из одного тега, и команда отказывается собирать приложение, фреймворк которого относится к другому релизу. Переход приложения на новый релиз шаг за шагом описан в руководстве <a href="guide/upgrading.html">«Обновление»</a>.</p>
     </div>
   </div></div>
 </section>
@@ -290,7 +290,7 @@
         <li><span class="step-n" aria-hidden="true">1</span><h3>Генерация при сборке</h3><p><code>spin run gen</code> читает <code>db/schema.rb</code> и <code>config/routes.rb</code>, сканирует <code>app/controllers</code> и <code>app/models</code> и записывает обычный, читаемый Ruby в <code>gen/</code>. <code>cybertrain db migrate</code>, <code>server</code> и <code>build</code> запускают его за вас.</p></li>
         <li><span class="step-n" aria-hidden="true">2</span><h3>Коммитьте <code>gen/</code></h3><p>Каталог хранится в репозитории, потому что у <code>spin build</code> и <code>spin test</code> нет хука, чтобы сначала выполнить генерацию. CI заново запускает <code>spin run gen</code> и падает при наличии диффа, поэтому устаревший сгенерированный код не может попасть в ветку.</p></li>
         <li><span class="step-n" aria-hidden="true">3</span><h3>Интерпретация представлений</h3><p>Интерпретатор, обходящий дерево, отображает <code>app/views/**/*.html.erb</code>: в режиме разработки они читаются с диска, а <code>cybertrain build</code> встраивает их в бинарный файл. В Spinel нет <code>eval</code>, поэтому это замкнутая грамматика, а не настоящий Ruby.</p></li>
-        <li><span class="step-n" aria-hidden="true">4</span><h3>Обслуживание зелёными потоками, хранение в SQLite</h3><p>HTTP/1.1-сервер на обычном Ruby запускает по одному зелёному потоку Spinel на соединение. Модели работают с SQLite через <code>ffi_func</code>/<code>ffi_lib</code> с пулом из 4 соединений.</p></li>
+        <li><span class="step-n" aria-hidden="true">4</span><h3>Обслуживание зелёными потоками, хранение в SQLite</h3><p>HTTP/1.1-сервер на обычном Ruby, spinel-http, запускает по одному зелёному потоку Spinel на соединение. Модели работают с SQLite через <code>ffi_func</code>/<code>ffi_lib</code> с пулом из 4 соединений.</p></li>
         <li><span class="step-n" aria-hidden="true">5</span><h3>Превью, затем компиляция, в режиме разработки</h3><p><code>cybertrain server</code> сразу отдаёт правку Ruby через CRuby-превью, собирает бинарный файл в фоне и передаёт ему порт, когда сборка завершится (около минуты на examples/blog). При неудачной сборке продолжает работать превью, а вывод компилятора показывается в баннере; <code>cybertrain server --spinel</code> запускает только скомпилированный цикл.</p></li>
       </ol>
       <div class="cmp-foot">

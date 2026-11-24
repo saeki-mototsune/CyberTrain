@@ -116,7 +116,7 @@
         <p class="is-not-intro">ひとつのネイティブバイナリを求める Rails 開発者のうち、若いプロジェクトと Ruby のサブセットを受け入れられる人のためのものです。</p>
       </div>
       <ul class="not-list">
-        <li><h3>Rails・Rack 互換ではない</h3><p>Rack 互換性はなく、実行時に gem も使えません。使えるのは Spinel 独自の <code>spin-index</code> のパッケージのうち、その Ruby サブセットでコンパイルできるものだけです。</p></li>
+        <li><h3>Rails のコードがそのまま動くわけではない</h3><p>アプリは Spinel の Ruby サブセットで、CyberTrain の API に対して書きます。Rack はなく、実行時に使えるのは Spinel 独自の <code>spin-index</code> のパッケージだけです。Rails アプリを手で移植することは目標のひとつで、Rails アプリが作った SQLite データベースは<a href="guide/models.html#taking-over-a-database-rails-created">そのまま引き継げます</a>。</p></li>
         <li><h3>本番運用には未対応</h3><p>CyberTrain はプレアルファです。サンプルのブログは Linux と macOS の CI で検証されています。</p></li>
       </ul>
     </div>
@@ -255,18 +255,18 @@
       <article class="part" aria-labelledby="part-fw">
         <div class="part-head"><p class="part-k">Spinel パッケージ</p><h3 id="part-fw">フレームワーク</h3></div>
         <p class="part-what">アプリの土台となるライブラリ。</p>
-        <div class="part-fact"><p class="fact-k">中身</p><p>HTTP サーバー、ルーティングとコントローラー、セッションと CSRF 保護、テンプレートインタプリタ、SQLite のモデルとマイグレーション、任意のサブシステム（ジョブ、Turbo Streams、メール、キャッシュ）、テストフレームワーク、そして <code>spin run gen</code> の裏で動くコードジェネレーター。</p></div>
-        <div class="part-fact"><p class="fact-k">入手方法</p><p>インストールは不要です。アプリの <code>spin.toml</code> が、<code>cybertrain</code> コマンドと一致するこのリポジトリのリリースタグを指定し、<code>spin lock</code> がそれを spin のキャッシュに取得して、コミットを <code>spin.lock</code> に固定します。アプリには何もコピーされません。</p></div>
+        <div class="part-fact"><p class="fact-k">中身</p><p>ルーティングとコントローラー、セッションと CSRF 保護、テンプレートインタプリタ、SQLite のモデルとマイグレーション、任意のサブシステム（ジョブ、Turbo Streams、メール、キャッシュ）、テストフレームワーク、そして <code>spin run gen</code> の裏で動くコードジェネレーター。HTTP サーバーは、フレームワークが依存する独立したライブラリ <a href="https://github.com/saeki-mototsune/spinel-http" rel="noopener">spinel-http</a> です。</p></div>
+        <div class="part-fact"><p class="fact-k">入手方法</p><p>インストールは不要です。アプリの <code>spin.toml</code> が、<code>cybertrain</code> コマンドと一致するこのリポジトリのリリースタグを指定し、<code>spin lock</code> がそれを spinel-http とともに spin のキャッシュに取得して、両方のコミットを <code>spin.lock</code> に固定します。アプリには何もコピーされません。</p></div>
       </article>
       <article class="part" aria-labelledby="part-cli">
         <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli"><code>cybertrain</code> コマンド</h3></div>
         <p class="part-what">アプリを作成し、ビルドし、実行するツール。</p>
-        <div class="part-fact"><p class="fact-k">中身</p><p><code>cybertrain</code> コマンドだけです：<code>new</code>、<code>generate</code>（scaffold、authentication、attachment、job、component、helper）、<code>db</code>、<code>server</code>、<code>build</code>、<code>test</code>、<code>secret</code>、<code>spin</code>、<code>setup</code>、<code>doctor</code>。フレームワークも Spinel も gem には含まれません。</p></div>
+        <div class="part-fact"><p class="fact-k">中身</p><p><code>cybertrain</code> コマンドだけです：<code>new</code>、<code>generate</code>（scaffold、authentication、attachment、job、component、helper）、<code>db</code>、<code>server</code>、<code>build</code>、<code>test</code>、<code>secret</code>、<code>spin</code>、<code>setup</code>、<code>doctor</code>、<code>version</code>。フレームワークも Spinel も gem には含まれません。</p></div>
         <div class="part-fact"><p class="fact-k">入手方法</p><p><code>gem install cybertrain</code> です。初回使用時に、固定された Spinel のリリースを <code>~/.cybertrain</code> にビルドします（そのリリースがすでに <code>PATH</code> 上にある場合を除く）。</p></div>
       </article>
     </div>
     <div class="sec-full">
-      <p class="footnote">両者は同じタグからリリースされ、コマンドは、フレームワークが別のリリースになっているアプリのビルドを拒みます。<a href="guide/install.html#moving-an-app-to-a-new-release">アプリを新しいリリースに移行する方法</a>は、インストールのガイドにあります。</p>
+      <p class="footnote">両者は同じタグからリリースされ、コマンドは、フレームワークが別のリリースになっているアプリのビルドを拒みます。アプリを新しいリリースに移行する手順は、<a href="guide/upgrading.html">アップグレード</a>のガイドに順を追って書いてあります。</p>
     </div>
   </div></div>
 </section>
@@ -290,7 +290,7 @@
         <li><span class="step-n" aria-hidden="true">1</span><h3>ビルド時に生成する</h3><p><code>spin run gen</code> は <code>db/schema.rb</code> と <code>config/routes.rb</code> を読み、<code>app/controllers</code> と <code>app/models</code> をスキャンして、読みやすい素の Ruby を <code>gen/</code> に書き出します。<code>cybertrain db migrate</code>、<code>server</code>、<code>build</code> がこれを代わりに実行します。</p></li>
         <li><span class="step-n" aria-hidden="true">2</span><h3><code>gen/</code> をコミットする</h3><p><code>spin build</code> と <code>spin test</code> には先に生成を行うフックがないため、リポジトリに含めます。CI は <code>spin run gen</code> を再実行し、差分があれば失敗するので、古い生成コードがマージされることはありません。</p></li>
         <li><span class="step-n" aria-hidden="true">3</span><h3>ビューを解釈する</h3><p>構文木をたどるインタプリタが <code>app/views/**/*.html.erb</code> をレンダリングします。開発環境ではディスクから読み込み、<code>cybertrain build</code> ではバイナリに埋め込みます。Spinel には <code>eval</code> がないため、これは閉じた文法であり、本物の Ruby ではありません。</p></li>
-        <li><span class="step-n" aria-hidden="true">4</span><h3>グリーンスレッドで配信し、SQLite に保存する</h3><p>素の Ruby で書かれた HTTP/1.1 サーバーが、接続ごとに Spinel のグリーンスレッドを 1 本実行します。モデルは <code>ffi_func</code>/<code>ffi_lib</code> を通じ、4 接続のプールで SQLite とやり取りします。</p></li>
+        <li><span class="step-n" aria-hidden="true">4</span><h3>グリーンスレッドで配信し、SQLite に保存する</h3><p>素の Ruby で書かれた HTTP/1.1 サーバー spinel-http が、接続ごとに Spinel のグリーンスレッドを 1 本実行します。モデルは <code>ffi_func</code>/<code>ffi_lib</code> を通じ、4 接続のプールで SQLite とやり取りします。</p></li>
         <li><span class="step-n" aria-hidden="true">5</span><h3>開発環境ではプレビューしてからコンパイルする</h3><p><code>cybertrain server</code> は Ruby の変更をすぐに CRuby のプレビューで配信し、バックグラウンドでバイナリをビルドして、ビルドが終わるとバイナリにポートを引き継ぎます（examples/blog では約 1 分）。ビルドに失敗した場合はプレビューが配信を続け、コンパイラの出力をバナーに表示します。<code>cybertrain server --spinel</code> はコンパイル版のループだけを実行します。</p></li>
       </ol>
       <div class="cmp-foot">

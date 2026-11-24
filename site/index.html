@@ -116,7 +116,7 @@
         <p class="is-not-intro">For Rails developers who want a single native binary, and who are comfortable with a young project and a Ruby subset.</p>
       </div>
       <ul class="not-list">
-        <li><h3>Not Rails- or Rack-compatible</h3><p>No Rack compatibility and no gems at runtime: only Spinel's own <code>spin-index</code> packages that compile under its Ruby subset.</p></li>
+        <li><h3>Not Rails code run unchanged</h3><p>An app is written in Spinel&rsquo;s Ruby subset against CyberTrain&rsquo;s API: no Rack, and no gems at runtime beyond Spinel&rsquo;s own <code>spin-index</code> packages. Porting a Rails app by hand is a goal, and a SQLite database a Rails app created can be <a href="guide/models.html#taking-over-a-database-rails-created">taken over as it is</a>.</p></li>
         <li><h3>Not production-ready</h3><p>CyberTrain is pre-alpha. The example blog is exercised by CI on Linux and macOS.</p></li>
       </ul>
     </div>
@@ -255,18 +255,18 @@
       <article class="part" aria-labelledby="part-fw">
         <div class="part-head"><p class="part-k">Spinel package</p><h3 id="part-fw">The framework</h3></div>
         <p class="part-what">The library your app is built on.</p>
-        <div class="part-fact"><p class="fact-k">What is in it</p><p>The HTTP server, routing and controllers, sessions and CSRF protection, the template interpreter, SQLite models and migrations, the optional subsystems (jobs, Turbo Streams, mail, cache), the test framework, and the code generator behind <code>spin run gen</code>.</p></div>
-        <div class="part-fact"><p class="fact-k">How you get it</p><p>You don&rsquo;t install it. Your app&rsquo;s <code>spin.toml</code> names the release tag of this repository that matches your <code>cybertrain</code> command, and <code>spin lock</code> fetches it into spin&rsquo;s cache and pins the commit in <code>spin.lock</code>. Nothing is copied into your app.</p></div>
+        <div class="part-fact"><p class="fact-k">What is in it</p><p>Routing and controllers, sessions and CSRF protection, the template interpreter, SQLite models and migrations, the optional subsystems (jobs, Turbo Streams, mail, cache), the test framework, and the code generator behind <code>spin run gen</code>. The HTTP server is <a href="https://github.com/saeki-mototsune/spinel-http" rel="noopener">spinel-http</a>, a library of its own that the framework depends on.</p></div>
+        <div class="part-fact"><p class="fact-k">How you get it</p><p>You don&rsquo;t install it. Your app&rsquo;s <code>spin.toml</code> names the release tag of this repository that matches your <code>cybertrain</code> command, and <code>spin lock</code> fetches it, with spinel-http, into spin&rsquo;s cache and pins both commits in <code>spin.lock</code>. Nothing is copied into your app.</p></div>
       </article>
       <article class="part" aria-labelledby="part-cli">
         <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli">The <code>cybertrain</code> command</h3></div>
         <p class="part-what">The tool that creates, builds and runs your app.</p>
-        <div class="part-fact"><p class="fact-k">What is in it</p><p>The <code>cybertrain</code> command only: <code>new</code>, <code>generate</code> (scaffold, authentication, attachment, job, component, helper), <code>db</code>, <code>server</code>, <code>build</code>, <code>test</code>, <code>secret</code>, <code>spin</code>, <code>setup</code> and <code>doctor</code>. Neither the framework nor Spinel is in the gem.</p></div>
+        <div class="part-fact"><p class="fact-k">What is in it</p><p>The <code>cybertrain</code> command only: <code>new</code>, <code>generate</code> (scaffold, authentication, attachment, job, component, helper), <code>db</code>, <code>server</code>, <code>build</code>, <code>test</code>, <code>secret</code>, <code>spin</code>, <code>setup</code>, <code>doctor</code> and <code>version</code>. Neither the framework nor Spinel is in the gem.</p></div>
         <div class="part-fact"><p class="fact-k">How you get it</p><p><code>gem install cybertrain</code>. On first use it builds the pinned Spinel release into <code>~/.cybertrain</code>, unless that release is already on your <code>PATH</code>.</p></div>
       </article>
     </div>
     <div class="sec-full">
-      <p class="footnote">Both are released from the same tag, and the command refuses to build an app whose framework is another release. <a href="guide/install.html#moving-an-app-to-a-new-release">How an app moves to a new release</a> is in the Installing guide.</p>
+      <p class="footnote">Both are released from the same tag, and the command refuses to build an app whose framework is another release. <a href="guide/upgrading.html">Upgrading</a> moves an app to a new release, step by step.</p>
     </div>
   </div></div>
 </section>
@@ -290,7 +290,7 @@
         <li><span class="step-n" aria-hidden="true">1</span><h3>Generate at build time</h3><p><code>spin run gen</code> reads <code>db/schema.rb</code> and <code>config/routes.rb</code>, scans <code>app/controllers</code> and <code>app/models</code>, and writes plain, readable Ruby into <code>gen/</code>. <code>cybertrain db migrate</code>, <code>server</code> and <code>build</code> run it for you.</p></li>
         <li><span class="step-n" aria-hidden="true">2</span><h3>Commit <code>gen/</code></h3><p>It is checked in because <code>spin build</code> and <code>spin test</code> have no hook to generate first. CI re-runs <code>spin run gen</code> and fails on a diff, so stale generated code cannot merge.</p></li>
         <li><span class="step-n" aria-hidden="true">3</span><h3>Interpret the views</h3><p>A tree-walking interpreter renders <code>app/views/**/*.html.erb</code>, read from disk in development and embedded by <code>cybertrain build</code>. Spinel has no <code>eval</code>, so this is a closed grammar, not real Ruby.</p></li>
-        <li><span class="step-n" aria-hidden="true">4</span><h3>Serve with green threads, store in SQLite</h3><p>A plain-Ruby HTTP/1.1 server runs one Spinel green thread per connection. Models talk to SQLite through <code>ffi_func</code>/<code>ffi_lib</code> with a 4-connection pool.</p></li>
+        <li><span class="step-n" aria-hidden="true">4</span><h3>Serve with green threads, store in SQLite</h3><p>A plain-Ruby HTTP/1.1 server, spinel-http, runs one Spinel green thread per connection. Models talk to SQLite through <code>ffi_func</code>/<code>ffi_lib</code> with a 4-connection pool.</p></li>
         <li><span class="step-n" aria-hidden="true">5</span><h3>Preview, then compile, in development</h3><p><code>cybertrain server</code> serves a Ruby change from a CRuby preview at once, builds the binary in the background and hands it the port when the build finishes (about a minute on examples/blog). A failed build keeps the preview serving, with the compiler output in a banner; <code>cybertrain server --spinel</code> runs the compiled loop alone.</p></li>
       </ol>
       <div class="cmp-foot">

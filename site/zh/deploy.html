@@ -109,7 +109,7 @@
     <p class="stage"><span class="stage-k">当前位置<span class="sr-only">:</span></span>运行时 <span aria-hidden="true">&middot;</span> <code>dist/</code></p>
     <h2 id="h-what-runs"><span class="step-num" aria-hidden="true">01</span>生产环境中运行的是什么</h2>
     <p class="why"><span class="why-k">为什么</span><span class="why-t">弄清二进制文件自己做什么、把什么交给别人，其余的部署方式也就随之确定。</span></p>
-    <p><code>cybertrain build</code> 把框架、你的控制器和模型以及模板解释器编译进 <code>dist/blog</code>，嵌入所有视图，并在旁边复制 <code>public/</code>。运行它的地方无需安装其他任何东西：不需要 Ruby，也不需要 gem。</p>
+    <p><code>cybertrain build</code> 把框架、你的控制器和模型以及模板解释器编译进 <code>dist/blog</code>，嵌入所有视图，并在旁边放上 <code>public/</code>、<code>storage/</code> 和 <code>tmp/</code>。运行它的地方无需安装其他任何东西：不需要 Ruby，也不需要 gem。</p>
     <figure class="code" data-lang="text">
 <figcaption><span class="code-path">生产环境</span><span class="code-lang">text</span></figcaption>
 <pre tabindex="0" role="region" aria-label="代码：生产环境中运行的是什么"><code><span class="ln">browser ──HTTPS──▶ reverse proxy (kamal-proxy or Caddy)</span>
@@ -226,10 +226,12 @@
     <ul class="points">
       <li><strong>每次更改都是一次部署。</strong>视图在构建时嵌入，因此即使只改了视图也需要重新构建并重启。把 <code>gen/</code> 和更改一起提交：部署脚本遇到过时的 <code>gen/</code> 会停止。</li>
       <li><strong>迁移在新代码开始提供服务之前运行：</strong>在部署脚本中，或在容器启动时。删除列要放到之后的另一次部署中，等运行中的代码不再读取它。</li>
-      <li><strong>用 SQLite 的 <code>.backup</code> 备份，</strong>而不是复制文件：即使应用正在写入，它也能得到一致的副本。</li>
+      <li><strong>用 <code>./blog db backup</code> 备份，</strong>而不是复制文件：应用继续运行时它也能得到一致的副本，<code>--keep 14</code> 保留最新的 14 份。<a href="guide/background-and-operations.html#operations-backups-vacuum-health-check">备份</a>。</li>
       <li><strong>跨越迁移的回滚</strong>意味着数据库也要回滚：在切换之前，从较新的发布中运行 <code>db rollback</code>。</li>
       <li><strong>停止是平滑的：</strong>收到 <code>SIGTERM</code> 后，服务器停止接受新连接，处理完正在进行的请求后退出，最多 10 秒。</li>
       <li><strong>一个二进制文件，多种角色。</strong>引入作业子系统后，<code>./blog worker</code> 不提供 HTTP，只运行作业和定时任务；引入 feeds 子系统后，<code>./blog feeds</code> 运行 WebSocket 订阅。数据库、worker 或某个 feed 不正常时，<code>GET /up</code> 返回 503。<a href="guide/background-and-operations.html#process-roles">进程角色</a>。</li>
+      <li><strong>每一行日志都带有请求 ID，</strong>响应的 <code>X-Request-Id</code> 也会返回同一个 ID，所以一次 grep 就能找到一个请求以及它排入队列的作业。<code>CYBERTRAIN_LOG_FORMAT=json</code> 为日志收集器写 JSON 行，<code>CYBERTRAIN_SENTRY_DSN</code> 把错误报告发送到 Sentry 或 GlitchTip。<a href="guide/logs-and-errors.html">日志与错误报告</a>。</li>
+      <li><strong>升级到 CyberTrain 的新版本</strong>每次都走同样的步骤，从安装新命令到部署。<a href="guide/upgrading.html">升级</a>。</li>
     </ul>
   </section>
 
@@ -239,6 +241,7 @@
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><span class="next-t"><code>docs/deploy-kamal.md</code></span><span class="next-d">用 Kamal 部署，一步一步来。</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><span class="next-t"><code>docs/deploy.en.md</code></span><span class="next-d">使用 systemd 和 Caddy 的 Ubuntu 服务器，从头到备份（日文版：<code>docs/deploy.md</code>）。</span></a></li>
       <li><a href="tutorial.html#ship"><span class="next-t">为部署而构建</span><span class="next-d">教程的最后一步：<code>cybertrain build</code> 与 <code>dist/</code>。</span></a></li>
+      <li><a href="guide/upgrading.html"><span class="next-t">升级</span><span class="next-d">把已部署的应用迁移到 CyberTrain 的新版本。</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">完成的博客，以及它的 Kamal 配置。</span></a></li>
     </ul>
   </section>

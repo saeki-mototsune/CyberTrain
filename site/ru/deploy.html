@@ -109,7 +109,7 @@
     <p class="stage"><span class="stage-k">Вы здесь<span class="sr-only">:</span></span>Время выполнения <span aria-hidden="true">&middot;</span> <code>dist/</code></p>
     <h2 id="h-what-runs"><span class="step-num" aria-hidden="true">01</span>Что работает в продакшене</h2>
     <p class="why"><span class="why-k">Зачем</span><span class="why-t">Зная, что делает двоичный файл и что он оставляет другим, вы определяете всё остальное в настройке.</span></p>
-    <p><code>cybertrain build</code> компилирует фреймворк, ваши контроллеры и модели и интерпретатор шаблонов в <code>dist/blog</code>, встраивая все представления, и копирует рядом <code>public/</code>. Там, где он работает, больше ничего не устанавливается: ни Ruby, ни gem.</p>
+    <p><code>cybertrain build</code> компилирует фреймворк, ваши контроллеры и модели и интерпретатор шаблонов в <code>dist/blog</code>, встраивая все представления, и кладёт рядом <code>public/</code>, <code>storage/</code> и <code>tmp/</code>. Там, где он работает, больше ничего не устанавливается: ни Ruby, ни gem.</p>
     <figure class="code" data-lang="text">
 <figcaption><span class="code-path">продакшен</span><span class="code-lang">text</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Код: что работает в продакшене"><code><span class="ln">browser ──HTTPS──▶ reverse proxy (kamal-proxy or Caddy)</span>
@@ -226,10 +226,12 @@
     <ul class="points">
       <li><strong>Любое изменение&nbsp;&mdash; это развёртывание.</strong> Представления встраиваются при сборке, поэтому даже изменение только представления требует пересборки и перезапуска. Коммитьте <code>gen/</code> вместе с изменением: скрипт развёртывания останавливается на устаревшем <code>gen/</code>.</li>
       <li><strong>Миграции выполняются до того, как новый код начнёт отвечать:</strong> в скрипте развёртывания или при запуске контейнера. Удаляйте столбец в одном из следующих развёртываний, когда работающий код его уже не читает.</li>
-      <li><strong>Делайте резервные копии через <code>.backup</code> SQLite,</strong> а не копированием файла: так получается согласованная копия, даже пока приложение пишет.</li>
+      <li><strong>Делайте резервные копии через <code>./blog db backup</code>,</strong> а не копированием файла: так получается согласованная копия, пока приложение продолжает работать, а <code>--keep 14</code> оставляет 14 самых свежих. <a href="guide/background-and-operations.html#operations-backups-vacuum-health-check">Резервные копии</a>.</li>
       <li><strong>Откат через миграцию</strong> означает откат и базы данных: перед переключением выполните <code>db rollback</code> из более нового выпуска.</li>
       <li><strong>Остановка аккуратная:</strong> по <code>SIGTERM</code> сервер перестаёт принимать соединения, завершает обрабатываемые запросы и выходит, не позже чем через 10 секунд.</li>
       <li><strong>Один бинарник, несколько ролей.</strong> Если подключена подсистема заданий, <code>./blog worker</code> выполняет задания и задачи по расписанию без HTTP; если подключена подсистема фидов, <code>./blog feeds</code> ведёт подписки WebSocket. <code>GET /up</code> отвечает 503, когда база данных, воркер или фид не в порядке. <a href="guide/background-and-operations.html#process-roles">Роли процессов</a>.</li>
+      <li><strong>Каждая строка журнала несёт id запроса,</strong> который возвращается и в <code>X-Request-Id</code>, так что один grep находит запрос и поставленные им задания. <code>CYBERTRAIN_LOG_FORMAT=json</code> пишет строки JSON для сборщика журналов, а <code>CYBERTRAIN_SENTRY_DSN</code> отправляет отчёты об ошибках в Sentry или GlitchTip. <a href="guide/logs-and-errors.html">Журнал и отчёты об ошибках</a>.</li>
+      <li><strong>Новый релиз CyberTrain</strong> принимается каждый раз одинаково: от установки новой команды до развёртывания. <a href="guide/upgrading.html">Обновление</a>.</li>
     </ul>
   </section>
 
@@ -239,6 +241,7 @@
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><span class="next-t"><code>docs/deploy-kamal.md</code></span><span class="next-d">Развёртывание через Kamal, шаг за шагом.</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.en.md" rel="noopener"><span class="next-t"><code>docs/deploy.en.md</code></span><span class="next-d">Сервер Ubuntu с systemd и Caddy, от начала до резервных копий (на японском: <code>docs/deploy.md</code>).</span></a></li>
       <li><a href="tutorial.html#ship"><span class="next-t">Сборка для развёртывания</span><span class="next-d">Последний шаг учебника: <code>cybertrain build</code> и <code>dist/</code>.</span></a></li>
+      <li><a href="guide/upgrading.html"><span class="next-t">Обновление</span><span class="next-d">Перевод развёрнутого приложения на новый релиз CyberTrain.</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">Готовый блог с его конфигурацией Kamal.</span></a></li>
     </ul>
   </section>

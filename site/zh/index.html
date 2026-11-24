@@ -116,7 +116,7 @@
         <p class="is-not-intro">面向想要单个原生二进制文件、并且能接受一个年轻项目和 Ruby 子集的 Rails 开发者。</p>
       </div>
       <ul class="not-list">
-        <li><h3>不兼容 Rails 或 Rack</h3><p>没有 Rack 兼容性，运行时也没有 gem：只能使用 Spinel 自己的、能在其 Ruby 子集下编译的 <code>spin-index</code> 包。</p></li>
+        <li><h3>不能原样运行 Rails 代码</h3><p>应用用 Spinel 的 Ruby 子集、针对 CyberTrain 的 API 编写：没有 Rack，运行时除了 Spinel 自己的 <code>spin-index</code> 包之外也没有 gem。手工移植 Rails 应用是目标之一，由 Rails 应用创建的 SQLite 数据库可以<a href="guide/models.html#taking-over-a-database-rails-created">原样接管</a>。</p></li>
         <li><h3>尚不可用于生产</h3><p>CyberTrain 处于预 Alpha 阶段。示例博客由 CI 在 Linux 和 macOS 上运行测试。</p></li>
       </ul>
     </div>
@@ -255,18 +255,18 @@
       <article class="part" aria-labelledby="part-fw">
         <div class="part-head"><p class="part-k">Spinel 包</p><h3 id="part-fw">框架</h3></div>
         <p class="part-what">你的应用所基于的库。</p>
-        <div class="part-fact"><p class="fact-k">包含什么</p><p>HTTP 服务器、路由和控制器、会话与 CSRF 防护、模板解释器、SQLite 模型和迁移、可选的子系统（作业、Turbo Streams、邮件、缓存）、测试框架，以及 <code>spin run gen</code> 背后的代码生成器。</p></div>
-        <div class="part-fact"><p class="fact-k">如何获取</p><p>你不需要安装它。你的应用的 <code>spin.toml</code> 指定本仓库与你的 <code>cybertrain</code> 命令相对应的发布标签，<code>spin lock</code> 会把它拉取到 spin 的缓存中，并在 <code>spin.lock</code> 中锁定提交。不会有任何内容被复制到你的应用中。</p></div>
+        <div class="part-fact"><p class="fact-k">包含什么</p><p>路由和控制器、会话与 CSRF 防护、模板解释器、SQLite 模型和迁移、可选的子系统（作业、Turbo Streams、邮件、缓存）、测试框架，以及 <code>spin run gen</code> 背后的代码生成器。HTTP 服务器是 <a href="https://github.com/saeki-mototsune/spinel-http" rel="noopener">spinel-http</a>，框架所依赖的一个独立库。</p></div>
+        <div class="part-fact"><p class="fact-k">如何获取</p><p>你不需要安装它。你的应用的 <code>spin.toml</code> 指定本仓库与你的 <code>cybertrain</code> 命令相对应的发布标签，<code>spin lock</code> 会把它连同 spinel-http 一起拉取到 spin 的缓存中，并在 <code>spin.lock</code> 中锁定这两个提交。不会有任何内容被复制到你的应用中。</p></div>
       </article>
       <article class="part" aria-labelledby="part-cli">
         <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli"><code>cybertrain</code> 命令</h3></div>
         <p class="part-what">用来创建、构建和运行你的应用的工具。</p>
-        <div class="part-fact"><p class="fact-k">包含什么</p><p>只有 <code>cybertrain</code> 命令：<code>new</code>、<code>generate</code>（scaffold、authentication、attachment、job、component、helper）、<code>db</code>、<code>server</code>、<code>build</code>、<code>test</code>、<code>secret</code>、<code>spin</code>、<code>setup</code> 和 <code>doctor</code>。框架和 Spinel 都不在这个 gem 里。</p></div>
+        <div class="part-fact"><p class="fact-k">包含什么</p><p>只有 <code>cybertrain</code> 命令：<code>new</code>、<code>generate</code>（scaffold、authentication、attachment、job、component、helper）、<code>db</code>、<code>server</code>、<code>build</code>、<code>test</code>、<code>secret</code>、<code>spin</code>、<code>setup</code>、<code>doctor</code> 和 <code>version</code>。框架和 Spinel 都不在这个 gem 里。</p></div>
         <div class="part-fact"><p class="fact-k">如何获取</p><p><code>gem install cybertrain</code>。首次使用时，它会把锁定的 Spinel 版本构建到 <code>~/.cybertrain</code> 中，除非你的 <code>PATH</code> 上已经有该版本。</p></div>
       </article>
     </div>
     <div class="sec-full">
-      <p class="footnote">两者从同一个标签发布；如果应用的框架是另一个版本，命令会拒绝构建它。安装指南中有<a href="guide/install.html#moving-an-app-to-a-new-release">应用如何迁移到新版本</a>的说明。</p>
+      <p class="footnote">两者从同一个标签发布；如果应用的框架是另一个版本，命令会拒绝构建它。<a href="guide/upgrading.html">升级</a>指南一步步说明如何把应用迁移到新版本。</p>
     </div>
   </div></div>
 </section>
@@ -290,7 +290,7 @@
         <li><span class="step-n" aria-hidden="true">1</span><h3>构建时生成</h3><p><code>spin run gen</code> 读取 <code>db/schema.rb</code> 和 <code>config/routes.rb</code>，扫描 <code>app/controllers</code> 和 <code>app/models</code>，并把可读的纯 Ruby 代码写入 <code>gen/</code>。<code>cybertrain db migrate</code>、<code>server</code> 和 <code>build</code> 会替你运行它。</p></li>
         <li><span class="step-n" aria-hidden="true">2</span><h3>提交 <code>gen/</code></h3><p>它要提交进仓库，因为 <code>spin build</code> 和 <code>spin test</code> 没有可以先执行生成的钩子。CI 会重新运行 <code>spin run gen</code>，一旦有差异就失败，因此过时的生成代码无法合并。</p></li>
         <li><span class="step-n" aria-hidden="true">3</span><h3>解释执行视图</h3><p>一个遍历树的解释器渲染 <code>app/views/**/*.html.erb</code>：开发时从磁盘读取，由 <code>cybertrain build</code> 嵌入二进制文件。Spinel 没有 <code>eval</code>，所以这是一套封闭的语法，而不是真正的 Ruby。</p></li>
-        <li><span class="step-n" aria-hidden="true">4</span><h3>用绿色线程提供服务，用 SQLite 存储</h3><p>纯 Ruby 编写的 HTTP/1.1 服务器为每个连接运行一个 Spinel 绿色线程。模型通过 <code>ffi_func</code>/<code>ffi_lib</code> 访问 SQLite，使用 4 个连接的连接池。</p></li>
+        <li><span class="step-n" aria-hidden="true">4</span><h3>用绿色线程提供服务，用 SQLite 存储</h3><p>纯 Ruby 编写的 HTTP/1.1 服务器 spinel-http 为每个连接运行一个 Spinel 绿色线程。模型通过 <code>ffi_func</code>/<code>ffi_lib</code> 访问 SQLite，使用 4 个连接的连接池。</p></li>
         <li><span class="step-n" aria-hidden="true">5</span><h3>开发时先预览，再编译</h3><p><code>cybertrain server</code> 在 Ruby 改动后立即用 CRuby 预览提供服务，在后台构建二进制文件，构建完成后把端口交给它（在 examples/blog 上约一分钟）。构建失败时预览继续提供服务，并以横幅显示编译器输出；<code>cybertrain server --spinel</code> 只运行编译版的循环。</p></li>
       </ol>
       <div class="cmp-foot">

@@ -109,7 +109,7 @@
     <p class="stage"><span class="stage-k">現在地<span class="sr-only">:</span></span>実行時 <span aria-hidden="true">&middot;</span> <code>dist/</code></p>
     <h2 id="h-what-runs"><span class="step-num" aria-hidden="true">01</span>本番で動くもの</h2>
     <p class="why"><span class="why-k">なぜ</span><span class="why-t">バイナリが何をして、何を他に任せるのかが分かれば、残りの構成は自然に決まります。</span></p>
-    <p><code>cybertrain build</code> は、フレームワーク、あなたのコントローラとモデル、テンプレートインタプリタを <code>dist/blog</code> にコンパイルし、すべてのビューを埋め込み、その横に <code>public/</code> をコピーします。動かす場所には他に何も入れません：Ruby も gem も不要です。</p>
+    <p><code>cybertrain build</code> は、フレームワーク、あなたのコントローラとモデル、テンプレートインタプリタを <code>dist/blog</code> にコンパイルし、すべてのビューを埋め込み、その横に <code>public/</code>、<code>storage/</code>、<code>tmp/</code> を置きます。動かす場所には他に何も入れません：Ruby も gem も不要です。</p>
     <figure class="code" data-lang="text">
 <figcaption><span class="code-path">本番環境</span><span class="code-lang">text</span></figcaption>
 <pre tabindex="0" role="region" aria-label="コード：本番で動くもの"><code><span class="ln">browser ──HTTPS──▶ reverse proxy (kamal-proxy or Caddy)</span>
@@ -226,10 +226,12 @@
     <ul class="points">
       <li><strong>変更はすべてデプロイです。</strong>ビューはビルド時に埋め込まれるので、ビューだけの変更でも再ビルドと再起動が要ります。<code>gen/</code> も一緒にコミットしてください：デプロイスクリプトは古い <code>gen/</code> で止まります。</li>
       <li><strong>マイグレーションは新しいコードが動き出す前に流れます：</strong>デプロイスクリプトの中か、コンテナの起動時です。列の削除は、動いているコードがその列を読まなくなってから、別のデプロイで行います。</li>
-      <li><strong>バックアップは SQLite の <code>.backup</code> で取ります。</strong>ファイルのコピーではなく：アプリが書き込んでいる間でも一貫したコピーが取れます。</li>
+      <li><strong>バックアップは <code>./blog db backup</code> で取ります。</strong>ファイルのコピーではなく：アプリが動いたままでも一貫したコピーが取れ、<code>--keep 14</code> で新しい 14 個を残します。<a href="guide/background-and-operations.html#operations-backups-vacuum-health-check">バックアップ</a>。</li>
       <li><strong>マイグレーションをまたいでロールバックする</strong>ときは、切り替える前に、新しい方のリリースから <code>db rollback</code> でデータベースも戻します。</li>
       <li><strong>停止は丁寧です：</strong><code>SIGTERM</code> を受けると新しい受け付けを止め、処理中のリクエストを終えて終了します。長くても 10 秒です。</li>
       <li><strong>1 つのバイナリに複数の役割。</strong>ジョブのサブシステムを読み込んでいれば、<code>./blog worker</code> が HTTP なしでジョブと定期タスクを動かします。フィードのサブシステムがあれば、<code>./blog feeds</code> が WebSocket の購読を動かします。<code>GET /up</code> は、データベース、ワーカー、フィードのどれかが正常でないときに 503 を返します。<a href="guide/background-and-operations.html#process-roles">プロセスの役割</a>。</li>
+      <li><strong>ログの各行にはリクエスト ID が付きます。</strong>同じ ID がレスポンスの <code>X-Request-Id</code> でも返るので、1 回の grep でリクエストとそれがキューに入れたジョブが見つかります。<code>CYBERTRAIN_LOG_FORMAT=json</code> でログ収集向けに JSON 行を書き、<code>CYBERTRAIN_SENTRY_DSN</code> でエラー報告を Sentry や GlitchTip に送ります。<a href="guide/logs-and-errors.html">ログとエラー報告</a>。</li>
+      <li><strong>CyberTrain の新しいリリースへの移行</strong>は、新しいコマンドのインストールからデプロイまで、毎回同じ手順です。<a href="guide/upgrading.html">アップグレード</a>。</li>
     </ul>
   </section>
 
@@ -239,6 +241,7 @@
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy-kamal.md" rel="noopener"><span class="next-t"><code>docs/deploy-kamal.md</code></span><span class="next-d">Kamal でのデプロイを一歩ずつ。</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/blob/main/docs/deploy.md" rel="noopener"><span class="next-t"><code>docs/deploy.md</code></span><span class="next-d">systemd と Caddy の Ubuntu サーバー。最初からバックアップまで（英語版：<code>docs/deploy.en.md</code>）。</span></a></li>
       <li><a href="tutorial.html#ship"><span class="next-t">デプロイ用にビルドする</span><span class="next-d">チュートリアルの最後のステップ：<code>cybertrain build</code> と <code>dist/</code>。</span></a></li>
+      <li><a href="guide/upgrading.html"><span class="next-t">アップグレード</span><span class="next-d">デプロイ済みのアプリを CyberTrain の新しいリリースに移す。</span></a></li>
       <li><a href="https://github.com/saeki-mototsune/CyberTrain/tree/main/examples/blog#deploying-with-kamal" rel="noopener"><span class="next-t"><code>examples/blog</code></span><span class="next-d">完成したブログと、その Kamal の設定。</span></a></li>
     </ul>
   </section>
