@@ -17,9 +17,10 @@
 # is the one that runs.
 #
 # The release is created only when the tag passes every check first: the
-# version check below, the Gate (gate.yml), the full test suite on Linux and
-# macOS (ci.yml) and the blog image's build and smoke test (blog-image.yml),
-# all run on the tagged commit. CI builds and tests against the Spinel release
+# version check below, the Gate (gate.yml), CI (ci.yml: the full test suite
+# on Linux, and on macOS the OS-sensitive test programs and one end-to-end
+# leg) and the two images' builds and smoke tests (blog-image.yml and
+# playground-image.yml), all run on the tagged commit. CI builds and tests against the Spinel release
 # that commit pins (Cybertrain::SPINEL_TAG in cybertrain/version.rb), so a tag
 # that moves to a new Spinel release is released only if everything passes on
 # it. If any of them fails, no release is created; fix it, move or re-push the
@@ -35,12 +36,18 @@
 # tested commit stay pushed; only a tag ruleset (a repository setting) keeps
 # the tag from moving at all.
 #
-# Only once they have all passed does it push the two images, each as
-# X.Y.Z: the playground image, which playground-image.yml builds and
-# smoke-tests first, and the blog image, which is the very image the
-# blog-image check built and smoke-tested, handed over as a workflow
-# artifact (blog-image-push), not built again. The release is created after
-# both pushes succeed.
+# The order, after the version job: the checks (gate, ci, blog-image,
+# playground-image) and the Spinel prebuilt's build all start at once, so
+# the run waits for the longest of them (CI) rather than for their sum; then
+# tag-unchanged; then the two pushes; then the release; then promote-latest
+# and the prebuilt's attachment to the release.
+#
+# Only once every check has passed does it push the two images, each as
+# X.Y.Z, and neither is built again: each is the very image its check
+# built and smoke-tested, handed over as a workflow artifact and checked by
+# its image ID before it is pushed (playground-image-push, blog-image-push).
+# The builds themselves push nothing and run with a read-only token. The
+# release is created after both pushes succeed.
 #
 # latest is moved last, by promote-latest, for both images in one job: to
 # the newest release there is (the highest X.Y.Z with a published release),
@@ -49,9 +56,10 @@
 # order, latest ends on the newest release, and on the same one for both
 # images. Nothing else pushes latest.
 #
-# After the release is created, spinel-prebuilt.yml attaches a Linux build of
-# the latest Spinel release of the fork, for Claude Code cloud sessions
-# (script/claude-cloud-setup downloads it from the latest release).
+# spinel-prebuilt.yml builds a Linux build of the latest Spinel release of
+# the fork, for Claude Code cloud sessions (script/claude-cloud-setup
+# downloads it from the latest release), beside the checks; it is not one of
+# them, and spinel-prebuilt-attach attaches it once the release is created.
 name: Release
 
 on:
@@ -129,9 +137,28 @@ jobs:
     with:
       artifact: blog-image-tested
 
+  # A check too, and likewise pushes nothing: with `push: false` the called
+  # workflow's push job does not run, and its image job (which keeps that
+  # workflow's read-only token) saves the image that passed the smoke test
+  # as the artifact playground-image-tested, which playground-image-push
+  # publishes once every check has passed. packages: write is granted only
+  # because GitHub checks every job of a called workflow against the
+  # caller's grant before any `if:`, the skipped push job included; no job
+  # that runs here gets it.
+  playground-image:
+    needs: version
+    permissions:
+      contents: read
+      packages: write
+    uses: ./.github/workflows/playground-image.yml
+    with:
+      ref: ${{ needs.version.outputs.sha }}
+      release_tag: ${{ github.ref_name }}
+      push: false
+
   # Between the checks and the first push: the tag still names what was tested.
   tag-unchanged:
-    needs: [version, gate, ci, blog-image]
+    needs: [version, gate, ci, blog-image, playground-image]
     runs-on: ubuntu-26.04
     timeout-minutes: 5
     env:
@@ -145,15 +172,53 @@ jobs:
           now=$(gh api "repos/$GITHUB_REPOSITORY/commits/refs/tags/$TAG" --jq .sha)
           test "$now" = "$SHA" || { echo "tag $TAG moved from $SHA to $now during this run; not publishing"; exit 1; }
 
-  playground-image:
-    needs: [version, tag-unchanged]
+  # Publishes the image the playground-image check tested, as blog-image-push
+  # does the blog's: loads its artifact, checks that it is that image (the ID
+  # the check recorded) and pushes it under the tags the check computed
+  # (X.Y.Z). No build here, so nothing untested can be pushed.
+  playground-image-push:
+    needs: [version, playground-image, tag-unchanged]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 15
     permissions:
       contents: read
       packages: write
-    uses: ./.github/workflows/playground-image.yml
-    with:
-      ref: ${{ needs.version.outputs.sha }}
-      release_tag: ${{ github.ref_name }}
+    env:
+      TAG: ${{ github.ref_name }}
+      IMAGE: ghcr.io/saeki-mototsune/cybertrain-playground
+      IMAGE_ID: ${{ needs.playground-image.outputs.image_id }}
+      TAGS: ${{ needs.playground-image.outputs.tags }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: playground-image-tested
+
+      - name: Load the tested image
+        run: |
+          set -eu
+          test -n "$IMAGE_ID" || { echo "::error::the playground-image check recorded no image ID"; exit 1; }
+          gunzip -c playground-image.tar.gz | docker load
+          got=$(docker image inspect cybertrain-playground:ci --format '{{.Id}}')
+          test "$got" = "$IMAGE_ID" || { echo "::error::the artifact holds image $got, the check tested $IMAGE_ID; not pushing"; exit 1; }
+          echo "loaded $got, the image the check tested"
+
+      # promote-latest copies $IMAGE:X.Y.Z to latest: it must be among them.
+      - name: Push the tested image
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          version="${TAG#v}"
+          found=false
+          for tag in $TAGS; do
+            if [ "$tag" = "$IMAGE:$version" ]; then found=true; fi
+          done
+          "$found" || { echo "::error::the tags to push ($TAGS) do not include $IMAGE:$version"; exit 1; }
+          printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          for tag in $TAGS; do
+            docker tag cybertrain-playground:ci "$tag"
+            docker push "$tag"
+          done
 
   # Publishes the image the blog-image check tested: loads its artifact,
   # checks that it is that image (the ID the check recorded) and pushes it as
@@ -196,7 +261,7 @@ jobs:
           docker push "$IMAGE:$version"
 
   release:
-    needs: [version, gate, ci, blog-image, tag-unchanged, playground-image, blog-image-push]
+    needs: [version, gate, ci, blog-image, playground-image, tag-unchanged, playground-image-push, blog-image-push]
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
@@ -226,8 +291,10 @@ jobs:
   # waiting job per group and cancels an older waiting one, which is harmless
   # here: every run moves latest to the same place, and the one that runs
   # last has seen every release. Re-run this job to repair latest by hand.
+  # Both X.Y.Z tags it reads are pushed by the two push jobs, which release
+  # already needs; they are named here as what this job relies on.
   promote-latest:
-    needs: release
+    needs: [release, playground-image-push, blog-image-push]
     runs-on: ubuntu-26.04
     timeout-minutes: 10
     permissions:
@@ -280,12 +347,41 @@ jobs:
             echo "$image:latest -> $version ($got)"
           done
 
-  # Spinel prebuilt for Claude Code cloud sessions, attached to the release
-  # just created (script/claude-cloud-setup downloads it from the latest one).
+  # Spinel prebuilt for Claude Code cloud sessions (script/claude-cloud-setup
+  # downloads it from the latest release): built beside the checks with
+  # `attach: false`, which uploads it as the artifact spinel-prebuilt and
+  # skips the called workflow's attach job, then attached by
+  # spinel-prebuilt-attach once the release exists. Not a check: the release
+  # does not wait for it. contents: write is granted only because GitHub
+  # checks every job of a called workflow against the caller's grant before
+  # any `if:`, the skipped attach job included; the build job that runs
+  # keeps a read-only token.
   spinel-prebuilt:
-    needs: release
+    needs: version
     permissions:
       contents: write
     uses: ./.github/workflows/spinel-prebuilt.yml
     with:
       release: ${{ github.ref_name }}
+      attach: false
+
+  spinel-prebuilt-attach:
+    needs: [spinel-prebuilt, release]
+    runs-on: ubuntu-26.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: spinel-prebuilt
+          path: out
+
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ls -l out
+          gh release upload "$TAG" out/* --repo "$GITHUB_REPOSITORY" --clobber

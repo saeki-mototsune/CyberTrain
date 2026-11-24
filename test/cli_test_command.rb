@@ -275,6 +275,12 @@ test "stale? when the record of the binary's inputs is missing or differs" do
   assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
   write(record, "#{record_now}x\n")
   assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
+  # A binary another compile command built (here one with `-O 0`) is
+  # compiled again: the record holds the command.
+  other = record_now.sub(" -o build/test/tests", " -O 0 -o build/test/tests")
+  assert other != record_now, "the record names the compile command"
+  write(record, other)
+  assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
 
   # A file under test/ that a test requires, deleted: no mtime is newer,
   # the record's list of test/**/*.rb differs.

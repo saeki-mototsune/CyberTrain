@@ -1,4 +1,4 @@
-ok   the emitted program requires in order and has one arm per class-form test
+ok   the emitted program requires in order and has one method per class-form test
 ok   with the fixtures' file, the bundle requires it and registers the clear and load
 ok   an application with no class-form test has an empty table
 ok   test names are written as literals that never interpolate
@@ -174,4 +174,4 @@ wrote gen/console.rb
 identical gen/app.rb
 ok   gen/tests.rb goes when test/ goes
 ok   an app's own top-level render_inline is refused: it would replace the framework's
-15 tests, 136 assertions, 0 failures
+15 tests, 140 assertions, 0 failures

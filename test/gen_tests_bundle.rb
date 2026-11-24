@@ -65,15 +65,20 @@ def app_with_tests(extra = {})
   temp_app(files)
 end
 
-test "the emitted program requires in order and has one arm per class-form test" do
+test "the emitted program requires in order and has one method per class-form test" do
   src = emitted(app_with_tests)
-  arm = "      when 0\n        t = ArticleTest.new\n        if Cybertrain::Test.before_case(t)\n" \
-        "          Cybertrain::Test.run_body(t) { t.test_title_must_be_present }\n        end\n" \
-        "        Cybertrain::Test.after_case(t)\n"
-  assert_includes src, arm
-  assert_includes src, "      when 1\n        t = ArticleTest.new\n"
+  # run_case only chooses the method; each test's body is a method of its
+  # own, so that no C function holds every test (docs/design.md D83).
+  assert_includes src, "    def self.run_case(i)\n      case i\n      when 0 then case_0\n      when 1 then case_1\n      end\n      nil\n    end\n"
+  method = "    def self.case_0\n      t = ArticleTest.new\n      if Cybertrain::Test.before_case(t)\n" \
+           "        Cybertrain::Test.run_body(t) { t.test_title_must_be_present }\n      end\n" \
+           "      Cybertrain::Test.after_case(t)\n      nil\n    end\n"
+  assert_includes src, method
+  assert_includes src, "    def self.case_1\n      t = ArticleTest.new\n"
   assert_includes src, "{ t.test_counts }"
+  assert src.index("def self.case_0") < src.index("def self.case_1"), "the methods keep the tests' order"
   refute src.include?("when 2")
+  refute src.include?("case_2")
   refute src.include?("require \"test_helper\"")
   assert_includes src, "Cybertrain::Test.begin_file(\"test/legacy.rb\", [\"old style\"], [3])\n"
   assert_includes src, "Cybertrain::Test.begin_file(\"test/models/article_test.rb\", Array.new(0) { \"\" }, Array.new(0) { 0 })\n"
@@ -121,6 +126,7 @@ test "an application with no class-form test has an empty table" do
   assert_includes src, "    CASE_LINE = Array.new(0) { 0 }.freeze\n"
   assert_includes src, "    def self.run_case(i)\n      nil\n    end\n"
   refute src.include?("case i")
+  refute src.include?("def self.case_")
 end
 
 test "test names are written as literals that never interpolate" do

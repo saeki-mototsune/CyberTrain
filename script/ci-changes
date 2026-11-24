@@ -2,7 +2,7 @@
 # Which CI jobs a change needs: reads the changed paths, one a line, on
 # stdin and prints `framework=true|false`, `cruby_preview=true|false`,
 # `preview_e2e=true|false`, `macos=true|false` and `setup_action=true|false`. The `changes` job of .github/workflows/ci.yml
-# runs it. The jobs that compile (the framework tests, the end-to-end jobs,
+# runs it. The jobs that compile (the framework tests, the end-to-end legs,
 # the setup-cybertrain action's) run only on `framework=true`; the
 # cruby-preview job only on `cruby_preview=true`; the preview-e2e job only
 # on `preview_e2e=true`. The api-docs job runs on every CI run and is not
@@ -40,21 +40,29 @@
 # framework's tests (test/**) included. For script/preview-e2e alone it is
 # the only job that runs.
 #
-# macos (the macOS legs of the test, cruby-preview and setup-cybertrain
-# jobs) and setup_action (the setup-cybertrain job) narrow a pull request
-# only: the `changes` job sets both to true on every other event (main, a
-# release, a merge group) and when the pull request has the label
-# `ci:macos` (macos alone), so main still runs everything after the merge
-# (docs/design.md, D34). macOS runners are the scarcest (five at a time
-# for the account), so a pull request runs them only where the two systems
-# have been seen to differ: the CLI and its toolchain (processes, file
-# locks, OpenSSL linking), the development server and the CRuby preview
-# (/proc, `ps`, `.dylib`), sockets and the server roles, the pins, the
-# actions and the scripts the macOS job runs, and the tests of those
-# (a `.darwin` snapshot anywhere). setup_action is what the job reads:
-# the action, `cybertrain new` and its templates (the CLI and the
-# generator), the pins and the gem's files; a change elsewhere in the
-# framework compiles in the `test` job's applications already.
+# macos (every macOS job: framework-tests-macos, e2e-macos and the macOS
+# legs of cruby-preview and setup-cybertrain) and setup_action (the
+# setup-cybertrain job) narrow a pull request only: the `changes` job sets
+# both to true on every other event (main, a release, a merge group) and
+# when the pull request has the label `ci:macos` (macos alone), so main
+# still runs everything after the merge (docs/design.md, D34). macOS
+# runners are the scarcest (five at a time for the account), so a pull
+# request runs them only where the two systems have been seen to differ:
+# the CLI and its toolchain (processes, file locks, OpenSSL linking), the
+# development server and the CRuby preview (/proc, `ps`, `.dylib`),
+# sockets and the server roles, the pins, the actions and the scripts the
+# macOS jobs run, and the tests of those (a `.darwin` snapshot anywhere).
+# setup_action is what the job reads: the action, `cybertrain new` and its
+# templates (the CLI and the generator), the pins and the gem's files; a
+# change elsewhere in the framework compiles in the `e2e` job's
+# applications already.
+#
+# The same rule chooses what framework-tests-macos runs: the test/*.rb
+# programs that the rule names, by their own path or by a
+# `.expected.darwin` snapshot beside them (`--macos-tests` prints them;
+# script/test-shard --macos shards them). So a new test/cli_*.rb runs on
+# macOS without a list to update, and a test added to the rule here is
+# both run on macOS and a reason for a pull request to run macOS.
 #
 #   macos        cybertrain/cli/**, cybertrain/cli.rb, exe/**,
 #                cybertrain/shell.rb, cybertrain/version.rb,
@@ -62,10 +70,12 @@
 #                cybertrain/preview.rb, cybertrain/http/**, cybertrain/net/**,
 #                cybertrain/roles/**, cybertrain/runtime.rb, spin.toml,
 #                spin.lock, cybertrain.gemspec, test/cli_*, test/server*, test/dev_*,
-#                test/cruby/**, test/db_sqlite*, test/job_threads*, *.darwin,
+#                test/cruby/**, test/db_sqlite*, test/job_threads*,
+#                test/http_client*, test/net_*, test/openssl*, test/mailer*,
+#                test/websocket_*, test/logger_tls*, test/stream_endpoint*,
+#                test/main_roles*, test/runtime.rb, *.darwin,
 #                .github/actions/**, ci.yml, script/ci-changes,
-#                script/test-cruby, script/auth-e2e, script/test-command-e2e,
-#                script/generators-e2e
+#                script/test-cruby, script/test-shard, script/auth-e2e
 #   setup_action .github/actions/setup-cybertrain/**, cybertrain/cli/**,
 #                cybertrain/cli.rb, exe/**, cybertrain/generator/**,
 #                cybertrain/generator.rb, cybertrain/version.rb,
@@ -79,6 +89,7 @@
 #
 # usage: git diff --name-only BASE HEAD | script/ci-changes
 #        script/ci-changes --self-test    check the rule against known cases
+#        script/ci-changes --macos-tests  the test/*.rb the macos rule names, one a line
 
 decide() {
   framework=false
@@ -98,9 +109,10 @@ decide() {
         cybertrain/dev/* | cybertrain/dev.rb | cybertrain/preview/* | cybertrain/preview.rb | \
         cybertrain/http/* | cybertrain/net/* | cybertrain/roles/* | cybertrain/runtime.rb | \
         spin.toml | spin.lock | cybertrain.gemspec | test/cli_* | test/server* | test/dev_* | test/cruby/* | \
-        test/db_sqlite* | test/job_threads* | *.darwin | .github/actions/* | .github/workflows/ci.yml | \
-        script/ci-changes | script/test-cruby | script/auth-e2e | script/test-command-e2e | \
-        script/generators-e2e | \"*) macos=true ;;
+        test/db_sqlite* | test/job_threads* | test/http_client* | test/net_* | test/openssl* | \
+        test/mailer* | test/websocket_* | test/logger_tls* | test/stream_endpoint* | \
+        test/main_roles* | test/runtime.rb | *.darwin | .github/actions/* | .github/workflows/ci.yml | \
+        script/ci-changes | script/test-cruby | script/test-shard | script/auth-e2e | \"*) macos=true ;;
     esac
     case "$path" in
       .github/actions/setup-cybertrain/* | cybertrain/cli/* | cybertrain/cli.rb | exe/* | \
@@ -121,6 +133,18 @@ decide() {
   echo "preview_e2e=$e2e"
   echo "macos=$macos"
   echo "setup_action=$setup_action"
+}
+
+# The test programs (test/*.rb, sorted in the C locale as script/test-shard
+# sorts them) whose own path, or whose `.expected.darwin` snapshot, says
+# macos=true.
+macos_tests() {
+  for test in test/*.rb; do
+    paths=$test
+    if [ -e "$test.expected.darwin" ]; then paths="$test
+$test.expected.darwin"; fi
+    if printf '%s\n' "$paths" | decide | grep -qx 'macos=true'; then echo "$test"; fi
+  done | LC_ALL=C sort
 }
 
 # expect_key KEY WANT PATH...: decide on the paths and compare the output
@@ -235,6 +259,19 @@ if [ "${1:-}" = "--self-test" ]; then
   # The CRuby preview's macOS leg runs script/test-cruby.
   expect_macos true script/test-cruby
   expect_macos false docs/api/README.md site/index.html README.md
+  # The scripts only Ubuntu runs.
+  expect_macos false script/generators-e2e script/test-command-e2e
+  expect_macos true script/test-shard
+  expect_macos true test/openssl_dispatch.rb test/mailer.rb
+  # What framework-tests-macos runs: the tests the rule names, and no other.
+  macos_list=$(cd "$(dirname "$0")/.." && macos_tests)
+  for want in test/cli_toolchain.rb test/server.rb test/dev_watcher.rb test/db_sqlite.rb \
+    test/job_threads.rb test/openssl_dispatch.rb test/http_client.rb; do
+    printf '%s\n' "$macos_list" | grep -qx "$want" || { echo "script/ci-changes: --macos-tests leaves out $want" >&2; failed=1; }
+  done
+  for unwanted in test/router.rb test/model.rb test/http_parser.rb; do
+    if printf '%s\n' "$macos_list" | grep -qx "$unwanted"; then echo "script/ci-changes: --macos-tests lists $unwanted" >&2; failed=1; fi
+  done
   # The setup-cybertrain job: the action and what `cybertrain new` writes.
   expect_setup true .github/actions/setup-cybertrain/action.yml
   expect_setup true cybertrain/cli/templates.rb
@@ -252,9 +289,16 @@ if [ "${1:-}" = "--self-test" ]; then
   exit "$failed"
 fi
 
+if [ "${1:-}" = "--macos-tests" ] && [ $# -eq 1 ]; then
+  cd "$(dirname "$0")/.." || exit 2
+  macos_tests
+  exit 0
+fi
+
 if [ $# -ne 0 ]; then
   echo "usage: git diff --name-only BASE HEAD | script/ci-changes" >&2
   echo "       script/ci-changes --self-test" >&2
+  echo "       script/ci-changes --macos-tests" >&2
   exit 2
 fi
 

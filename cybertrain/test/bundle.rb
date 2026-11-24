@@ -74,7 +74,8 @@ module Cybertrain
 
       # Hands over gen's table: the test files in path order, then one entry
       # per class-form test (its file, the line of its `test` call, its
-      # class, name and method), in the order of Gen::Tests.run_case's arms.
+      # class, name and method), entry i being the test that
+      # Gen::Tests.run_case(i) runs (through Gen::Tests.case_<i>).
       # @return [nil]
       def self.use_table(files, case_file, case_line, case_class, case_name, case_method)
         @files = files

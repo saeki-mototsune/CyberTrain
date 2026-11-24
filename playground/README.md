@@ -284,15 +284,15 @@ does not push there. A change to the rest of the framework alone does not
 run it. Pushes to `main` do not run it. It
 also runs from the Release workflow
 ([.github/workflows/release.yml](../.github/workflows/release.yml)), which
-calls it for a tag `vX.Y.Z` after the Gate, CI and the blog image have
-passed on the tag, and by hand. It
+calls it for a tag `vX.Y.Z` beside the Gate, CI and the blog image, and by
+hand. It
 checks that `devcontainer.json` is valid JSON and, for a release tag, that
 the tag is `v` + `Cybertrain::VERSION`, builds the `playground` target for `linux/amd64` with the GitHub
 Actions cache (a change to the framework alone rebuilds only the mirror and
-the blog), runs the smoke test and then pushes the image it tested:
-`X.Y.Z` for a release tag `vX.Y.Z`, and the given tag from a
-manual run (Actions → Playground image →
-Run workflow, on `main`). It never pushes `latest`, and a manual run with
+the blog), runs the smoke test and then pushes the image it tested: for a release
+tag `vX.Y.Z`, the Release workflow's `playground-image-push` job pushes it
+as `X.Y.Z` once every check has passed, and a manual run pushes the given
+tag itself (Actions → Playground image → Run workflow, on `main`). It never pushes `latest`, and a manual run with
 that tag is refused: the Release workflow's `promote-latest` job points
 `latest` at the newest release's image, after the release is created.
 

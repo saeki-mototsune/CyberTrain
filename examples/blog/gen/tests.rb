@@ -74,952 +74,1581 @@ module Gen
     CASE_NAME = ["renders the comment with its author, its body and a delete button", "changing email or password requires the current password", "a password change ends other sessions and keeps this one", "deleting the account requires the password and removes the user and sessions", "a visitor is sent to sign in", "PATCH /account past ten requests is refused for a while", "wrong current passwords are limited per user too, from any address", "the form's fields are the only ones a change takes", "PATCH and DELETE /account without the form's token are refused", "a new hash of the password stays with this browser when the change fails", "a deletion the database refuses changes nothing and says so", "/admin/articles sends a visitor to sign in, is 404 to a user who is not an admin, and lists the articles to an admin", "the admin list shows at most per_page (20) articles, newest first", "DELETE /admin/articles/:id by an admin deletes the article; by anyone else, nothing", "DELETE /admin/articles/:id by an admin but without the authenticity_token is 403", "a signed-in admin reaches /admin/articles, and the article page links to it", "a signed-in user who is not an admin gets the concern's 404 on every admin page", "GET / renders the articles index", "GET /articles lists every article with a link to it", "GET /articles/new renders the form with a CSRF token", "POST /articles creates an article and redirects to it with a notice", "POST /articles without the CSRF token is rejected", "POST /articles with a blank title re-renders the form with errors", "POST /articles with a short body reports the length error", "GET /articles/:id shows the article", "GET /articles/:id/edit renders the form with the article's values", "PATCH /articles/:id (POST with _method) updates and redirects with a notice", "PATCH /articles/:id with invalid values re-renders the edit form", "DELETE /articles/:id (POST with _method) destroys and redirects to the index", "a missing article is 404", "a visitor reads articles but is sent to sign in to write, edit or delete one", "the index shows each article's comment count from one preload", "a duplicate title is refused with has already been taken", "the date filter leaves out articles created outside the range", "the index shows the article count, cached for a minute", "/articles.json and /articles/:id.json answer JSON through respond_to; /articles.xml is 406", "the order select puts the oldest first with ?order=old", "counts go through number_with_delimiter and dates through time_tag", "the article page lists its comments and has a comment form", "POST /articles/:article_id/comments adds a comment and redirects back to the article", "a commenter's name with markup is shown as text", "a comment without a commenter is not saved and the article page says why", "a visitor comments without signing in, but is sent to sign in to delete a comment", "a comment that does not save says why in Japanese", "a saved comment is shown and noticed in Japanese", "a comment posted without the CSRF token is rejected", "DELETE /articles/:article_id/comments/:id (POST with _method) removes the comment", "a comment is only reachable through its own article", "comments on a missing article are 404", "comments have no pages of their own", "a new comment enqueues a NotifyCommentJob, which logs it when performed", "a comment that is not saved enqueues no job", "a reset mail is sent once and its link expires after 15 minutes", "reset answers the same for unknown addresses and links to base_url", "without base_url a link takes the request's address only where that is safe", "any other environment without base_url sends no mail and answers the same", "an address the mailer refuses gets the same answer, and the log says why", "the token expires after 15 minutes", "the token stops working once the password changed", "updating the password ends every other session", "a reset clears a lockout", "the mail is stored with the dictionary's subject", "POST /passwords past ten requests is refused for a while", "a visitor is sent to the sign-in page", "GET /session/new renders the sign-in form", "POST /session, PUT /passwords/:token and DELETE /session without the form's token are refused", "POST /session signs in with the right password", "authentication returns to a local path once", "authentication rejects unsafe return destinations and consumes them", "POST /session with the wrong password shows an alert", "POST /session past ten attempts is refused for a while", "DELETE /session signs out and drops the Session row", "a session the database no longer has signs the browser out", "changing the password signs out the sessions started before", "an expired cookie cannot restore its user or reach a protected action", "user.admin? is false for a new user", "require_admin answers 404 to a visitor and a non-admin and 200 to an admin", "./blog user admin and unadmin print what they did", "./blog user admin and unadmin set the flag of an existing user", "a PNG upload is stored on disk and served back with safe headers", "HTML and SVG bytes are refused even when named .png and declared image/png", "a file over the model's limit is a 422 with a message", "the client's filename is a display name: it never reaches the disk path", "replacing the file deletes the old blob; destroying the record deletes the current one", "a record whose blob is gone answers 404", "a multipart POST without the CSRF token is refused", "an update without a file keeps the stored one", "the download is public like show: a visitor gets the file", "an article's JSON has the cover's URL and none of the cover_* columns", "the cover's validation messages are in the chosen language", "the layout links the digested stylesheet, which is served immutable with its url() digested", "the import map pins Turbo and the application entry point, with the CSP nonce", "the article page renders each comment with CommentComponent and subscribes to the article's stream", "a new comment is broadcast as a Turbo Stream append to the article's stream", "a destroyed comment is broadcast as a Turbo Stream remove of its element", "a comment that is not saved broadcasts nothing", "a comment posted by Turbo answers create.turbo_stream.erb: the comment appended and the form reset", "a comment posted without the Turbo Stream Accept header still redirects with 303", "an invalid comment posted by Turbo redirects back with the alert", "an article page that fails is reported", "a failing job is reported with its attempt and retried", "a job whose comment was deleted is discarded and reported once, with the request's id", "a page that is not found is not reported", "GET /setup with the token shows the form to this machine while no user exists", "/setup without the token, or with a wrong one, is a 404", "/setup is a 404 to another machine, through a proxy, and once a user exists", "POST /setup from another machine, or without the token, creates nothing", "BLOG_SETUP_OPEN opens /setup to any address with the token until a user exists", "POST /setup with the token creates the first user and signs them in", "POST /setup with a short or mismatched password re-renders the form", "./blog user creates a user, then sets its password", "POST /setup and ./blog user refuse an address list or a malformed address", "./blog user refuses bad arguments and an empty or short password", "a password read from standard input loses one trailing newline", "the boot warning is due while no user exists", "the jobs page is 404 to a visitor and to a user who is not an admin, and renders for an admin", "retry, discard and delete are 404 to a visitor and to a user who is not an admin", "an admin signs in through the sign-in form and retries a job through the session", "a wrong password signs nobody in and the jobs page stays 404", "the token gate's /admin/login is gone", "an admin made an ordinary user again, or signed out, gets 404", "?locale=ja renders Japanese", "after ?locale=ja, a plain link stays Japanese (cookie)", "the language links keep the current path", "Accept-Language: ja renders Japanese", "an invalid locale param falls back to English", "a tampered locale cookie is ignored", "the sign-in page and its messages are in the chosen language", "validation errors in Japanese", "10 failures lock the account for an hour with the wrong-password message", "ten failures lock the account until the hour passes", "a successful sign-in clears the count", "./APP user EMAIL PASSWORD clears a lock", "with auth_lockout_attempts 0 an existing lock is not enforced", "auth_lockout_attempts 0 never locks", "a comment's request id is in the job it enqueued: the job's row and its log line", "each request has its own id", "a job enqueued outside a request logs its own tag alone", "a sign-in restarts the lifetime of a cookie that already has one", "a remembered session survives day 15 and ends after day 30", "an unremembered session ends after day 14", "an unremembered session still ends with session_absolute_max_age off", "seven idle days end a session", "last_active_at is touched at most once a minute", "an unremembered sign-in sets a cookie without Max-Age", "performed, it logs the comment and its article", "a comment deleted before the job runs discards the job", "config/app.rb schedules the prune of done jobs, which keeps the last 7 days", "a row done today is kept for 7 days and pruned after them", "the fixtures are valid", "destroying an article destroys its comments", "Article.recent puts the newest first", "a title is required, a body of 10 characters or more, and the title is unique", "the fixture is valid and belongs to its article", "a comment needs a commenter and a body", "an address is one address: one @, nothing around it that splits it", "an address saved before the format check still saves"].freeze
     CASE_METHOD = ["test_renders_the_comment_with_its_author__its_body_and_a_delete_button", "test_changing_email_or_password_requires_the_current_password", "test_a_password_change_ends_other_sessions_and_keeps_this_one", "test_deleting_the_account_requires_the_password_and_removes_the_user_and_sessions", "test_a_visitor_is_sent_to_sign_in", "test_PATCH__account_past_ten_requests_is_refused_for_a_while", "test_wrong_current_passwords_are_limited_per_user_too__from_any_address", "test_the_form_s_fields_are_the_only_ones_a_change_takes", "test_PATCH_and_DELETE__account_without_the_form_s_token_are_refused", "test_a_new_hash_of_the_password_stays_with_this_browser_when_the_change_fails", "test_a_deletion_the_database_refuses_changes_nothing_and_says_so", "test__admin_articles_sends_a_visitor_to_sign_in__is_404_to_a_user_who_is_not_an_admin__and_lists_the_articles_to_an_admin", "test_the_admin_list_shows_at_most_per_page__20__articles__newest_first", "test_DELETE__admin_articles__id_by_an_admin_deletes_the_article__by_anyone_else__nothing", "test_DELETE__admin_articles__id_by_an_admin_but_without_the_authenticity_token_is_403", "test_a_signed_in_admin_reaches__admin_articles__and_the_article_page_links_to_it", "test_a_signed_in_user_who_is_not_an_admin_gets_the_concern_s_404_on_every_admin_page", "test_GET___renders_the_articles_index", "test_GET__articles_lists_every_article_with_a_link_to_it", "test_GET__articles_new_renders_the_form_with_a_CSRF_token", "test_POST__articles_creates_an_article_and_redirects_to_it_with_a_notice", "test_POST__articles_without_the_CSRF_token_is_rejected", "test_POST__articles_with_a_blank_title_re_renders_the_form_with_errors", "test_POST__articles_with_a_short_body_reports_the_length_error", "test_GET__articles__id_shows_the_article", "test_GET__articles__id_edit_renders_the_form_with_the_article_s_values", "test_PATCH__articles__id__POST_with__method__updates_and_redirects_with_a_notice", "test_PATCH__articles__id_with_invalid_values_re_renders_the_edit_form", "test_DELETE__articles__id__POST_with__method__destroys_and_redirects_to_the_index", "test_a_missing_article_is_404", "test_a_visitor_reads_articles_but_is_sent_to_sign_in_to_write__edit_or_delete_one", "test_the_index_shows_each_article_s_comment_count_from_one_preload", "test_a_duplicate_title_is_refused_with_has_already_been_taken", "test_the_date_filter_leaves_out_articles_created_outside_the_range", "test_the_index_shows_the_article_count__cached_for_a_minute", "test__articles_json_and__articles__id_json_answer_JSON_through_respond_to___articles_xml_is_406", "test_the_order_select_puts_the_oldest_first_with__order_old", "test_counts_go_through_number_with_delimiter_and_dates_through_time_tag", "test_the_article_page_lists_its_comments_and_has_a_comment_form", "test_POST__articles__article_id_comments_adds_a_comment_and_redirects_back_to_the_article", "test_a_commenter_s_name_with_markup_is_shown_as_text", "test_a_comment_without_a_commenter_is_not_saved_and_the_article_page_says_why", "test_a_visitor_comments_without_signing_in__but_is_sent_to_sign_in_to_delete_a_comment", "test_a_comment_that_does_not_save_says_why_in_Japanese", "test_a_saved_comment_is_shown_and_noticed_in_Japanese", "test_a_comment_posted_without_the_CSRF_token_is_rejected", "test_DELETE__articles__article_id_comments__id__POST_with__method__removes_the_comment", "test_a_comment_is_only_reachable_through_its_own_article", "test_comments_on_a_missing_article_are_404", "test_comments_have_no_pages_of_their_own", "test_a_new_comment_enqueues_a_NotifyCommentJob__which_logs_it_when_performed", "test_a_comment_that_is_not_saved_enqueues_no_job", "test_a_reset_mail_is_sent_once_and_its_link_expires_after_15_minutes", "test_reset_answers_the_same_for_unknown_addresses_and_links_to_base_url", "test_without_base_url_a_link_takes_the_request_s_address_only_where_that_is_safe", "test_any_other_environment_without_base_url_sends_no_mail_and_answers_the_same", "test_an_address_the_mailer_refuses_gets_the_same_answer__and_the_log_says_why", "test_the_token_expires_after_15_minutes", "test_the_token_stops_working_once_the_password_changed", "test_updating_the_password_ends_every_other_session", "test_a_reset_clears_a_lockout", "test_the_mail_is_stored_with_the_dictionary_s_subject", "test_POST__passwords_past_ten_requests_is_refused_for_a_while", "test_a_visitor_is_sent_to_the_sign_in_page", "test_GET__session_new_renders_the_sign_in_form", "test_POST__session__PUT__passwords__token_and_DELETE__session_without_the_form_s_token_are_refused", "test_POST__session_signs_in_with_the_right_password", "test_authentication_returns_to_a_local_path_once", "test_authentication_rejects_unsafe_return_destinations_and_consumes_them", "test_POST__session_with_the_wrong_password_shows_an_alert", "test_POST__session_past_ten_attempts_is_refused_for_a_while", "test_DELETE__session_signs_out_and_drops_the_Session_row", "test_a_session_the_database_no_longer_has_signs_the_browser_out", "test_changing_the_password_signs_out_the_sessions_started_before", "test_an_expired_cookie_cannot_restore_its_user_or_reach_a_protected_action", "test_user_admin__is_false_for_a_new_user", "test_require_admin_answers_404_to_a_visitor_and_a_non_admin_and_200_to_an_admin", "test___blog_user_admin_and_unadmin_print_what_they_did", "test___blog_user_admin_and_unadmin_set_the_flag_of_an_existing_user", "test_a_PNG_upload_is_stored_on_disk_and_served_back_with_safe_headers", "test_HTML_and_SVG_bytes_are_refused_even_when_named__png_and_declared_image_png", "test_a_file_over_the_model_s_limit_is_a_422_with_a_message", "test_the_client_s_filename_is_a_display_name__it_never_reaches_the_disk_path", "test_replacing_the_file_deletes_the_old_blob__destroying_the_record_deletes_the_current_one", "test_a_record_whose_blob_is_gone_answers_404", "test_a_multipart_POST_without_the_CSRF_token_is_refused", "test_an_update_without_a_file_keeps_the_stored_one", "test_the_download_is_public_like_show__a_visitor_gets_the_file", "test_an_article_s_JSON_has_the_cover_s_URL_and_none_of_the_cover___columns", "test_the_cover_s_validation_messages_are_in_the_chosen_language", "test_the_layout_links_the_digested_stylesheet__which_is_served_immutable_with_its_url___digested", "test_the_import_map_pins_Turbo_and_the_application_entry_point__with_the_CSP_nonce", "test_the_article_page_renders_each_comment_with_CommentComponent_and_subscribes_to_the_article_s_stream", "test_a_new_comment_is_broadcast_as_a_Turbo_Stream_append_to_the_article_s_stream", "test_a_destroyed_comment_is_broadcast_as_a_Turbo_Stream_remove_of_its_element", "test_a_comment_that_is_not_saved_broadcasts_nothing", "test_a_comment_posted_by_Turbo_answers_create_turbo_stream_erb__the_comment_appended_and_the_form_reset", "test_a_comment_posted_without_the_Turbo_Stream_Accept_header_still_redirects_with_303", "test_an_invalid_comment_posted_by_Turbo_redirects_back_with_the_alert", "test_an_article_page_that_fails_is_reported", "test_a_failing_job_is_reported_with_its_attempt_and_retried", "test_a_job_whose_comment_was_deleted_is_discarded_and_reported_once__with_the_request_s_id", "test_a_page_that_is_not_found_is_not_reported", "test_GET__setup_with_the_token_shows_the_form_to_this_machine_while_no_user_exists", "test__setup_without_the_token__or_with_a_wrong_one__is_a_404", "test__setup_is_a_404_to_another_machine__through_a_proxy__and_once_a_user_exists", "test_POST__setup_from_another_machine__or_without_the_token__creates_nothing", "test_BLOG_SETUP_OPEN_opens__setup_to_any_address_with_the_token_until_a_user_exists", "test_POST__setup_with_the_token_creates_the_first_user_and_signs_them_in", "test_POST__setup_with_a_short_or_mismatched_password_re_renders_the_form", "test___blog_user_creates_a_user__then_sets_its_password", "test_POST__setup_and___blog_user_refuse_an_address_list_or_a_malformed_address", "test___blog_user_refuses_bad_arguments_and_an_empty_or_short_password", "test_a_password_read_from_standard_input_loses_one_trailing_newline", "test_the_boot_warning_is_due_while_no_user_exists", "test_the_jobs_page_is_404_to_a_visitor_and_to_a_user_who_is_not_an_admin__and_renders_for_an_admin", "test_retry__discard_and_delete_are_404_to_a_visitor_and_to_a_user_who_is_not_an_admin", "test_an_admin_signs_in_through_the_sign_in_form_and_retries_a_job_through_the_session", "test_a_wrong_password_signs_nobody_in_and_the_jobs_page_stays_404", "test_the_token_gate_s__admin_login_is_gone", "test_an_admin_made_an_ordinary_user_again__or_signed_out__gets_404", "test__locale_ja_renders_Japanese", "test_after__locale_ja__a_plain_link_stays_Japanese__cookie_", "test_the_language_links_keep_the_current_path", "test_Accept_Language__ja_renders_Japanese", "test_an_invalid_locale_param_falls_back_to_English", "test_a_tampered_locale_cookie_is_ignored", "test_the_sign_in_page_and_its_messages_are_in_the_chosen_language", "test_validation_errors_in_Japanese", "test_10_failures_lock_the_account_for_an_hour_with_the_wrong_password_message", "test_ten_failures_lock_the_account_until_the_hour_passes", "test_a_successful_sign_in_clears_the_count", "test___APP_user_EMAIL_PASSWORD_clears_a_lock", "test_with_auth_lockout_attempts_0_an_existing_lock_is_not_enforced", "test_auth_lockout_attempts_0_never_locks", "test_a_comment_s_request_id_is_in_the_job_it_enqueued__the_job_s_row_and_its_log_line", "test_each_request_has_its_own_id", "test_a_job_enqueued_outside_a_request_logs_its_own_tag_alone", "test_a_sign_in_restarts_the_lifetime_of_a_cookie_that_already_has_one", "test_a_remembered_session_survives_day_15_and_ends_after_day_30", "test_an_unremembered_session_ends_after_day_14", "test_an_unremembered_session_still_ends_with_session_absolute_max_age_off", "test_seven_idle_days_end_a_session", "test_last_active_at_is_touched_at_most_once_a_minute", "test_an_unremembered_sign_in_sets_a_cookie_without_Max_Age", "test_performed__it_logs_the_comment_and_its_article", "test_a_comment_deleted_before_the_job_runs_discards_the_job", "test_config_app_rb_schedules_the_prune_of_done_jobs__which_keeps_the_last_7_days", "test_a_row_done_today_is_kept_for_7_days_and_pruned_after_them", "test_the_fixtures_are_valid", "test_destroying_an_article_destroys_its_comments", "test_Article_recent_puts_the_newest_first", "test_a_title_is_required__a_body_of_10_characters_or_more__and_the_title_is_unique", "test_the_fixture_is_valid_and_belongs_to_its_article", "test_a_comment_needs_a_commenter_and_a_body", "test_an_address_is_one_address__one____nothing_around_it_that_splits_it", "test_an_address_saved_before_the_format_check_still_saves"].freeze
 
-    # Runs the class-form test i: before_case, run_body, after_case.
+    # Runs the class-form test i through its method, case_<i>.
     def self.run_case(i)
       case i
-      when 0
-        t = CommentComponentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_renders_the_comment_with_its_author__its_body_and_a_delete_button }
-        end
-        Cybertrain::Test.after_case(t)
-      when 1
-        t = AccountsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_changing_email_or_password_requires_the_current_password }
-        end
-        Cybertrain::Test.after_case(t)
-      when 2
-        t = AccountsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_password_change_ends_other_sessions_and_keeps_this_one }
-        end
-        Cybertrain::Test.after_case(t)
-      when 3
-        t = AccountsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_deleting_the_account_requires_the_password_and_removes_the_user_and_sessions }
-        end
-        Cybertrain::Test.after_case(t)
-      when 4
-        t = AccountsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_visitor_is_sent_to_sign_in }
-        end
-        Cybertrain::Test.after_case(t)
-      when 5
-        t = AccountsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_PATCH__account_past_ten_requests_is_refused_for_a_while }
-        end
-        Cybertrain::Test.after_case(t)
-      when 6
-        t = AccountsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_wrong_current_passwords_are_limited_per_user_too__from_any_address }
-        end
-        Cybertrain::Test.after_case(t)
-      when 7
-        t = AccountsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_form_s_fields_are_the_only_ones_a_change_takes }
-        end
-        Cybertrain::Test.after_case(t)
-      when 8
-        t = AccountsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_PATCH_and_DELETE__account_without_the_form_s_token_are_refused }
-        end
-        Cybertrain::Test.after_case(t)
-      when 9
-        t = AccountsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_new_hash_of_the_password_stays_with_this_browser_when_the_change_fails }
-        end
-        Cybertrain::Test.after_case(t)
-      when 10
-        t = AccountsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_deletion_the_database_refuses_changes_nothing_and_says_so }
-        end
-        Cybertrain::Test.after_case(t)
-      when 11
-        t = Admin::ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test__admin_articles_sends_a_visitor_to_sign_in__is_404_to_a_user_who_is_not_an_admin__and_lists_the_articles_to_an_admin }
-        end
-        Cybertrain::Test.after_case(t)
-      when 12
-        t = Admin::ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_admin_list_shows_at_most_per_page__20__articles__newest_first }
-        end
-        Cybertrain::Test.after_case(t)
-      when 13
-        t = Admin::ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_DELETE__admin_articles__id_by_an_admin_deletes_the_article__by_anyone_else__nothing }
-        end
-        Cybertrain::Test.after_case(t)
-      when 14
-        t = Admin::ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_DELETE__admin_articles__id_by_an_admin_but_without_the_authenticity_token_is_403 }
-        end
-        Cybertrain::Test.after_case(t)
-      when 15
-        t = Admin::ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_signed_in_admin_reaches__admin_articles__and_the_article_page_links_to_it }
-        end
-        Cybertrain::Test.after_case(t)
-      when 16
-        t = Admin::ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_signed_in_user_who_is_not_an_admin_gets_the_concern_s_404_on_every_admin_page }
-        end
-        Cybertrain::Test.after_case(t)
-      when 17
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_GET___renders_the_articles_index }
-        end
-        Cybertrain::Test.after_case(t)
-      when 18
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_GET__articles_lists_every_article_with_a_link_to_it }
-        end
-        Cybertrain::Test.after_case(t)
-      when 19
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_GET__articles_new_renders_the_form_with_a_CSRF_token }
-        end
-        Cybertrain::Test.after_case(t)
-      when 20
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__articles_creates_an_article_and_redirects_to_it_with_a_notice }
-        end
-        Cybertrain::Test.after_case(t)
-      when 21
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__articles_without_the_CSRF_token_is_rejected }
-        end
-        Cybertrain::Test.after_case(t)
-      when 22
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__articles_with_a_blank_title_re_renders_the_form_with_errors }
-        end
-        Cybertrain::Test.after_case(t)
-      when 23
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__articles_with_a_short_body_reports_the_length_error }
-        end
-        Cybertrain::Test.after_case(t)
-      when 24
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_GET__articles__id_shows_the_article }
-        end
-        Cybertrain::Test.after_case(t)
-      when 25
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_GET__articles__id_edit_renders_the_form_with_the_article_s_values }
-        end
-        Cybertrain::Test.after_case(t)
-      when 26
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_PATCH__articles__id__POST_with__method__updates_and_redirects_with_a_notice }
-        end
-        Cybertrain::Test.after_case(t)
-      when 27
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_PATCH__articles__id_with_invalid_values_re_renders_the_edit_form }
-        end
-        Cybertrain::Test.after_case(t)
-      when 28
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_DELETE__articles__id__POST_with__method__destroys_and_redirects_to_the_index }
-        end
-        Cybertrain::Test.after_case(t)
-      when 29
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_missing_article_is_404 }
-        end
-        Cybertrain::Test.after_case(t)
-      when 30
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_visitor_reads_articles_but_is_sent_to_sign_in_to_write__edit_or_delete_one }
-        end
-        Cybertrain::Test.after_case(t)
-      when 31
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_index_shows_each_article_s_comment_count_from_one_preload }
-        end
-        Cybertrain::Test.after_case(t)
-      when 32
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_duplicate_title_is_refused_with_has_already_been_taken }
-        end
-        Cybertrain::Test.after_case(t)
-      when 33
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_date_filter_leaves_out_articles_created_outside_the_range }
-        end
-        Cybertrain::Test.after_case(t)
-      when 34
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_index_shows_the_article_count__cached_for_a_minute }
-        end
-        Cybertrain::Test.after_case(t)
-      when 35
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test__articles_json_and__articles__id_json_answer_JSON_through_respond_to___articles_xml_is_406 }
-        end
-        Cybertrain::Test.after_case(t)
-      when 36
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_order_select_puts_the_oldest_first_with__order_old }
-        end
-        Cybertrain::Test.after_case(t)
-      when 37
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_counts_go_through_number_with_delimiter_and_dates_through_time_tag }
-        end
-        Cybertrain::Test.after_case(t)
-      when 38
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_article_page_lists_its_comments_and_has_a_comment_form }
-        end
-        Cybertrain::Test.after_case(t)
-      when 39
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__articles__article_id_comments_adds_a_comment_and_redirects_back_to_the_article }
-        end
-        Cybertrain::Test.after_case(t)
-      when 40
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_commenter_s_name_with_markup_is_shown_as_text }
-        end
-        Cybertrain::Test.after_case(t)
-      when 41
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_comment_without_a_commenter_is_not_saved_and_the_article_page_says_why }
-        end
-        Cybertrain::Test.after_case(t)
-      when 42
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_visitor_comments_without_signing_in__but_is_sent_to_sign_in_to_delete_a_comment }
-        end
-        Cybertrain::Test.after_case(t)
-      when 43
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_comment_that_does_not_save_says_why_in_Japanese }
-        end
-        Cybertrain::Test.after_case(t)
-      when 44
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_saved_comment_is_shown_and_noticed_in_Japanese }
-        end
-        Cybertrain::Test.after_case(t)
-      when 45
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_comment_posted_without_the_CSRF_token_is_rejected }
-        end
-        Cybertrain::Test.after_case(t)
-      when 46
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_DELETE__articles__article_id_comments__id__POST_with__method__removes_the_comment }
-        end
-        Cybertrain::Test.after_case(t)
-      when 47
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_comment_is_only_reachable_through_its_own_article }
-        end
-        Cybertrain::Test.after_case(t)
-      when 48
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_comments_on_a_missing_article_are_404 }
-        end
-        Cybertrain::Test.after_case(t)
-      when 49
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_comments_have_no_pages_of_their_own }
-        end
-        Cybertrain::Test.after_case(t)
-      when 50
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_new_comment_enqueues_a_NotifyCommentJob__which_logs_it_when_performed }
-        end
-        Cybertrain::Test.after_case(t)
-      when 51
-        t = CommentsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_comment_that_is_not_saved_enqueues_no_job }
-        end
-        Cybertrain::Test.after_case(t)
-      when 52
-        t = PasswordsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_reset_mail_is_sent_once_and_its_link_expires_after_15_minutes }
-        end
-        Cybertrain::Test.after_case(t)
-      when 53
-        t = PasswordsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_reset_answers_the_same_for_unknown_addresses_and_links_to_base_url }
-        end
-        Cybertrain::Test.after_case(t)
-      when 54
-        t = PasswordsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_without_base_url_a_link_takes_the_request_s_address_only_where_that_is_safe }
-        end
-        Cybertrain::Test.after_case(t)
-      when 55
-        t = PasswordsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_any_other_environment_without_base_url_sends_no_mail_and_answers_the_same }
-        end
-        Cybertrain::Test.after_case(t)
-      when 56
-        t = PasswordsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_address_the_mailer_refuses_gets_the_same_answer__and_the_log_says_why }
-        end
-        Cybertrain::Test.after_case(t)
-      when 57
-        t = PasswordsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_token_expires_after_15_minutes }
-        end
-        Cybertrain::Test.after_case(t)
-      when 58
-        t = PasswordsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_token_stops_working_once_the_password_changed }
-        end
-        Cybertrain::Test.after_case(t)
-      when 59
-        t = PasswordsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_updating_the_password_ends_every_other_session }
-        end
-        Cybertrain::Test.after_case(t)
-      when 60
-        t = PasswordsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_reset_clears_a_lockout }
-        end
-        Cybertrain::Test.after_case(t)
-      when 61
-        t = PasswordsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_mail_is_stored_with_the_dictionary_s_subject }
-        end
-        Cybertrain::Test.after_case(t)
-      when 62
-        t = PasswordsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__passwords_past_ten_requests_is_refused_for_a_while }
-        end
-        Cybertrain::Test.after_case(t)
-      when 63
-        t = SessionsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_visitor_is_sent_to_the_sign_in_page }
-        end
-        Cybertrain::Test.after_case(t)
-      when 64
-        t = SessionsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_GET__session_new_renders_the_sign_in_form }
-        end
-        Cybertrain::Test.after_case(t)
-      when 65
-        t = SessionsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__session__PUT__passwords__token_and_DELETE__session_without_the_form_s_token_are_refused }
-        end
-        Cybertrain::Test.after_case(t)
-      when 66
-        t = SessionsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__session_signs_in_with_the_right_password }
-        end
-        Cybertrain::Test.after_case(t)
-      when 67
-        t = SessionsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_authentication_returns_to_a_local_path_once }
-        end
-        Cybertrain::Test.after_case(t)
-      when 68
-        t = SessionsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_authentication_rejects_unsafe_return_destinations_and_consumes_them }
-        end
-        Cybertrain::Test.after_case(t)
-      when 69
-        t = SessionsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__session_with_the_wrong_password_shows_an_alert }
-        end
-        Cybertrain::Test.after_case(t)
-      when 70
-        t = SessionsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__session_past_ten_attempts_is_refused_for_a_while }
-        end
-        Cybertrain::Test.after_case(t)
-      when 71
-        t = SessionsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_DELETE__session_signs_out_and_drops_the_Session_row }
-        end
-        Cybertrain::Test.after_case(t)
-      when 72
-        t = SessionsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_session_the_database_no_longer_has_signs_the_browser_out }
-        end
-        Cybertrain::Test.after_case(t)
-      when 73
-        t = SessionsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_changing_the_password_signs_out_the_sessions_started_before }
-        end
-        Cybertrain::Test.after_case(t)
-      when 74
-        t = SessionsControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_expired_cookie_cannot_restore_its_user_or_reach_a_protected_action }
-        end
-        Cybertrain::Test.after_case(t)
-      when 75
-        t = AdminTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_user_admin__is_false_for_a_new_user }
-        end
-        Cybertrain::Test.after_case(t)
-      when 76
-        t = AdminTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_require_admin_answers_404_to_a_visitor_and_a_non_admin_and_200_to_an_admin }
-        end
-        Cybertrain::Test.after_case(t)
-      when 77
-        t = AdminTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test___blog_user_admin_and_unadmin_print_what_they_did }
-        end
-        Cybertrain::Test.after_case(t)
-      when 78
-        t = AdminTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test___blog_user_admin_and_unadmin_set_the_flag_of_an_existing_user }
-        end
-        Cybertrain::Test.after_case(t)
-      when 79
-        t = ArticleCoverAttachmentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_PNG_upload_is_stored_on_disk_and_served_back_with_safe_headers }
-        end
-        Cybertrain::Test.after_case(t)
-      when 80
-        t = ArticleCoverAttachmentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_HTML_and_SVG_bytes_are_refused_even_when_named__png_and_declared_image_png }
-        end
-        Cybertrain::Test.after_case(t)
-      when 81
-        t = ArticleCoverAttachmentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_file_over_the_model_s_limit_is_a_422_with_a_message }
-        end
-        Cybertrain::Test.after_case(t)
-      when 82
-        t = ArticleCoverAttachmentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_client_s_filename_is_a_display_name__it_never_reaches_the_disk_path }
-        end
-        Cybertrain::Test.after_case(t)
-      when 83
-        t = ArticleCoverAttachmentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_replacing_the_file_deletes_the_old_blob__destroying_the_record_deletes_the_current_one }
-        end
-        Cybertrain::Test.after_case(t)
-      when 84
-        t = ArticleCoverAttachmentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_record_whose_blob_is_gone_answers_404 }
-        end
-        Cybertrain::Test.after_case(t)
-      when 85
-        t = ArticleCoverAttachmentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_multipart_POST_without_the_CSRF_token_is_refused }
-        end
-        Cybertrain::Test.after_case(t)
-      when 86
-        t = ArticleCoverAttachmentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_update_without_a_file_keeps_the_stored_one }
-        end
-        Cybertrain::Test.after_case(t)
-      when 87
-        t = ArticleCoverAttachmentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_download_is_public_like_show__a_visitor_gets_the_file }
-        end
-        Cybertrain::Test.after_case(t)
-      when 88
-        t = ArticleCoverAttachmentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_article_s_JSON_has_the_cover_s_URL_and_none_of_the_cover___columns }
-        end
-        Cybertrain::Test.after_case(t)
-      when 89
-        t = ArticleCoverAttachmentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_cover_s_validation_messages_are_in_the_chosen_language }
-        end
-        Cybertrain::Test.after_case(t)
-      when 90
-        t = AssetsTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_layout_links_the_digested_stylesheet__which_is_served_immutable_with_its_url___digested }
-        end
-        Cybertrain::Test.after_case(t)
-      when 91
-        t = AssetsTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_import_map_pins_Turbo_and_the_application_entry_point__with_the_CSP_nonce }
-        end
-        Cybertrain::Test.after_case(t)
-      when 92
-        t = CommentBroadcastTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_article_page_renders_each_comment_with_CommentComponent_and_subscribes_to_the_article_s_stream }
-        end
-        Cybertrain::Test.after_case(t)
-      when 93
-        t = CommentBroadcastTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_new_comment_is_broadcast_as_a_Turbo_Stream_append_to_the_article_s_stream }
-        end
-        Cybertrain::Test.after_case(t)
-      when 94
-        t = CommentBroadcastTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_destroyed_comment_is_broadcast_as_a_Turbo_Stream_remove_of_its_element }
-        end
-        Cybertrain::Test.after_case(t)
-      when 95
-        t = CommentBroadcastTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_comment_that_is_not_saved_broadcasts_nothing }
-        end
-        Cybertrain::Test.after_case(t)
-      when 96
-        t = CommentBroadcastTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_comment_posted_by_Turbo_answers_create_turbo_stream_erb__the_comment_appended_and_the_form_reset }
-        end
-        Cybertrain::Test.after_case(t)
-      when 97
-        t = CommentBroadcastTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_comment_posted_without_the_Turbo_Stream_Accept_header_still_redirects_with_303 }
-        end
-        Cybertrain::Test.after_case(t)
-      when 98
-        t = CommentBroadcastTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_invalid_comment_posted_by_Turbo_redirects_back_with_the_alert }
-        end
-        Cybertrain::Test.after_case(t)
-      when 99
-        t = ErrorReportingTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_article_page_that_fails_is_reported }
-        end
-        Cybertrain::Test.after_case(t)
-      when 100
-        t = ErrorReportingTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_failing_job_is_reported_with_its_attempt_and_retried }
-        end
-        Cybertrain::Test.after_case(t)
-      when 101
-        t = ErrorReportingTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_job_whose_comment_was_deleted_is_discarded_and_reported_once__with_the_request_s_id }
-        end
-        Cybertrain::Test.after_case(t)
-      when 102
-        t = ErrorReportingTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_page_that_is_not_found_is_not_reported }
-        end
-        Cybertrain::Test.after_case(t)
-      when 103
-        t = FirstRunTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_GET__setup_with_the_token_shows_the_form_to_this_machine_while_no_user_exists }
-        end
-        Cybertrain::Test.after_case(t)
-      when 104
-        t = FirstRunTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test__setup_without_the_token__or_with_a_wrong_one__is_a_404 }
-        end
-        Cybertrain::Test.after_case(t)
-      when 105
-        t = FirstRunTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test__setup_is_a_404_to_another_machine__through_a_proxy__and_once_a_user_exists }
-        end
-        Cybertrain::Test.after_case(t)
-      when 106
-        t = FirstRunTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__setup_from_another_machine__or_without_the_token__creates_nothing }
-        end
-        Cybertrain::Test.after_case(t)
-      when 107
-        t = FirstRunTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_BLOG_SETUP_OPEN_opens__setup_to_any_address_with_the_token_until_a_user_exists }
-        end
-        Cybertrain::Test.after_case(t)
-      when 108
-        t = FirstRunTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__setup_with_the_token_creates_the_first_user_and_signs_them_in }
-        end
-        Cybertrain::Test.after_case(t)
-      when 109
-        t = FirstRunTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__setup_with_a_short_or_mismatched_password_re_renders_the_form }
-        end
-        Cybertrain::Test.after_case(t)
-      when 110
-        t = FirstRunTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test___blog_user_creates_a_user__then_sets_its_password }
-        end
-        Cybertrain::Test.after_case(t)
-      when 111
-        t = FirstRunTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_POST__setup_and___blog_user_refuse_an_address_list_or_a_malformed_address }
-        end
-        Cybertrain::Test.after_case(t)
-      when 112
-        t = FirstRunTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test___blog_user_refuses_bad_arguments_and_an_empty_or_short_password }
-        end
-        Cybertrain::Test.after_case(t)
-      when 113
-        t = FirstRunTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_password_read_from_standard_input_loses_one_trailing_newline }
-        end
-        Cybertrain::Test.after_case(t)
-      when 114
-        t = FirstRunTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_boot_warning_is_due_while_no_user_exists }
-        end
-        Cybertrain::Test.after_case(t)
-      when 115
-        t = JobsPageTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_jobs_page_is_404_to_a_visitor_and_to_a_user_who_is_not_an_admin__and_renders_for_an_admin }
-        end
-        Cybertrain::Test.after_case(t)
-      when 116
-        t = JobsPageTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_retry__discard_and_delete_are_404_to_a_visitor_and_to_a_user_who_is_not_an_admin }
-        end
-        Cybertrain::Test.after_case(t)
-      when 117
-        t = JobsPageTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_admin_signs_in_through_the_sign_in_form_and_retries_a_job_through_the_session }
-        end
-        Cybertrain::Test.after_case(t)
-      when 118
-        t = JobsPageTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_wrong_password_signs_nobody_in_and_the_jobs_page_stays_404 }
-        end
-        Cybertrain::Test.after_case(t)
-      when 119
-        t = JobsPageTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_token_gate_s__admin_login_is_gone }
-        end
-        Cybertrain::Test.after_case(t)
-      when 120
-        t = JobsPageTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_admin_made_an_ordinary_user_again__or_signed_out__gets_404 }
-        end
-        Cybertrain::Test.after_case(t)
-      when 121
-        t = LocaleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test__locale_ja_renders_Japanese }
-        end
-        Cybertrain::Test.after_case(t)
-      when 122
-        t = LocaleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_after__locale_ja__a_plain_link_stays_Japanese__cookie_ }
-        end
-        Cybertrain::Test.after_case(t)
-      when 123
-        t = LocaleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_language_links_keep_the_current_path }
-        end
-        Cybertrain::Test.after_case(t)
-      when 124
-        t = LocaleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_Accept_Language__ja_renders_Japanese }
-        end
-        Cybertrain::Test.after_case(t)
-      when 125
-        t = LocaleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_invalid_locale_param_falls_back_to_English }
-        end
-        Cybertrain::Test.after_case(t)
-      when 126
-        t = LocaleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_tampered_locale_cookie_is_ignored }
-        end
-        Cybertrain::Test.after_case(t)
-      when 127
-        t = LocaleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_sign_in_page_and_its_messages_are_in_the_chosen_language }
-        end
-        Cybertrain::Test.after_case(t)
-      when 128
-        t = LocaleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_validation_errors_in_Japanese }
-        end
-        Cybertrain::Test.after_case(t)
-      when 129
-        t = LockoutTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_10_failures_lock_the_account_for_an_hour_with_the_wrong_password_message }
-        end
-        Cybertrain::Test.after_case(t)
-      when 130
-        t = LockoutTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_ten_failures_lock_the_account_until_the_hour_passes }
-        end
-        Cybertrain::Test.after_case(t)
-      when 131
-        t = LockoutTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_successful_sign_in_clears_the_count }
-        end
-        Cybertrain::Test.after_case(t)
-      when 132
-        t = LockoutTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test___APP_user_EMAIL_PASSWORD_clears_a_lock }
-        end
-        Cybertrain::Test.after_case(t)
-      when 133
-        t = LockoutTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_with_auth_lockout_attempts_0_an_existing_lock_is_not_enforced }
-        end
-        Cybertrain::Test.after_case(t)
-      when 134
-        t = LockoutTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_auth_lockout_attempts_0_never_locks }
-        end
-        Cybertrain::Test.after_case(t)
-      when 135
-        t = LoggingTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_comment_s_request_id_is_in_the_job_it_enqueued__the_job_s_row_and_its_log_line }
-        end
-        Cybertrain::Test.after_case(t)
-      when 136
-        t = LoggingTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_each_request_has_its_own_id }
-        end
-        Cybertrain::Test.after_case(t)
-      when 137
-        t = LoggingTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_job_enqueued_outside_a_request_logs_its_own_tag_alone }
-        end
-        Cybertrain::Test.after_case(t)
-      when 138
-        t = RememberMeTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_sign_in_restarts_the_lifetime_of_a_cookie_that_already_has_one }
-        end
-        Cybertrain::Test.after_case(t)
-      when 139
-        t = RememberMeTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_remembered_session_survives_day_15_and_ends_after_day_30 }
-        end
-        Cybertrain::Test.after_case(t)
-      when 140
-        t = RememberMeTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_unremembered_session_ends_after_day_14 }
-        end
-        Cybertrain::Test.after_case(t)
-      when 141
-        t = RememberMeTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_unremembered_session_still_ends_with_session_absolute_max_age_off }
-        end
-        Cybertrain::Test.after_case(t)
-      when 142
-        t = RememberMeTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_seven_idle_days_end_a_session }
-        end
-        Cybertrain::Test.after_case(t)
-      when 143
-        t = RememberMeTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_last_active_at_is_touched_at_most_once_a_minute }
-        end
-        Cybertrain::Test.after_case(t)
-      when 144
-        t = RememberMeTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_unremembered_sign_in_sets_a_cookie_without_Max_Age }
-        end
-        Cybertrain::Test.after_case(t)
-      when 145
-        t = NotifyCommentJobTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_performed__it_logs_the_comment_and_its_article }
-        end
-        Cybertrain::Test.after_case(t)
-      when 146
-        t = NotifyCommentJobTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_comment_deleted_before_the_job_runs_discards_the_job }
-        end
-        Cybertrain::Test.after_case(t)
-      when 147
-        t = PruneDoneJobsTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_config_app_rb_schedules_the_prune_of_done_jobs__which_keeps_the_last_7_days }
-        end
-        Cybertrain::Test.after_case(t)
-      when 148
-        t = PruneDoneJobsTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_row_done_today_is_kept_for_7_days_and_pruned_after_them }
-        end
-        Cybertrain::Test.after_case(t)
-      when 149
-        t = ArticleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_fixtures_are_valid }
-        end
-        Cybertrain::Test.after_case(t)
-      when 150
-        t = ArticleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_destroying_an_article_destroys_its_comments }
-        end
-        Cybertrain::Test.after_case(t)
-      when 151
-        t = ArticleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_Article_recent_puts_the_newest_first }
-        end
-        Cybertrain::Test.after_case(t)
-      when 152
-        t = ArticleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_title_is_required__a_body_of_10_characters_or_more__and_the_title_is_unique }
-        end
-        Cybertrain::Test.after_case(t)
-      when 153
-        t = CommentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_the_fixture_is_valid_and_belongs_to_its_article }
-        end
-        Cybertrain::Test.after_case(t)
-      when 154
-        t = CommentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_comment_needs_a_commenter_and_a_body }
-        end
-        Cybertrain::Test.after_case(t)
-      when 155
-        t = UserTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_address_is_one_address__one____nothing_around_it_that_splits_it }
-        end
-        Cybertrain::Test.after_case(t)
-      when 156
-        t = UserTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_address_saved_before_the_format_check_still_saves }
-        end
-        Cybertrain::Test.after_case(t)
+      when 0 then case_0
+      when 1 then case_1
+      when 2 then case_2
+      when 3 then case_3
+      when 4 then case_4
+      when 5 then case_5
+      when 6 then case_6
+      when 7 then case_7
+      when 8 then case_8
+      when 9 then case_9
+      when 10 then case_10
+      when 11 then case_11
+      when 12 then case_12
+      when 13 then case_13
+      when 14 then case_14
+      when 15 then case_15
+      when 16 then case_16
+      when 17 then case_17
+      when 18 then case_18
+      when 19 then case_19
+      when 20 then case_20
+      when 21 then case_21
+      when 22 then case_22
+      when 23 then case_23
+      when 24 then case_24
+      when 25 then case_25
+      when 26 then case_26
+      when 27 then case_27
+      when 28 then case_28
+      when 29 then case_29
+      when 30 then case_30
+      when 31 then case_31
+      when 32 then case_32
+      when 33 then case_33
+      when 34 then case_34
+      when 35 then case_35
+      when 36 then case_36
+      when 37 then case_37
+      when 38 then case_38
+      when 39 then case_39
+      when 40 then case_40
+      when 41 then case_41
+      when 42 then case_42
+      when 43 then case_43
+      when 44 then case_44
+      when 45 then case_45
+      when 46 then case_46
+      when 47 then case_47
+      when 48 then case_48
+      when 49 then case_49
+      when 50 then case_50
+      when 51 then case_51
+      when 52 then case_52
+      when 53 then case_53
+      when 54 then case_54
+      when 55 then case_55
+      when 56 then case_56
+      when 57 then case_57
+      when 58 then case_58
+      when 59 then case_59
+      when 60 then case_60
+      when 61 then case_61
+      when 62 then case_62
+      when 63 then case_63
+      when 64 then case_64
+      when 65 then case_65
+      when 66 then case_66
+      when 67 then case_67
+      when 68 then case_68
+      when 69 then case_69
+      when 70 then case_70
+      when 71 then case_71
+      when 72 then case_72
+      when 73 then case_73
+      when 74 then case_74
+      when 75 then case_75
+      when 76 then case_76
+      when 77 then case_77
+      when 78 then case_78
+      when 79 then case_79
+      when 80 then case_80
+      when 81 then case_81
+      when 82 then case_82
+      when 83 then case_83
+      when 84 then case_84
+      when 85 then case_85
+      when 86 then case_86
+      when 87 then case_87
+      when 88 then case_88
+      when 89 then case_89
+      when 90 then case_90
+      when 91 then case_91
+      when 92 then case_92
+      when 93 then case_93
+      when 94 then case_94
+      when 95 then case_95
+      when 96 then case_96
+      when 97 then case_97
+      when 98 then case_98
+      when 99 then case_99
+      when 100 then case_100
+      when 101 then case_101
+      when 102 then case_102
+      when 103 then case_103
+      when 104 then case_104
+      when 105 then case_105
+      when 106 then case_106
+      when 107 then case_107
+      when 108 then case_108
+      when 109 then case_109
+      when 110 then case_110
+      when 111 then case_111
+      when 112 then case_112
+      when 113 then case_113
+      when 114 then case_114
+      when 115 then case_115
+      when 116 then case_116
+      when 117 then case_117
+      when 118 then case_118
+      when 119 then case_119
+      when 120 then case_120
+      when 121 then case_121
+      when 122 then case_122
+      when 123 then case_123
+      when 124 then case_124
+      when 125 then case_125
+      when 126 then case_126
+      when 127 then case_127
+      when 128 then case_128
+      when 129 then case_129
+      when 130 then case_130
+      when 131 then case_131
+      when 132 then case_132
+      when 133 then case_133
+      when 134 then case_134
+      when 135 then case_135
+      when 136 then case_136
+      when 137 then case_137
+      when 138 then case_138
+      when 139 then case_139
+      when 140 then case_140
+      when 141 then case_141
+      when 142 then case_142
+      when 143 then case_143
+      when 144 then case_144
+      when 145 then case_145
+      when 146 then case_146
+      when 147 then case_147
+      when 148 then case_148
+      when 149 then case_149
+      when 150 then case_150
+      when 151 then case_151
+      when 152 then case_152
+      when 153 then case_153
+      when 154 then case_154
+      when 155 then case_155
+      when 156 then case_156
       end
+      nil
+    end
+
+    # case_N runs the class-form test N: before_case, run_body, after_case.
+    def self.case_0
+      t = CommentComponentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_renders_the_comment_with_its_author__its_body_and_a_delete_button }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_1
+      t = AccountsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_changing_email_or_password_requires_the_current_password }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_2
+      t = AccountsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_password_change_ends_other_sessions_and_keeps_this_one }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_3
+      t = AccountsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_deleting_the_account_requires_the_password_and_removes_the_user_and_sessions }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_4
+      t = AccountsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_visitor_is_sent_to_sign_in }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_5
+      t = AccountsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_PATCH__account_past_ten_requests_is_refused_for_a_while }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_6
+      t = AccountsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_wrong_current_passwords_are_limited_per_user_too__from_any_address }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_7
+      t = AccountsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_form_s_fields_are_the_only_ones_a_change_takes }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_8
+      t = AccountsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_PATCH_and_DELETE__account_without_the_form_s_token_are_refused }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_9
+      t = AccountsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_new_hash_of_the_password_stays_with_this_browser_when_the_change_fails }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_10
+      t = AccountsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_deletion_the_database_refuses_changes_nothing_and_says_so }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_11
+      t = Admin::ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test__admin_articles_sends_a_visitor_to_sign_in__is_404_to_a_user_who_is_not_an_admin__and_lists_the_articles_to_an_admin }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_12
+      t = Admin::ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_admin_list_shows_at_most_per_page__20__articles__newest_first }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_13
+      t = Admin::ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_DELETE__admin_articles__id_by_an_admin_deletes_the_article__by_anyone_else__nothing }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_14
+      t = Admin::ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_DELETE__admin_articles__id_by_an_admin_but_without_the_authenticity_token_is_403 }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_15
+      t = Admin::ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_signed_in_admin_reaches__admin_articles__and_the_article_page_links_to_it }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_16
+      t = Admin::ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_signed_in_user_who_is_not_an_admin_gets_the_concern_s_404_on_every_admin_page }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_17
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_GET___renders_the_articles_index }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_18
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_GET__articles_lists_every_article_with_a_link_to_it }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_19
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_GET__articles_new_renders_the_form_with_a_CSRF_token }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_20
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__articles_creates_an_article_and_redirects_to_it_with_a_notice }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_21
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__articles_without_the_CSRF_token_is_rejected }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_22
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__articles_with_a_blank_title_re_renders_the_form_with_errors }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_23
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__articles_with_a_short_body_reports_the_length_error }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_24
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_GET__articles__id_shows_the_article }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_25
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_GET__articles__id_edit_renders_the_form_with_the_article_s_values }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_26
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_PATCH__articles__id__POST_with__method__updates_and_redirects_with_a_notice }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_27
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_PATCH__articles__id_with_invalid_values_re_renders_the_edit_form }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_28
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_DELETE__articles__id__POST_with__method__destroys_and_redirects_to_the_index }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_29
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_missing_article_is_404 }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_30
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_visitor_reads_articles_but_is_sent_to_sign_in_to_write__edit_or_delete_one }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_31
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_index_shows_each_article_s_comment_count_from_one_preload }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_32
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_duplicate_title_is_refused_with_has_already_been_taken }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_33
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_date_filter_leaves_out_articles_created_outside_the_range }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_34
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_index_shows_the_article_count__cached_for_a_minute }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_35
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test__articles_json_and__articles__id_json_answer_JSON_through_respond_to___articles_xml_is_406 }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_36
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_order_select_puts_the_oldest_first_with__order_old }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_37
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_counts_go_through_number_with_delimiter_and_dates_through_time_tag }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_38
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_article_page_lists_its_comments_and_has_a_comment_form }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_39
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__articles__article_id_comments_adds_a_comment_and_redirects_back_to_the_article }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_40
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_commenter_s_name_with_markup_is_shown_as_text }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_41
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_comment_without_a_commenter_is_not_saved_and_the_article_page_says_why }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_42
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_visitor_comments_without_signing_in__but_is_sent_to_sign_in_to_delete_a_comment }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_43
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_comment_that_does_not_save_says_why_in_Japanese }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_44
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_saved_comment_is_shown_and_noticed_in_Japanese }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_45
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_comment_posted_without_the_CSRF_token_is_rejected }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_46
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_DELETE__articles__article_id_comments__id__POST_with__method__removes_the_comment }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_47
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_comment_is_only_reachable_through_its_own_article }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_48
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_comments_on_a_missing_article_are_404 }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_49
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_comments_have_no_pages_of_their_own }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_50
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_new_comment_enqueues_a_NotifyCommentJob__which_logs_it_when_performed }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_51
+      t = CommentsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_comment_that_is_not_saved_enqueues_no_job }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_52
+      t = PasswordsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_reset_mail_is_sent_once_and_its_link_expires_after_15_minutes }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_53
+      t = PasswordsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_reset_answers_the_same_for_unknown_addresses_and_links_to_base_url }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_54
+      t = PasswordsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_without_base_url_a_link_takes_the_request_s_address_only_where_that_is_safe }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_55
+      t = PasswordsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_any_other_environment_without_base_url_sends_no_mail_and_answers_the_same }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_56
+      t = PasswordsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_address_the_mailer_refuses_gets_the_same_answer__and_the_log_says_why }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_57
+      t = PasswordsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_token_expires_after_15_minutes }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_58
+      t = PasswordsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_token_stops_working_once_the_password_changed }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_59
+      t = PasswordsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_updating_the_password_ends_every_other_session }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_60
+      t = PasswordsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_reset_clears_a_lockout }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_61
+      t = PasswordsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_mail_is_stored_with_the_dictionary_s_subject }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_62
+      t = PasswordsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__passwords_past_ten_requests_is_refused_for_a_while }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_63
+      t = SessionsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_visitor_is_sent_to_the_sign_in_page }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_64
+      t = SessionsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_GET__session_new_renders_the_sign_in_form }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_65
+      t = SessionsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__session__PUT__passwords__token_and_DELETE__session_without_the_form_s_token_are_refused }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_66
+      t = SessionsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__session_signs_in_with_the_right_password }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_67
+      t = SessionsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_authentication_returns_to_a_local_path_once }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_68
+      t = SessionsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_authentication_rejects_unsafe_return_destinations_and_consumes_them }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_69
+      t = SessionsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__session_with_the_wrong_password_shows_an_alert }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_70
+      t = SessionsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__session_past_ten_attempts_is_refused_for_a_while }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_71
+      t = SessionsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_DELETE__session_signs_out_and_drops_the_Session_row }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_72
+      t = SessionsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_session_the_database_no_longer_has_signs_the_browser_out }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_73
+      t = SessionsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_changing_the_password_signs_out_the_sessions_started_before }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_74
+      t = SessionsControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_expired_cookie_cannot_restore_its_user_or_reach_a_protected_action }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_75
+      t = AdminTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_user_admin__is_false_for_a_new_user }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_76
+      t = AdminTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_require_admin_answers_404_to_a_visitor_and_a_non_admin_and_200_to_an_admin }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_77
+      t = AdminTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test___blog_user_admin_and_unadmin_print_what_they_did }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_78
+      t = AdminTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test___blog_user_admin_and_unadmin_set_the_flag_of_an_existing_user }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_79
+      t = ArticleCoverAttachmentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_PNG_upload_is_stored_on_disk_and_served_back_with_safe_headers }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_80
+      t = ArticleCoverAttachmentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_HTML_and_SVG_bytes_are_refused_even_when_named__png_and_declared_image_png }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_81
+      t = ArticleCoverAttachmentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_file_over_the_model_s_limit_is_a_422_with_a_message }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_82
+      t = ArticleCoverAttachmentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_client_s_filename_is_a_display_name__it_never_reaches_the_disk_path }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_83
+      t = ArticleCoverAttachmentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_replacing_the_file_deletes_the_old_blob__destroying_the_record_deletes_the_current_one }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_84
+      t = ArticleCoverAttachmentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_record_whose_blob_is_gone_answers_404 }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_85
+      t = ArticleCoverAttachmentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_multipart_POST_without_the_CSRF_token_is_refused }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_86
+      t = ArticleCoverAttachmentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_update_without_a_file_keeps_the_stored_one }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_87
+      t = ArticleCoverAttachmentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_download_is_public_like_show__a_visitor_gets_the_file }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_88
+      t = ArticleCoverAttachmentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_article_s_JSON_has_the_cover_s_URL_and_none_of_the_cover___columns }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_89
+      t = ArticleCoverAttachmentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_cover_s_validation_messages_are_in_the_chosen_language }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_90
+      t = AssetsTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_layout_links_the_digested_stylesheet__which_is_served_immutable_with_its_url___digested }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_91
+      t = AssetsTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_import_map_pins_Turbo_and_the_application_entry_point__with_the_CSP_nonce }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_92
+      t = CommentBroadcastTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_article_page_renders_each_comment_with_CommentComponent_and_subscribes_to_the_article_s_stream }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_93
+      t = CommentBroadcastTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_new_comment_is_broadcast_as_a_Turbo_Stream_append_to_the_article_s_stream }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_94
+      t = CommentBroadcastTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_destroyed_comment_is_broadcast_as_a_Turbo_Stream_remove_of_its_element }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_95
+      t = CommentBroadcastTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_comment_that_is_not_saved_broadcasts_nothing }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_96
+      t = CommentBroadcastTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_comment_posted_by_Turbo_answers_create_turbo_stream_erb__the_comment_appended_and_the_form_reset }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_97
+      t = CommentBroadcastTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_comment_posted_without_the_Turbo_Stream_Accept_header_still_redirects_with_303 }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_98
+      t = CommentBroadcastTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_invalid_comment_posted_by_Turbo_redirects_back_with_the_alert }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_99
+      t = ErrorReportingTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_article_page_that_fails_is_reported }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_100
+      t = ErrorReportingTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_failing_job_is_reported_with_its_attempt_and_retried }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_101
+      t = ErrorReportingTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_job_whose_comment_was_deleted_is_discarded_and_reported_once__with_the_request_s_id }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_102
+      t = ErrorReportingTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_page_that_is_not_found_is_not_reported }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_103
+      t = FirstRunTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_GET__setup_with_the_token_shows_the_form_to_this_machine_while_no_user_exists }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_104
+      t = FirstRunTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test__setup_without_the_token__or_with_a_wrong_one__is_a_404 }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_105
+      t = FirstRunTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test__setup_is_a_404_to_another_machine__through_a_proxy__and_once_a_user_exists }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_106
+      t = FirstRunTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__setup_from_another_machine__or_without_the_token__creates_nothing }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_107
+      t = FirstRunTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_BLOG_SETUP_OPEN_opens__setup_to_any_address_with_the_token_until_a_user_exists }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_108
+      t = FirstRunTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__setup_with_the_token_creates_the_first_user_and_signs_them_in }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_109
+      t = FirstRunTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__setup_with_a_short_or_mismatched_password_re_renders_the_form }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_110
+      t = FirstRunTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test___blog_user_creates_a_user__then_sets_its_password }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_111
+      t = FirstRunTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_POST__setup_and___blog_user_refuse_an_address_list_or_a_malformed_address }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_112
+      t = FirstRunTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test___blog_user_refuses_bad_arguments_and_an_empty_or_short_password }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_113
+      t = FirstRunTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_password_read_from_standard_input_loses_one_trailing_newline }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_114
+      t = FirstRunTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_boot_warning_is_due_while_no_user_exists }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_115
+      t = JobsPageTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_jobs_page_is_404_to_a_visitor_and_to_a_user_who_is_not_an_admin__and_renders_for_an_admin }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_116
+      t = JobsPageTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_retry__discard_and_delete_are_404_to_a_visitor_and_to_a_user_who_is_not_an_admin }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_117
+      t = JobsPageTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_admin_signs_in_through_the_sign_in_form_and_retries_a_job_through_the_session }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_118
+      t = JobsPageTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_wrong_password_signs_nobody_in_and_the_jobs_page_stays_404 }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_119
+      t = JobsPageTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_token_gate_s__admin_login_is_gone }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_120
+      t = JobsPageTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_admin_made_an_ordinary_user_again__or_signed_out__gets_404 }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_121
+      t = LocaleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test__locale_ja_renders_Japanese }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_122
+      t = LocaleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_after__locale_ja__a_plain_link_stays_Japanese__cookie_ }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_123
+      t = LocaleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_language_links_keep_the_current_path }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_124
+      t = LocaleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_Accept_Language__ja_renders_Japanese }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_125
+      t = LocaleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_invalid_locale_param_falls_back_to_English }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_126
+      t = LocaleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_tampered_locale_cookie_is_ignored }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_127
+      t = LocaleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_sign_in_page_and_its_messages_are_in_the_chosen_language }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_128
+      t = LocaleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_validation_errors_in_Japanese }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_129
+      t = LockoutTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_10_failures_lock_the_account_for_an_hour_with_the_wrong_password_message }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_130
+      t = LockoutTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_ten_failures_lock_the_account_until_the_hour_passes }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_131
+      t = LockoutTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_successful_sign_in_clears_the_count }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_132
+      t = LockoutTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test___APP_user_EMAIL_PASSWORD_clears_a_lock }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_133
+      t = LockoutTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_with_auth_lockout_attempts_0_an_existing_lock_is_not_enforced }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_134
+      t = LockoutTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_auth_lockout_attempts_0_never_locks }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_135
+      t = LoggingTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_comment_s_request_id_is_in_the_job_it_enqueued__the_job_s_row_and_its_log_line }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_136
+      t = LoggingTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_each_request_has_its_own_id }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_137
+      t = LoggingTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_job_enqueued_outside_a_request_logs_its_own_tag_alone }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_138
+      t = RememberMeTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_sign_in_restarts_the_lifetime_of_a_cookie_that_already_has_one }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_139
+      t = RememberMeTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_remembered_session_survives_day_15_and_ends_after_day_30 }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_140
+      t = RememberMeTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_unremembered_session_ends_after_day_14 }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_141
+      t = RememberMeTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_unremembered_session_still_ends_with_session_absolute_max_age_off }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_142
+      t = RememberMeTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_seven_idle_days_end_a_session }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_143
+      t = RememberMeTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_last_active_at_is_touched_at_most_once_a_minute }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_144
+      t = RememberMeTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_unremembered_sign_in_sets_a_cookie_without_Max_Age }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_145
+      t = NotifyCommentJobTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_performed__it_logs_the_comment_and_its_article }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_146
+      t = NotifyCommentJobTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_comment_deleted_before_the_job_runs_discards_the_job }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_147
+      t = PruneDoneJobsTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_config_app_rb_schedules_the_prune_of_done_jobs__which_keeps_the_last_7_days }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_148
+      t = PruneDoneJobsTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_row_done_today_is_kept_for_7_days_and_pruned_after_them }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_149
+      t = ArticleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_fixtures_are_valid }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_150
+      t = ArticleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_destroying_an_article_destroys_its_comments }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_151
+      t = ArticleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_Article_recent_puts_the_newest_first }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_152
+      t = ArticleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_title_is_required__a_body_of_10_characters_or_more__and_the_title_is_unique }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_153
+      t = CommentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_the_fixture_is_valid_and_belongs_to_its_article }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_154
+      t = CommentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_comment_needs_a_commenter_and_a_body }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_155
+      t = UserTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_address_is_one_address__one____nothing_around_it_that_splits_it }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_156
+      t = UserTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_address_saved_before_the_format_check_still_saves }
+      end
+      Cybertrain::Test.after_case(t)
       nil
     end
 
