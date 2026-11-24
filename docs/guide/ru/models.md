@@ -1,5 +1,5 @@
 ---
-source_sha256: edc01fc327f6eda54332284e41ca1c0a578966e4996608a471927152d0640b52
+source_sha256: 707578e0592cebb2076d5b5ae9b67e5be62e3771a2cd00e5e559d163ef0e3af8
 ---
 # Модели и база данных
 
@@ -972,7 +972,7 @@ Photo.find(photo.id).thumbnail.bytesize   # те же байты обратно
 - `db/schema.rb` записывает столбец обратно как `t.binary`, а консоль
   печатает двоичное значение как `<N bytes>`.
 - Большие файлы держите вне базы: загрузка
-  ([Добавление обложки](tutorial.md#attachments)) — это файл в `storage/uploads/`, а BLOB
+  ([Добавление обложки](advanced-tutorial.md#attachments)) — это файл в `storage/uploads/`, а BLOB
   читается в память целиком вместе со строкой и увеличивает каждую
   резервную копию и WAL.
 

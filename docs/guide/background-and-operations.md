@@ -484,7 +484,7 @@ the three operational tools such an application needs. An application with
 file uploads also keeps their bytes under its upload root
 (`upload_root`, `storage/uploads/` by default): back that directory up and
 restore it together with the database, or restored records point at missing
-files ([Add a cover image](tutorial.md#attachments)).
+files ([Add a cover image](advanced-tutorial.md#attachments)).
 
 **Backups.** `./<app> db backup PATH` writes a consistent copy of the
 configured database (`CYBERTRAIN_DATABASE`) while the server keeps running:

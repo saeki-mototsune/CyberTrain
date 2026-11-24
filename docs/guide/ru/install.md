@@ -1,5 +1,5 @@
 ---
-source_sha256: e57f5d98009f2eec88850beab634a0c6b9b97ccce66b8b6bec397c28d00c213b
+source_sha256: 6bf5394a6e48281e555dd03cd02b963e9f8a3f0d9efc3898432c239020ce33ef
 ---
 # Установка
 
@@ -108,7 +108,7 @@ cybertrain doctor
 - `cybertrain generate attachment MODEL FIELD [--any]` добавляет загрузку файла
   в модель со скаффолдом: пять столбцов метаданных, методы и колбэки модели,
   действие для скачивания, маршрут, поле формы и тест (см.
-  [Добавление обложки](tutorial.md#attachments)). Поле скаффолда `cover:attachment` делает то же самое.
+  [Добавление обложки](advanced-tutorial.md#attachments)). Поле скаффолда `cover:attachment` делает то же самое.
 - `cybertrain generate helper NAME [--force]` добавляет
   `app/helpers/NAME_helper.rb`, модуль, методы которого после `spin run gen`
   может вызывать любой шаблон, и тест

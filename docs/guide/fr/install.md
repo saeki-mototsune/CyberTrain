@@ -1,5 +1,5 @@
 ---
-source_sha256: e57f5d98009f2eec88850beab634a0c6b9b97ccce66b8b6bec397c28d00c213b
+source_sha256: 6bf5394a6e48281e555dd03cd02b963e9f8a3f0d9efc3898432c239020ce33ef
 ---
 # Installer cybertrain
 
@@ -112,7 +112,7 @@ partir de là, de `cybertrain new` à `cybertrain build`.
   fichier à un modèle généré par scaffold&nbsp;: cinq colonnes de métadonnées,
   des méthodes et callbacks de modèle, une action de téléchargement, la route,
   le champ de formulaire et un test (voir
-  [Ajouter une image de couverture](tutorial.md#attachments)). Un champ de scaffold
+  [Ajouter une image de couverture](advanced-tutorial.md#attachments)). Un champ de scaffold
   `cover:attachment` fait la même chose.
 - `cybertrain generate helper NAME [--force]` ajoute
   `app/helpers/NAME_helper.rb`, un module dont tout template peut appeler
