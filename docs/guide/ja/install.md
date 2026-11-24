@@ -1,5 +1,5 @@
 ---
-source_sha256: c032393ee1441a62fcb16089fd5dd57ffbf4c06b5032ca07d5dd2f103da52cde
+source_sha256: 6bf5394a6e48281e555dd03cd02b963e9f8a3f0d9efc3898432c239020ce33ef
 ---
 # インストール
 
@@ -137,7 +137,7 @@ error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cy
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
   gem install cybertrain -v X.Y.Z    # the command the application is on
 or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then relock from nothing (spin lock keeps a locked git commit)
-  rm spin.lock && cybertrain spin lock
+  rm -f spin.lock && cybertrain spin lock
 ```
 
 どちらか一方を行ってください。`cybertrain spin ...` は確認の対象にならないので、`cybertrain spin lock` はいつでも実行できます。インデックスのバージョンに依存している場合、メッセージは `cybertrain = "A.B.C"` と `cybertrain spin lock` だけを示します。spin が固定されたリリースをビルドするのは `spin.toml` がそれを許している間だけなので、`spin.toml` が指すバージョンがロックと違えば、すぐにそのバージョンが比べられます。範囲（`"~> X.Y"`）が固定されたリリースを許さなくなった場合は、`cybertrain spin lock` を実行するまで拒否されます。フレームワークのチェックアウトに依存するアプリ（`path = ...`）は確認されません。`spin.lock` のないアプリは、`spin.toml` が指すリリース（`"X.Y.Z"` または `ref = "vX.Y.Z"`）と比べられます。ブランチ、コミット、範囲はリリースを指さないので、確認されません。

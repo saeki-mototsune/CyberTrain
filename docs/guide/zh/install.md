@@ -1,5 +1,5 @@
 ---
-source_sha256: c032393ee1441a62fcb16089fd5dd57ffbf4c06b5032ca07d5dd2f103da52cde
+source_sha256: 6bf5394a6e48281e555dd03cd02b963e9f8a3f0d9efc3898432c239020ce33ef
 ---
 # 安装
 
@@ -138,7 +138,7 @@ error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cy
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
   gem install cybertrain -v X.Y.Z    # the command the application is on
 or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then relock from nothing (spin lock keeps a locked git commit)
-  rm spin.lock && cybertrain spin lock
+  rm -f spin.lock && cybertrain spin lock
 ```
 
 两种做法任选其一。`cybertrain spin ...` 不做这项检查，因此 `cybertrain spin lock` 总能运行。对于索引中的版本，消息给出的是 `cybertrain = "A.B.C"` 和单独的 `cybertrain spin lock`；只有在 `spin.toml` 仍然允许时，spin 才构建锁定的版本，因此 `spin.toml` 指定的版本一旦与锁不同，就会用它来比较；如果某个范围（`"~> X.Y"`）不再允许锁定的版本，则在运行 `cybertrain spin lock` 之前命令会拒绝执行。依赖框架本地检出代码（`path = ...`）的应用不做检查。没有 `spin.lock` 的应用，则与其 `spin.toml` 指定的版本（`"X.Y.Z"` 或 `ref = "vX.Y.Z"`）比较；分支、提交或范围不指定任何版本，因此不做检查。
