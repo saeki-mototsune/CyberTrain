@@ -6,9 +6,11 @@
 #                          replaced tests deleted (upgrade04_patched_copy),
 #                          then build_and_test
 #   upgrade04_force        the same with --force, which deletes them itself;
-#                          not built: its tree is compared, file for file,
-#                          with a patched copy's, which upgrade04_patch
-#                          builds and tests (the two are one leg)
+#                          not built: its add-columns migration's version is
+#                          checked to be its own and the latest, then its
+#                          tree is compared, file for file, with a patched
+#                          copy's, which upgrade04_patch builds and tests
+#                          (the two are one leg)
 #   upgrade04_confirmable  --confirmable over a copy migrated by 0.4's
 #                          migrations with a user in it
 
@@ -47,11 +49,42 @@ upgrade04_patch() {
   build_and_test
 }
 
+# `expect_add_columns_version DIR`: DIR (a db/migrate) holds exactly one
+# *_add_authentication_columns.rb, its 14-digit version is no other file's
+# there, and it sorts after every other file's version (the migrator runs
+# them in that order, and 0.4's must have run first). Fails with the
+# versions otherwise.
+expect_add_columns_version() {
+  local dir=$1 f v version versions=""
+  local adds=("$dir"/*_add_authentication_columns.rb)
+  for f in "$dir"/*; do
+    [ -e "$f" ] || continue
+    f=${f##*/}
+    versions+=" ${f%%_*}"
+  done
+  if [ "${#adds[@]}" -ne 1 ] || [ ! -e "${adds[0]}" ]; then
+    fail "$dir: not exactly one *_add_authentication_columns.rb (versions:$versions)"
+  fi
+  f=${adds[0]##*/}
+  version=${f%%_*}
+  [[ $version =~ ^[0-9]{14}$ ]] || fail "$dir: $f's version is not 14 digits (versions:$versions)"
+  for f in "$dir"/*; do
+    [ "$f" != "${adds[0]}" ] || continue
+    v=${f##*/}
+    v=${v%%_*}
+    [ "$v" != "$version" ] || fail "$dir: the add-columns migration's version $version is ${f##*/}'s too (versions:$versions)"
+    [[ $v < $version ]] || fail "$dir: the add-columns migration's version $version does not sort after ${f##*/}'s, $v (versions:$versions)"
+  done
+}
+
 # --force must leave the tree patch leaves: the same files with the same
 # bytes, but for the generator's output and patch's log, which only the
 # patched copy has, and the add-columns migration's timestamp, which is the
-# second each run wrote it in. Every other difference fails. The compiled
-# tree is then upgrade04_patch's, so this builds nothing.
+# second each run wrote it in. Every other difference fails. Since the
+# comparison rewrites that timestamp away and no migrator runs on this
+# copy, its version is checked first (expect_add_columns_version): one
+# such migration, a version no other migration has, after 0.4's. The
+# compiled tree is then upgrade04_patch's, so this builds nothing.
 upgrade04_force() {
   step "a fresh copy, run over with --force"
   copy_04_app forced
@@ -64,6 +97,8 @@ upgrade04_force() {
   test ! -e test/support/app_test.rb || fail "--force left 0.4's test/support/app_test.rb"
   expect_upgrade_tests
   upgrade04_patched_copy reference
+  step "the --force copy's add-columns migration: its own version, the latest"
+  expect_add_columns_version "$WORK/forced/db/migrate"
   step "the --force copy against the patched one"
   same_tree "--force against patch" "$WORK/reference" "$WORK/forced" -x ./generate.out -x ./patch.log \
     -r 's#^\./db/migrate/[0-9]\{14\}_add_authentication_columns\.rb$#./db/migrate/TIMESTAMP_add_authentication_columns.rb#'
