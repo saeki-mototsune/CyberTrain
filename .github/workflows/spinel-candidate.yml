@@ -194,16 +194,11 @@ jobs:
         env:
           TAG: ${{ needs.resolve.outputs.tag }}
 
-      # As ci.yml's: `cc` is clang here, which compiles the blog's one test
-      # program in about 3 minutes where gcc takes about 27.
+      # As ci.yml's: the runner's gcc compiles the blog's one test program,
+      # at -O0 as `cybertrain test` always does.
       - name: Example app tests
         if: matrix.leg == 'blog'
         run: |
-          command -v clang > /dev/null || { sudo apt-get update && sudo apt-get install -y clang; }
-          mkdir -p "$RUNNER_TEMP/clang-cc"
-          ln -sf "$(command -v clang)" "$RUNNER_TEMP/clang-cc/cc"
-          export PATH="$RUNNER_TEMP/clang-cc:$PATH"
-          cc --version | head -n 1
           cd examples/blog
           cybertrain test
           SPIN_DEBUG=1 spin run gen -- --check

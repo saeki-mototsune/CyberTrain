@@ -479,8 +479,7 @@ jobs:
   #                failures and exits on test/fixtures/test_app), then the
   #                framework as a git dependency. About 14 minutes.
   #   blog         examples/blog: gen/ fresh, its tests, gen --check. About
-  #                10 minutes, most of it the blog's one test program,
-  #                compiled with clang ("Example app tests" says why).
+  #                5 minutes, most of it the blog's one test program.
   #
   # Every script prints the seconds elapsed on each line (`+Ns`), so a log
   # shows which phase took the time.
@@ -579,25 +578,13 @@ jobs:
       # the test run wrote nothing gen would not write. SPIN_DEBUG=1: the
       # mode `cybertrain test` builds gen in, so gen is not built again.
       #
-      # `cc` is clang in this step. The blog's one test program is 36 MB of
-      # C whose `Gen::Tests.run_case` is a single 2.6 MB function, and gcc
-      # spends about 27 minutes on it (at -O1 still more than 20) where
-      # clang takes 3 (docs/design.md, D34, the status of 2026-11-23).
-      # spinel runs the `cc` on PATH and reads no CC, so a directory with
-      # `cc` -> clang goes first on PATH. Measured locally (4 cores, 7033):
-      # `cybertrain test` 6m47s with clang against 31m03s with gcc, the
-      # same 157 tests and 1558 assertions passing. What the leg no longer
-      # shows is the blog's tests in a gcc build: gcc still builds gen
-      # (the step above), and the other legs compile, test, build and
-      # serve their applications with gcc, as Linux users do.
+      # The blog's one test program is 36 MB of C, compiled by gcc, the
+      # runner's `cc`, at -O0 as `cybertrain test` always compiles it:
+      # 2m49s for the whole step locally (4 cores, 7033), where gcc's -O2
+      # took 31 minutes (docs/design.md, D34, the status of 2026-11-24).
       - name: Example app tests
         if: matrix.leg == 'blog'
         run: |
-          command -v clang > /dev/null || { sudo apt-get update && sudo apt-get install -y clang; }
-          mkdir -p "$RUNNER_TEMP/clang-cc"
-          ln -sf "$(command -v clang)" "$RUNNER_TEMP/clang-cc/cc"
-          export PATH="$RUNNER_TEMP/clang-cc:$PATH"
-          cc --version | head -n 1
           cd examples/blog
           cybertrain test
           SPIN_DEBUG=1 spin run gen -- --check
