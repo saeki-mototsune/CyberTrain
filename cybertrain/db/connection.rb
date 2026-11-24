@@ -115,7 +115,21 @@ module Cybertrain
           # ":memory:" (`file:x?mode=memory` and "" count too).
           # A shared-cache in-memory database is not private and still gets
           # the PRAGMA: SQLite answers "memory" for it and keeps that mode.
-          exec_script("PRAGMA journal_mode=WAL") unless Connection.private_database?(path)
+          unless Connection.private_database?(path)
+            exec_script("PRAGMA journal_mode=WAL")
+            # In WAL mode, NORMAL syncs the WAL at a checkpoint instead of
+            # at every COMMIT (FULL, SQLite's default). A crash of the
+            # process loses nothing and the file stays consistent either
+            # way; a power loss or an OS crash can lose the last commits
+            # before the checkpoint. A sync cost 0.3 ms or more per commit,
+            # and an FFI call holds its OS worker while it waits (NOTES rule
+            # 80): a comment POST of examples/blog (its insert, the job and
+            # the broadcast, then the job's claim and outcome) spent most
+            # of its time in five of them (docs/design.md D92). Only when
+            # the switch to WAL took: in a rollback journal NORMAL is less
+            # safe than this.
+            exec_script("PRAGMA synchronous=NORMAL") if journal_mode == "wal"
+          end
           exec_script("PRAGMA foreign_keys=ON")
         rescue StandardError => e
           close
@@ -244,6 +258,14 @@ module Cybertrain
         raise Error, message unless message.empty?
 
         nil
+      end
+
+      # SQLite's journal mode for this connection's database, lower case
+      # ("wal", "delete", "memory", ...).
+      # @return [String]
+      def journal_mode
+        rows = execute("PRAGMA journal_mode")
+        rows.empty? ? "" : Cast.str(rows[0]["journal_mode"]).downcase
       end
 
       def changes

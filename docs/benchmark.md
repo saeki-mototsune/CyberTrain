@@ -483,11 +483,21 @@ These notes read the recorded run of 2026-11-24.
   against 417 req/s; 360 against 418 with jemalloc) and its 99th percentile
   reaches 317 ms against Rails' 152, so its lead there is 1.2 times (1.7 with
   jemalloc). It also moves the most from run to run (259 req/s on one core in
-  the first run of the day, 417 here). The cause was not measured in this
-  run; contention for the one database's write lock between the request
-  threads and the job thread is the likely place to look. A check run
-  (`--quick`, 1 s runs) found 118 of 910 CyberTrain jobs still queued when
-  its server stopped, where Solid Queue had finished all 649 of its own.
+  the first run of the day, 417 here). A check run (`--quick`, 1 s runs)
+  found 118 of 910 CyberTrain jobs still queued when its server stopped,
+  where Solid Queue had finished all 649 of its own. The cause was measured
+  after this run ([design.md, D92](design.md#d92-synchronous--normal-and-a-job-thread-that-parks-during-a-backlog-2026-11-24)),
+  and it was not the lock: each POST made five commits (the comment, the
+  job row and the stream message in the request, then the job's claim and
+  outcome), each commit synced the WAL (`synchronous = FULL`, 0.3 ms and
+  more on this VM's disk, with a few syncs of 5 to 70 ms), and the sync
+  holds the server's OS worker; and the job thread, which wakes once a
+  second and then drains the queue without parking, kept a one-worker
+  server for about 50 ms at a time while it did, which was the 99th
+  percentile at one connection. Since D92 the framework syncs at
+  checkpoints only (`synchronous = NORMAL`, Rails' default too) and a job
+  thread parks every 2 ms while it drains; the figures above are from
+  before that change and were not taken again.
 - **Two cores.** Puma's second worker process gives Rails 1.8 to 2.7 times
   its one-core rate on the pages and 2.3 times on the POST. CyberTrain's
   second worker (`SPINEL_WORKERS=2`, for which the server has asked Spinel

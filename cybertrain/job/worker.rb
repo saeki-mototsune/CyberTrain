@@ -21,6 +21,21 @@ module Cybertrain
       # How long an idle wait sleeps between looks at the stop flag.
       WAIT_SLICE = 0.1
 
+      # A job thread with a backlog goes from one job to the next claim
+      # without parking: SQLite calls, the handler's own work and the
+      # outcome write all keep the OS worker (NOTES rule 80). Unless it
+      # parks, the other green threads of that worker (the requests) wait
+      # until the runtime takes the worker back: measured on one worker,
+      # each request that came during a drain waited about 50 ms (the
+      # comment POST's 99th percentile, docs/design.md D92). So once a job
+      # thread has run JOB_SLICE seconds since it last parked, it sleeps
+      # JOB_YIELD after its job. Parking after every job instead gave the
+      # requests the worker so often that under a saturating load almost
+      # half of the jobs enqueued were still queued at the end; 2 ms kept
+      # the queue level with a 99th percentile of 15 ms.
+      JOB_SLICE = 0.002
+      JOB_YIELD = 0.0001
+
       # The `where` of an error a job thread's loop caught ({claim_safely}).
       THREAD_WHERE = "job thread"
 
@@ -185,8 +200,17 @@ module Cybertrain
       # live-loop count stays right whatever happens, and no stop! waits the
       # whole job_drain_timeout for a thread that is gone.)
       def self.run_job_loop(index, generation)
+        slice_from = Clock.monotonic
         while pool_live?(generation)
-          idle_wait(@poll_interval, generation) unless claim_safely(Clock.now.to_i, index, generation)
+          if claim_safely(Clock.now.to_i, index, generation)
+            if Clock.monotonic - slice_from >= JOB_SLICE
+              sleep JOB_YIELD
+              slice_from = Clock.monotonic
+            end
+          else
+            idle_wait(@poll_interval, generation)
+            slice_from = Clock.monotonic
+          end
         end
         note_stop_seen(generation)
         nil

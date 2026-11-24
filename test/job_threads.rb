@@ -83,6 +83,14 @@ Job.handle("slow") do |payload|
   record_event("slow")
 end
 Job.handle("fast") { |payload| record_event("fast") }
+# Keeps its thread busy for 3 ms without parking it (no I/O, no sleep), as
+# a job that only computes and writes to SQLite does.
+Job.handle("busy") do |payload|
+  ends_at = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 0.003
+  spins = 0
+  spins += 1 while Process.clock_gettime(Process::CLOCK_MONOTONIC) < ends_at
+  record_event("busy")
+end
 Job.handle("beat") do |payload|
   sleep 2
   record_event(beat_lag >= 1 ? "beat moved" : "beat still")
@@ -194,6 +202,30 @@ test "an idle job thread picks up a job enqueued after it started within the pol
   assert wait_until(1.5) { Job.state_count("done") == 1 }
   assert_equal "fast", events_text
   Job.stop!
+end
+
+# A job thread draining a backlog lets the other threads of its worker run
+# between two jobs. One that went straight from a job to the next claim
+# held a one-worker server for the whole drain, and the requests that came
+# meanwhile waited for it (the comment POST's 50 ms tail, docs/benchmark.md).
+# The main thread looks every 1 ms at how many jobs are done; it must see
+# most of the counts from 0 to 30, not a third of them.
+test "a job thread draining a backlog lets the other threads run between jobs" do
+  fresh_db
+  30.times { enqueue_now("busy", "") }
+  assert Job.start!(pool_config(1))
+  seen = Array.new(0) { 0 }
+  ends_at = monotonic + 5.0
+  done = 0
+  while done < 30 && monotonic < ends_at
+    done = Job.state_count("done")
+    seen << done if seen.empty? || seen[-1] != done
+    sleep 0.001
+  end
+  Job.stop!
+  assert_equal 30, done
+  # 31 with the yield (every count from 0 to 30); 10 without it.
+  assert seen.size >= 20, "the main thread saw #{seen.size} of the 31 counts"
 end
 
 test "a job raising NotImplementedError or another Exception does not end its job thread" do
