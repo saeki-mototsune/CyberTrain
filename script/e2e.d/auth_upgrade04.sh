@@ -3,16 +3,23 @@
 # generated), each scenario in its own copy under $WORK (copy_04_app).
 #
 #   upgrade04_patch        the printed diffs applied with patch -p1, 0.4's
-#                          replaced tests deleted, then build_and_test
-#   upgrade04_force        the same with --force, which deletes them itself
+#                          replaced tests deleted (upgrade04_patched_copy),
+#                          then build_and_test
+#   upgrade04_force        the same with --force, which deletes them itself;
+#                          not built: its tree is compared, file for file,
+#                          with a patched copy's, which upgrade04_patch
+#                          builds and tests (the two are one leg)
 #   upgrade04_confirmable  --confirmable over a copy migrated by 0.4's
 #                          migrations with a user in it
 
 # shellcheck shell=bash
 
-upgrade04_patch() {
-  step "a copy of the 0.4 app, run over and patched"
-  copy_04_app patched
+# `upgrade04_patched_copy NAME`: a copy of the fixture, today's generator
+# run over it, its printed diffs applied with patch and the test files it
+# names as replaced deleted; nothing built.
+upgrade04_patched_copy() {
+  step "a copy of the 0.4 app, run over and patched ($1)"
+  copy_04_app "$1"
   cybertrain generate authentication > generate.out 2>&1 || { cat generate.out >&2; fail "generate authentication"; }
   # Left alone until patched: the files 0.4 wrote that today's generator
   # writes otherwise, and the 0.4 block in ApplicationController.
@@ -33,9 +40,18 @@ upgrade04_patch() {
   grep -q '^manual  test/authentication.rb: replaced by test/controllers/sessions_controller_test.rb; delete it$' generate.out || fail "test/authentication.rb is not named as replaced"
   delete_replaced generate.out
   expect_upgrade_tests
+}
+
+upgrade04_patch() {
+  upgrade04_patched_copy patched
   build_and_test
 }
 
+# --force must leave the tree patch leaves: the same files with the same
+# bytes, but for the generator's output and patch's log, which only the
+# patched copy has, and the add-columns migration's timestamp, which is the
+# second each run wrote it in. Every other difference fails. The compiled
+# tree is then upgrade04_patch's, so this builds nothing.
 upgrade04_force() {
   step "a fresh copy, run over with --force"
   copy_04_app forced
@@ -47,7 +63,10 @@ upgrade04_force() {
   test ! -e test/authentication.rb || fail "--force left 0.4's test/authentication.rb"
   test ! -e test/support/app_test.rb || fail "--force left 0.4's test/support/app_test.rb"
   expect_upgrade_tests
-  build_and_test
+  upgrade04_patched_copy reference
+  step "the --force copy against the patched one"
+  same_tree "--force against patch" "$WORK/reference" "$WORK/forced" -x ./generate.out -x ./patch.log \
+    -r 's#^\./db/migrate/[0-9]\{14\}_add_authentication_columns\.rb$#./db/migrate/TIMESTAMP_add_authentication_columns.rb#'
 }
 
 upgrade04_confirmable() {
@@ -99,8 +118,9 @@ class UnconfirmedBackstopTest < ActionDispatch::IntegrationTest
   end
 end
 RUBY
-  step "build and the one test, every diff but the sessions controller's applied"
-  cybertrain build > build.log 2>&1 || { tail -n 40 build.log >&2; fail "build, every diff but the sessions controller's applied"; }
+  # The one test's program compiles the app with 0.4's sessions controller;
+  # its release build is not made (the fully patched copy's is, below).
+  step "the one test, every diff but the sessions controller's applied"
   out=$(cybertrain test test/integration/unconfirmed_backstop_test.rb 2>&1) || { printf '%s\n' "$out" | tail -n 40 >&2; fail "an unconfirmed account signed in through 0.4's sessions controller"; }
   expect_contains "test/integration/unconfirmed_backstop_test.rb" "1 test, 5 assertions, 0 failures" "$out"
 
@@ -108,5 +128,7 @@ RUBY
   patch -p1 < sessions.diff > patch.log 2>&1 || { cat patch.log >&2; fail "patch -p1 < the sessions controller's diff"; }
   expect_upgrade_tests
   test -f test/controllers/confirmations_controller_test.rb || fail "no test/controllers/confirmations_controller_test.rb"
-  build_and_test
+  # Migrated already: the sessions controller's diff adds no migration, and
+  # the database is the one checked above.
+  build_check_test
 }

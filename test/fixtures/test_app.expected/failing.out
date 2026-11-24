@@ -32,5 +32,9 @@ test/models/article_test.rb
   ok   ArticleTest: a slug from the support helper
   ok   ArticleFixturesTest: fixtures: a test changes and adds rows
   ok   ArticleFixturesTest: fixtures: the next test sees exactly the fixture rows
+test/sentry_dsn_test.rb
+sentry_dsn: ""
+log_format: :text
+  ok   SentryDsnTest: an exported DSN and log format are ignored
 
-24 tests, 55 assertions, 2 failures
+25 tests, 58 assertions, 2 failures

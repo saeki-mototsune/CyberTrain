@@ -29,15 +29,28 @@
 #                generator names as replaced deleted, then db migrate, build
 #                and `cybertrain test`
 #   upgrade04-force
-#                the same with --force (which deletes them itself)
+#                the same with --force (which deletes them itself), then
+#                the tree compared with a patched copy's, file for file:
+#                the same files with the same bytes but for the
+#                generator's output, patch's log and the add-columns
+#                migration's timestamp. Not built: the tree that compiles
+#                is upgrade04-patch's, which CI runs in the same leg.
+#                (Until 2026-11-24 it was built and tested on its own; run
+#                alone, it now shows only that --force writes what patch
+#                does.)
 #   upgrade04-confirmable
 #                a copy migrated by 0.4's migrations with a user in it, run
 #                with --confirmable: the add-columns migration keeps the
 #                user and counts it as confirmed; with every diff applied
-#                but the sessions controller's, the app builds and the
-#                concern still signs no unconfirmed account in (one test,
-#                `cybertrain test FILE`); with that one applied too, every
-#                test passes
+#                but the sessions controller's, the concern still signs no
+#                unconfirmed account in (one test, `cybertrain test FILE`,
+#                whose program compiles the app with 0.4's controller;
+#                until 2026-11-24 `cybertrain build` also made that state's
+#                release binary, which no longer is); with that one
+#                applied too, the app builds and every test passes (not
+#                migrated again: that diff adds no migration, and until
+#                2026-11-24 the second `db migrate` and `db status` there
+#                had nothing to apply)
 #
 # The served variants also check what a released app relies on: spin.lock
 # written by `cybertrain new`, `db status`, the digested stylesheet served

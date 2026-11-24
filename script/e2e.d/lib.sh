@@ -23,6 +23,9 @@
 #   form_token PAGE       the authenticity_token of the first form in PAGE
 #   post_status JAR URL FIELD...  a url-encoded POST with the cookie jar:
 #                         prints the status and the redirect
+#   same_tree WHAT A B [-x PATH | -r SED]...
+#                         fails unless two directories hold the same files
+#                         with the same bytes, but for those named
 #
 # Every line a script prints carries the seconds since its scenario started,
 # or since the script did when it has no scenarios, so a CI log shows where
@@ -172,4 +175,63 @@ post_status() {
     args+=(--data-urlencode "$field")
   done
   curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -c "$jar" -b "$jar" "${args[@]}" "$url"
+}
+
+# `same_tree WHAT A B [-x PATH | -r SED]...`: directories A and B must hold
+# the same files (regular files and symbolic links, by their path relative
+# to the directory, `./...`) with the same bytes; directories themselves,
+# empty ones included, are not compared. `-x PATH` leaves that path out of
+# both; `-r SED` rewrites every path through the sed expression before the
+# two lists are matched (for a name that differs by design, such as a
+# timestamp), and each rewritten name must stand for one file on each side.
+# Every difference is listed before the failure: the paths only one side
+# has, then the files whose bytes differ, each with a diff.
+same_tree() {
+  local what=$1 a=$2 b=$3
+  shift 3
+  local excludes=(-e "") renames=(-e "")
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      -x) excludes+=(-e "$2") ;;
+      -r) renames+=(-e "$2") ;;
+      *) fail "same_tree: $1 is not -x or -r" ;;
+    esac
+    shift 2
+  done
+  local tab index_a index_b
+  tab=$(printf '\t')
+  index_a=$(mktemp)
+  index_b=$(mktemp)
+  tree_index "$a" > "$index_a"
+  tree_index "$b" > "$index_b"
+  local problems="" dup only name pa pb
+  dup=$(cut -f 1 "$index_a" | uniq -d)
+  [ -z "$dup" ] || problems+="more than one file in $a is named: $dup"$'\n'
+  dup=$(cut -f 1 "$index_b" | uniq -d)
+  [ -z "$dup" ] || problems+="more than one file in $b is named: $dup"$'\n'
+  only=$(LC_ALL=C comm -3 <(cut -f 1 "$index_a") <(cut -f 1 "$index_b"))
+  [ -z "$only" ] || problems+="only in $a (flush left) or in $b (indented):"$'\n'"$only"$'\n'
+  while IFS=$'\t' read -r name pa pb; do
+    if ! cmp -s "$a/$pa" "$b/$pb"; then
+      # diff exits 1 on a difference: `|| true`, or set -e would end the
+      # script here, before fail.
+      problems+="differs: $name ($pa, $pb):"$'\n'"$(diff -u "$a/$pa" "$b/$pb" | head -n 40 || true)"$'\n'
+    fi
+  done < <(LC_ALL=C join -t "$tab" "$index_a" "$index_b")
+  rm -f "$index_a" "$index_b"
+  if [ -n "$problems" ]; then
+    printf '%s' "$problems" >&2
+    fail "$what: the trees differ (above)"
+  fi
+}
+
+# same_tree's list of one directory: NAME<TAB>PATH a line, sorted by NAME,
+# the path after the renames (excludes and renames are same_tree's locals;
+# the empty -e of each matches nothing and changes nothing).
+tree_index() {
+  local path
+  (cd "$1" && find . \( -type f -o -type l \)) | { grep -vxF "${excludes[@]}" || true; } |
+    while IFS= read -r path; do
+      printf '%s\t%s\n' "$(printf '%s\n' "$path" | sed "${renames[@]}")" "$path"
+    done | LC_ALL=C sort -t "$(printf '\t')" -k 1,1
 }

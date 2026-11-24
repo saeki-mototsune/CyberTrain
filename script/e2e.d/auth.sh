@@ -36,6 +36,11 @@ build_and_test() {
   step "db migrate, db status"
   cybertrain db migrate > migrate.log 2>&1 || { cat migrate.log >&2; fail "db migrate"; }
   cybertrain db status > db-status.log 2>&1 || { cat db-status.log >&2; fail "db status"; }
+  build_check_test
+}
+
+# build_and_test for an app migrated already: build, gen --check, every test.
+build_check_test() {
   step "cybertrain build"
   cybertrain build > build.log 2>&1 || { tail -n 40 build.log >&2; fail "build"; }
   test -x dist/shop || fail "no dist/shop"

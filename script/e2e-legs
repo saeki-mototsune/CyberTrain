@@ -9,8 +9,7 @@ LEGS="
 auth-signup                   gem       script/auth-e2e signup
 auth-invite                   checkout  script/auth-e2e invite
 auth-confirmable              checkout  script/auth-e2e confirmable
-auth-upgrade04-patch          checkout  script/auth-e2e upgrade04-patch
-auth-upgrade04-force          checkout  script/auth-e2e upgrade04-force
+auth-upgrade04                checkout  script/auth-e2e upgrade04-patch upgrade04-force
 auth-upgrade04-confirmable    checkout  script/auth-e2e upgrade04-confirmable
 generators                    checkout  script/generators-e2e
 test-command                  checkout  script/test-command-e2e
@@ -88,7 +87,7 @@ case "${1:-}" in
     if [ "$command" = blog ]; then
       blog
     else
-      # shellcheck disable=SC2086 # args is one word or none
+      # shellcheck disable=SC2086 # args: words, none quoted
       "$ROOT/$command" $args
     fi
     ;;

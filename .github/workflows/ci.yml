@@ -483,19 +483,30 @@ jobs:
   # its applications in a scratch directory with this checkout as their
   # framework:
   #
-  #   auth-*       script/auth-e2e, one variant each: a new app with a
-  #                scaffold and `generate authentication` (sign-up,
-  #                --invite-only, --confirmable), every test the app has
-  #                run by `cybertrain test`, the binary served and probed
-  #                with curl and the user command, the mails (reset; with
+  #   auth-*       script/auth-e2e: auth-signup, auth-invite and
+  #                auth-confirmable each a new app with a scaffold and
+  #                `generate authentication` (sign-up, --invite-only,
+  #                --confirmable), every test the app has run by
+  #                `cybertrain test`, the binary served and probed with
+  #                curl and the user command, the mails (reset; with
   #                --confirmable the confirmations) through an SMTP
-  #                receiver, the account page; and upgrade04, the generator
-  #                over test/fixtures/auth_04_app (an app v0.4.1 generated):
-  #                its diffs applied with patch, or --force, or with
-  #                --confirmable over a migrated copy, then every test
-  #                passing. The sign-up leg runs the installed gem's CLI
-  #                (script/e2e-legs says which CLI each leg runs), the
-  #                others this checkout's. About 10 to 17 minutes each.
+  #                receiver, the account page. auth-upgrade04: the
+  #                generator over test/fixtures/auth_04_app (an app v0.4.1
+  #                generated), its diffs applied with patch, built and
+  #                every test passing; then --force over another copy,
+  #                whose tree must equal a patched copy's file for file
+  #                (but for the generator's output, patch's log and the
+  #                migration's timestamp), so it is not built on its own
+  #                (until 2026-11-24 it was a leg of its own, a second
+  #                build of the same tree). auth-upgrade04-confirmable:
+  #                --confirmable over a migrated copy with a 0.4 user; the
+  #                concern refusing an unconfirmed account through 0.4's
+  #                sessions controller (one test program; that state's
+  #                release build is no longer made), then the fully
+  #                patched app built and every test passing. The sign-up
+  #                leg runs the installed gem's CLI (script/e2e-legs says
+  #                which CLI each leg runs), the others this checkout's.
+  #                About 10 to 13 minutes each.
   #   generators   script/generators-e2e: a scaffold of every column type,
   #                a references field, a component, a helper, a job and a
   #                scaffold with an attachment, `cybertrain test` (every
@@ -503,9 +514,11 @@ jobs:
   #                attachment uploaded through the served binary and
   #                downloaded with send_blob's headers. About 10 minutes.
   #   test-command script/test-command-e2e (`cybertrain test`'s filters,
-  #                failures and exits on test/fixtures/test_app), then the
-  #                framework as a git dependency (the step below, this
-  #                workflow's alone). About 14 minutes.
+  #                failures and exits on test/fixtures/test_app, two
+  #                compiles: the failing and the sentry test share the
+  #                second since 2026-11-24), then the framework as a git
+  #                dependency (the step below, this workflow's alone).
+  #                About 12 minutes.
   #   blog         examples/blog: gen/ fresh, its tests, gen --check. About
   #                6 minutes, most of it the blog's one test program, which
   #                gcc compiles at spinel's default -O2, as `cybertrain
