@@ -3,18 +3,20 @@
 The CyberTrain-vs-Rails benchmark: [docs/benchmark.md](../docs/benchmark.md)
 has the method, the recorded results and how to run it.
 
-- `run` builds [examples/blog](../examples/blog) (`cybertrain build`) and
-  `rails_blog` (`bundle install`, `assets:precompile`), serves each in
-  production mode pinned to its own CPUs, seeds both through their forms
-  (signed in for the articles, as a visitor for the comments), loads them
-  with wrk as that visitor, and writes `results/<date>.json`.
+- `run` generates the CyberTrain app from this checkout into
+  `tmp/bench_app/` (`cybertrain new --path`, `generate scaffold article`,
+  the root route, `db migrate`, `cybertrain build`) and prepares
+  `rails_app` (`bundle install`, `assets:precompile`), serves each in
+  production mode pinned to its own CPUs, seeds both through the scaffold's
+  form as a visitor, loads them with wrk, and writes `results/<date>.json`.
 - `report` prints the Markdown tables of docs/benchmark.md from a result.
-- `rails_blog/` is examples/blog in Rails 8.1, with Rails 8's defaults
-  for what the blog does (the authentication generator, Propshaft, import
-  maps, Turbo, Solid Cache, Solid Queue, Solid Cable); [its
-  README](rails_blog/README.md) lists every change from `rails new` and what
-  is left out.
-- `results/` holds the recorded runs; `tmp/` (ignored) the scratch copies,
+- `rails_app/` is what `rails new` and `bin/rails generate scaffold Article
+  title:string body:text` write in Rails 8.1, with the root route; [its
+  README](rails_app/README.md) lists the exact commands and the few files
+  that differ from what they wrote.
+- `results/` holds the recorded runs (the scaffold's since
+  `2026-11-24-scaffold.json`, examples/blog against a Rails rewrite of it
+  before); `tmp/` (ignored) the scratch copies,
   server logs and the pages each app served.
 
 The mixed-load measurement of the shared SQLite database is separate:

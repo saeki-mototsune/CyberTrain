@@ -3,11 +3,15 @@
 
 # Prints the Markdown tables of docs/benchmark.md from a bench/run result.
 #
-# usage: bench/report [bench/results/<date>.json]   (default: the newest)
+# usage: bench/report [bench/results/<date>.json]   (default: the newest run)
 require "json"
 
 ROOT = File.expand_path("..", __dir__)
-path = ARGV[0] || Dir.glob(File.join(ROOT, "bench", "results", "*.json")).max
+# The newest run by the date it records (several runs can share a day: the
+# names of those days carry a suffix), leaving out the "-first" runs kept
+# only to show the spread.
+path = ARGV[0] || Dir.glob(File.join(ROOT, "bench", "results", "*.json")).reject { |f| f.end_with?("-first.json") }
+                     .max_by { |f| JSON.parse(File.read(f)).dig("environment", "date").to_s }
 abort "usage: bench/report [RESULT.json]" if path.nil? || !File.exist?(path)
 
 r = JSON.parse(File.read(path))
