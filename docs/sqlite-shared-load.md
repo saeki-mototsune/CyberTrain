@@ -65,6 +65,16 @@ shapes, not the absolute throughput.** `synchronous` is SQLite's default
 `job_poll_interval` 1 s, `stream_poll_ms` 100. No call raised in any run
 (busy 0, errors 0 on every line), so those two columns are left out below.
 
+Since 2026-11-24 ([docs/design.md, D92](design.md#d92-synchronous--normal-and-a-job-thread-that-parks-during-a-backlog-2026-11-24))
+the framework opens its connections with `synchronous = NORMAL`, which
+syncs the WAL at a checkpoint instead of at every commit, and a job thread
+draining a backlog parks every 2 ms. The runs below are from before that
+and were not taken again: with NORMAL the commit ceiling of item 1 below is
+no longer the disk's sync time. On examples/blog's comment POST (three
+commits in the request and two in its job) the change took one worker from
+about 520 to about 1,180 requests a second at 16 connections on this kind
+of machine (D92).
+
 ### A. The defaults on one worker
 
 `workers=1`: 2 writers, 2 readers, 2 cache threads, 2 rate-limit threads
@@ -148,7 +158,8 @@ broadcast_ms=5`: 16 threads writing as fast as they can, on 4 connections.
    24 for the jobs + 24 broadcast) gives about 580 a second, and no load
    alone got past 310 to 570 on the same worker. Every service's write is a
    transaction of its own (an autocommit statement), and with `synchronous =
-   FULL` each one syncs the WAL: on this disk about 1 to 2 ms. So the
+   FULL` (the setting of these runs, before D92) each one syncs the WAL: on
+   this disk about 1 to 2 ms. So the
    database gives roughly 500 to 750 commits a second here, and the
    services divide them: in the mixed phase the business writers got half
    of what they had alone (A), or a third to a sixth (B, C). A cache write
