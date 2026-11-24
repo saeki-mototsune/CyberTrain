@@ -18,9 +18,10 @@
 #
 # Each server is pinned with taskset to the CPUs its configuration names and
 # wrk to CPUs 2-3, so the load generator never competes with the server.
-# For each framework and configuration: start the server on a fresh database,
-# seed it over HTTP through the app's own forms (30 articles, 10 comments on
-# the first), warm up, then run wrk against each endpoint. Startup time,
+# For each framework and configuration: start the server on a fresh database
+# with one user, seed it over HTTP through the app's own forms (signed in as
+# that user, 30 articles; then, as a visitor, 10 comments on the first), warm
+# up, then run wrk against each endpoint as that visitor. Startup time,
 # memory and deploy size are measured too. The results are written as JSON
 # (bench/results/<date>.json unless --out) and summarized on stdout.
 require "etc"
@@ -57,11 +58,18 @@ CLIENT_CPUS = "2,3"
 ARTICLES = 30
 COMMENTS = 10
 
+# The user both apps' seeding signs in as (creating an article needs one).
+USER_EMAIL = "bench@example.com"
+USER_PASSWORD = "bench-password-1"
+
+# The static request is each app's digested stylesheet, whose path
+# (/assets/application-<digest>.css) is read from the page the app serves:
+# :stylesheet stands for it until then.
 ENDPOINTS = [
-  { id: "index", method: "GET", path: "/articles", what: "GET /articles (30 articles)" },
+  { id: "index", method: "GET", path: "/articles", what: "GET /articles (30 articles, comment counts)" },
   { id: "show", method: "GET", path: "/articles/1", what: "GET /articles/1 (an article, 10 comments, 12 forms)" },
-  { id: "static", method: "GET", path: "/style.css", what: "GET /style.css (public/)" },
-  { id: "create", method: "POST", path: "/articles/2/comments", what: "POST /articles/2/comments (insert, 303)" },
+  { id: "static", method: "GET", path: :stylesheet, what: "GET /assets/application-<digest>.css (the digested stylesheet)" },
+  { id: "create", method: "POST", path: "/articles/2/comments", what: "POST /articles/2/comments (insert, job, broadcast, 303)" },
 ].freeze
 CONNECTIONS = [1, 16].freeze
 
@@ -128,6 +136,9 @@ RAILS_ENV = {
   "BUNDLE_GEMFILE" => File.join(RAILS_APP, "Gemfile"),
   "RAILS_ENV" => "production",
   "SECRET_KEY_BASE" => SecureRandom.hex(64),
+  # Solid Queue runs in the Puma process (config/puma.rb, async mode), as
+  # examples/blog runs its jobs in its server process.
+  "SOLID_QUEUE_IN_PUMA" => "1",
   "GEM_HOME" => nil, "GEM_PATH" => nil, "RUBYLIB" => nil, "RUBYOPT" => nil,
 }.freeze
 CT_ENV = { "CYBERTRAIN_SECRET_KEY_BASE" => SecureRandom.hex(64) }.freeze
@@ -154,17 +165,24 @@ FileUtils.cp(File.join(BLOG, "dist", "blog"), CT_DIR, preserve: true)
 FileUtils.cp_r(File.join(BLOG, "dist", "public"), CT_DIR)
 %w[storage tmp].each { |d| FileUtils.mkdir_p(File.join(CT_DIR, d)) }
 
-say "==> bundle install (bench/rails_blog)"
+say "==> bundle install, assets:precompile (bench/rails_blog)"
 capture(RAILS_ENV, "bundle", "install", "--quiet", chdir: RAILS_APP)
+# Propshaft digests app/assets into public/assets, which Rails then serves
+# as static files (examples/blog's are in dist/public/assets).
+capture(RAILS_ENV, "bin/rails", "assets:clobber", "assets:precompile", chdir: RAILS_APP)
 
 def reset_database(framework)
   case framework
   when "cybertrain"
     Dir.glob(File.join(CT_DIR, "storage", "production.sqlite3*")).each { |f| File.delete(f) }
     capture(CT_ENV, "./blog", "migrate", chdir: CT_DIR)
+    capture(CT_ENV, "./blog", "user", USER_EMAIL, USER_PASSWORD, chdir: CT_DIR)
   when "rails"
-    Dir.glob(File.join(RAILS_APP, "storage", "production.sqlite3*")).each { |f| File.delete(f) }
+    # The primary database and Solid Cache's, Solid Queue's and Solid Cable's.
+    Dir.glob(File.join(RAILS_APP, "storage", "production*.sqlite3*")).each { |f| File.delete(f) }
     capture(RAILS_ENV, "bin/rails", "db:prepare", chdir: RAILS_APP)
+    capture(RAILS_ENV, "bin/rails", "runner",
+            "User.create!(email_address: #{USER_EMAIL.dump}, password: #{USER_PASSWORD.dump})", chdir: RAILS_APP)
   end
 end
 
@@ -263,14 +281,17 @@ class Server
   end
 end
 
-# A client with one cookie, which fills in forms the way a browser does: the
-# authenticity token comes from the page that holds the form.
+# A client with a cookie jar, which fills in forms the way a browser does:
+# the authenticity token comes from the page that holds the form.
 class Browser
-  attr_reader :cookie
-
   def initialize(port)
     @port = port
-    @cookie = nil
+    @cookies = {}
+  end
+
+  # The Cookie header this browser sends ("a=1; b=2"), nil while it has none.
+  def cookie
+    @cookies.empty? ? nil : @cookies.map { |name, value| "#{name}=#{value}" }.join("; ")
   end
 
   def get(path)
@@ -293,25 +314,50 @@ class Browser
   end
 
   def request(req)
-    req["Cookie"] = @cookie if @cookie
+    req["Cookie"] = cookie if cookie
+    req["Accept"] = ACCEPT
     res = Net::HTTP.start("127.0.0.1", @port) { |http| http.request(req) }
-    set = res.get_fields("set-cookie")
-    @cookie = set.first.split(";").first unless set.nil? || set.empty?
+    (res.get_fields("set-cookie") || []).each do |line|
+      name, value = line.split(";").first.split("=", 2)
+      # An emptied or expired cookie is a deletion.
+      if value.to_s.empty? || line =~ /max-age=0\b|expires=Thu, 01 Jan 1970/i
+        @cookies.delete(name)
+      else
+        @cookies[name] = value
+      end
+    end
     res
   end
 end
+
+# What a browser asks for when it follows a link or submits a plain form
+# (Turbo off): both apps answer the comment POST with a redirect then. With
+# Net::HTTP's default `*/*` Rails would pick the first format of the
+# action's respond_to, the Turbo Stream.
+ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
 
 LOREM = "Spinel compiles Ruby ahead of time into C, and CyberTrain builds a whole web " \
         "application into one native binary: routes, controllers, models, views and the " \
         "HTTP server, with SQLite for storage."
 
 def seed(port)
-  b = Browser.new(port)
+  # Writing an article needs a signed-in user (both apps send a visitor to
+  # the sign-in page), so the author signs in first.
+  author = Browser.new(port)
+  res = author.post("/session", "authenticity_token" => author.token("/session/new", "/session"),
+                                "email_address" => USER_EMAIL, "password" => USER_PASSWORD)
+  unless %w[302 303].include?(res.code) && !res["location"].to_s.include?("/session/new")
+    raise "signing in: #{res.code} to #{res["location"]}"
+  end
+
   (1..ARTICLES).each do |i|
-    res = b.post("/articles", "authenticity_token" => b.token("/articles/new", "/articles"),
-                              "article[title]" => "Article #{i}", "article[body]" => "#{i}. #{LOREM}")
+    res = author.post("/articles", "authenticity_token" => author.token("/articles/new", "/articles"),
+                                   "article[title]" => "Article #{i}", "article[body]" => "#{i}. #{LOREM}")
     raise "creating article #{i}: #{res.code} #{res.body[0, 200]}" unless res.code == "303"
   end
+  # The comments and the measured requests are a visitor's, who has not
+  # signed in: commenting needs no account in either app.
+  b = Browser.new(port)
   (1..COMMENTS).each do |j|
     res = b.post("/articles/1/comments", "authenticity_token" => b.token("/articles/1", "/articles/1/comments"),
                                          "comment[commenter]" => "Reader #{j}",
@@ -327,8 +373,24 @@ def seed(port)
   raise "index lists #{index.scan("<tr>").size - 1} articles, not #{ARTICLES}" unless index.scan("<tr>").size - 1 == ARTICLES
   raise "show lists #{show.scan('class="comment"').size} comments, not #{COMMENTS}" unless show.scan('class="comment"').size == COMMENTS
 
-  sizes = ENDPOINTS.select { |e| e[:method] == "GET" }.to_h { |e| [e[:id], b.get(e[:path]).body.bytesize] }
-  { cookie: b.cookie, token: token, body_bytes: sizes, pages: { "index" => index, "show" => show } }
+  link = index[/<link[^>]*rel="stylesheet"[^>]*>/] or raise "no stylesheet link in the article list"
+  stylesheet = link[/href="([^"]+)"/, 1]
+  raise "the stylesheet #{stylesheet} is not a digested /assets/application-*.css" unless stylesheet =~ %r{\A/assets/application-\w+\.css\z}
+
+  session = { cookie: b.cookie, token: token, stylesheet: stylesheet }
+  sizes = ENDPOINTS.select { |e| e[:method] == "GET" }.to_h do |e|
+    res = b.get(endpoint_path(e, session))
+    raise "#{endpoint_path(e, session)}: #{res.code}" unless res.code == "200"
+
+    [e[:id], res.body.bytesize]
+  end
+  session.merge(body_bytes: sizes, pages: { "index" => index, "show" => show })
+end
+
+# The path wrk requests for endpoint, with this app's stylesheet in place of
+# :stylesheet.
+def endpoint_path(endpoint, session)
+  endpoint[:path] == :stylesheet ? session.fetch(:stylesheet) : endpoint[:path]
 end
 
 # --- wrk --------------------------------------------------------------------
@@ -352,10 +414,10 @@ def to_ms(text)
 end
 
 def wrk(port, endpoint, connections, seconds, session)
-  url = "http://127.0.0.1:#{port}#{endpoint[:path]}"
+  url = "http://127.0.0.1:#{port}#{endpoint_path(endpoint, session)}"
   threads = [connections, 2].min
   cmd = ["taskset", "-c", CLIENT_CPUS, "wrk", "-t#{threads}", "-c#{connections}", "-d#{seconds}s", "--latency",
-         "-H", "Cookie: #{session[:cookie]}"]
+         "-H", "Cookie: #{session[:cookie]}", "-H", "Accept: #{ACCEPT}"]
   env = {}
   if endpoint[:method] == "POST"
     cmd += ["-s", POST_LUA]
@@ -479,9 +541,13 @@ options[:configs].each do |name|
     session = seed(server.port)
     File.write(File.join(WORK, "#{framework}-show.html"), session[:pages]["show"])
     memory_seeded = server.memory_kb
-    ENDPOINTS.each { |e| wrk(server.port, e, 16, options[:warmup], session) }
+    # Each endpoint is warmed up just before it is measured, in the order of
+    # ENDPOINTS, so the GETs see the seeded data alone: the comment POST (and
+    # its warm-up) comes last. The list counts every article's comments, so
+    # thousands of posted comments would change what it measures.
     endpoints = {}
     ENDPOINTS.each do |e|
+      wrk(server.port, e, 16, options[:warmup], session)
       endpoints[e[:id]] = {}
       CONNECTIONS.each do |c|
         runs = Array.new(options[:runs]) { wrk(server.port, e, c, options[:duration], session) }
@@ -494,6 +560,7 @@ options[:configs].each do |name|
     server.stop
     servers.delete(server)
     results["configs"][name]["frameworks"][framework] = {
+      "stylesheet" => session[:stylesheet],
       "body_bytes" => session[:body_bytes],
       "memory_kb" => { "after_seed" => memory_seeded, "after_load" => memory_loaded },
       "endpoints" => endpoints,

@@ -1,4 +1,5 @@
-<%= form_with(model: [@article, @comment]) do |f| %>
+<%# locals: (comment:) %>
+<%= form_with(model: [@article, comment]) do |f| %>
   <div class="field">
     <%= f.label :commenter %>
     <%= f.text_field :commenter %>
