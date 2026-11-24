@@ -164,7 +164,7 @@ end
 test "gen, the compile when stale, then the run with the arguments and its status" do
   runner = StubRunner.new(true, 1)
   assert_equal 1, Cybertrain::CLI::TestCommand.run(APP, ["test/models", "-n", "/title/"], runner)
-  assert_equal ["ready", "SPIN_DEBUG=1 spin run gen", "stale?", "spinel gen/tests.rb $(spin flags) -I gen/test -I test -o build/test/tests",
+  assert_equal ["ready", "SPIN_DEBUG=1 spin run gen", "stale?", "spinel gen/tests.rb $(spin flags) -I gen/test -I test -O 0 -o build/test/tests",
                 "run test/models -n /title/"], runner.steps
   assert File.directory?("#{APP}/build/test")
   assert_equal [], runner.said
@@ -275,6 +275,10 @@ test "stale? when the record of the binary's inputs is missing or differs" do
   assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
   write(record, "#{record_now}x\n")
   assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
+  # A binary the earlier command built (spinel's default -O2, before the
+  # compile was -O 0) is compiled again: the record holds the command.
+  write(record, record_now.sub(" -O 0 -o ", " -o "))
+  assert Cybertrain::CLI::TestCommand.stale?(APP, binary)
 
   # A file under test/ that a test requires, deleted: no mtime is newer,
   # the record's list of test/**/*.rb differs.
@@ -364,7 +368,7 @@ test "a path through a symlink means the same as its real spelling" do
 end
 
 test "the compile command" do
-  assert_equal "spinel gen/tests.rb $(spin flags) -I gen/test -I test -o build/test/tests",
+  assert_equal "spinel gen/tests.rb $(spin flags) -I gen/test -I test -O 0 -o build/test/tests",
                Cybertrain::CLI::TestCommand.compile_command(APP)
 end
 

@@ -17,4 +17,4 @@ ok   the compile command
 ok   the run passes each argument as one word and answers the binary's status
 error: no spin.toml with a [package] name here; run this inside a cybertrain application
 ok   cybertrain test outside an application
-18 tests, 116 assertions, 0 failures
+18 tests, 117 assertions, 0 failures

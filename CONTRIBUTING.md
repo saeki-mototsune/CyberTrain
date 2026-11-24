@@ -247,15 +247,9 @@ ruby -I../.. ../../exe/cybertrain test         # the blog's tests (test/**/*_tes
 first time is untracked, and `git diff` passes over it. CI fails on either.
 `cybertrain test`, not `spin test`: the blog's tests are test classes, which
 only `cybertrain test` runs; `spin test` there would compile
-`test/test_helper.rb` alone and call it ok. The blog's test program takes
-gcc about half an hour to compile on Linux and clang a few minutes; spinel
-runs the `cc` on PATH, so CI's blog leg puts a `cc` that is clang first on
-PATH, and you can do the same:
-
-```sh
-mkdir -p /tmp/clang-cc && ln -sf "$(command -v clang)" /tmp/clang-cc/cc
-PATH=/tmp/clang-cc:$PATH ruby -I../.. ../../exe/cybertrain test
-```
+`test/test_helper.rb` alone and call it ok. `cybertrain test` compiles the
+blog's test program unoptimised (`-O 0`), in about 2.5 minutes on 4 cores with
+gcc; at gcc's `-O2` it took about half an hour (docs/design.md, D83).
 
 ### The CRuby preview's checks
 

@@ -163,11 +163,18 @@ module Cybertrain
       # test, so a top-level-form file's `require "test_helper"` finds the
       # copy the bundle already loaded. `$(spin flags)` is split by
       # the shell, as spin prints it: a path with a space in it cannot be
-      # passed through it.
+      # passed through it. `-O 0`: the C is compiled unoptimised. The
+      # program is one large C file whose `Gen::Tests.run_case` is one
+      # function with an arm per test, and gcc's `-O2`, spinel's default,
+      # takes far longer over such a function than the tests take to run
+      # (examples/blog: about 27 minutes of gcc for 2 seconds of tests;
+      # docs/design.md D83, amended 2026-11-24). The command is in the
+      # build record ({inputs_record}), so a binary an earlier command
+      # built is compiled again.
       # @param root [String]
       # @return [String]
       def self.compile_command(root)
-        "spinel gen/tests.rb $(spin flags) -I gen/test -I test -o #{BINARY}"
+        "spinel gen/tests.rb $(spin flags) -I gen/test -I test -O 0 -o #{BINARY}"
       end
 
       # Whether binary must be compiled again: it or its record
