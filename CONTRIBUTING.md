@@ -295,7 +295,9 @@ signup` (or `invite`, `confirmable`, `upgrade04-patch`, `upgrade04-force`,
 `upgrade04-confirmable`, or `upgrade04` for the last three; the sign-up
 leg, and macOS's, run the installed gem with `CYBERTRAIN_E2E_CLI=gem`),
 `script/generators-e2e`, `script/test-command-e2e`, and examples/blog's
-tests (above); `script/e2e-legs run LEG` runs a leg as CI does. Each makes
+tests (above); `script/e2e-legs run LEG` runs a leg as CI does (the
+`auth-upgrade04` leg is `upgrade04-patch` then `upgrade04-force`, which
+compares its tree with a patched copy's instead of building it). Each makes
 its applications in a scratch directory and compiles them, so they are
 slow (10 to 17 minutes a variant of `script/auth-e2e` on a 4-core machine);
 run the one you changed. Each line they print carries the seconds elapsed
