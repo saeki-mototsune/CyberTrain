@@ -354,6 +354,10 @@ test "pool: 8 threads x 100 inserts through DB.with" do
   DB.with { |c| c.exec_script("CREATE TABLE hits (id INTEGER PRIMARY KEY, worker INTEGER, seq INTEGER);") }
   mode = DB.with { |c| c.execute("PRAGMA journal_mode")[0]["journal_mode"].to_s }
   assert_equal "wal", mode
+  # NORMAL (1): in WAL mode the WAL is synced at a checkpoint, not at every
+  # commit (docs/design.md D92).
+  sync = DB.with { |c| c.execute("PRAGMA synchronous")[0]["synchronous"] }
+  assert_equal 1, sync
   threads = []
   8.times do |worker|
     threads << Thread.new do
