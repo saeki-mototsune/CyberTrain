@@ -40,44 +40,27 @@
 # One application, one compile of its test bundle and one build. Every line
 # of progress carries the seconds since the script started (`+Ns`). The
 # first failure stops the script and leaves the scratch directory in place
-# to look at.
+# to look at. The mechanics (progress lines, failures, the CLI, the
+# server) are script/e2e.d/lib.sh's.
 #
 # usage: script/generators-e2e
+#        CYBERTRAIN_E2E_CLI=gem script/generators-e2e   (the cybertrain on PATH)
 set -euo pipefail
 
-ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck source=script/e2e.d/lib.sh
+. "$(dirname "$0")/e2e.d/lib.sh"
+e2e_init generators-e2e
 
 if [ "$#" -ne 0 ]; then
   echo "usage: script/generators-e2e" >&2
   exit 2
 fi
 
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/generators-e2e.XXXXXX")
+WORK=$(e2e_workdir generators-e2e)
 APP="$WORK/shop"
+E2E_LEFT=$APP
 
-fail() {
-  echo "generators-e2e: FAIL: $*" >&2
-  echo "generators-e2e: the app is in $APP" >&2
-  exit 1
-}
-
-step() {
-  echo "generators-e2e +${SECONDS}s: $*"
-}
-
-SERVER_PID=""
-stop_server() {
-  if [ -n "$SERVER_PID" ]; then
-    kill "$SERVER_PID" 2>/dev/null || true
-    wait "$SERVER_PID" 2>/dev/null || true
-    SERVER_PID=""
-  fi
-}
-trap stop_server EXIT
-
-cybertrain() {
-  ruby -I"$ROOT" "$ROOT/exe/cybertrain" "$@"
-}
+e2e_use_cli
 
 # `run_logged NAME CMD...`: CMD in the app, its output in $WORK/NAME.log,
 # shown (the end of it) when it fails.
@@ -145,7 +128,7 @@ run_logged build cybertrain build
 test -x "$APP/dist/shop" || fail "no dist/shop"
 
 step "SPIN_DEBUG=1 spin run gen -- --check"
-run_logged gen-check env SPIN_DEBUG=1 ruby -I"$ROOT" "$ROOT/exe/cybertrain" spin run gen -- --check
+SPIN_DEBUG=1 run_logged gen-check cybertrain spin run gen -- --check
 
 step "serve dist/shop: upload a post's cover and download it"
 DIST="$APP/dist"
@@ -153,28 +136,11 @@ PIXEL="$WORK/pixel.png"
 printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\xff' > "$PIXEL"
 export CYBERTRAIN_SECRET_KEY_BASE=generators-e2e-secret-generators-e2e-secret
 run_logged shop-migrate sh -c "cd dist && ./shop migrate"
-port=$(ruby -rsocket -e 'server = TCPServer.new("127.0.0.1", 0); puts server.addr[1]; server.close')
+port=$(free_port)
 base="http://127.0.0.1:$port"
-(cd "$DIST" && PORT=$port exec ./shop) > "$WORK/server.log" 2>&1 &
-SERVER_PID=$!
-up=""
-for _ in $(seq 1 60); do
-  if curl -fsS -o /dev/null "$base/up.html" 2>/dev/null; then
-    up=yes
-    break
-  fi
-  sleep 0.5
-done
-[ -n "$up" ] || { tail -n 40 "$WORK/server.log" >&2; fail "the server did not answer on port $port"; }
-
-# expect_equal WHAT EXPECTED ACTUAL
-expect_equal() {
-  [ "$2" = "$3" ] || { tail -n 40 "$WORK/server.log" >&2; fail "$1: expected '$2', got '$3'"; }
-}
-# expect_header WHAT REGEXP FILE (case-insensitive, like header names)
-expect_header() {
-  grep -qi "$2" "$3" || { cat "$3" >&2; fail "$1: no header matching $2"; }
-}
+serve_dist() { cd "$DIST" && PORT=$port exec ./shop; }
+start_server "$WORK/server.log" serve_dist
+wait_for_up "$base" "$port"
 
 curl -fsS -D "$WORK/new.h" -o "$WORK/new.html" "$base/posts/new" || fail "GET /posts/new"
 grep -q 'enctype="multipart/form-data"' "$WORK/new.html" || fail "GET /posts/new: the form is not multipart"

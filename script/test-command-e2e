@@ -36,15 +36,20 @@
 # runs between the first and `failing` reuse the first compile's
 # build/test/tests (its mtime is checked). gen's and the compiler's output (stderr) are kept in
 # <variant>.err beside the outputs. The first failure stops the script and
-# leaves the scratch directory in place to look at.
+# leaves the scratch directory in place to look at. Every line of progress
+# carries the seconds since the script started (`+Ns`); the mechanics are
+# script/e2e.d/lib.sh's.
 #
 # usage: script/test-command-e2e           check
 #        script/test-command-e2e --regen   write the .out files from this run
 #                                          (exit statuses and the compile
 #                                          checks still apply); review the diff
+#        CYBERTRAIN_E2E_CLI=gem script/test-command-e2e   (the cybertrain on PATH)
 set -euo pipefail
 
-ROOT=$(cd "$(dirname "$0")/.." && pwd)
+# shellcheck source=script/e2e.d/lib.sh
+. "$(dirname "$0")/e2e.d/lib.sh"
+e2e_init test-command-e2e
 FIXTURE="$ROOT/test/fixtures/test_app"
 EXTRA="$ROOT/test/fixtures/test_app_extra"
 EXPECTED="$ROOT/test/fixtures/test_app.expected"
@@ -59,20 +64,14 @@ case "${1:-}" in
     ;;
 esac
 
-WORK=$(mktemp -d "${TMPDIR:-/tmp}/test-command-e2e.XXXXXX")
+WORK=$(e2e_workdir test-command-e2e)
 APP="$WORK/test_app"
+E2E_LEFT=$APP
 
-fail() {
-  echo "test-command-e2e: FAIL: $*" >&2
-  echo "test-command-e2e: the app is in $APP" >&2
-  exit 1
-}
-
-cybertrain() {
-  ruby -I"$ROOT" "$ROOT/exe/cybertrain" "$@"
-}
+e2e_use_cli
 
 # The application without what a build or a run in place leaves behind.
+step "test/fixtures/test_app copied to $APP"
 mkdir "$APP"
 (cd "$FIXTURE" && tar cf - --exclude ./build --exclude ./tmp --exclude './storage/*.sqlite3*' .) | (cd "$APP" && tar xf -)
 sed "s|^cybertrain = .*|cybertrain = { path = \"$ROOT\" }|" "$FIXTURE/spin.toml" > "$APP/spin.toml"
@@ -110,11 +109,11 @@ check_run() {
   fi
   if [ "$REGEN" = 1 ]; then
     cp "$WORK/$name.out" "$EXPECTED/$name.out"
-    echo "test-command-e2e: wrote test/fixtures/test_app.expected/$name.out"
+    step "wrote test/fixtures/test_app.expected/$name.out"
   elif ! diff -u "$EXPECTED/$name.out" "$WORK/$name.out" >&2; then
     fail "$name: output differs from test/fixtures/test_app.expected/$name.out (the diff is above)"
   fi
-  echo "test-command-e2e: $name ok (exit $got)"
+  step "$name ok (exit $got)"
 }
 
 BINARY="$APP/build/test/tests"
@@ -141,7 +140,7 @@ cmp "$WORK/other.copy" "$APP/tmp/other.sqlite3" || fail "all: tmp/other.sqlite3 
 [ -f "$APP/storage/test.sqlite3" ] || fail "all: storage/test.sqlite3 was not created"
 [ -x "$BINARY" ] || fail "all: build/test/tests was not built"
 touch -r "$BINARY" "$STAMP"
-echo "test-command-e2e: the first run (gen, the compile, the tests) took ${seconds}s"
+step "the first run (gen, the compile, the tests) took ${seconds}s"
 
 # The filters: the same binary.
 run_variant file 0 test/models/article_test.rb
@@ -199,4 +198,4 @@ CYBERTRAIN_SENTRY_DSN=https://k@sentry.example/1 CYBERTRAIN_LOG_FORMAT=json \
 rm "$APP/test/sentry_dsn_test.rb"
 
 rm -rf "$WORK"
-echo "test-command-e2e: passed"
+step "passed"
