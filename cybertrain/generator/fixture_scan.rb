@@ -68,8 +68,11 @@ module Cybertrain
       # (IntegrationTest's get, post, response, cookies, ...; a `cookies`
       # table's accessor would lose to IntegrationTest#cookies), and
       # Kernel's. script/check-reserved-names fails when the harness gains
-      # one this list lacks.
-      TAKEN_NAMES = %w[assert assert_broadcasts assert_changes assert_difference assert_emails assert_empty assert_enqueued_jobs
+      # one this list lacks. The last two names are quoted, apart from the
+      # word list: the CLI reads a line that starts with either word as a
+      # require (CLI::ToolBinary.requirement), and one it cannot follow
+      # costs gen its reuse.
+      TAKEN_NAMES = (%w[assert assert_broadcasts assert_changes assert_difference assert_emails assert_empty assert_enqueued_jobs
                        assert_enqueued_with assert_equal assert_in_delta assert_includes assert_match assert_nil
                        assert_no_broadcasts assert_no_difference assert_no_emails assert_no_enqueued_jobs assert_no_match
                        assert_not assert_not_empty assert_not_equal assert_not_includes assert_not_nil assert_nothing_raised
@@ -77,8 +80,9 @@ module Cybertrain
                        flunk freeze_time perform_enqueued_jobs refute render_inline setup teardown test travel travel_back
                        travel_to cookies delete fixture_file_upload form_request get head header_names initialize
                        integration_response integration_target patch post put response with_forgery_protection with_query abort at_exit binding caller catch exit fail fork format
-                       gets lambda load loop open p print printf proc putc puts raise rand readline readlines require
-                       require_relative select sleep spawn sprintf srand system throw trap warn].freeze
+                       gets lambda load loop open p print printf proc putc puts raise rand readline readlines
+                       select sleep spawn sprintf srand system throw trap warn] +
+                    ["require", "require_relative"]).freeze
       INT64_MAX = "9223372036854775807".freeze
       INT64_MIN = "9223372036854775808".freeze
 

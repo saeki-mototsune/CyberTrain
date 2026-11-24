@@ -102,12 +102,13 @@ module Cybertrain
             running it. Queue it with NameJob.perform_later("id" => 1) once
             `spin run gen` has written gen/jobs.rb.
         cybertrain db migrate
-            Generate, apply pending migrations, generate again
-            (SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate;
-            SPIN_DEBUG=1 spin run gen).
+            Generate, apply pending migrations, generate again (as
+            SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate;
+            SPIN_DEBUG=1 spin run gen, but a tool whose sources are
+            unchanged since its build is run without asking spin).
         cybertrain db COMMAND...
-            Any other database command, after `SPIN_DEBUG=1 spin run gen`:
-            status, rollback [N] (generates again afterwards), schema,
+            Any other database command, after generating: status,
+            rollback [N] (generates again afterwards), schema,
             schema:dump, create.
             `cybertrain migration` is the same as `cybertrain db migrate`.
         cybertrain server [PORT] [--spinel]
@@ -159,7 +160,7 @@ module Cybertrain
       case command
       when "new" then run_new(argv)
       when "generate", "g" then run_generate(argv)
-      when "migration" then run_in_app { |_name| run_spin(Build.db_commands(["migrate"])) }
+      when "migration" then run_in_app { |_name| run_db(["db", "migrate"]) }
       when "db" then run_in_app { |_name| run_db(argv) }
       when "server" then run_in_app { |name| run_server(name, argv) }
       when "build" then run_in_app { |name| build_app(name) }
@@ -307,26 +308,6 @@ module Cybertrain
       Toolchain.ensure! ? Build.run(".", name) : 1
     end
 
-    # Runs spin commands in turn once a Spinel of the pinned release is on
-    # PATH; stops at the first failure.
-    def self.run_spin(commands)
-      return 1 unless Toolchain.ensure!
-
-      run_all(commands)
-    end
-
-    def self.run_all(commands)
-      status = 0
-      commands.each do |command|
-        puts "run    #{command}"
-        unless system(command)
-          status = 1
-          break
-        end
-      end
-      status
-    end
-
     # `cybertrain spin ARGS...`: spin from the pinned toolchain, wherever
     # the command runs (an application directory or not).
     def self.run_spin_passthrough(argv)
@@ -355,7 +336,7 @@ module Cybertrain
         puts "usage: cybertrain db (migrate|rollback [N]|status|schema|schema:dump|create|normalize)"
         return 1
       end
-      run_spin(Build.db_commands(args))
+      Toolchain.ensure! ? Build.run_db(".", args) : 1
     end
 
     # `cybertrain server [PORT] --spinel`, or `cybertrain server [PORT]` in
