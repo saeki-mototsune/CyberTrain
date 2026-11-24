@@ -834,4 +834,4 @@ ok   new writes the logging and reporting variables, all commented
 error: usage: cybertrain secret [--hex]
 error: usage: cybertrain secret [--hex]
 ok   CLI secret prints a session secret, secret --hex an encryption key (64 hex digits each)
-33 tests, 708 assertions, 0 failures
+33 tests, 709 assertions, 0 failures

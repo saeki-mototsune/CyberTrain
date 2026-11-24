@@ -1,5 +1,5 @@
 ---
-source_sha256: f99d8abbfba8092d6c2a52866127e06e828d05c87e0cb4fe6a5ac406028699d5
+source_sha256: 6bf5394a6e48281e555dd03cd02b963e9f8a3f0d9efc3898432c239020ce33ef
 ---
 # インストール
 
@@ -45,7 +45,7 @@ cybertrain doctor
   [--skip-spin]` は NAME にアプリケーションを作成し、その中で `spin lock` と `SPIN_DEBUG=1 spin run gen` を実行します。必要なら先に Spinel をインストールします（CLI は gen と `bin/db.rb` を spin のデバッグモードでビルドします）。
 - `cybertrain generate scaffold NAME field:type ... [parent:references] [--any]`（エイリアスは `g scaffold`）は、カレントディレクトリのアプリケーションにリソースを追加します。`parent:references` のフィールドは `parent_id` カラムになり、`--any` は添付ファイルのフィールド（後述）に対するものです。
 - `cybertrain generate authentication [--invite-only] [--confirmable] [--force]` は、そのアプリケーションにメールアドレスとパスワードによるサインインを追加します：users と sessions のテーブル、`User` と `Session` のモデル、`ApplicationController` が include する `Authentication` コンサーン、サインイン、サインアップ、パスワードリセット、アカウントのコントローラーとビュー、ルート、`require_admin` で保護されたジョブページ、`bin/<app>.rb` と `bin/db.rb` に必要なサブシステムの行、そしてテストです。`--invite-only` はサインアップのページを省き、`--confirmable` は新しいアカウントに、サインインの前にメールでアドレスを確認させます。もう一度実行したとき、変更されるファイルについては差分を表示するだけですが、`--force` を付けると上書きします（[認証](authentication.md)）。
-- `cybertrain generate attachment MODEL FIELD [--any]` は、スキャフォールド済みのモデルにファイルアップロードを追加します：5 つのメタデータカラム、モデルのメソッドとコールバック、ダウンロードのアクション、ルート、フォームのフィールド、そしてテストです（[カバー画像を追加する](tutorial.md#attachments)を参照）。スキャフォールドのフィールド `cover:attachment` も同じことを行います。
+- `cybertrain generate attachment MODEL FIELD [--any]` は、スキャフォールド済みのモデルにファイルアップロードを追加します：5 つのメタデータカラム、モデルのメソッドとコールバック、ダウンロードのアクション、ルート、フォームのフィールド、そしてテストです（[カバー画像を追加する](advanced-tutorial.md#attachments)を参照）。スキャフォールドのフィールド `cover:attachment` も同じことを行います。
 - `cybertrain generate helper NAME [--force]` は `app/helpers/NAME_helper.rb` とテストを追加します。このモジュールのメソッドは、`spin run gen` を実行すればどのテンプレートからも呼べます（[アプリケーションのヘルパー](template-language.md#application-helpers)）。
 - `cybertrain generate component NAME [attr[:type] ...] [--force]` はビューコンポーネントを追加します：`app/components/NAME_component.rb`、そのテンプレート、そしてテストです（[コンポーネント](template-language.md#components)）。
 - `cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]` は `app/jobs/NAME_job.rb` とテストを追加し、`bin/<app>.rb` と `bin/db.rb` に `require "cybertrain/jobs"` を加えます（[バックグラウンド処理](background-and-operations.md#background-work)）。
@@ -137,7 +137,7 @@ error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cy
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
   gem install cybertrain -v X.Y.Z    # the command the application is on
 or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then relock from nothing (spin lock keeps a locked git commit)
-  rm spin.lock && cybertrain spin lock
+  rm -f spin.lock && cybertrain spin lock
 ```
 
 どちらか一方を行ってください。`cybertrain spin ...` は確認の対象にならないので、`cybertrain spin lock` はいつでも実行できます。インデックスのバージョンに依存している場合、メッセージは `cybertrain = "A.B.C"` と `cybertrain spin lock` だけを示します。spin が固定されたリリースをビルドするのは `spin.toml` がそれを許している間だけなので、`spin.toml` が指すバージョンがロックと違えば、すぐにそのバージョンが比べられます。範囲（`"~> X.Y"`）が固定されたリリースを許さなくなった場合は、`cybertrain spin lock` を実行するまで拒否されます。フレームワークのチェックアウトに依存するアプリ（`path = ...`）は確認されません。`spin.lock` のないアプリは、`spin.toml` が指すリリース（`"X.Y.Z"` または `ref = "vX.Y.Z"`）と比べられます。ブランチ、コミット、範囲はリリースを指さないので、確認されません。

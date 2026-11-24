@@ -1,5 +1,5 @@
 ---
-source_sha256: f99d8abbfba8092d6c2a52866127e06e828d05c87e0cb4fe6a5ac406028699d5
+source_sha256: 6bf5394a6e48281e555dd03cd02b963e9f8a3f0d9efc3898432c239020ce33ef
 ---
 # Установка
 
@@ -108,7 +108,7 @@ cybertrain doctor
 - `cybertrain generate attachment MODEL FIELD [--any]` добавляет загрузку файла
   в модель со скаффолдом: пять столбцов метаданных, методы и колбэки модели,
   действие для скачивания, маршрут, поле формы и тест (см.
-  [Добавление обложки](tutorial.md#attachments)). Поле скаффолда `cover:attachment` делает то же самое.
+  [Добавление обложки](advanced-tutorial.md#attachments)). Поле скаффолда `cover:attachment` делает то же самое.
 - `cybertrain generate helper NAME [--force]` добавляет
   `app/helpers/NAME_helper.rb`, модуль, методы которого после `spin run gen`
   может вызывать любой шаблон, и тест
@@ -323,7 +323,7 @@ error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cy
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
   gem install cybertrain -v X.Y.Z    # the command the application is on
 or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then relock from nothing (spin lock keeps a locked git commit)
-  rm spin.lock && cybertrain spin lock
+  rm -f spin.lock && cybertrain spin lock
 ```
 
 Сделайте одно из двух. `cybertrain spin ...` не проверяется, поэтому

@@ -1,5 +1,5 @@
 ---
-source_sha256: edc01fc327f6eda54332284e41ca1c0a578966e4996608a471927152d0640b52
+source_sha256: 707578e0592cebb2076d5b5ae9b67e5be62e3771a2cd00e5e559d163ef0e3af8
 ---
 # Modèles et base de données
 
@@ -985,7 +985,7 @@ Photo.find(photo.id).thumbnail.bytesize   # les mêmes octets en retour
 - `db/schema.rb` réécrit la colonne sous la forme `t.binary`, et la console
   affiche une valeur binaire comme `<N bytes>`.
 - Gardez les gros fichiers hors de la base&nbsp;: un envoi de fichier
-  ([Ajouter une image de couverture](tutorial.md#attachments)) est un fichier
+  ([Ajouter une image de couverture](advanced-tutorial.md#attachments)) est un fichier
   sous `storage/uploads/`, alors qu’un BLOB est lu entièrement en mémoire
   avec sa ligne et grossit chaque sauvegarde et le WAL.
 

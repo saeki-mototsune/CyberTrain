@@ -80,11 +80,11 @@
     <div class="hero-copy">
       <div class="hero-main">
         <p class="tagline">Веб-приложения в духе Rails, скомпилированные в один нативный бинарный&nbsp;файл.</p>
-        <p class="pitch">CyberTrain — фреймворк для веб-приложений в духе Rails, написанный специально для Spinel, AOT-компилятора Ruby от matz. Привычный словарь остаётся с вами (<code>resources</code>, <code>before_action</code>, <code>validates</code>, <code>form_with</code>, скаффолды), а <code>cybertrain build</code> компилирует контроллеры, модели, представления и сам фреймворк в один нативный бинарный файл — без Rack, без гемов во время выполнения и без интерпретатора Ruby в артефакте.</p>
+        <p class="pitch">Пишите маршруты, контроллеры, модели и ERB-представления так же, как в Rails, вместе со scaffold-генераторами. <code>cybertrain build</code> компилирует их вместе с фреймворком в один нативный бинарный файл с помощью Spinel, AOT-компилятора Ruby от matz: в продакшене нет ни Rack, ни гемов, ни интерпретатора Ruby.</p>
         <div class="cta-row">
-          <a class="btn btn-primary" href="tutorial.html">Начать<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+          <a class="btn btn-primary" href="tutorial.html">Начать учебник<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
           <a class="btn btn-ghost" href="playground.html">Попробовать в браузере</a>
-          <a class="btn btn-ghost" href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">Открыть на GitHub</a>
+          <a class="btn btn-ghost" href="guide/index.html">Читать руководства</a>
         </div>
       </div>
       <div class="hero-term" id="quick-start">
@@ -92,23 +92,23 @@
         <figure class="code code-term" data-lang="shell">
 <figcaption><span class="code-path">терминал &mdash; любой каталог, затем&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="Код: быстрый старт в терминале"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># при первом запуске устанавливает Spinel (несколько минут)</span></span>
+<span class="ln cmd">cybertrain new blog  <span class="c"># первый запуск ставит Spinel (минуты)</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
-<span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000/articles</span></span>
-<span class="ln cmd">cybertrain build             <span class="c"># продакшен: dist/blog, dist/public/, dist/storage/, dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
+<span class="ln cmd">cybertrain server    <span class="c"># http://127.0.0.1:3000/articles</span></span>
+<span class="ln cmd">cybertrain build     <span class="c"># продакшен: один бинарник в dist/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
 </figure>
-        <p class="term-note">Нужен Ruby&nbsp;3.2+ — для команды <code>cybertrain</code> и для CRuby-превью в режиме разработки (превью также загружает <code>fiddle</code>; в продакшене Ruby не нужен), а также <code>git</code>, <code>make</code>, <code>curl</code>, компилятор C и заголовки SQLite&nbsp;3, zlib и OpenSSL: см. <a href="guide/install.html#requirements">перед началом</a>. Запускайте сборку командой <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code> с заданной переменной <code>CYBERTRAIN_SECRET_KEY_BASE</code>.</p>
+        <p class="term-note">Нужны Ruby&nbsp;3.2+ (с <code>fiddle</code>), <code>git</code>, <code>make</code>, <code>curl</code>, компилятор C и заголовки SQLite&nbsp;3, zlib и OpenSSL; <code>cybertrain doctor</code> их проверяет (<a href="guide/install.html#requirements">требования</a>). Самой сборке Ruby не нужен: <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code> с заданной <code>CYBERTRAIN_SECRET_KEY_BASE</code>.</p>
       </div>
     </div>
   </div>
   <div class="wrap">
-    <ul class="spec-strip" aria-label="Коротко">
-      <li><span class="spec-k">Сервер</span><span class="spec-v">HTTP/1.1, без Rack</span></li>
-      <li><span class="spec-k">Выполнение</span><span class="spec-v">Без гемов и интерпретатора</span></li>
-      <li><span class="spec-k">База данных</span><span class="spec-v">SQLite через FFI Spinel</span></li>
-      <li><span class="spec-k">CI</span><span class="spec-v">Linux и macOS</span></li>
+    <ul class="spec-strip spec-why" aria-label="Почему CyberTrain">
+      <li><span class="spec-k">В духе Rails</span><span class="spec-v">Знакомый словарь</span><span class="spec-d"><code>resources</code>, <code>before_action</code>, <code>validates</code>, <code>form_with</code> и scaffold, как в Rails.</span></li>
+      <li><span class="spec-k">Один бинарник</span><span class="spec-v">Без Ruby в продакшене</span><span class="spec-d">Приложение и фреймворк скомпилированы в <code>dist/</code>: ни Rack, ни гемов, ни интерпретатора.</span></li>
+      <li><span class="spec-k">Быстрый и лёгкий</span><span class="spec-v">Измерено против Rails 8.1</span><span class="spec-d">Больше запросов в секунду при доле памяти: <a href="#performance">цифры</a>.</span></li>
+      <li><span class="spec-k">Простое развёртывание</span><span class="spec-v">Один бинарник и файл SQLite</span><span class="spec-d">За Caddy или kamal-proxy; <code>cybertrain new</code> пишет настройку Kamal. <a href="deploy.html">Развёртывание</a>.</span></li>
     </ul>
     <div class="is-not">
       <div class="is-not-head">
@@ -116,7 +116,7 @@
         <p class="is-not-intro">Для Rails-разработчиков, которым нужен один нативный бинарный файл и которых не смущают молодой проект и подмножество Ruby.</p>
       </div>
       <ul class="not-list">
-        <li><h3>Не совместим с Rails и Rack</h3><p>Нет совместимости с Rack и нет гемов во время выполнения: только собственные пакеты Spinel из <code>spin-index</code>, которые компилируются в рамках его подмножества Ruby.</p></li>
+        <li><h3>Код Rails не запускается как есть</h3><p>Приложение пишется на подмножестве Ruby, которое понимает Spinel, под API CyberTrain: без Rack и без гемов во время выполнения, кроме собственных пакетов Spinel из <code>spin-index</code>. Ручной перенос приложения Rails — одна из целей, а базу SQLite, созданную приложением Rails, можно <a href="guide/models.html#taking-over-a-database-rails-created">взять как есть</a>.</p></li>
         <li><h3>Не готов к продакшену</h3><p>CyberTrain находится в стадии пре-альфа. Пример блога проверяется в CI на Linux и macOS.</p></li>
       </ul>
     </div>
@@ -225,55 +225,29 @@
   <div class="wrap"><div class="sec-grid">
     <div class="sec-head"><span class="sec-num" aria-hidden="true">02</span><p class="sec-label">Что работает сегодня</p></div>
     <div class="sec-body">
-      <h2 id="feat-h">Та часть Rails, которая нужна в первую очередь, написанная специально для Spinel.</h2>
+      <h2 id="feat-h">То, за чем вы тянетесь в Rails, уже здесь.</h2>
+      <p class="lead">Всё перечисленное ниже уже работает от начала до конца, и на этом построен <code>examples/blog</code>, блог из Rails Getting Started. Задания, Turbo Streams, фиды, почта, кэш, ограничение частоты и отчёты об ошибках подключаются одной строкой <code>require</code> каждый, так что приложение компилирует только то, чем пользуется.</p>
     </div>
     <ul class="features sec-full">
-      <li class="feature"><span class="feat-idx" aria-hidden="true">01</span><h3>Нативный HTTP-сервер</h3><p>HTTP/1.1-сервер на обычном Ruby: один зелёный поток на соединение, типизированные запросы и ответы. Слоя Rack нет; для TLS поставьте перед ним nginx или Caddy.</p><p class="feat-ref"><code>TCPServer#accept</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">02</span><h3>Маршрутизация и контроллеры</h3><p><code>resources</code>, вложенные маршруты, <code>before_action</code>, <code>after_action</code> и <code>rescue_from</code> на этапе сборки генерируются в обычный Ruby. Strong params и связка «flash, затем редирект» работают как в Rails.</p><p class="feat-ref"><code>config/routes.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">03</span><h3>Сессии, flash, CSRF</h3><p>Сессии в зашифрованной cookie (AES-256-GCM), flash-сообщения и защита от CSRF включены по умолчанию. Формы передают токен автоматически; на поддельные POST-запросы приходит 403.</p><p class="feat-ref"><code>_cybertrain_session</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">04</span><h3>Шаблоны в стиле ERB</h3><p>Представления выглядят как Rails ERB: макеты, партиалы, <code>form_with</code> и <code>link_to</code>. В режиме разработки они читаются с диска, поэтому правки не требуют пересборки. <code>cybertrain build</code> встраивает их в бинарный файл.</p><p class="feat-ref"><code>app/views/**/*.html.erb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">05</span><h3>Модели на SQLite</h3><p>Валидации, колбэки и ассоциации, выведенные из внешних ключей. Работа с SQLite идёт через FFI Spinel с пулом соединений; все запросы используют связанные параметры.</p><p class="feat-ref"><code>ffi_func · ffi_lib</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">06</span><h3>Миграции и скаффолды</h3><p><code>cybertrain generate scaffold</code> создаёт миграцию, модель, контроллер и пять представлений. <code>cybertrain db migrate</code> выполняет генерацию, применяет миграции, перезаписывает <code>db/schema.rb</code> и генерирует снова.</p><p class="feat-ref"><code>db/migrate/*.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">07</span><h3>Живой цикл разработки</h3><p><code>cybertrain server</code> следит за вашим кодом: после правки Ruby быстрее чем за секунду отвечает CRuby-превью, пока Spinel собирает бинарный файл в фоне; затем скомпилированный бинарный файл забирает тот же порт. При неудачной сборке продолжает работать превью и показывает вывод компилятора.</p><p class="feat-ref"><code>X-Cybertrain-Runtime: cruby|spinel</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">08</span><h3>Тесты</h3><p>Тестовые классы в стиле Rails (<code>ActiveSupport::TestCase</code>, <code>ActionDispatch::IntegrationTest</code>) с фикстурами; их пишут генераторы. <code>cybertrain test</code> компилирует их в одну программу и запускает её.</p><p class="feat-ref"><code>test/**/*_test.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">09</span><h3>Фоновые задания</h3><p>Классы заданий с повторами, расписаниями cron и страницей заданий, хранящиеся в базе SQLite приложения. <code>./blog worker</code> выполняет их в отдельном процессе.</p><p class="feat-ref"><code>app/jobs/*.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">10</span><h3>Turbo Streams</h3><p><code>turbo_stream_from</code> в представлении и <code>broadcast_append_to</code> из действия или задания, через Server-Sent Events или WebSocket.</p><p class="feat-ref"><code>require "cybertrain/streams"</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">11</span><h3>Вход и загрузка файлов</h3><p><code>cybertrain generate authentication</code> (регистрация или вход только по приглашениям, сброс пароля, подтверждение адреса) и <code>cybertrain generate attachment</code> пишут код, который принадлежит вам и который можно править.</p><p class="feat-ref"><code>cybertrain generate</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">12</span><h3>Только то, что используется</h3><p>Задания, Turbo Streams, фиды, почта, кэш и ограничение частоты запросов — по одной строке <code>require</code> на каждое; новое приложение компилирует только ядро.</p><p class="feat-ref"><code>require "cybertrain/core"</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">01</span><h3>Маршрутизация и контроллеры</h3><p><code>resources</code>, пространства имён, форматы и <code>respond_to</code>, <code>before_action</code>, concerns и strong parameters, сгенерированные в обычный Ruby при сборке.</p><p class="feat-ref"><a href="guide/requests.html">Запросы</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">02</span><h3>ERB-представления и компоненты</h3><p>Макеты, частичные шаблоны, <code>form_with</code>, хелперы для чисел и Turbo, компоненты представлений и хелперы приложения. В режиме разработки представления читаются с диска, так что правка не требует пересборки.</p><p class="feat-ref"><a href="guide/template-language.html">Язык шаблонов</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">03</span><h3>Модели на SQLite</h3><p>Миграции, валидаторы Rails, ассоциации по внешним ключам или однострочным объявлениям с <code>includes</code>, столбцы decimal, json и date, зашифрованные столбцы. Каждый запрос использует привязанные параметры.</p><p class="feat-ref"><a href="guide/models.html">Модели и база данных</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">04</span><h3>Scaffold и генераторы</h3><p><code>cybertrain generate scaffold</code> пишет миграцию, модель, контроллер, представления и тесты; для хелперов, компонентов и заданий тоже есть генераторы. Написанный ими код — ваш, правьте его как угодно.</p><p class="feat-ref"><a href="guide/install.html#the-cybertrain-command">Команда cybertrain</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">05</span><h3>Живой цикл разработки</h3><p><code>cybertrain server</code> следит за вашим кодом и после изменения Ruby меньше чем за секунду отвечает из предпросмотра на CRuby, пока Spinel собирает проект в фоне; затем скомпилированный бинарный файл подхватывает тот же порт. При неудачной сборке предпросмотр продолжает работать и показывает вывод компилятора.</p><p class="feat-ref"><a href="guide/how-it-works.html#the-development-loop">Цикл разработки</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">06</span><h3>Вход, сгенерированный за вас</h3><p><code>cybertrain generate authentication</code> пишет в приложение вход, регистрацию или вход только по приглашению, сброс пароля, подтверждение адреса, блокировку, «запомнить меня», страницу аккаунта и администраторов.</p><p class="feat-ref"><a href="guide/authentication.html">Аутентификация</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">07</span><h3>Безопасность по умолчанию</h3><p>Сессии в зашифрованных cookie (AES-256-GCM), flash и защита от CSRF включены по умолчанию; Content Security Policy, <code>force_ssl</code>, проверка хостов и ограничение частоты встроены.</p><p class="feat-ref"><a href="guide/requests.html#cookies-and-the-session">Cookies и сессия</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">08</span><h3>Фоновые задания</h3><p>Классы заданий с повторами, расписаниями <code>every</code> и <code>cron</code> и страницей заданий, хранящиеся в базе SQLite приложения. <code>./blog worker</code> выполняет их в отдельном процессе.</p><p class="feat-ref"><a href="guide/background-and-operations.html">Фоновая работа</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">09</span><h3>Turbo Streams</h3><p><code>turbo_stream_from</code> в представлении и <code>broadcast_append_to</code> из действия или задания, через Server-Sent Events или WebSocket.</p><p class="feat-ref"><a href="guide/realtime.html">Реальное время</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">10</span><h3>Ассеты и переводы</h3><p>Стили, изображения и JavaScript с дайджестами и import map; <code>t</code> и <code>l</code> из Rails со словарями, встроенными при компиляции, английский и японский в комплекте.</p><p class="feat-ref"><a href="guide/assets.html">Ассеты</a> <span aria-hidden="true">&middot;</span> <a href="guide/i18n.html">Интернационализация</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">11</span><h3>Тесты</h3><p>Тестовые классы в духе Rails (<code>ActiveSupport::TestCase</code>, <code>ActionDispatch::IntegrationTest</code>) с фикстурами, <code>assert_select</code> и путешествиями во времени; генераторы пишут их сами. <code>cybertrain test</code> компилирует их в одну программу и запускает её.</p><p class="feat-ref"><a href="guide/testing.html">Тестирование</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">12</span><h3>Журнал, ошибки, внешние вызовы</h3><p>Строки журнала с id запроса и тегами, строки JSON для сборщика, отчёты об ошибках в Sentry или GlitchTip, а также клиенты HTTP, SMTP и WebSocket для сервисов, к которым обращается приложение.</p><p class="feat-ref"><a href="guide/logs-and-errors.html">Журнал и ошибки</a> <span aria-hidden="true">&middot;</span> <a href="guide/external-services.html">Исходящие вызовы</a></p></li>
     </ul>
-  </div></div>
-</section>
-
-<section class="sec" id="framework-and-cli" aria-labelledby="parts-h">
-  <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">03</span><p class="sec-label">Фреймворк и CLI</p></div>
-    <div class="sec-body">
-      <h2 id="parts-h">Одно имя, две части.</h2>
-      <p class="lead"><code>gem install cybertrain</code> устанавливает команду, а не фреймворк. Фреймворк — это пакет Spinel, от которого зависит ваше приложение и который компилируется в него. Гем даёт вам команду <code>cybertrain</code>: она создаёт приложение, устанавливает Spinel и запускает инструменты Spinel за вас.</p>
-    </div>
-    <div class="sec-full parts">
-      <article class="part" aria-labelledby="part-fw">
-        <div class="part-head"><p class="part-k">Пакет Spinel</p><h3 id="part-fw">Фреймворк</h3></div>
-        <p class="part-what">Библиотека, на которой построено ваше приложение.</p>
-        <div class="part-fact"><p class="fact-k">Что внутри</p><p>HTTP-сервер, маршрутизация и контроллеры, сессии и защита от CSRF, интерпретатор шаблонов, модели и миграции SQLite, необязательные подсистемы (задания, Turbo Streams, почта, кэш), тестовый фреймворк, а также генератор кода, стоящий за <code>spin run gen</code>.</p></div>
-        <div class="part-fact"><p class="fact-k">Как получить</p><p>Устанавливать его не нужно. В <code>spin.toml</code> вашего приложения указан релизный тег этого репозитория, соответствующий вашей команде <code>cybertrain</code>, а <code>spin lock</code> загружает его в кэш spin и фиксирует коммит в <code>spin.lock</code>. В ваше приложение ничего не копируется.</p></div>
-      </article>
-      <article class="part" aria-labelledby="part-cli">
-        <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli">Команда <code>cybertrain</code></h3></div>
-        <p class="part-what">Инструмент, который создаёт, собирает и запускает ваше приложение.</p>
-        <div class="part-fact"><p class="fact-k">Что внутри</p><p>Только команда <code>cybertrain</code>: <code>new</code>, <code>generate</code> (scaffold, authentication, attachment, job, component, helper), <code>db</code>, <code>server</code>, <code>build</code>, <code>test</code>, <code>secret</code>, <code>spin</code>, <code>setup</code> и <code>doctor</code>. Ни фреймворка, ни Spinel в геме нет.</p></div>
-        <div class="part-fact"><p class="fact-k">Как получить</p><p><code>gem install cybertrain</code>. При первом использовании она собирает зафиксированный релиз Spinel в <code>~/.cybertrain</code>, если этот релиз ещё не доступен в вашем <code>PATH</code>.</p></div>
-      </article>
-    </div>
-    <div class="sec-full">
-      <p class="footnote">Обе части выпускаются из одного тега, и команда отказывается собирать приложение, фреймворк которого относится к другому релизу. <a href="guide/install.html#moving-an-app-to-a-new-release">Как приложение переходит на новый релиз</a> — в руководстве по установке.</p>
-    </div>
   </div></div>
 </section>
 
 <section class="sec" id="how-it-works" aria-labelledby="how-h">
   <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">04</span><p class="sec-label">Как это работает</p></div>
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">03</span><p class="sec-label">Как это работает</p></div>
     <div class="sec-body">
       <h2 id="how-h">Метапрограммирование происходит один раз — при сборке.</h2>
       <p class="lead">Spinel компилирует заранее, и <code>eval</code> в нём нет. Поэтому там, где Rails во время выполнения прибегает к <code>method_missing</code> и <code>define_method</code>, <code>spin run gen</code> пишет обычный Ruby, который можно прочитать и закоммитить, а интерпретируются только представления.</p>
@@ -290,7 +264,7 @@
         <li><span class="step-n" aria-hidden="true">1</span><h3>Генерация при сборке</h3><p><code>spin run gen</code> читает <code>db/schema.rb</code> и <code>config/routes.rb</code>, сканирует <code>app/controllers</code> и <code>app/models</code> и записывает обычный, читаемый Ruby в <code>gen/</code>. <code>cybertrain db migrate</code>, <code>server</code> и <code>build</code> запускают его за вас.</p></li>
         <li><span class="step-n" aria-hidden="true">2</span><h3>Коммитьте <code>gen/</code></h3><p>Каталог хранится в репозитории, потому что у <code>spin build</code> и <code>spin test</code> нет хука, чтобы сначала выполнить генерацию. CI заново запускает <code>spin run gen</code> и падает при наличии диффа, поэтому устаревший сгенерированный код не может попасть в ветку.</p></li>
         <li><span class="step-n" aria-hidden="true">3</span><h3>Интерпретация представлений</h3><p>Интерпретатор, обходящий дерево, отображает <code>app/views/**/*.html.erb</code>: в режиме разработки они читаются с диска, а <code>cybertrain build</code> встраивает их в бинарный файл. В Spinel нет <code>eval</code>, поэтому это замкнутая грамматика, а не настоящий Ruby.</p></li>
-        <li><span class="step-n" aria-hidden="true">4</span><h3>Обслуживание зелёными потоками, хранение в SQLite</h3><p>HTTP/1.1-сервер на обычном Ruby запускает по одному зелёному потоку Spinel на соединение. Модели работают с SQLite через <code>ffi_func</code>/<code>ffi_lib</code> с пулом из 4 соединений.</p></li>
+        <li><span class="step-n" aria-hidden="true">4</span><h3>Обслуживание зелёными потоками, хранение в SQLite</h3><p>HTTP/1.1-сервер на обычном Ruby, spinel-http, запускает по одному зелёному потоку Spinel на соединение. Модели работают с SQLite через <code>ffi_func</code>/<code>ffi_lib</code> с пулом из 4 соединений.</p></li>
         <li><span class="step-n" aria-hidden="true">5</span><h3>Превью, затем компиляция, в режиме разработки</h3><p><code>cybertrain server</code> сразу отдаёт правку Ruby через CRuby-превью, собирает бинарный файл в фоне и передаёт ему порт, когда сборка завершится (около минуты на examples/blog). При неудачной сборке продолжает работать превью, а вывод компилятора показывается в баннере; <code>cybertrain server --spinel</code> запускает только скомпилированный цикл.</p></li>
       </ol>
       <div class="cmp-foot">
@@ -302,7 +276,7 @@
 
 <section class="sec" id="rails-vs-cybertrain" aria-labelledby="cmp-h">
   <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">05</span><p class="sec-label">Rails и CyberTrain</p></div>
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">04</span><p class="sec-label">Rails и CyberTrain</p></div>
     <div class="sec-body">
       <h2 id="cmp-h">Тот же словарь. Другие правила — и они записаны.</h2>
       <p class="lead">AOT-компилятор меняет несколько привычек. Вот те, с которыми вы столкнётесь первыми.</p>
@@ -328,6 +302,33 @@
         <p>Список не исчерпывающий.</p>
         <a class="more" href="guide/how-it-works.html#differences-from-rails">Полная таблица</a>
       </div>
+    </div>
+  </div></div>
+</section>
+
+<section class="sec" id="framework-and-cli" aria-labelledby="parts-h">
+  <div class="wrap"><div class="sec-grid">
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">05</span><p class="sec-label">Фреймворк и CLI</p></div>
+    <div class="sec-body">
+      <h2 id="parts-h">Одно имя, две части.</h2>
+      <p class="lead"><code>gem install cybertrain</code> устанавливает команду, а не фреймворк. Фреймворк — это пакет Spinel, от которого зависит ваше приложение и который компилируется в него. Гем даёт вам команду <code>cybertrain</code>: она создаёт приложение, устанавливает Spinel и запускает инструменты Spinel за вас.</p>
+    </div>
+    <div class="sec-full parts">
+      <article class="part" aria-labelledby="part-fw">
+        <div class="part-head"><p class="part-k">Пакет Spinel</p><h3 id="part-fw">Фреймворк</h3></div>
+        <p class="part-what">Библиотека, на которой построено ваше приложение.</p>
+        <div class="part-fact"><p class="fact-k">Что внутри</p><p>Маршрутизация и контроллеры, сессии и защита от CSRF, интерпретатор шаблонов, модели и миграции SQLite, необязательные подсистемы (задания, Turbo Streams, почта, кэш), тестовый фреймворк, а также генератор кода, стоящий за <code>spin run gen</code>. HTTP-сервер — это <a href="https://github.com/saeki-mototsune/spinel-http" rel="noopener">spinel-http</a>, отдельная библиотека, от которой зависит фреймворк.</p></div>
+        <div class="part-fact"><p class="fact-k">Как получить</p><p>Устанавливать его не нужно. В <code>spin.toml</code> вашего приложения указан релизный тег этого репозитория, соответствующий вашей команде <code>cybertrain</code>, а <code>spin lock</code> загружает его вместе со spinel-http в кэш spin и фиксирует оба коммита в <code>spin.lock</code>. В ваше приложение ничего не копируется.</p></div>
+      </article>
+      <article class="part" aria-labelledby="part-cli">
+        <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli">Команда <code>cybertrain</code></h3></div>
+        <p class="part-what">Инструмент, который создаёт, собирает и запускает ваше приложение.</p>
+        <div class="part-fact"><p class="fact-k">Что внутри</p><p>Только команда <code>cybertrain</code>: <code>new</code>, <code>generate</code> (scaffold, authentication, attachment, job, component, helper), <code>db</code>, <code>server</code>, <code>build</code>, <code>test</code>, <code>secret</code>, <code>spin</code>, <code>setup</code>, <code>doctor</code> и <code>version</code>. Ни фреймворка, ни Spinel в геме нет.</p></div>
+        <div class="part-fact"><p class="fact-k">Как получить</p><p><code>gem install cybertrain</code>. При первом использовании она собирает зафиксированный релиз Spinel в <code>~/.cybertrain</code>, если этот релиз ещё не доступен в вашем <code>PATH</code>.</p></div>
+      </article>
+    </div>
+    <div class="sec-full">
+      <p class="footnote">Обе части выпускаются из одного тега, и команда отказывается собирать приложение, фреймворк которого относится к другому релизу. Переход приложения на новый релиз шаг за шагом описан в руководстве <a href="guide/upgrading.html">«Обновление»</a>.</p>
     </div>
   </div></div>
 </section>
@@ -374,9 +375,11 @@
   <div class="wrap closer-inner">
     <div class="closer-main">
       <h2 id="close-h">Соберите блог из Rails Getting Started — нативно.</h2>
-      <p class="lead">Статьи с комментариями, от <code>cybertrain new</code> до <code>cybertrain build</code>, за девятнадцать шагов.</p>
+      <p class="lead">Статьи с комментариями, от <code>cybertrain new</code> до <code>cybertrain build</code>, шаг за шагом. Хотите сначала осмотреться? Песочница открывает блог прямо в браузере, ничего не устанавливая.</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="tutorial.html">Начать<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+        <a class="btn btn-primary" href="tutorial.html">Начать учебник<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+        <a class="btn btn-ghost" href="playground.html">Открыть песочницу</a>
+        <a class="btn btn-ghost" href="guide/index.html">Все руководства</a>
       </div>
     </div>
     <nav class="outline" aria-label="План учебника">
@@ -394,14 +397,17 @@
         <li><a href="tutorial.html#nested-routes"><span class="ol-n">09</span>Вложенные маршруты</a></li>
         <li><a href="tutorial.html#comments-controller"><span class="ol-n">10</span>CommentsController</a></li>
         <li><a href="tutorial.html#views"><span class="ol-n">11</span>Представления и партиалы</a></li>
-        <li><a href="tutorial.html#component"><span class="ol-n">12</span>Компонент и хелпер</a></li>
-        <li><a href="tutorial.html#turbo"><span class="ol-n">13</span>Живые комментарии через Turbo</a></li>
-        <li><a href="tutorial.html#job"><span class="ol-n">14</span>Фоновая задача</a></li>
-        <li><a href="tutorial.html#json"><span class="ol-n">15</span>Ответ в JSON</a></li>
-        <li><a href="tutorial.html#test"><span class="ol-n">16</span>Тестирование</a></li>
-        <li><a href="tutorial.html#authentication"><span class="ol-n">17</span>Добавление входа</a></li>
-        <li><a href="tutorial.html#attachments"><span class="ol-n">18</span>Добавление обложки</a></li>
-        <li><a href="tutorial.html#ship"><span class="ol-n">19</span>Сборка для развёртывания</a></li>
+        <li><a href="tutorial.html#test"><span class="ol-n">12</span>Тестирование</a></li>
+      </ol>
+      <p class="outline-k">Продвинутый учебник</p>
+      <ol start="13">
+        <li><a href="guide/advanced-tutorial.html#component"><span class="ol-n">13</span>Компонент и хелпер</a></li>
+        <li><a href="guide/advanced-tutorial.html#turbo"><span class="ol-n">14</span>Живые комментарии через Turbo</a></li>
+        <li><a href="guide/advanced-tutorial.html#job"><span class="ol-n">15</span>Фоновая задача</a></li>
+        <li><a href="guide/advanced-tutorial.html#json"><span class="ol-n">16</span>Ответ в JSON</a></li>
+        <li><a href="guide/advanced-tutorial.html#authentication"><span class="ol-n">17</span>Добавление входа</a></li>
+        <li><a href="guide/advanced-tutorial.html#attachments"><span class="ol-n">18</span>Добавление обложки</a></li>
+        <li><a href="guide/advanced-tutorial.html#ship"><span class="ol-n">19</span>Сборка для развёртывания</a></li>
       </ol>
     </nav>
   </div>

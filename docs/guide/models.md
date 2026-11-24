@@ -953,7 +953,7 @@ Photo.find(photo.id).thumbnail.bytesize   # the same bytes back
 - `db/schema.rb` dumps the column back as `t.binary`, and the console prints
   a binary value as `<N bytes>`.
 - Keep large files out of the database: an upload ([Add a cover
-  image](tutorial.md#attachments)) is a file under `storage/uploads/`, while
+  image](advanced-tutorial.md#attachments)) is a file under `storage/uploads/`, while
   a BLOB is read into memory whole with its row and makes every backup and
   the WAL larger.
 

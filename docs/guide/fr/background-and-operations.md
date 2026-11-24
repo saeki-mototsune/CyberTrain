@@ -1,5 +1,5 @@
 ---
-source_sha256: 482060de855362691c97a23308a1211859f96d1d52a161c7acda863db228e640
+source_sha256: d37f0953e1f7a41b2a960aaa2240a311887325dec7fafbea17fa5dc4c00120d9
 ---
 # Tâches de fond et exploitation
 
@@ -538,7 +538,7 @@ application a besoin. Une application avec des envois de fichiers garde aussi
 leurs octets sous sa racine d’envoi (`upload_root`, `storage/uploads/` par
 défaut)&nbsp;: sauvegardez ce répertoire et restaurez-le en même temps que la
 base de données, sinon les enregistrements restaurés pointent vers des fichiers
-absents ([Ajouter une image de couverture](tutorial.md#attachments)).
+absents ([Ajouter une image de couverture](advanced-tutorial.md#attachments)).
 
 **Sauvegardes.** `./<app> db backup PATH` écrit une copie cohérente de la base
 de données configurée (`CYBERTRAIN_DATABASE`) pendant que le serveur continue de

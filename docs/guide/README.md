@@ -22,7 +22,8 @@ tutorial.
 ```text
 docs/guide/
   README.md              this file (not built)
-  index.md tutorial.md   the Guides index and the tutorial
+  index.md tutorial.md   the Guides index and the tutorial (steps 00-12)
+  advanced-tutorial.md   the advanced tutorial (steps 13-19), at guide/advanced-tutorial.html
   install.md models.md … one file per guide
   ja/ zh/ ru/ fr/        the translations, one file per English file, same names
 ```

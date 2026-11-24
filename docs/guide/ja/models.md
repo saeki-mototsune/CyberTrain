@@ -1,5 +1,5 @@
 ---
-source_sha256: edc01fc327f6eda54332284e41ca1c0a578966e4996608a471927152d0640b52
+source_sha256: 707578e0592cebb2076d5b5ae9b67e5be62e3771a2cd00e5e559d163ef0e3af8
 ---
 # モデルとデータベース
 
@@ -539,7 +539,7 @@ Photo.find(photo.id).thumbnail.bytesize   # 同じバイト列が戻る
 - `Photo.where(thumbnail: bytes)` もバイト列を BLOB として bind します（TEXT の bind は保存された BLOB と等しくなりません）。
 - 生の SQL で読んだ BLOB のセルは、そのバイト列の String です。`Cybertrain::Cast.binary(value)` で絞り込めます（`NULL` なら `""`）。
 - `db/schema.rb` はこのカラムを `t.binary` として書き戻し、コンソールはバイナリの値を `<N bytes>` と表示します。
-- 大きなファイルはデータベースに入れないでください：アップロード（[カバー画像を追加する](tutorial.md#attachments)）は `storage/uploads/` の下のファイルですが、BLOB は行と一緒に丸ごとメモリーに読み込まれ、バックアップと WAL を大きくします。
+- 大きなファイルはデータベースに入れないでください：アップロード（[カバー画像を追加する](advanced-tutorial.md#attachments)）は `storage/uploads/` の下のファイルですが、BLOB は行と一緒に丸ごとメモリーに読み込まれ、バックアップと WAL を大きくします。
 
 ## 並び順
 
