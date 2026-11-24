@@ -1,5 +1,5 @@
 ---
-source_sha256: 23f7faa5ecc00ece78c01fdb34adea7dc1c3f7ebff067343998c1f4ce15cdce9
+source_sha256: b89f9ce1a52b25358bbf71bfea3013e1a895ca088c30f9c641f3fd741b8df26e
 description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, sous-systèmes optionnels, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
@@ -93,7 +93,7 @@ Les modèles parlent à SQLite directement via `ffi_func`/`ffi_lib` de Spinel �
 
 Un pool (`SizedQueue`, 4 connexions par défaut) distribue des connexions avec&nbsp;:
 
-- WAL&nbsp;;
+- WAL, avec `synchronous = NORMAL`&nbsp;: le WAL est synchronisé à un point de contrôle et non à chaque commit, si bien qu’un plantage du processus ne perd rien, mais une coupure de courant ou un plantage du système peut perdre les derniers commits (le fichier reste cohérent)&nbsp;;
 - un délai d’attente sur verrou d’environ cinq secondes, attendu dans un `sleep` de green thread (100&nbsp;µs d’abord, puis jusqu’à 1&nbsp;ms) pour que la connexion qui tient le verrou continue de tourner même avec un seul worker&nbsp;; un script de schéma attend dans SQLite (dont le `busy_timeout` dort une milliseconde ou plus)&nbsp;;
 - jusqu’à 64 requêtes préparées en cache&nbsp;;
 - les clés étrangères activées.
