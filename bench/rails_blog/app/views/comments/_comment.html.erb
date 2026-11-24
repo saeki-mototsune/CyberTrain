@@ -1,14 +1,8 @@
 <%# locals: (comment:) %>
-<div class="comment">
-  <p>
-    <strong>Commenter:</strong>
-    <%= comment.commenter %>
-  </p>
+<div class="comment" id="<%= dom_id(comment) %>">
+  <p><%= t(".wrote_html", author: comment_author(comment)) %></p>
 
-  <p>
-    <strong>Comment:</strong>
-    <%= comment.body %>
-  </p>
+  <p><%= comment.body %></p>
 
-  <%= button_to "Destroy comment", [@article, comment], method: :delete %>
+  <%= button_to t(".destroy"), article_comment_path(comment.article_id, comment), method: :delete %>
 </div>

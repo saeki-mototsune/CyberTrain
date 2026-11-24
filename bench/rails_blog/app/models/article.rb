@@ -1,8 +1,13 @@
 class Article < ApplicationRecord
-  has_many :comments, dependent: :delete_all
+  # destroy destroys the comments first, one by one (each comment's own
+  # destroy, callbacks included), as examples/blog does.
+  has_many :comments, dependent: :destroy
 
-  validates :title, presence: true
+  validates :title, presence: true, uniqueness: true
   validates :body, presence: true, length: { minimum: 10 }
+
+  # Article.recent: newest first (the index's order).
+  scope :recent, -> { order(created_at: :desc) }
 
   # The article's picture, as examples/blog has it: Active Storage in place of
   # the columns and methods `cybertrain generate attachment` writes. The same
@@ -14,13 +19,20 @@ class Article < ApplicationRecord
   has_one_attached :cover
   validate :cover_is_a_small_image
 
+  # What /articles.json and /articles/1.json show: the columns, and where the
+  # cover is served from ("" when there is none).
+  def public_json
+    url = cover.attached? ? Rails.application.routes.url_helpers.rails_blob_path(cover, only_path: true) : ""
+    as_json.merge("cover_url" => url)
+  end
+
   private
 
   def cover_is_a_small_image
     return unless cover.attached?
 
-    errors.add(:cover, "is too large (maximum is 2 MB)") if cover.blob.byte_size > COVER_MAX_BYTES
-    errors.add(:cover, "must be a PNG, JPEG, GIF or WebP image") unless COVER_TYPES.include?(cover_type_from_bytes)
+    errors.add(:cover, :too_large) if cover.blob.byte_size > COVER_MAX_BYTES
+    errors.add(:cover, :content_type) unless COVER_TYPES.include?(cover_type_from_bytes)
   end
 
   # Active Storage's own content type falls back to the name and the type the

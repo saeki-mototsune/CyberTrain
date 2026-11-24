@@ -4,3 +4,4 @@
 /storage/*
 /vendor/bundle/
 /config/master.key
+/public/assets
