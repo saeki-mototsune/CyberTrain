@@ -4,6 +4,5 @@ name = "cybertrain"
 version = "0.4.2"
 
 [dependencies]
-# The HTTP layer (docs/design.md D91). The ref becomes "v0.1.0" (the same
-# commit) once the maintainer pushes that tag; spin.lock pins the commit.
-spinel-http = { git = "https://github.com/saeki-mototsune/spinel-http", ref = "release-0.1" }
+# The HTTP layer (docs/design.md D91). spin.lock pins the commit the tag names.
+spinel-http = { git = "https://github.com/saeki-mototsune/spinel-http", ref = "v0.1.0" }
