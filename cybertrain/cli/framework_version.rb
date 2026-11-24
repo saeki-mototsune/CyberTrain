@@ -78,7 +78,7 @@ module Cybertrain
         target = git ? "ref = \"v#{own}\"" : "cybertrain = \"#{own}\""
         relock = "then run\n  cybertrain spin lock"
         if git && file == "spin.lock"
-          relock = "then relock from nothing (spin lock keeps a locked git commit)\n  rm spin.lock && cybertrain spin lock"
+          relock = "then relock from nothing (spin lock keeps a locked git commit)\n  rm -f spin.lock && cybertrain spin lock"
         end
         "this application's framework is cybertrain #{version} (#{file}), but this cybertrain command is #{own}.\n" \
           "The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either\n" \

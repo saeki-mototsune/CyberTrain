@@ -1,5 +1,5 @@
 ---
-source_sha256: f99d8abbfba8092d6c2a52866127e06e828d05c87e0cb4fe6a5ac406028699d5
+source_sha256: e57f5d98009f2eec88850beab634a0c6b9b97ccce66b8b6bec397c28d00c213b
 ---
 # Установка
 
@@ -323,7 +323,7 @@ error: this application's framework is cybertrain X.Y.Z (spin.lock), but this cy
 The command decides the Spinel release, the templates and the generators, so the two must be the same version. Either
   gem install cybertrain -v X.Y.Z    # the command the application is on
 or point the cybertrain dependency in spin.toml at A.B.C (ref = "vA.B.C"), then relock from nothing (spin lock keeps a locked git commit)
-  rm spin.lock && cybertrain spin lock
+  rm -f spin.lock && cybertrain spin lock
 ```
 
 Сделайте одно из двух. `cybertrain spin ...` не проверяется, поэтому

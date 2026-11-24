@@ -60,7 +60,7 @@ test "another locked version is refused, with both versions and both ways out" d
   assert_includes FrameworkVersion.problem(".", "1.2.3"), "gem install cybertrain -v 1.3.0"
   assert_includes FrameworkVersion.problem(".", "1.2.3"), "ref = \"v1.2.3\""
   # `spin lock` keeps a locked git commit, so the way out removes the lock.
-  assert_includes FrameworkVersion.problem(".", "1.2.3"), "rm spin.lock && cybertrain spin lock"
+  assert_includes FrameworkVersion.problem(".", "1.2.3"), "rm -f spin.lock && cybertrain spin lock"
 end
 
 test "a git dependency: spin.lock decides while spin.toml is ahead of it, spin builds the locked commit" do
@@ -86,7 +86,7 @@ test "an index dependency moved to another exact version, not relocked: spin.tom
   puts FrameworkVersion.problem(".", "1.2.3")
   assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain 1.3.0 (spin.toml)"
   assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain = \"1.2.3\""
-  refute FrameworkVersion.problem(".", "1.2.3").include?("rm spin.lock")
+  refute FrameworkVersion.problem(".", "1.2.3").include?("rm -f spin.lock")
   assert_equal "", FrameworkVersion.problem(".", "1.3.0")
   app("{ version = \"1.3.0\" }", git_lock("1.2.3"))
   assert_includes FrameworkVersion.problem(".", "1.2.3"), "cybertrain 1.3.0 (spin.toml)"
