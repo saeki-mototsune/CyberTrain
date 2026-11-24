@@ -80,11 +80,11 @@
     <div class="hero-copy">
       <div class="hero-main">
         <p class="tagline">Rails 流の Web アプリを、ひとつのネイティブバイナリに。</p>
-        <p class="pitch">CyberTrain は、matz による Ruby の AOT コンパイラである Spinel のためにネイティブに書かれた、Rails 流の Web アプリケーションフレームワークです。語彙（<code>resources</code>、<code>before_action</code>、<code>validates</code>、<code>form_with</code>、スキャフォールド）はそのままに、<code>cybertrain build</code> がコントローラー、モデル、ビュー、そしてフレームワーク自体をひとつのネイティブバイナリにコンパイルします。成果物には Rack も、実行時の gem も、Ruby インタプリタも含まれません。</p>
+        <p class="pitch">ルーティング、コントローラー、モデル、ERB のビューを、スキャフォールドも含めて Rails と同じように書きます。<code>cybertrain build</code> は、matz による Ruby の AOT コンパイラ Spinel を通して、それらをフレームワークごとひとつのネイティブバイナリにコンパイルします。本番環境には Rack も gem も Ruby インタプリタも要りません。</p>
         <div class="cta-row">
-          <a class="btn btn-primary" href="tutorial.html">はじめる<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+          <a class="btn btn-primary" href="tutorial.html">チュートリアルを始める<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
           <a class="btn btn-ghost" href="playground.html">ブラウザで試す</a>
-          <a class="btn btn-ghost" href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">GitHub で見る</a>
+          <a class="btn btn-ghost" href="guide/index.html">ガイドを読む</a>
         </div>
       </div>
       <div class="hero-term" id="quick-start">
@@ -92,23 +92,23 @@
         <figure class="code code-term" data-lang="shell">
 <figcaption><span class="code-path">ターミナル &mdash; 任意のディレクトリ、その後 blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="コード：クイックスタートのターミナル"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># 初回は Spinel をインストール（数分）</span></span>
+<span class="ln cmd">cybertrain new blog  <span class="c"># 初回は Spinel をインストール（数分）</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
-<span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000/articles</span></span>
-<span class="ln cmd">cybertrain build             <span class="c"># 本番用: dist/blog, dist/public/, dist/storage/, dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
+<span class="ln cmd">cybertrain server    <span class="c"># http://127.0.0.1:3000/articles</span></span>
+<span class="ln cmd">cybertrain build     <span class="c"># 本番用: dist/ にバイナリ 1 つ</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
 </figure>
-        <p class="term-note">Ruby&nbsp;3.2+ が必要なのは <code>cybertrain</code> コマンドと、開発時の CRuby プレビューです（プレビューは <code>fiddle</code> も読み込みます。本番環境では Ruby は不要です）。ほかに <code>git</code>、<code>make</code>、<code>curl</code>、C コンパイラ、SQLite&nbsp;3・zlib・OpenSSL のヘッダーが必要です：<a href="guide/install.html#requirements">始める前に</a>。ビルドしたものは、<code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code> で、<code>CYBERTRAIN_SECRET_KEY_BASE</code> を設定して実行します。</p>
+        <p class="term-note">必要なのは Ruby&nbsp;3.2+（<code>fiddle</code> 付き）、<code>git</code>、<code>make</code>、<code>curl</code>、C コンパイラ、SQLite&nbsp;3・zlib・OpenSSL のヘッダーです。<code>cybertrain doctor</code> が確認します（<a href="guide/install.html#requirements">必要なもの</a>）。ビルドしたものは Ruby なしで動きます：<code>CYBERTRAIN_SECRET_KEY_BASE</code> を設定して <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code>。</p>
       </div>
     </div>
   </div>
   <div class="wrap">
-    <ul class="spec-strip" aria-label="概要">
-      <li><span class="spec-k">サーバー</span><span class="spec-v">HTTP/1.1、Rack なし</span></li>
-      <li><span class="spec-k">ランタイム</span><span class="spec-v">gem なし、インタプリタなし</span></li>
-      <li><span class="spec-k">データベース</span><span class="spec-v">Spinel FFI 経由の SQLite</span></li>
-      <li><span class="spec-k">CI</span><span class="spec-v">Linux と macOS</span></li>
+    <ul class="spec-strip spec-why" aria-label="CyberTrain を選ぶ理由">
+      <li><span class="spec-k">Rails 流</span><span class="spec-v">知っている語彙のまま</span><span class="spec-d"><code>resources</code>、<code>before_action</code>、<code>validates</code>、<code>form_with</code>、スキャフォールドを Rails と同じように。</span></li>
+      <li><span class="spec-k">バイナリひとつ</span><span class="spec-v">本番に Ruby は不要</span><span class="spec-d">アプリとフレームワークを <code>dist/</code> にコンパイル。Rack も gem もインタプリタもありません。</span></li>
+      <li><span class="spec-k">速く、軽い</span><span class="spec-v">Rails 8.1 と比較して計測</span><span class="spec-d">より多くのリクエストを、ずっと少ないメモリで：<a href="#performance">計測結果</a>。</span></li>
+      <li><span class="spec-k">デプロイが簡単</span><span class="spec-v">バイナリと SQLite ファイルだけ</span><span class="spec-d">前段に Caddy か kamal-proxy。<code>cybertrain new</code> が Kamal の設定を書きます。<a href="deploy.html">デプロイ</a>。</span></li>
     </ul>
     <div class="is-not">
       <div class="is-not-head">
@@ -225,55 +225,29 @@
   <div class="wrap"><div class="sec-grid">
     <div class="sec-head"><span class="sec-num" aria-hidden="true">02</span><p class="sec-label">現在できること</p></div>
     <div class="sec-body">
-      <h2 id="feat-h">最初に手に取る Rails の機能を、Spinel 向けにネイティブで。</h2>
+      <h2 id="feat-h">Rails でまず手に取るものが、もうここに。</h2>
+      <p class="lead">以下はすべて、いまエンドツーエンドで動きます。Rails の Getting Started のブログである <code>examples/blog</code> もこの上に作られています。ジョブ、Turbo Streams、フィード、メール、キャッシュ、レート制限、エラー報告はそれぞれ <code>require</code> 1 行で、アプリは使うものだけをコンパイルします。</p>
     </div>
     <ul class="features sec-full">
-      <li class="feature"><span class="feat-idx" aria-hidden="true">01</span><h3>ネイティブ HTTP サーバー</h3><p>素の Ruby で書かれた HTTP/1.1 サーバーで、接続ごとにグリーンスレッドを 1 本使い、リクエストとレスポンスは型付きです。Rack 層はありません。TLS には前段に nginx か Caddy を置きます。</p><p class="feat-ref"><code>TCPServer#accept</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">02</span><h3>ルーティングとコントローラー</h3><p><code>resources</code>、ネストしたルーティング、<code>before_action</code>、<code>after_action</code>、<code>rescue_from</code> は、ビルド時に素の Ruby として生成されます。Strong Parameters や、フラッシュを設定してからのリダイレクトも Rails と同じように動きます。</p><p class="feat-ref"><code>config/routes.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">03</span><h3>セッション、フラッシュ、CSRF</h3><p>暗号化した cookie（AES-256-GCM）によるセッション、フラッシュメッセージ、CSRF 保護がデフォルトで有効です。フォームには自動でトークンが含まれ、偽造された POST には 403 が返ります。</p><p class="feat-ref"><code>_cybertrain_session</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">04</span><h3>ERB 風のテンプレート</h3><p>ビューは Rails の ERB と同じ見た目で、レイアウト、パーシャル、<code>form_with</code>、<code>link_to</code> が使えます。開発環境ではディスクから読み込むので、編集しても再ビルドは不要です。<code>cybertrain build</code> はビューを埋め込みます。</p><p class="feat-ref"><code>app/views/**/*.html.erb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">05</span><h3>SQLite のモデル</h3><p>バリデーション、コールバック、外部キーから導出される関連付け。Spinel の FFI 経由で、コネクションプールを使って SQLite とやり取りします。クエリはすべてパラメータをバインドします。</p><p class="feat-ref"><code>ffi_func · ffi_lib</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">06</span><h3>マイグレーションとスキャフォールド</h3><p><code>cybertrain generate scaffold</code> はマイグレーション、モデル、コントローラー、5 つのビューを書き出します。<code>cybertrain db migrate</code> は生成を行い、マイグレーションを適用して <code>db/schema.rb</code> を書き換え、もう一度生成します。</p><p class="feat-ref"><code>db/migrate/*.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">07</span><h3>ライブ開発ループ</h3><p><code>cybertrain server</code> はコードを監視し、Ruby を変更すると CRuby のプレビューが 1 秒未満で応答し、その間に Spinel がバックグラウンドでビルドします。ビルドが終わると、コンパイル済みのバイナリが同じポートを引き継ぎます。ビルドに失敗した場合はプレビューが配信を続け、コンパイラの出力を表示します。</p><p class="feat-ref"><code>X-Cybertrain-Runtime: cruby|spinel</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">08</span><h3>テスト</h3><p>Rails と同じ形のテストクラス（<code>ActiveSupport::TestCase</code>、<code>ActionDispatch::IntegrationTest</code>）とフィクスチャを使い、ジェネレーターがそれらを書きます。<code>cybertrain test</code> は全体を 1 つのプログラムにコンパイルして実行します。</p><p class="feat-ref"><code>test/**/*_test.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">09</span><h3>バックグラウンドジョブ</h3><p>リトライ、cron のスケジュール、ジョブの管理ページを備えたジョブクラスで、アプリの SQLite データベースに保存されます。<code>./blog worker</code> が専用のプロセスで実行します。</p><p class="feat-ref"><code>app/jobs/*.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">10</span><h3>Turbo Streams</h3><p>ビューの <code>turbo_stream_from</code> と、アクションやジョブからの <code>broadcast_append_to</code> を、Server-Sent Events か WebSocket で届けます。</p><p class="feat-ref"><code>require "cybertrain/streams"</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">11</span><h3>サインインとアップロード</h3><p><code>cybertrain generate authentication</code>（サインアップまたは招待制、パスワードの再設定、メールの確認）と <code>cybertrain generate attachment</code> は、自分で編集できるコードを書きます。</p><p class="feat-ref"><code>cybertrain generate</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">12</span><h3>使うものだけ</h3><p>ジョブ、Turbo Streams、フィード、メーラー、キャッシュ、レート制限は、それぞれ <code>require</code> の 1 行です。新しいアプリがコンパイルするのはコアだけです。</p><p class="feat-ref"><code>require "cybertrain/core"</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">01</span><h3>ルーティングとコントローラー</h3><p><code>resources</code>、名前空間、フォーマットと <code>respond_to</code>、<code>before_action</code>、Concern、Strong Parameters を、ビルド時に素の Ruby として生成します。</p><p class="feat-ref"><a href="guide/requests.html">リクエスト</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">02</span><h3>ERB のビューとコンポーネント</h3><p>レイアウト、パーシャル、<code>form_with</code>、数値と Turbo のヘルパー、ビューコンポーネント、アプリケーションヘルパー。開発環境ではビューをディスクから読むので、編集しても再ビルドは不要です。</p><p class="feat-ref"><a href="guide/template-language.html">テンプレート言語</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">03</span><h3>SQLite のモデル</h3><p>マイグレーション、Rails のバリデーター、外部キーまたは 1 行の宣言による関連付けと <code>includes</code>、decimal・json・date の列、暗号化された列。クエリはすべてパラメータをバインドします。</p><p class="feat-ref"><a href="guide/models.html">モデルとデータベース</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">04</span><h3>スキャフォールドとジェネレーター</h3><p><code>cybertrain generate scaffold</code> はマイグレーション、モデル、コントローラー、ビュー、テストを書き出します。ヘルパー、コンポーネント、ジョブにもジェネレーターがあります。書かれたコードは自由に編集できます。</p><p class="feat-ref"><a href="guide/install.html#the-cybertrain-command">cybertrain コマンド</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">05</span><h3>ライブ開発ループ</h3><p><code>cybertrain server</code> はコードを監視し、Ruby を変更すると CRuby のプレビューが 1 秒未満で応答し、その間に Spinel がバックグラウンドでビルドします。ビルドが終わると、コンパイル済みのバイナリが同じポートを引き継ぎます。ビルドに失敗した場合はプレビューが配信を続け、コンパイラの出力を表示します。</p><p class="feat-ref"><a href="guide/how-it-works.html#the-development-loop">開発ループ</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">06</span><h3>サインインを生成</h3><p><code>cybertrain generate authentication</code> は、サインイン、サインアップまたは招待制、パスワードの再設定、メールの確認、ロックアウト、ログイン状態の保持、アカウントページ、管理者ユーザーをアプリに書き込みます。</p><p class="feat-ref"><a href="guide/authentication.html">認証</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">07</span><h3>安全なデフォルト</h3><p>暗号化した cookie（AES-256-GCM）によるセッション、フラッシュ、CSRF 保護がデフォルトで有効です。Content Security Policy、<code>force_ssl</code>、ホストの検査、レート制限も組み込まれています。</p><p class="feat-ref"><a href="guide/requests.html#cookies-and-the-session">Cookie とセッション</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">08</span><h3>バックグラウンドジョブ</h3><p>リトライ、<code>every</code> と <code>cron</code> のスケジュール、ジョブの管理ページを備えたジョブクラスで、アプリの SQLite データベースに保存されます。<code>./blog worker</code> が専用のプロセスで実行します。</p><p class="feat-ref"><a href="guide/background-and-operations.html">バックグラウンド処理</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">09</span><h3>Turbo Streams</h3><p>ビューの <code>turbo_stream_from</code> と、アクションやジョブからの <code>broadcast_append_to</code> を、Server-Sent Events か WebSocket で届けます。</p><p class="feat-ref"><a href="guide/realtime.html">リアルタイム</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">10</span><h3>アセットと翻訳</h3><p>ダイジェスト付きのスタイルシート、画像、JavaScript とインポートマップ。Rails の <code>t</code> と <code>l</code> に、コンパイル時に組み込む辞書。英語と日本語を同梱しています。</p><p class="feat-ref"><a href="guide/assets.html">アセット</a> <span aria-hidden="true">&middot;</span> <a href="guide/i18n.html">国際化</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">11</span><h3>テスト</h3><p>Rails と同じ形のテストクラス（<code>ActiveSupport::TestCase</code>、<code>ActionDispatch::IntegrationTest</code>）とフィクスチャ、<code>assert_select</code>、時間の移動。ジェネレーターがテストを書きます。<code>cybertrain test</code> は全体を 1 つのプログラムにコンパイルして実行します。</p><p class="feat-ref"><a href="guide/testing.html">テスト</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">12</span><h3>ログ、エラー、外部呼び出し</h3><p>リクエスト ID とタグ付きのログ行、ログ収集向けの JSON 行、Sentry や GlitchTip へのエラー報告、そしてアプリが呼び出すサービスのための HTTP・SMTP・WebSocket クライアント。</p><p class="feat-ref"><a href="guide/logs-and-errors.html">ログとエラー</a> <span aria-hidden="true">&middot;</span> <a href="guide/external-services.html">外向きの通信</a></p></li>
     </ul>
-  </div></div>
-</section>
-
-<section class="sec" id="framework-and-cli" aria-labelledby="parts-h">
-  <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">03</span><p class="sec-label">フレームワークと CLI</p></div>
-    <div class="sec-body">
-      <h2 id="parts-h">ひとつの名前、ふたつの部品。</h2>
-      <p class="lead"><code>gem install cybertrain</code> でインストールされるのはコマンドであり、フレームワークではありません。フレームワークは Spinel パッケージで、アプリがこれに依存し、アプリに組み込んでコンパイルします。gem が提供するのは <code>cybertrain</code> コマンドで、アプリの作成、Spinel のインストール、Spinel のツールの実行を代わりに行います。</p>
-    </div>
-    <div class="sec-full parts">
-      <article class="part" aria-labelledby="part-fw">
-        <div class="part-head"><p class="part-k">Spinel パッケージ</p><h3 id="part-fw">フレームワーク</h3></div>
-        <p class="part-what">アプリの土台となるライブラリ。</p>
-        <div class="part-fact"><p class="fact-k">中身</p><p>ルーティングとコントローラー、セッションと CSRF 保護、テンプレートインタプリタ、SQLite のモデルとマイグレーション、任意のサブシステム（ジョブ、Turbo Streams、メール、キャッシュ）、テストフレームワーク、そして <code>spin run gen</code> の裏で動くコードジェネレーター。HTTP サーバーは、フレームワークが依存する独立したライブラリ <a href="https://github.com/saeki-mototsune/spinel-http" rel="noopener">spinel-http</a> です。</p></div>
-        <div class="part-fact"><p class="fact-k">入手方法</p><p>インストールは不要です。アプリの <code>spin.toml</code> が、<code>cybertrain</code> コマンドと一致するこのリポジトリのリリースタグを指定し、<code>spin lock</code> がそれを spinel-http とともに spin のキャッシュに取得して、両方のコミットを <code>spin.lock</code> に固定します。アプリには何もコピーされません。</p></div>
-      </article>
-      <article class="part" aria-labelledby="part-cli">
-        <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli"><code>cybertrain</code> コマンド</h3></div>
-        <p class="part-what">アプリを作成し、ビルドし、実行するツール。</p>
-        <div class="part-fact"><p class="fact-k">中身</p><p><code>cybertrain</code> コマンドだけです：<code>new</code>、<code>generate</code>（scaffold、authentication、attachment、job、component、helper）、<code>db</code>、<code>server</code>、<code>build</code>、<code>test</code>、<code>secret</code>、<code>spin</code>、<code>setup</code>、<code>doctor</code>、<code>version</code>。フレームワークも Spinel も gem には含まれません。</p></div>
-        <div class="part-fact"><p class="fact-k">入手方法</p><p><code>gem install cybertrain</code> です。初回使用時に、固定された Spinel のリリースを <code>~/.cybertrain</code> にビルドします（そのリリースがすでに <code>PATH</code> 上にある場合を除く）。</p></div>
-      </article>
-    </div>
-    <div class="sec-full">
-      <p class="footnote">両者は同じタグからリリースされ、コマンドは、フレームワークが別のリリースになっているアプリのビルドを拒みます。アプリを新しいリリースに移行する手順は、<a href="guide/upgrading.html">アップグレード</a>のガイドに順を追って書いてあります。</p>
-    </div>
   </div></div>
 </section>
 
 <section class="sec" id="how-it-works" aria-labelledby="how-h">
   <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">04</span><p class="sec-label">仕組み</p></div>
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">03</span><p class="sec-label">仕組み</p></div>
     <div class="sec-body">
       <h2 id="how-h">メタプログラミングは一度だけ、ビルド時に。</h2>
       <p class="lead">Spinel は事前（AOT）コンパイルを行い、<code>eval</code> を持ちません。そのため、Rails が実行時に <code>method_missing</code> や <code>define_method</code> を使う場面では、<code>spin run gen</code> が読んでコミットできる素の Ruby を書き出し、インタプリタで解釈するのはビューだけです。</p>
@@ -302,7 +276,7 @@
 
 <section class="sec" id="rails-vs-cybertrain" aria-labelledby="cmp-h">
   <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">05</span><p class="sec-label">Rails と CyberTrain</p></div>
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">04</span><p class="sec-label">Rails と CyberTrain</p></div>
     <div class="sec-body">
       <h2 id="cmp-h">語彙は同じ。違うルールは明文化。</h2>
       <p class="lead">AOT コンパイラのために、いくつかの習慣が変わります。ここでは最初に出会うものを挙げます。</p>
@@ -328,6 +302,33 @@
         <p>すべてを網羅してはいません。</p>
         <a class="more" href="guide/how-it-works.html#differences-from-rails">完全な表</a>
       </div>
+    </div>
+  </div></div>
+</section>
+
+<section class="sec" id="framework-and-cli" aria-labelledby="parts-h">
+  <div class="wrap"><div class="sec-grid">
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">05</span><p class="sec-label">フレームワークと CLI</p></div>
+    <div class="sec-body">
+      <h2 id="parts-h">ひとつの名前、ふたつの部品。</h2>
+      <p class="lead"><code>gem install cybertrain</code> でインストールされるのはコマンドであり、フレームワークではありません。フレームワークは Spinel パッケージで、アプリがこれに依存し、アプリに組み込んでコンパイルします。gem が提供するのは <code>cybertrain</code> コマンドで、アプリの作成、Spinel のインストール、Spinel のツールの実行を代わりに行います。</p>
+    </div>
+    <div class="sec-full parts">
+      <article class="part" aria-labelledby="part-fw">
+        <div class="part-head"><p class="part-k">Spinel パッケージ</p><h3 id="part-fw">フレームワーク</h3></div>
+        <p class="part-what">アプリの土台となるライブラリ。</p>
+        <div class="part-fact"><p class="fact-k">中身</p><p>ルーティングとコントローラー、セッションと CSRF 保護、テンプレートインタプリタ、SQLite のモデルとマイグレーション、任意のサブシステム（ジョブ、Turbo Streams、メール、キャッシュ）、テストフレームワーク、そして <code>spin run gen</code> の裏で動くコードジェネレーター。HTTP サーバーは、フレームワークが依存する独立したライブラリ <a href="https://github.com/saeki-mototsune/spinel-http" rel="noopener">spinel-http</a> です。</p></div>
+        <div class="part-fact"><p class="fact-k">入手方法</p><p>インストールは不要です。アプリの <code>spin.toml</code> が、<code>cybertrain</code> コマンドと一致するこのリポジトリのリリースタグを指定し、<code>spin lock</code> がそれを spinel-http とともに spin のキャッシュに取得して、両方のコミットを <code>spin.lock</code> に固定します。アプリには何もコピーされません。</p></div>
+      </article>
+      <article class="part" aria-labelledby="part-cli">
+        <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli"><code>cybertrain</code> コマンド</h3></div>
+        <p class="part-what">アプリを作成し、ビルドし、実行するツール。</p>
+        <div class="part-fact"><p class="fact-k">中身</p><p><code>cybertrain</code> コマンドだけです：<code>new</code>、<code>generate</code>（scaffold、authentication、attachment、job、component、helper）、<code>db</code>、<code>server</code>、<code>build</code>、<code>test</code>、<code>secret</code>、<code>spin</code>、<code>setup</code>、<code>doctor</code>、<code>version</code>。フレームワークも Spinel も gem には含まれません。</p></div>
+        <div class="part-fact"><p class="fact-k">入手方法</p><p><code>gem install cybertrain</code> です。初回使用時に、固定された Spinel のリリースを <code>~/.cybertrain</code> にビルドします（そのリリースがすでに <code>PATH</code> 上にある場合を除く）。</p></div>
+      </article>
+    </div>
+    <div class="sec-full">
+      <p class="footnote">両者は同じタグからリリースされ、コマンドは、フレームワークが別のリリースになっているアプリのビルドを拒みます。アプリを新しいリリースに移行する手順は、<a href="guide/upgrading.html">アップグレード</a>のガイドに順を追って書いてあります。</p>
     </div>
   </div></div>
 </section>
@@ -374,9 +375,11 @@
   <div class="wrap closer-inner">
     <div class="closer-main">
       <h2 id="close-h">Rails の Getting Started のブログを、ネイティブで作る。</h2>
-      <p class="lead">コメント付きの記事を、<code>cybertrain new</code> から <code>cybertrain build</code> まで 19 ステップで。</p>
+      <p class="lead">コメント付きの記事を、<code>cybertrain new</code> から <code>cybertrain build</code> まで、一歩ずつ。先に触ってみたいなら、プレイグラウンドが何もインストールせずにブラウザでブログを開きます。</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="tutorial.html">はじめる<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+        <a class="btn btn-primary" href="tutorial.html">チュートリアルを始める<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+        <a class="btn btn-ghost" href="playground.html">プレイグラウンドを開く</a>
+        <a class="btn btn-ghost" href="guide/index.html">ガイドを見る</a>
       </div>
     </div>
     <nav class="outline" aria-label="チュートリアルの概要">
