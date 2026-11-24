@@ -50,7 +50,7 @@ it, in English and Japanese, with an admin user guarding its `/admin` pages.
   invite-only, password reset, confirmation, lockout, remember me, an
   account page and admin users into the application.
 - **Other generators**: scaffold, file upload
-  ([tutorial](https://www.cybertrain.dev/tutorial.html#attachments)),
+  ([advanced tutorial](https://www.cybertrain.dev/guide/advanced-tutorial.html#attachments)),
   helper, component and job.
 - **Background work** ([guide](https://www.cybertrain.dev/guide/background-and-operations.html)):
   job classes with retry policies, cron schedules, a jobs page, a cache
@@ -129,7 +129,8 @@ the blog has grown since and the comparison has not been re-run
 
 | | |
 | --- | --- |
-| [Tutorial](https://www.cybertrain.dev/tutorial.html) | Build the blog step by step: scaffold, comments, authentication, uploads, deployment |
+| [Tutorial](https://www.cybertrain.dev/tutorial.html) | Build the blog step by step: scaffold, validations, comments, tests |
+| [Advanced tutorial](https://www.cybertrain.dev/guide/advanced-tutorial.html) | Take the blog further: components, live comments with Turbo, a background job, JSON, authentication, uploads, deployment |
 | [Installing](https://www.cybertrain.dev/guide/install.html) | Requirements (Ruby with `fiddle` for the CRuby preview), the `cybertrain` command, how Spinel and the framework are installed |
 | [How it works](https://www.cybertrain.dev/guide/how-it-works.html) | Build-time code generation, interpreted views, the server, the development loop (the CRuby preview and the compiled binary that takes over), and a table of the differences from Rails |
 | [Models and the database](https://www.cybertrain.dev/guide/models.html) | Migrations, column types, queries, associations, validations, encrypted columns, transactions, taking over a Rails database |

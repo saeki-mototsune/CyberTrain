@@ -104,7 +104,7 @@ from there, from `cybertrain new` to `cybertrain build`.
 - `cybertrain generate attachment MODEL FIELD [--any]` adds a file upload
   to a scaffolded model: five metadata columns, model methods and
   callbacks, a download action, the route, the form field and a test (see
-  [Add a cover image](tutorial.md#attachments)). A scaffold field `cover:attachment` does the same.
+  [Add a cover image](advanced-tutorial.md#attachments)). A scaffold field `cover:attachment` does the same.
 - `cybertrain generate helper NAME [--force]` adds
   `app/helpers/NAME_helper.rb`, a module whose methods every template can
   call once `spin run gen` has run, and a test

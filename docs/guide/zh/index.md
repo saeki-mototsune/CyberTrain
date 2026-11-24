@@ -1,13 +1,14 @@
 ---
-source_sha256: 6fc0644dfa82ec298c9525d73edd8571773fbb9a335a1bec45fab67e94a7c2c8
+source_sha256: 447d7230c2313f3f2c2544e19d67a25e08684ec740ae8e582774f589fce01f08
 title: 指南
 ---
 # 指南
 
-CyberTrain 文档中 API 参考之外的全部内容：一步步构建博客的教程，以及框架每个领域各自的指南。
+CyberTrain 文档中 API 参考之外的全部内容：一步步构建博客的教程，把它继续推进的进阶教程，以及框架每个领域各自的指南。
 
 <!-- list: next-list -->
-- [**教程**](tutorial.md) — 一步步构建博客：脚手架、评论、用 Turbo 实时更新、后台作业、登录、上传、部署
+- [**教程**](tutorial.md) — 一步步构建博客：安装、文章脚手架、校验、嵌套在文章下的评论、测试
+- [**进阶教程**](advanced-tutorial.md) — 把博客继续推进：组件和辅助方法、用 Turbo 实时显示评论、后台作业、JSON、登录、上传图片、为部署构建
 - [**安装**](install.md) — 环境要求、`cybertrain` 命令、Spinel 与框架的安装方式
 - [**工作原理**](how-it-works.md) — 构建时代码生成、应用按需 require 的可选子系统、解释执行的视图、服务器、通过 FFI 使用的 SQLite、开发循环，以及与 Rails 的差异表
 - [**模型与数据库**](models.md) — 迁移、列类型、查询、关联、校验、加密列、事务、接管 Rails 数据库

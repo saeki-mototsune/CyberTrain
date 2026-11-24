@@ -1,5 +1,5 @@
 ---
-source_sha256: edc01fc327f6eda54332284e41ca1c0a578966e4996608a471927152d0640b52
+source_sha256: 707578e0592cebb2076d5b5ae9b67e5be62e3771a2cd00e5e559d163ef0e3af8
 ---
 # 模型与数据库
 
@@ -539,7 +539,7 @@ Photo.find(photo.id).thumbnail.bytesize   # 读回的是同样的字节
 - `Photo.where(thumbnail: bytes)` 同样把字节绑定为 BLOB（TEXT 绑定永远不等于已存储的 BLOB）。
 - 用原始 SQL 读出的 BLOB 单元格是由其字节组成的 String；`Cybertrain::Cast.binary(value)` 用于收窄它（`NULL` 时为 `""`）。
 - `db/schema.rb` 会把该列重新写成 `t.binary`，控制台把二进制值打印为 `<N bytes>`。
-- 不要把大文件放进数据库：上传的文件（[添加封面图片](tutorial.md#attachments)）是 `storage/uploads/` 下的一个文件，而 BLOB 会连同所在的行一起被整个读入内存，并让每次备份和 WAL 都变大。
+- 不要把大文件放进数据库：上传的文件（[添加封面图片](advanced-tutorial.md#attachments)）是 `storage/uploads/` 下的一个文件，而 BLOB 会连同所在的行一起被整个读入内存，并让每次备份和 WAL 都变大。
 
 ## 排序
 

@@ -3,10 +3,11 @@ title: Guides
 ---
 # Guides
 
-Everything CyberTrain's documentation covers beyond the API reference: the tutorial that builds the blog step by step, then a guide for each area of the framework.
+Everything CyberTrain's documentation covers beyond the API reference: the tutorial that builds the blog step by step, the advanced tutorial that takes it further, then a guide for each area of the framework.
 
 <!-- list: next-list -->
-- [**Tutorial**](tutorial.md) — Build the blog step by step: scaffold, comments, live updates with Turbo, a background job, authentication, uploads, deployment
+- [**Tutorial**](tutorial.md) — Build the blog step by step: install, scaffold articles, validations, comments nested under articles, tests
+- [**Advanced tutorial**](advanced-tutorial.md) — Take the blog further: a component and a helper, live comments with Turbo, a background job, JSON, sign-in, an uploaded image, a build for deployment
 - [**Installing**](install.md) — Requirements, the `cybertrain` command, how Spinel and the framework are installed
 - [**How it works**](how-it-works.md) — Build-time code generation, the optional subsystems an app requires, interpreted views, the server, SQLite through FFI, the development loop, and a table of the differences from Rails
 - [**Models and the database**](models.md) — Migrations, column types, queries, associations, validations, encrypted columns, transactions, taking over a Rails database
