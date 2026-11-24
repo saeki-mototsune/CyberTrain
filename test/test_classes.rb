@@ -2,9 +2,9 @@
 # hand-written classes in the shape gen's rewrite writes (every test
 # method, setup and teardown ends in nil, rule 34), driven by hand
 # through Cybertrain::Test.before_case / run_body / after_case as
-# gen/tests.rb's arms drive them. Requires cybertrain/test_help, so its
-# reset hooks are registered and the program compiles everything an
-# application's test helper loads.
+# gen/tests.rb's case_N methods drive them. Requires
+# cybertrain/test_help, so its reset hooks are registered and the program
+# compiles everything an application's test helper loads.
 require "cybertrain/test_help"
 require "cybertrain/test/http_receiver"
 

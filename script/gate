@@ -27,7 +27,8 @@
 #   * script/bundle-locales --check passes (cybertrain/locales/bundled.rb is
 #     what cybertrain/locales/*.yml give);
 #   * every file cybertrain.gemspec lists exists, and the CLI loads under CRuby;
-#   * playground/Dockerfile's cli-src stage copies every file the gemspec lists;
+#   * the cli-src stages of playground/Dockerfile and examples/blog/Dockerfile copy
+#     every file the gemspec lists, and the blog runs `cybertrain setup` on its own;
 #   * the Playground image and Blog image workflows run for a pull request
 #     that changes any of those files, cybertrain.gemspec or spin.toml;
 #   * every test/*.rb and test/cruby/*.rb has its .expected snapshot, and every snapshot its test
@@ -75,7 +76,7 @@ RUBY_EXT = %w[.rb .gemspec .rake].freeze
 YAML_EXT = %w[.yml .yaml].freeze
 # Files the repository checks read; when none of them is in the set under
 # --staged (a docs-only commit, say), those checks are skipped.
-REPO_INPUTS = %r{\A(cybertrain/|cybertrain\.rb\z|cybertrain\.gemspec\z|spin\.toml\z|exe/|test/|script/|\.github/workflows/ci\.yml\z|playground/Dockerfile\z)}
+REPO_INPUTS = %r{\A(cybertrain/|cybertrain\.rb\z|cybertrain\.gemspec\z|spin\.toml\z|exe/|test/|script/|\.github/workflows/ci\.yml\z|playground/Dockerfile\z|examples/blog/Dockerfile\z)}
 
 $failures = 0
 $started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -244,7 +245,7 @@ end
 # --- repository checks -----------------------------------------------------------
 
 if mode == :staged && files.none? { |f| f.match?(REPO_INPUTS) }
-  skip("repository checks", "nothing staged under cybertrain/, exe/, test/, script/, the pins or playground/Dockerfile")
+  skip("repository checks", "nothing staged under cybertrain/, exe/, test/, script/, the pins, playground/Dockerfile or examples/blog/Dockerfile")
 else
   version_rb = "cybertrain/version.rb"
   version = File.read(version_rb)[/VERSION = "([^"]+)"/, 1]
@@ -285,47 +286,66 @@ else
   RB
   spec_status.success? ? ok("gem file list and CLI load under CRuby", "#{spec_out} files") : fail!("gemspec / CLI", spec_out.lines.map(&:chomp))
 
-  # The playground image builds the gem from a scratch stage (cli-src) that
-  # copies spec.files by hand, so that a framework-only change keeps the gem
-  # layer cached. A file added to spec.files and not to that stage passes
-  # every check above and then fails `gem build` in the Playground image job
-  # ("... are not files"), twenty minutes later. Read the stage's COPY lines
-  # (a source ending in "/" or naming a directory stands for the files under
-  # it) and name every gemspec file none of them copies.
+  # The playground image builds the gem, and the blog image runs `cybertrain
+  # setup`, from a scratch stage (cli-src) that copies spec.files by hand, so
+  # that a framework-only change keeps the gem and Spinel layers cached. A
+  # file added to spec.files and not to that stage passes every check above
+  # and then fails `gem build` in the Playground image job ("... are not
+  # files"), or the CLI's require in the Blog image job, twenty minutes
+  # later. Read each stage's COPY lines (a source ending in "/" or naming a
+  # directory stands for the files under it) and name every gemspec file
+  # none of them copies.
   list_out, list_status = Open3.capture2e("ruby", "-e", 'puts Gem::Specification.load("cybertrain.gemspec").files')
-  dockerfile = "playground/Dockerfile"
-  if !list_status.success?
-    skip("playground gem stage copies spec.files", "cybertrain.gemspec does not load (reported above)")
-  elsif !File.file?(dockerfile)
-    fail!("playground gem stage", ["#{dockerfile} is missing"])
-  else
+  # In the blog's, `cybertrain setup` must also run on that stage alone: its
+  # build stage copies nothing but cli-src before the setup line, or the
+  # Spinel layer is rebuilt by every framework change again.
+  { "playground/Dockerfile" => "playground gem stage", "examples/blog/Dockerfile" => "blog setup stage" }.each do |dockerfile, label|
+    if !list_status.success?
+      skip("#{label} copies spec.files", "cybertrain.gemspec does not load (reported above)")
+      next
+    elsif !File.file?(dockerfile)
+      fail!(label, ["#{dockerfile} is missing"])
+      next
+    end
+
     stage = []
     inside = false
+    before_setup = [] # the COPY lines of the current stage so far
+    setup_copies = nil # those before `cybertrain setup`, once it is seen
     File.read(dockerfile).gsub(/\\\n/, " ").each_line do |line|
       words = line.split
       next if words.empty?
 
       if words[0].casecmp?("FROM")
         inside = words.last == "cli-src"
-      elsif inside && words[0].casecmp?("COPY")
+        before_setup = []
+      elsif words[0].casecmp?("COPY")
         args = words[1..].reject { |w| w.start_with?("--") }
-        stage.concat(args[0..-2])
+        stage.concat(args[0..-2]) if inside
+        before_setup << words[1..].join(" ")
+      elsif words[0].casecmp?("RUN") && line.match?(%r{exe/cybertrain setup\b}) && setup_copies.nil?
+        setup_copies = before_setup.dup
       end
     end
-    if stage.empty?
-      fail!("playground gem stage", ["#{dockerfile} has no COPY in a `FROM ... AS cli-src` stage"])
-    else
+    problems = []
+    problems << "#{dockerfile} has no COPY in a `FROM ... AS cli-src` stage" if stage.empty?
+    if dockerfile.start_with?("examples/blog/")
+      if setup_copies.nil?
+        problems << "#{dockerfile} has no `RUN ... exe/cybertrain setup` line"
+      elsif setup_copies.empty? || setup_copies.any? { |c| !c.start_with?("--from=cli-src ") }
+        problems << "#{dockerfile}: the COPY lines before `cybertrain setup` must all be `COPY --from=cli-src ...` " \
+                    "(found: #{setup_copies.empty? ? "none" : setup_copies.join("; ")})"
+      end
+    end
+    unless stage.empty?
       copied = stage.flat_map do |src|
         path = src.delete_suffix("/")
         File.directory?(path) ? Dir.glob("#{path}/**/*").select { |f| File.file?(f) } : [path]
       end
       missing = list_out.lines.map(&:chomp) - copied
-      if missing.empty?
-        ok("playground gem stage copies spec.files", "#{stage.size} COPY sources")
-      else
-        fail!("playground gem stage", missing.map { |f| "#{dockerfile} (cli-src) does not copy #{f}, which cybertrain.gemspec lists" })
-      end
+      problems.concat(missing.map { |f| "#{dockerfile} (cli-src) does not copy #{f}, which cybertrain.gemspec lists" })
     end
+    problems.empty? ? ok("#{label} copies spec.files", "#{stage.size} COPY sources") : fail!(label, problems)
   end
 
   # Both image builds run the CLI (`cybertrain setup`, and `doctor` or

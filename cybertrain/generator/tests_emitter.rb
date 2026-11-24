@@ -11,9 +11,10 @@ module Cybertrain
     # test/support/** (or their class-form copies under gen/test/), then
     # every test file in path order, each after `Test.begin_file` (its
     # literal test names and lines); then Gen::Tests, the table of
-    # class-form tests with one `case` arm per test (before_case, run_body,
-    # after_case; the dispatch lambda is made in a method, rule 82);
-    # last the boot, the table handed over, and the runner's exit status.
+    # class-form tests, one method per test (before_case, run_body,
+    # after_case) and run_case's `case` choosing it by index (the dispatch
+    # lambda is made in a method, rule 82); last the boot, the table
+    # handed over, and the runner's exit status.
     #
     # A bundle that cannot be built is refused by a
     # gen/tests.rb that only aborts with the reason, so `spin run gen` and
@@ -117,8 +118,21 @@ module Cybertrain
       end
 
       # module Gen::Tests: FILES (the test files in path order), the
-      # parallel CASE_* Arrays of the class-form tests, run_case with one
-      # arm per test, dispatcher and (with data) fixtures_hook.
+      # parallel CASE_* Arrays of the class-form tests, run_case (a `case`
+      # on the test's index whose arm calls case_<index>), one method
+      # case_<index> per test, dispatcher and (with data) fixtures_hook.
+      #
+      # One small method per test, not one arm holding each test's body:
+      # the program is one C file, and a single run_case with every body
+      # in it was one C function (2.6 MB for examples/blog's 157 tests)
+      # that gcc's -O2 spent about 27 minutes on, its time growing faster
+      # than the function's size. Split, gcc compiles the whole program in
+      # under three minutes, and Spinel does not inline the methods back
+      # (docs/design.md D83, amended 2026-11-24). The arms call a literal
+      # method name each (no computed send, spikes/NOTES.md rule 1).
+      # @param files [Array<Cybertrain::Gen::TestFile>]
+      # @param data [Boolean]
+      # @return [String]
       def self.table(files, data)
         paths = Array.new(0) { "" }
         c_file = Array.new(0) { "" }
@@ -127,18 +141,24 @@ module Cybertrain
         c_name = Array.new(0) { "" }
         c_method = Array.new(0) { "" }
         arms = +""
+        methods = +""
         files.each do |f|
           next if f.support_file?
 
           paths << ModelsEmitter.ruby_string(f.test_path)
           f.test_classes.each do |k|
             k.cases.each do |t|
-              arms << "      when #{c_file.length}\n"
-              arms << "        t = #{k.class_name}.new\n"
-              arms << "        if Cybertrain::Test.before_case(t)\n"
-              arms << "          Cybertrain::Test.run_body(t) { t.#{t.case_method} }\n"
-              arms << "        end\n"
-              arms << "        Cybertrain::Test.after_case(t)\n"
+              n = c_file.length
+              arms << "      when #{n} then case_#{n}\n"
+              methods << "\n"
+              methods << "    def self.case_#{n}\n"
+              methods << "      t = #{k.class_name}.new\n"
+              methods << "      if Cybertrain::Test.before_case(t)\n"
+              methods << "        Cybertrain::Test.run_body(t) { t.#{t.case_method} }\n"
+              methods << "      end\n"
+              methods << "      Cybertrain::Test.after_case(t)\n"
+              methods << "      nil\n"
+              methods << "    end\n"
               c_file << ModelsEmitter.ruby_string(f.test_path)
               c_line << t.case_line.to_s
               c_class << ModelsEmitter.ruby_string(k.class_name)
@@ -155,7 +175,7 @@ module Cybertrain
         out << "    CASE_NAME = #{list(c_name, "\"\"")}.freeze\n"
         out << "    CASE_METHOD = #{list(c_method, "\"\"")}.freeze\n"
         out << "\n"
-        out << "    # Runs the class-form test i: before_case, run_body, after_case.\n"
+        out << "    # Runs the class-form test i through its method, case_<i>.\n"
         out << "    def self.run_case(i)\n"
         unless arms.empty?
           out << "      case i\n"
@@ -164,6 +184,11 @@ module Cybertrain
         end
         out << "      nil\n"
         out << "    end\n"
+        unless methods.empty?
+          out << "\n"
+          out << "    # case_N runs the class-form test N: before_case, run_body, after_case.\n"
+          out << methods.delete_prefix("\n")
+        end
         out << "\n"
         out << "    def self.dispatcher = ->(i) { run_case(i) }\n"
         if data

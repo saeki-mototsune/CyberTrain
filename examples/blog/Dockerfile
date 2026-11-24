@@ -14,6 +14,20 @@
 
 ARG UBUNTU_VERSION=24.04
 
+# ---- cli-src: the CLI alone, for the `cybertrain setup` layer ------------
+# Exactly the files cybertrain.gemspec packages (the CLI loads nothing
+# else; script/gate checks both), as playground/Dockerfile's stage of the
+# same name: a change to the rest of the framework then keeps the Spinel
+# layer below cached. A file added to spec.files must be added here too
+# (script/gate fails otherwise).
+FROM scratch AS cli-src
+COPY cybertrain.gemspec README.md /src/
+COPY exe/cybertrain /src/exe/
+COPY cybertrain/version.rb cybertrain/app_name.rb cybertrain/shell.rb cybertrain/ident.rb cybertrain/cli.rb cybertrain/crypto.rb cybertrain/test_files.rb /src/cybertrain/
+COPY cybertrain/test/args.rb /src/cybertrain/test/
+COPY cybertrain/cli/ /src/cybertrain/cli/
+COPY cybertrain/generator/inflector.rb /src/cybertrain/generator/
+
 # ---- build: Spinel, then `cybertrain build` -> examples/blog/dist --------
 FROM docker.io/library/ubuntu:$UBUNTU_VERSION AS build
 
@@ -28,13 +42,16 @@ RUN apt-get update -qq && \
 
 # The CLI runs from the checkout (ruby -I/src exe/cybertrain), as CONTRIBUTING.md
 # does. `cybertrain setup` builds the Spinel release the checkout pins (a few
-# minutes); its layer is rebuilt whenever exe/ or cybertrain/ change.
+# minutes); its layer is rebuilt only when a file of the CLI (cli-src above)
+# changes, the pin in cybertrain/version.rb among them. The rest of the
+# framework and the app come after it.
 WORKDIR /src
+COPY --from=cli-src /src/ /src/
+RUN ruby -I/src exe/cybertrain setup
+
 COPY cybertrain.gemspec cybertrain.rb spin.toml README.md /src/
 COPY exe/ /src/exe/
 COPY cybertrain/ /src/cybertrain/
-RUN ruby -I/src exe/cybertrain setup
-
 COPY examples/blog/ /src/examples/blog/
 WORKDIR /src/examples/blog
 RUN ruby -I/src /src/exe/cybertrain build

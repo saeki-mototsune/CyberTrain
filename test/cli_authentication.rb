@@ -10,7 +10,7 @@ require_relative "support/file_tree"
 # modes, every string through t()), the edits it makes, and that a second
 # run changes nothing; the same for --invite-only (/setup, the boot
 # warning, config/app.rb's setting). What the generated app does when
-# compiled is script/auth-e2e's (CI's "Authentication end to end" step:
+# compiled is script/auth-e2e's (the auth legs of CI's `e2e` job:
 # build, the app's own test/*.rb, the binary served and probed).
 TMP = Dir.mktmpdir("cybertrain-cli-authentication")
 Dir.chdir(TMP)

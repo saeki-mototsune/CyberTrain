@@ -138,7 +138,7 @@ end
 # 0: nothing raises; 1: setup raises; 2: setup and teardown raise.
 CLASS_MODE = [0]
 
-# A class-form test, driven the way gen/tests.rb's run_case arms drive one.
+# A class-form test, driven the way gen/tests.rb's case_N methods drive one.
 class LifecycleClassTest < ActiveSupport::TestCase
   def setup
     super

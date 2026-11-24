@@ -25,7 +25,7 @@ module Gen
     CASE_NAME = Array.new(0) { "" }.freeze
     CASE_METHOD = Array.new(0) { "" }.freeze
 
-    # Runs the class-form test i: before_case, run_body, after_case.
+    # Runs the class-form test i through its method, case_<i>.
     def self.run_case(i)
       nil
     end

@@ -81,8 +81,8 @@ on:
   workflow_call:
 
 # A new push to a pull request cancels the run still going for its previous
-# commit: only the latest commit's result matters, and a run takes about 15
-# minutes on each OS. Runs on main are never cancelled.
+# commit: only the latest commit's result matters, and a run takes from 15
+# minutes to more than half an hour. Runs on main are never cancelled.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -106,18 +106,24 @@ env:
 # Every job has a timeout-minutes, so that a hung compile or a server that
 # never answers ends the job instead of running to GitHub's limit of six
 # hours. Each is roughly twice the longest the job was seen to take, or more; the
-# measurements are in docs/design.md (D34, the status of 2026-11-11). Raise a
-# limit when the suite has grown into it, not when one run was slow.
+# measurements are in docs/design.md (D34, the statuses of 2026-11-11 and
+# 2026-11-23). The jobs split on 2026-11-23 (framework-tests in ten,
+# framework-tests-macos, e2e, e2e-macos) have provisional limits, set from
+# the time each is expected to take, until their first runs are read.
+# Raise a limit when the suite has grown into it, not when one run was slow.
+# Every job should end within 30 minutes.
 jobs:
   # Whether this run needs the jobs that compile (framework-tests,
-  # http-upstream, test, setup-cybertrain): `framework` is false when every changed file is one
-  # only the API reference reads, or one `paths` above leaves out
-  # (script/ci-changes); `cruby_preview` and `preview_e2e` decide the
-  # cruby-preview and preview-e2e jobs the same way. `macos` and
-  # `setup_action` narrow a pull request only (the macOS legs, and the
-  # setup-cybertrain job): on main, a merge group and a release they are
-  # true, and the label `ci:macos` on a pull request sets `macos` (read
-  # from the event, so add the label, then push or close and reopen).
+  # http-upstream, e2e, setup-cybertrain and the macOS jobs): `framework`
+  # is false when every changed file is one only the API reference reads,
+  # or one `paths` above leaves out (script/ci-changes); `cruby_preview`
+  # and `preview_e2e` decide the cruby-preview and preview-e2e jobs the
+  # same way. `macos` and `setup_action` narrow a pull request only (every
+  # macOS job and leg: framework-tests-macos, e2e-macos, cruby-preview's
+  # and setup-cybertrain's; and the setup-cybertrain job): on main, a
+  # merge group and a release they are true, and the label `ci:macos` on a
+  # pull request sets `macos` (read from the event, so add the label, then
+  # push or close and reopen).
   # A release run (a run on a tag: this file's own push runs only on main)
   # runs everything, and so does a run whose changed files cannot be listed.
   changes:
@@ -244,7 +250,7 @@ jobs:
 
       # The shim compiles the framework's C units with cc, linked against
       # SQLite and zlib. macOS has both libraries and their headers in the
-      # SDK that clang uses (the `test` job's macOS leg installs neither).
+      # SDK that clang uses (setup-spinel installs neither on macOS).
       - name: Install SQLite and zlib headers (Linux)
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev zlib1g-dev
@@ -305,20 +311,24 @@ jobs:
           overwrite: true
           retention-days: 7
 
-  # The framework's test programs on Ubuntu, in four parallel jobs: each
-  # program is compiled on its own, so the programs split cleanly. A job of
-  # its own, not steps of `test`: that job keeps its name and the end-to-end
-  # checks. macOS stays one job (the step in `test`): shards there ran one
-  # after another, so the run waited on them (docs/design.md, D34).
+  # The framework's test programs on Ubuntu, in ten parallel jobs: each
+  # program is compiled on its own, so the programs split cleanly
+  # (script/test-shard: the sorted test/*.rb by position modulo the
+  # total). The total is the matrix's length (`strategy.job-total`), so
+  # the list below is the one place that sets it. Ten, not four: on
+  # Spinel 2026.11.23.7035 the four shards of 62 programs took 28 to 52
+  # minutes (CI run 45170129576), about 167 runner-minutes in all; ten of
+  # 24 or 25 programs should take about 17 each, the slowest perhaps 25.
   framework-tests:
     needs: changes
     if: needs.changes.outputs.framework == 'true'
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
     runs-on: ubuntu-26.04
-    timeout-minutes: 90
+    # Provisional until the first runs of ten shards are read (see above).
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -329,7 +339,43 @@ jobs:
       - name: Framework tests
         run: |
           spinel --version
-          script/test-shard ${{ matrix.shard }} 4
+          script/test-shard ${{ matrix.shard }} ${{ strategy.job-total }}
+
+  # The framework's test programs on macOS: not the whole suite (246
+  # programs took 108 minutes there in one job, CI run 45170129576), only
+  # those whose behaviour has differed between the systems. Which ones is
+  # the `macos` rule of script/ci-changes, the rule that decides whether a
+  # pull request runs macOS at all: the CLI and its toolchain, the server
+  # and the development server, sockets, SQLite's busy waiting, the job
+  # threads, OpenSSL linking, any test with a `.darwin` snapshot
+  # (`script/ci-changes --macos-tests` lists them; 38 programs on
+  # 2026-11-23). Two shards, the total being the matrix's length, as above;
+  # at the full suite's rate, about 9 minutes of compiling each, more for
+  # the CLI's tests, which compile applications themselves. Runs when
+  # `macos` says so (a pull request that reaches those paths or has the
+  # label `ci:macos`; always on main and in a release).
+  framework-tests-macos:
+    needs: changes
+    if: needs.changes.outputs.framework == 'true' && needs.changes.outputs.macos == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
+    runs-on: macos-latest
+    # Provisional until the first runs are read.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-spinel
+
+      - name: Framework tests (the programs macOS runs)
+        run: |
+          spinel --version
+          script/test-shard --list --macos ${{ matrix.shard }} ${{ strategy.job-total }}
+          script/test-shard --macos ${{ matrix.shard }} ${{ strategy.job-total }}
 
   # The HTTP layer (cybertrain/http/) under upstream Spinel: the programs
   # that move with it into a library of its own, built by matz/spinel's
@@ -402,185 +448,101 @@ jobs:
             test/cookies.rb test/sse.rb test/multipart.rb test/uploaded_file.rb \
             test/http_gunzip.rb test/server.rb
 
-  test:
+  # Generated applications and the example end to end, on Ubuntu: one
+  # runner per leg, since every leg is one or a few compiles of a whole
+  # application, each single-threaded, and the legs share nothing. They
+  # used to be the steps of one job, `test`, which took more than 135
+  # minutes on Spinel 2026.11.23.7035 (CI run 45170129576). Each leg makes
+  # its applications in a scratch directory with this checkout as their
+  # framework:
+  #
+  #   auth-*       script/auth-e2e, one variant each: a new app with a
+  #                scaffold and `generate authentication` (sign-up,
+  #                --invite-only, --confirmable), every test the app has
+  #                run by `cybertrain test`, the binary served and probed
+  #                with curl and the user command, the mails (reset; with
+  #                --confirmable the confirmations) through an SMTP
+  #                receiver, the account page; and upgrade04, the generator
+  #                over test/fixtures/auth_04_app (an app v0.4.1 generated):
+  #                its diffs applied with patch, or --force, or with
+  #                --confirmable over a migrated copy, then every test
+  #                passing. The sign-up leg runs the installed gem's CLI
+  #                (CYBERTRAIN_E2E_CLI=gem), the others this checkout's.
+  #                About 12 to 16 minutes each.
+  #   generators   script/generators-e2e: a scaffold of every column type,
+  #                a references field, a component, a helper, a job and a
+  #                scaffold with an attachment, `cybertrain test` (every
+  #                generated test passes), build, gen --check, then the
+  #                attachment uploaded through the served binary and
+  #                downloaded with send_blob's headers. About 7 minutes.
+  #   test-command script/test-command-e2e (`cybertrain test`'s filters,
+  #                failures and exits on test/fixtures/test_app), then the
+  #                framework as a git dependency. About 14 minutes.
+  #   blog         examples/blog: gen/ fresh, its tests, gen --check. About
+  #                8 minutes, most of it the blog's one test program.
+  #
+  # Every script prints the seconds elapsed on each line (`+Ns`), so a log
+  # shows which phase took the time.
+  e2e:
     needs: changes
     if: needs.changes.outputs.framework == 'true'
+    name: e2e (${{ matrix.leg }})
     strategy:
       fail-fast: false
       matrix:
-        # macOS only where `changes` says so: on a pull request that reaches
-        # the CLI, the toolchain, the server or the pins, or has the label
-        # `ci:macos`; on main always (docs/design.md, D34).
-        os: ${{ fromJSON(needs.changes.outputs.macos == 'true' && '["ubuntu-26.04", "macos-latest"]' || '["ubuntu-26.04"]') }}
-    runs-on: ${{ matrix.os }}
-    # macOS also runs the whole of `spin test` here, in one job. Both run
-    # script/auth-e2e (four applications compiled and served), which took
-    # 114 minutes on its own on a 4-vCPU machine when phase 4b met these
-    # limits (2026-11-12): set from that, to be brought down to twice the
-    # job's measured time once CI has run it.
-    timeout-minutes: ${{ matrix.os == 'macos-latest' && 360 || 240 }}
+        include:
+          - leg: auth-signup
+            auth: signup
+            cli: gem
+          - leg: auth-invite
+            auth: invite
+          - leg: auth-confirmable
+            auth: confirmable
+          - leg: auth-upgrade04-patch
+            auth: upgrade04-patch
+          - leg: auth-upgrade04-force
+            auth: upgrade04-force
+          - leg: auth-upgrade04-confirmable
+            auth: upgrade04-confirmable
+          - leg: generators
+          - leg: test-command
+          - leg: blog
+    runs-on: ubuntu-26.04
+    # Provisional until the first runs of the legs are read: the legs are
+    # expected to take 10 to 25 minutes.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-spinel
-
       # The version pins, script/check-reserved-names, check-client-faults,
       # check-http-layer and check-core-closure run in the Gate workflow
-      # (script/gate), on every change.
-      # The API reference builds in the api-docs job.
+      # (script/gate), on every change. setup-spinel builds and installs
+      # the gem: the sign-up leg, the git dependency and the blog run its
+      # `cybertrain`, so the gem's file list is tested where users meet it.
+      - uses: ./.github/actions/setup-spinel
 
-      - name: Framework tests
-        if: runner.os == 'macOS'
-        run: |
-          spinel --version
-          spin test
+      - name: Authentication end to end (${{ matrix.auth }})
+        if: matrix.auth
+        env:
+          VARIANT: ${{ matrix.auth }}
+          CYBERTRAIN_E2E_CLI: ${{ matrix.cli || 'checkout' }}
+        run: script/auth-e2e "$VARIANT"
 
-      - name: Gem CLI scaffolds an app, migrates, builds dist/ and serves it
-        run: |
-          mkdir -p /tmp/gem-e2e && cd /tmp/gem-e2e
-          cybertrain new shop --path "$GITHUB_WORKSPACE"
-          cd shop
-          test -f spin.lock
-          cybertrain generate scaffold product name:string price:integer
-          cybertrain generate authentication
-          cybertrain db migrate
-          cybertrain db status
-          cybertrain build
-          SPIN_DEBUG=1 cybertrain spin run gen -- --check
-          test -x dist/shop
-          # The generated app's own tests (the scaffold's, which sign in with
-          # sign_in_as, and the authentication generator's), in one program.
-          cybertrain test
-          cd dist && CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret ./shop migrate
-          CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret PORT=3999 ./shop > server.log 2>&1 &
-          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3999/session/new > /dev/null && break; sleep 0.5; done
-          curl -fsS http://127.0.0.1:3999/session/new | grep -q "Sign in"
-          curl -fsS http://127.0.0.1:3999/sign_up | grep -q "Sign up"
-          # Signed out, the scaffold is behind the sign-in page.
-          test "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' http://127.0.0.1:3999/products)" = "303 http://127.0.0.1:3999/session/new"
-          # The layout links the digested stylesheet; it must answer with the immutable header.
-          css=$(curl -fsS http://127.0.0.1:3999/session/new | grep -o '/assets/application-[0-9a-f]\{8\}\.css' | head -1)
-          test -n "$css"
-          curl -fsS -D css.h -o /dev/null "http://127.0.0.1:3999$css"
-          grep -qi '^cache-control:.*immutable' css.h
-          curl -fsS http://127.0.0.1:3999/up.html > /dev/null   # Kamal's health check (config/deploy.yml)
-          grep -q "production environment" server.log
-          kill %1
-
-      # The invitation-only variant (docs/design.md D29): its own generated
-      # tests (cybertrain test), then the binary: the first-run warning and /setup while no user
-      # exists, `./club user` reading the password from stdin, and /setup
-      # gone once a user exists.
-      - name: Gem CLI generates invitation-only authentication and runs its first-run setup
-        run: |
-          mkdir -p /tmp/gem-e2e-invite && cd /tmp/gem-e2e-invite
-          cybertrain new club --path "$GITHUB_WORKSPACE"
-          cd club
-          cybertrain generate authentication --invite-only
-          test ! -e app/controllers/registrations_controller.rb
-          cybertrain db migrate
-          cybertrain build
-          cybertrain test
-          cd dist
-          export CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret
-          ./club migrate
-          PORT=3997 ./club > server.log 2>&1 &
-          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3997/session/new > /dev/null && break; sleep 0.5; done
-          grep -q " WARN no user exists yet" server.log
-          # /setup wants the one-time token the warning prints; without it,
-          # with a wrong one or through a proxy it is a 404.
-          setup_token=$(sed -n 's/.*open \/setup?token=\([0-9a-f]\{32\}\) from this machine.*/\1/p' server.log | head -n 1)
-          test -n "$setup_token"
-          curl -fsS "http://127.0.0.1:3997/setup?token=$setup_token" | grep -q "Set up"
-          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3997/setup)" = "404"
-          test "$(curl -sS -o /dev/null -w '%{http_code}' 'http://127.0.0.1:3997/setup?token=0123456789abcdef0123456789abcdef')" = "404"
-          test "$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-Forwarded-For: 203.0.113.7' "http://127.0.0.1:3997/setup?token=$setup_token")" = "404"
-          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3997/sign_up)" = "404"
-          test "$(printf 's3cr3t-s3cr3t\n' | ./club user ann@example.com)" = "created ann@example.com"
-          test "$(./club user ann@example.com another-s3cr3t)" = "updated ann@example.com"
-          test "$(curl -sS -o /dev/null -w '%{http_code}' "http://127.0.0.1:3997/setup?token=$setup_token")" = "404"
-          kill %1
-
-      # The authentication variants end to end (script/auth-e2e): a new app
-      # with a scaffold, the generator (sign-up, --invite-only, --confirmable),
-      # every test the app has run by `cybertrain test`, then the binary served: the
-      # sign-in page, `./shop user` and `user admin`, the jobs page behind
-      # require_admin, the mails (reset; with --confirmable the sign-up's and
-      # the new address's confirmation) and the account page; and upgrade04,
-      # the generator run over test/fixtures/auth_04_app (an app v0.4.1
-      # generated): its printed diffs applied with patch, or --force, and
-      # 0.4's replaced test files deleted and every test passing (sqlite3
-      # and patch: the runner's own).
-      - name: Authentication end to end
-        run: script/auth-e2e signup invite confirmable upgrade04
-
-      # File uploads end to end: a scaffold with an attachment field, the
-      # app's own generated upload test, then one browser-shaped multipart
-      # POST (CSRF token and cookie from the form page) and the download of
-      # the same bytes with the headers send_blob sets.
-      - name: Gem CLI scaffolds an attachment, uploads a file and serves it back
-        run: |
-          mkdir -p /tmp/gem-e2e-upload && cd /tmp/gem-e2e-upload
-          cybertrain new album --path "$GITHUB_WORKSPACE"
-          cd album
-          cybertrain generate scaffold post title:string cover:attachment
-          cybertrain db migrate
-          cybertrain build
-          SPIN_DEBUG=1 cybertrain spin run gen -- --check
-          test -x dist/album
-          # The app's tests, the scaffold's and the upload test
-          # (test/integration/post_cover_attachment_test.rb), in one program.
-          cybertrain test
-          printf '\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\xff' > /tmp/gem-e2e-upload/pixel.png
-          cd dist && CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret ./album migrate
-          CYBERTRAIN_SECRET_KEY_BASE=ci-secret-ci-secret-ci-secret-ci-secret PORT=3998 ./album > server.log 2>&1 &
-          for i in $(seq 1 40); do curl -fsS http://127.0.0.1:3998/posts/new > /dev/null && break; sleep 0.5; done
-          curl -fsS -D new.h -o new.html http://127.0.0.1:3998/posts/new
-          grep -q 'enctype="multipart/form-data"' new.html
-          grep -q '<input type="file" name="post\[cover\]"' new.html
-          cookie=$(grep -i '^set-cookie:' new.h | sed 's/^[^:]*: *//; s/;.*//')
-          token=$(sed -n 's/.*name="authenticity_token" value="\([0-9a-f]*\)".*/\1/p' new.html | head -n 1)
-          test "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' -b "$cookie" \
-            -F "authenticity_token=$token" -F "post[title]=Hello" -F "post[cover]=@/tmp/gem-e2e-upload/pixel.png;type=image/png" \
-            http://127.0.0.1:3998/posts)" = "303 http://127.0.0.1:3998/posts/1"
-          # Without the token the multipart form is refused like any other.
-          test "$(curl -sS -o /dev/null -w '%{http_code}' -b "$cookie" -F "post[title]=x" -F "post[cover]=@/tmp/gem-e2e-upload/pixel.png" http://127.0.0.1:3998/posts)" = "403"
-          curl -fsS -D cover.h -o cover.bin http://127.0.0.1:3998/posts/1/cover
-          cmp cover.bin /tmp/gem-e2e-upload/pixel.png
-          grep -qi '^content-type: image/png' cover.h
-          grep -qi '^x-content-type-options: nosniff' cover.h
-          grep -qi "^content-security-policy: default-src 'none'; sandbox" cover.h
-          grep -qi '^content-disposition: inline; filename="pixel.png"' cover.h
-          # A record that does not exist has no file.
-          test "$(curl -sS -o /dev/null -w '%{http_code}' http://127.0.0.1:3998/posts/2/cover)" = "404"
-          test -n "$(find storage/uploads -type f)"
-          kill %1
-
-      # The tests the generators write, run (script/generators-e2e): a new
-      # app with a scaffold (fixtures, model and controller tests), a
-      # component, a helper, a job and a scaffold with an attachment, then
-      # `cybertrain test` (every test passes) and gen --check. One app, one
-      # compile of its tests.
       - name: Generated applications' tests pass
+        if: matrix.leg == 'generators'
         run: script/generators-e2e
 
-      # `cybertrain test` (script/test-command-e2e): test/fixtures/test_app's
-      # tests compiled once into one binary and run with the filters (a
-      # file, -n NAME, a method name, -n /TEXT/) without a recompile, a
-      # failing file (exit 1, the test's line), gen's refusal of duplicate
-      # helpers, the three exits with status 2 (bad arguments seen by the
-      # CLI and by the binary, a database that is not a test database), and
-      # the development database and an exported CYBERTRAIN_DATABASE left
-      # untouched. gen and two compiles of a small application.
       - name: cybertrain test end to end
+        if: matrix.leg == 'test-command'
         run: script/test-command-e2e
 
       # What `cybertrain new` does for users: the framework as a git
       # dependency that spin fetches and locks (here this checkout, at a
-      # local tag, instead of the release tag).
+      # local tag, instead of the release tag), through the installed gem.
       - name: Gem CLI resolves the framework as a git dependency
+        if: matrix.leg == 'test-command'
         run: |
           git -C "$GITHUB_WORKSPACE" tag -f ci-e2e HEAD
           mkdir -p /tmp/gem-e2e-git && cd /tmp/gem-e2e-git
@@ -595,6 +557,7 @@ jobs:
       # `git status`, not `git diff`: a file the generator writes that was
       # never committed is untracked, and `git diff` does not see it.
       - name: Generated code is fresh (examples/blog)
+        if: matrix.leg == 'blog'
         run: |
           cd examples/blog
           # SPIN_DEBUG=1: the mode the cybertrain CLI builds gen in, so the
@@ -614,11 +577,45 @@ jobs:
       # (the "Generated code is fresh" step above is that guard); it proves
       # the test run wrote nothing gen would not write. SPIN_DEBUG=1: the
       # mode `cybertrain test` builds gen in, so gen is not built again.
+      #
+      # The blog's one test program is compiled by gcc, the runner's `cc`,
+      # at spinel's default -O2, as `cybertrain test` always compiles it.
+      # gen writes one small method per test, so no C function holds every
+      # test: 6m09s for the whole step locally (4 cores, 7033), where one
+      # run_case holding them all took gcc 31 minutes (docs/design.md, D34,
+      # the statuses of 2026-11-24).
       - name: Example app tests
+        if: matrix.leg == 'blog'
         run: |
           cd examples/blog
           cybertrain test
           SPIN_DEBUG=1 spin run gen -- --check
+
+  # The one end-to-end leg on macOS: script/auth-e2e's sign-up variant, the
+  # whole toolchain path an application takes there (a new app, the
+  # generators, `cybertrain test`, build, the binary served, the mail sent
+  # by its job thread), through the installed gem as on Ubuntu. The other
+  # legs of `e2e` exercise the generators and the test command, whose
+  # output does not depend on the system. Runs when `macos` says so.
+  e2e-macos:
+    needs: changes
+    if: needs.changes.outputs.framework == 'true' && needs.changes.outputs.macos == 'true'
+    runs-on: macos-latest
+    # Provisional until the first runs are read: script/auth-e2e's six
+    # variants took 52 minutes together on macOS in the old `test` job
+    # (CI run 45119922201), under 9 each.
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: ./.github/actions/setup-spinel
+
+      - name: Authentication end to end (signup)
+        env:
+          CYBERTRAIN_E2E_CLI: gem
+        run: script/auth-e2e signup
 
   # The action applications use (.github/actions/setup-cybertrain, which the
   # workflow `cybertrain new` writes calls at a release tag), run from this

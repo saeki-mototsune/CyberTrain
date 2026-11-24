@@ -12,52 +12,91 @@
 # status and leaves the app's directory in place to look at.
 #
 #   signup       generate authentication (the sign-up page)
-#   invite       generate authentication --invite-only (/setup, the boot warning)
+#   invite       generate authentication --invite-only (the boot warning and
+#                /setup with its one-time token while no user exists, the
+#                user command reading the password from stdin, /setup gone
+#                once a user exists)
 #   confirmable  generate authentication --confirmable: a sign-up whose mailed
 #                link confirms the address (the sign-in refused until then),
 #                and a new address that takes effect once its own link is
 #                opened
-#   upgrade04    test/fixtures/auth_04_app (a sign-up app v0.4.1 generated)
-#                with today's generator run over it: its printed diffs
+#   upgrade04    the three below, one after another. Each starts from its
+#                own copy of test/fixtures/auth_04_app (a sign-up app v0.4.1
+#                generated), so each also runs on its own:
+#   upgrade04-patch
+#                today's generator run over the copy: its printed diffs
 #                applied with patch -p1 and 0.4's test files that the
 #                generator names as replaced deleted, then db migrate, build
-#                and `cybertrain test`; then a fresh copy with --force (which
-#                deletes them itself), the same; then a
-#                copy migrated by 0.4's migrations with a user in it, run
+#                and `cybertrain test`
+#   upgrade04-force
+#                the same with --force (which deletes them itself)
+#   upgrade04-confirmable
+#                a copy migrated by 0.4's migrations with a user in it, run
 #                with --confirmable: the add-columns migration keeps the
 #                user and counts it as confirmed; with every diff applied
 #                but the sessions controller's, the app builds and the
 #                concern still signs no unconfirmed account in (one test,
-#                `cybertrain test -n`); with that one applied too, every test
-#                passes
+#                `cybertrain test FILE`); with that one applied too, every
+#                test passes
+#
+# The served variants also check what a released app relies on: spin.lock
+# written by `cybertrain new`, `db status`, the digested stylesheet served
+# with an immutable cache-control, /up.html (Kamal's health check) and the
+# binary starting in the production environment.
+#
+# Every line of progress carries the seconds since its variant started
+# (`+Ns`), so a CI log shows where the minutes go.
 #
 # Runs locally with the pinned toolchain (the CLI puts it on PATH, installing
-# it the first time) and in CI (.github/workflows/ci.yml, "Authentication end
-# to end"). Each variant builds the app and its tests: minutes, not seconds.
+# it the first time) and in CI (.github/workflows/ci.yml, the `e2e` job: one
+# leg per variant, and the `e2e-macos` job's sign-up). Each variant builds
+# the app and its tests: minutes, not seconds.
+#
+# The CLI is this checkout's (`ruby -I. exe/cybertrain`), or, with
+# CYBERTRAIN_E2E_CLI=gem, the `cybertrain` on PATH: the gem setup-spinel
+# builds and installs, so that one CI leg runs what users install, which
+# carries only the files cybertrain.gemspec lists.
 #
 # usage: script/auth-e2e VARIANT...
+#        CYBERTRAIN_E2E_CLI=gem script/auth-e2e VARIANT...
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SECRET=auth-e2e-secret-auth-e2e-secret-auth-e2e
 
+VARIANTS="signup, invite, confirmable, upgrade04, upgrade04-patch, upgrade04-force, upgrade04-confirmable"
 if [ $# -eq 0 ]; then
-  echo "usage: script/auth-e2e VARIANT... (signup, invite, confirmable, upgrade04)" >&2
+  echo "usage: script/auth-e2e VARIANT... ($VARIANTS)" >&2
   exit 2
 fi
 for variant in "$@"; do
   case "$variant" in
-    signup | invite | confirmable | upgrade04) ;;
+    signup | invite | confirmable | upgrade04 | upgrade04-patch | upgrade04-force | upgrade04-confirmable) ;;
     *)
-      echo "auth-e2e: unknown variant $variant (signup, invite, confirmable, upgrade04)" >&2
+      echo "auth-e2e: unknown variant $variant ($VARIANTS)" >&2
       exit 2
       ;;
   esac
 done
 
-cybertrain() {
-  ruby -I"$ROOT" "$ROOT/exe/cybertrain" "$@"
-}
+case "${CYBERTRAIN_E2E_CLI:-checkout}" in
+  checkout)
+    cybertrain() {
+      ruby -I"$ROOT" "$ROOT/exe/cybertrain" "$@"
+    }
+    ;;
+  gem)
+    command -v cybertrain > /dev/null || { echo "auth-e2e: CYBERTRAIN_E2E_CLI=gem, but no cybertrain on PATH" >&2; exit 2; }
+    echo "auth-e2e: the installed gem's CLI, $(command -v cybertrain)"
+    cybertrain() {
+      command cybertrain "$@"
+    }
+    ;;
+  *)
+    echo "auth-e2e: CYBERTRAIN_E2E_CLI is checkout or gem, not $CYBERTRAIN_E2E_CLI" >&2
+    exit 2
+    ;;
+esac
 
 fail() {
   echo "auth-e2e [$VARIANT]: FAIL: $*" >&2
@@ -69,8 +108,10 @@ fail() {
   exit 1
 }
 
+# SECONDS when the current variant started (run_variant sets it).
+VARIANT_STARTED=0
 step() {
-  echo "auth-e2e [$VARIANT]: $*"
+  echo "auth-e2e [$VARIANT +$((SECONDS - VARIANT_STARTED))s]: $*"
 }
 
 # `expect_equal WHAT EXPECTED ACTUAL`
@@ -173,11 +214,14 @@ form_token() {
 # In the app's directory: db migrate, build, gen --check, then every test
 # the app has, through `cybertrain test` (gen, one compile, one run).
 build_and_test() {
-  step "db migrate, build, gen --check"
+  step "db migrate, db status"
   cybertrain db migrate > migrate.log 2>&1 || { cat migrate.log >&2; fail "db migrate"; }
+  cybertrain db status > db-status.log 2>&1 || { cat db-status.log >&2; fail "db status"; }
+  step "cybertrain build"
   cybertrain build > build.log 2>&1 || { tail -n 40 build.log >&2; fail "build"; }
   test -x dist/shop || fail "no dist/shop"
-  cybertrain spin run gen -- --check > gen-check.log 2>&1 || { cat gen-check.log >&2; fail "spin run gen -- --check"; }
+  step "gen --check"
+  SPIN_DEBUG=1 cybertrain spin run gen -- --check > gen-check.log 2>&1 || { cat gen-check.log >&2; fail "spin run gen -- --check"; }
   step "cybertrain test"
   cybertrain test > test.log 2>&1 || { grep -v '^  ok ' test.log | tail -n 60 >&2; fail "cybertrain test"; }
   expect_contains "cybertrain test" " 0 failures" "$(tail -n 3 test.log)"
@@ -219,18 +263,19 @@ delete_replaced() {
   done
 }
 
-run_upgrade04() {
-  WORK=$(mktemp -d "${TMPDIR:-/tmp}/auth-e2e-$VARIANT.XXXXXX")
-  SERVER_LOG=""
-  local fixture="$ROOT/test/fixtures/auth_04_app"
-  step "the 0.4 app in $WORK, run over and patched"
+# The upgrade04 scenarios, each in its own copy of the fixture under $WORK:
+# none reads what another left behind.
+FIXTURE_04="$ROOT/test/fixtures/auth_04_app"
+
+upgrade04_patch() {
+  step "a copy of the 0.4 app, run over and patched"
   copy_04_app patched
   cybertrain generate authentication > generate.out 2>&1 || { cat generate.out >&2; fail "generate authentication"; }
   # Left alone until patched: the files 0.4 wrote that today's generator
   # writes otherwise, and the 0.4 block in ApplicationController.
   for f in app/controllers/application_controller.rb app/controllers/sessions_controller.rb app/models/user.rb \
            app/views/sessions/new.html.erb test/authentication.rb test/support/app_test.rb; do
-    cmp -s "$f" "$fixture/$f" || fail "$f changed before the diffs were applied"
+    cmp -s "$f" "$FIXTURE_04/$f" || fail "$f changed before the diffs were applied"
   done
   grep -q '^manual  app/controllers/application_controller.rb: ' generate.out || fail "no diff for application_controller.rb"
   grep -q '^next: apply the diffs above, or re-run with --force for files you never edited$' generate.out || fail "no closing next: line"
@@ -246,7 +291,9 @@ run_upgrade04() {
   delete_replaced generate.out
   expect_upgrade_tests
   build_and_test
+}
 
+upgrade04_force() {
   step "a fresh copy, run over with --force"
   copy_04_app forced
   cybertrain generate authentication --force > generate.out 2>&1 || { cat generate.out >&2; fail "generate authentication --force"; }
@@ -258,7 +305,9 @@ run_upgrade04() {
   test ! -e test/support/app_test.rb || fail "--force left 0.4's test/support/app_test.rb"
   expect_upgrade_tests
   build_and_test
+}
 
+upgrade04_confirmable() {
   step "a copy with a 0.4 user in its database, run over with --confirmable"
   copy_04_app populated
   cybertrain db migrate > migrate-04.log 2>&1 || { cat migrate-04.log >&2; fail "db migrate (0.4's migrations)"; }
@@ -278,7 +327,7 @@ run_upgrade04() {
     fail "the sessions controller diff was not held back"
   fi
   patch -p1 < others.diff > patch.log 2>&1 || { cat patch.log >&2; fail "patch -p1 < every diff but the sessions controller's"; }
-  cmp -s app/controllers/sessions_controller.rb "$fixture/app/controllers/sessions_controller.rb" || fail "the sessions controller changed"
+  cmp -s app/controllers/sessions_controller.rb "$FIXTURE_04/app/controllers/sessions_controller.rb" || fail "the sessions controller changed"
   cybertrain db migrate > migrate.log 2>&1 || { cat migrate.log >&2; fail "db migrate (the add-columns migration)"; }
   expect_equal "the 0.4 user after the migration" "old@example.com|0|0|2026-09-25 12:00:00.000000|" \
     "$(sqlite3 "$db" "SELECT email_address, admin, failed_attempts, confirmed_at, unconfirmed_email FROM users")"
@@ -307,6 +356,7 @@ class UnconfirmedBackstopTest < ActionDispatch::IntegrationTest
   end
 end
 RUBY
+  step "build and the one test, every diff but the sessions controller's applied"
   cybertrain build > build.log 2>&1 || { tail -n 40 build.log >&2; fail "build, every diff but the sessions controller's applied"; }
   out=$(cybertrain test test/integration/unconfirmed_backstop_test.rb 2>&1) || { printf '%s\n' "$out" | tail -n 40 >&2; fail "an unconfirmed account signed in through 0.4's sessions controller"; }
   expect_contains "test/integration/unconfirmed_backstop_test.rb" "1 test, 5 assertions, 0 failures" "$out"
@@ -316,17 +366,33 @@ RUBY
   expect_upgrade_tests
   test -f test/controllers/confirmations_controller_test.rb || fail "no test/controllers/confirmations_controller_test.rb"
   build_and_test
+}
 
+# `run_upgrade04 SCENARIO...`: patch, force, confirmable.
+run_upgrade04() {
+  WORK=$(mktemp -d "${TMPDIR:-/tmp}/auth-e2e-$VARIANT.XXXXXX")
+  SERVER_LOG=""
+  step "the 0.4 app's copies in $WORK"
+  for scenario in "$@"; do
+    "upgrade04_$scenario"
+  done
   cd "$ROOT"
   rm -rf "$WORK"
   step "PASS"
 }
 
 run_variant() {
-  if [ "$VARIANT" = "upgrade04" ]; then
-    run_upgrade04
-    return
-  fi
+  VARIANT_STARTED=$SECONDS
+  case "$VARIANT" in
+    upgrade04)
+      run_upgrade04 patch force confirmable
+      return
+      ;;
+    upgrade04-*)
+      run_upgrade04 "${VARIANT#upgrade04-}"
+      return
+      ;;
+  esac
   WORK=$(mktemp -d "${TMPDIR:-/tmp}/auth-e2e-$VARIANT.XXXXXX")
   SERVER_LOG=""
   local flag=""
@@ -337,6 +403,7 @@ run_variant() {
   cd "$WORK"
   cybertrain new shop --path "$ROOT" > new.log 2>&1 || { cat new.log >&2; fail "cybertrain new"; }
   cd shop
+  test -f spin.lock || fail "cybertrain new wrote no spin.lock"
   cybertrain generate scaffold product name:string > /dev/null || fail "generate scaffold"
   # shellcheck disable=SC2086
   cybertrain generate authentication $flag > generate.log || { cat generate.log >&2; fail "generate authentication $flag"; }
@@ -393,14 +460,21 @@ run_variant() {
     sleep 0.5
   done
   [ -n "$up" ] || fail "the server did not answer on port $port"
+  grep -q "production environment" "$SERVER_LOG" || fail "the server log does not say it runs in the production environment"
 
-  local status page
+  local status page setup_token=""
   status=$(curl -sS -o page.html -w '%{http_code}' "$base/session/new")
   page=$(cat page.html)
   expect_equal "GET /session/new" "200" "$status"
   expect_contains "GET /session/new" "<h1>Sign in</h1>" "$page"
   expect_contains "GET /session/new" '<form action="/session" method="post">' "$page"
   expect_contains "GET /session/new" 'type="password" name="password"' "$page"
+  # The layout links the digested stylesheet, served as immutable.
+  local css
+  css=$(printf '%s' "$page" | grep -o '/assets/application-[0-9a-f]\{8\}\.css' | head -n 1)
+  [ -n "$css" ] || fail "GET /session/new: no digested stylesheet linked"
+  curl -fsS -D css.h -o /dev/null "$base$css" || fail "GET $css"
+  grep -qi '^cache-control:.*immutable' css.h || fail "GET $css: no immutable cache-control: $(cat css.h)"
   expect_equal "GET /products, signed out" "303 $base/session/new" \
     "$(curl -sS -o /dev/null -w '%{http_code} %{redirect_url}' "$base/products")"
   # The jobs page runs require_admin alone: a visitor gets the same 404 as
@@ -414,6 +488,16 @@ run_variant() {
   if [ "$VARIANT" = "invite" ]; then
     expect_equal "GET /sign_up" "404" "$(curl -sS -o /dev/null -w '%{http_code}' "$base/sign_up")"
     grep -q ' WARN no user exists yet' "$SERVER_LOG" || fail "no first-run warning in the server log"
+    # /setup wants the one-time token the warning prints; without it, with
+    # a wrong one or through a proxy it is a 404.
+    setup_token=$(sed -n 's/.*open \/setup?token=\([0-9a-f]\{32\}\) from this machine.*/\1/p' "$SERVER_LOG" | head -n 1)
+    [ -n "$setup_token" ] || fail "no /setup token in the first-run warning"
+    expect_contains "GET /setup?token=..." "Set up" "$(curl -fsS "$base/setup?token=$setup_token")"
+    expect_equal "GET /setup, no token" "404" "$(curl -sS -o /dev/null -w '%{http_code}' "$base/setup")"
+    expect_equal "GET /setup, a wrong token" "404" \
+      "$(curl -sS -o /dev/null -w '%{http_code}' "$base/setup?token=0123456789abcdef0123456789abcdef")"
+    expect_equal "GET /setup through a proxy" "404" \
+      "$(curl -sS -o /dev/null -w '%{http_code}' -H 'X-Forwarded-For: 203.0.113.7' "$base/setup?token=$setup_token")"
   else
     expect_contains "GET /sign_up" "<h1>Sign up</h1>" "$(curl -fsS "$base/sign_up")"
   fi
@@ -471,8 +555,19 @@ run_variant() {
   fi
 
   step "./shop user"
-  expect_equal "./shop user ann@example.com pw-pw-pw-pw" "created ann@example.com" \
-    "$(./shop user ann@example.com pw-pw-pw-pw)"
+  if [ "$VARIANT" = "invite" ]; then
+    # The password from stdin, then from the command line.
+    expect_equal "./shop user ann@example.com, the password on stdin" "created ann@example.com" \
+      "$(printf 's3cr3t-s3cr3t\n' | ./shop user ann@example.com)"
+    expect_equal "./shop user ann@example.com pw-pw-pw-pw" "updated ann@example.com" \
+      "$(./shop user ann@example.com pw-pw-pw-pw)"
+    # A user exists: /setup is gone, even with the token.
+    expect_equal "GET /setup?token=... once a user exists" "404" \
+      "$(curl -sS -o /dev/null -w '%{http_code}' "$base/setup?token=$setup_token")"
+  else
+    expect_equal "./shop user ann@example.com pw-pw-pw-pw" "created ann@example.com" \
+      "$(./shop user ann@example.com pw-pw-pw-pw)"
+  fi
   expect_equal "./shop user admin ann@example.com" "admin ann@example.com" \
     "$(./shop user admin ann@example.com)"
   local missing=0
@@ -639,4 +734,4 @@ run_variant() {
 for VARIANT in "$@"; do
   run_variant
 done
-echo "auth-e2e: PASS ($*)"
+echo "auth-e2e: PASS ($*) in ${SECONDS}s"

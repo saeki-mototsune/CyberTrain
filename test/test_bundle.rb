@@ -72,7 +72,8 @@ class ZoneTest < ActiveSupport::TestCase
   end
 end
 
-# gen's Gen::Tests table and run_case, written by hand.
+# gen's Gen::Tests table, run_case and its one method per test, written
+# by hand.
 FILES = ["test/models/article_test.rb", "test/legacy.rb"].freeze
 CASE_FILE = ["test/models/article_test.rb", "test/models/article_test.rb", "test/failing_test.rb", "test/zone_test.rb", "test/zone_test.rb"].freeze
 CASE_LINE = [4, 9, 6, 2, 6].freeze
@@ -82,37 +83,57 @@ CASE_METHOD = %w[test_title_must_be_present test_counts test_never_runs test_mov
 
 def run_bundle_case(i)
   case i
-  when 0
-    t = ArticleTest.new
-    if Cybertrain::Test.before_case(t)
-      Cybertrain::Test.run_body(t) { t.test_title_must_be_present }
-    end
-    Cybertrain::Test.after_case(t)
-  when 1
-    t = ArticleTest.new
-    if Cybertrain::Test.before_case(t)
-      Cybertrain::Test.run_body(t) { t.test_counts }
-    end
-    Cybertrain::Test.after_case(t)
-  when 2
-    t = FailingSetupTest.new
-    if Cybertrain::Test.before_case(t)
-      Cybertrain::Test.run_body(t) { t.test_never_runs }
-    end
-    Cybertrain::Test.after_case(t)
-  when 3
-    t = ZoneTest.new
-    if Cybertrain::Test.before_case(t)
-      Cybertrain::Test.run_body(t) { t.test_moves_the_zone }
-    end
-    Cybertrain::Test.after_case(t)
-  when 4
-    t = ZoneTest.new
-    if Cybertrain::Test.before_case(t)
-      Cybertrain::Test.run_body(t) { t.test_reads_the_zone }
-    end
-    Cybertrain::Test.after_case(t)
+  when 0 then bundle_case_0
+  when 1 then bundle_case_1
+  when 2 then bundle_case_2
+  when 3 then bundle_case_3
+  when 4 then bundle_case_4
   end
+  nil
+end
+
+def bundle_case_0
+  t = ArticleTest.new
+  if Cybertrain::Test.before_case(t)
+    Cybertrain::Test.run_body(t) { t.test_title_must_be_present }
+  end
+  Cybertrain::Test.after_case(t)
+  nil
+end
+
+def bundle_case_1
+  t = ArticleTest.new
+  if Cybertrain::Test.before_case(t)
+    Cybertrain::Test.run_body(t) { t.test_counts }
+  end
+  Cybertrain::Test.after_case(t)
+  nil
+end
+
+def bundle_case_2
+  t = FailingSetupTest.new
+  if Cybertrain::Test.before_case(t)
+    Cybertrain::Test.run_body(t) { t.test_never_runs }
+  end
+  Cybertrain::Test.after_case(t)
+  nil
+end
+
+def bundle_case_3
+  t = ZoneTest.new
+  if Cybertrain::Test.before_case(t)
+    Cybertrain::Test.run_body(t) { t.test_moves_the_zone }
+  end
+  Cybertrain::Test.after_case(t)
+  nil
+end
+
+def bundle_case_4
+  t = ZoneTest.new
+  if Cybertrain::Test.before_case(t)
+    Cybertrain::Test.run_body(t) { t.test_reads_the_zone }
+  end
+  Cybertrain::Test.after_case(t)
   nil
 end
 

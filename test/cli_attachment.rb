@@ -10,7 +10,8 @@ require_relative "support/file_tree"
 # edits they make, that a second run changes nothing, and that every view
 # parses with the template engine. What the generated app does when compiled
 # (uploads through the full stack) is script/generators-e2e: the app's own
-# test/integration/post_cover_attachment_test.rb, run by `cybertrain test`.
+# test/integration/post_cover_attachment_test.rb, run by `cybertrain test`,
+# then the built binary served, a file uploaded through it and read back.
 TMP = Dir.mktmpdir("cybertrain-cli-attachment")
 Dir.chdir(TMP)
 

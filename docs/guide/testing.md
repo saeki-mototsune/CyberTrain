@@ -104,8 +104,9 @@ cybertrain test -n /article/                            # the tests whose name c
 mode, as every command of the CLI builds it), which writes `gen/tests.rb` (the
 program) and a rewritten copy of each test class under `gen/test/`, both
 committed with the rest of `gen/`; it then compiles `gen/tests.rb` into
-`build/test/tests` (a release build) when any input is newer than that binary,
-and runs it. Every `test/**/*_test.rb` and every other `test/*.rb` but
+`build/test/tests` (a release build, as `cybertrain build` compiles the
+application) when any input is newer than that binary, and runs it. Every
+`test/**/*_test.rb` and every other `test/*.rb` but
 `test/test_helper.rb` is in it; `test/support/` (required by the helper) and
 `test/fixtures/` hold no tests. The program deletes `storage/test.sqlite3`,
 migrates a new one and boots the application on it before the first test (no
@@ -175,8 +176,12 @@ run took 656 s, the binary is 10.2 MB), and a later `cybertrain test
 test/controllers` with nothing changed reused the binary and started in
 about 1 s (the blog's own run, 2026-11-13); the blog's application with
 three test files of eight tests compiled in 162 to 233 s at a peak of
-about 2.2 GB, into an 8.1 MB binary (2026-11-12). Write several tests before running them, and narrow the run, not
-the build, while you work on one.
+about 2.2 GB, into an 8.1 MB binary (2026-11-12). Since 2026-11-24 gen
+writes each test as a small method of its own, which the C compiler
+optimises far faster than the one large method it wrote before: a whole
+first `cybertrain test` of examples/blog's 157 tests took about 6 minutes
+on a 4-core machine, where it had taken 31. Write several tests before running
+them, and narrow the run, not the build, while you work on one.
 
 `gen/tests.rb` is refused, and `cybertrain test` exits 1 with the reason
 and no compile, when two test or support files define the same top-level

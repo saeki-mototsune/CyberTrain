@@ -4,8 +4,13 @@
 # run. Never latest: release.yml alone moves it, to the newest release, once
 # that release exists (its promote-latest job), so a manual run with the tag
 # latest is refused. It runs from release.yml, which calls it (with
-# release_tag) after the Gate, CI and the blog image have passed on the tag,
-# and by hand (Actions -> Playground image -> Run workflow). A pull request runs it,
+# release_tag and `push: false`) beside the Gate, CI and the blog image on
+# the tag: the image job builds and smoke-tests the image and saves it as the
+# artifact playground-image-tested, whose image ID and tags are this
+# workflow's outputs, and release.yml's playground-image-push publishes that
+# artifact once every check has passed, as it does the blog image. It also
+# runs by hand (Actions -> Playground image -> Run workflow), which builds,
+# tests and pushes here (the push job). A pull request runs it,
 # without pushing, only when it touches what the image is built with
 # (below): its own files, and the CLI, the toolchain checks, the pins and
 # the gemspec, since the build runs `cybertrain setup && cybertrain doctor`
@@ -54,7 +59,7 @@ on:
       - "cybertrain/preview.rb"
       - "cybertrain/preview/**"
       - "cybertrain/dev/**"
-  # From release.yml, after every check passed on the release tag.
+  # From release.yml, on the release tag, beside the checks (see above).
   workflow_call:
     inputs:
       ref:
@@ -66,6 +71,18 @@ on:
         description: "Release tag vX.Y.Z to build, test and push as X.Y.Z"
         type: string
         required: true
+      push:
+        description: "Push the tested image here (false: only build, test and upload the artifact playground-image-tested; the caller pushes it)"
+        type: boolean
+        required: false
+        default: true
+    outputs:
+      image_id:
+        description: "ID (docker image inspect) of the tested image saved in the artifact playground-image-tested"
+        value: ${{ jobs.image.outputs.image_id }}
+      tags:
+        description: "The image references to push it as (ghcr.io/...:X.Y.Z), whitespace-separated"
+        value: ${{ jobs.image.outputs.tags }}
   workflow_dispatch:
     inputs:
       tag:
@@ -191,10 +208,14 @@ jobs:
 
   # Publishes what the image job built and tested, without building again:
   # the one job of this workflow with a token that may write packages, and it
-  # does not run for a pull request.
+  # does not run for a pull request, nor when release.yml calls with
+  # `push: false` (its playground-image-push publishes then). The test is on
+  # release_tag, not on the event: release.yml's own manual run is a
+  # workflow_dispatch here too, and a manual run of this workflow has no
+  # `push` input (it is null there, which compares equal to false).
   push:
     needs: image
-    if: github.event_name != 'pull_request'
+    if: github.event_name != 'pull_request' && (!inputs.release_tag || inputs.push)
     runs-on: ubuntu-26.04
     timeout-minutes: 15
     permissions:

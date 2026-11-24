@@ -99,15 +99,16 @@ at [.githooks/](.githooks/), after which:
   trailing whitespace, final newlines, LF line endings, merge-conflict
   markers, Ruby syntax (`ruby -c`), YAML files load; and, when the commit
   touches the framework, the CLI, the tests, the scripts or the playground's
-  Dockerfile, the repository checks: the version and Spinel-tag pins agree
+  or the blog's Dockerfile, the repository checks: the version and Spinel-tag pins agree
   (and `script/claude-cloud-setup` builds from
   `Cybertrain::SPINEL_REPOSITORY`), `script/check-reserved-names`,
   `check-client-faults`, `check-http-layer` and `check-core-closure` pass
   (see [Conventions](#conventions-ci-enforces) for what each guards),
   `script/ci-changes --self-test` passes, `cybertrain/locales/bundled.rb`
   is what `script/bundle-locales` writes, every file `cybertrain.gemspec`
-  lists exists, the CLI loads under CRuby and `playground/Dockerfile`
-  copies each of those files into its gem stage, the Playground image and
+  lists exists, the CLI loads under CRuby, `playground/Dockerfile` and
+  `examples/blog/Dockerfile` copy each of those files into their `cli-src`
+  stage (the blog runs `cybertrain setup` on that stage alone), the Playground image and
   Blog image workflows run for a pull request that changes one of them or a
   pin, every `test/*.rb` and `test/cruby/*.rb` has its `.expected` snapshot
   and every snapshot its test, and the generator run under CRuby leaves
@@ -149,14 +150,18 @@ whole suite to one run before the pull request. The suite is 240 programs;
 the last recorded local time is 14 minutes for 82 programs on 4 cores
 ([docs/design.md](docs/design.md), D34), so allow several times that.
 
-On Ubuntu, CI divides the programs into four shards, the `framework-tests` jobs
-in [.github/workflows/ci.yml](.github/workflows/ci.yml); on macOS they run in
-one job, `test (macos-latest)`. To reproduce a failing job `framework-tests (2)`,
+On Ubuntu, CI divides the programs into ten shards, the `framework-tests` jobs
+in [.github/workflows/ci.yml](.github/workflows/ci.yml). macOS runs only the
+programs whose behaviour has differed between the systems (the CLI, the
+servers, sockets, SQLite, the job threads, OpenSSL: the `macos` rule of
+[script/ci-changes](script/ci-changes) names them), in two shards, the
+`framework-tests-macos` jobs. To reproduce a failing job `framework-tests (2)`,
 run its shard:
 
 ```sh
-script/test-shard 2 4          # the sorted test/*.rb at positions 2, 6, 10, ...
-script/test-shard --list 2 4   # which programs those are
+script/test-shard 2 10                 # the sorted test/*.rb at positions 2, 12, 22, ...
+script/test-shard --list 2 10          # which programs those are
+script/test-shard --list --macos 0 2   # framework-tests-macos (0)'s programs
 ```
 
 When you change behaviour on purpose, the snapshot changes with it:
@@ -242,7 +247,11 @@ ruby -I../.. ../../exe/cybertrain test         # the blog's tests (test/**/*_tes
 first time is untracked, and `git diff` passes over it. CI fails on either.
 `cybertrain test`, not `spin test`: the blog's tests are test classes, which
 only `cybertrain test` runs; `spin test` there would compile
-`test/test_helper.rb` alone and call it ok.
+`test/test_helper.rb` alone and call it ok. `cybertrain test` compiles the
+blog's test program as `cybertrain build` compiles the application
+(spinel's default `-O2`), in about 6 minutes on 4 cores; gen writes one
+small method per test so that gcc does not spend half an hour on one huge
+function (docs/design.md, D83).
 
 ### The CRuby preview's checks
 
@@ -274,17 +283,21 @@ development server.
 ### What CI runs
 
 CI ([.github/workflows/ci.yml](.github/workflows/ci.yml)) runs the
-framework's tests and the example application on Ubuntu and, for the
-changes step 4 of [Pull requests](#pull-requests) lists and on `main`, on
-macOS; it builds
-and installs the gem, and scaffolds, builds and serves applications end to
-end. Three of those end-to-end checks are scripts you can run yourself after
-changing a generator or the test command: `script/auth-e2e signup` (or
-`invite`, `confirmable`, `upgrade04`), `script/generators-e2e` and
-`script/test-command-e2e`. Each makes its applications in a scratch
-directory and compiles them, so they are slow (a comment in `ci.yml`
-records 114 minutes for the four variants of `script/auth-e2e` together on
-a 4-core machine); run the one variant you changed.
+framework's tests and, in its `e2e` job, applications end to end on Ubuntu;
+for the changes step 4 of [Pull requests](#pull-requests) lists and on
+`main`, it also runs the programs that have differed on macOS and one
+application end to end there. It builds and installs the gem, and
+scaffolds, builds and serves applications. The `e2e` job runs one leg per
+runner, each a script you can run yourself after changing a generator or
+the test command: `script/auth-e2e signup` (or `invite`, `confirmable`,
+`upgrade04-patch`, `upgrade04-force`, `upgrade04-confirmable`, or
+`upgrade04` for the last three; the sign-up leg, and macOS's, run the
+installed gem with `CYBERTRAIN_E2E_CLI=gem`), `script/generators-e2e`,
+`script/test-command-e2e`, and examples/blog's tests (above). Each makes
+its applications in a scratch directory and compiles them, so they are
+slow (12 to 16 minutes a variant of `script/auth-e2e` on a 4-core machine);
+run the one you changed. Each line they print carries the seconds elapsed
+(`+Ns`), so a log shows which phase took the time.
 
 CI also builds the API reference with YARD (any warning fails it:
 `script/api-docs`, the `api-docs` job). A change to nothing but
@@ -630,7 +643,7 @@ before the gem is pushed:
    checkout, without committing, and runs the framework tests, the
    generated applications end to end, examples/blog and the compiler
    rechecks (`spikes/rechecks/run.sh`, informational) against that
-   release, and macOS's whole suite when asked.
+   release, and CI's macOS jobs when asked.
 
    Before merging a minor release's bump, check that the release's upgrade
    notes are written: a section under "Notes by version" in
@@ -643,16 +656,16 @@ before the gem is pushed:
 3. `gem build cybertrain.gemspec && gem push cybertrain-X.Y.Z.gem`.
 4. The tag runs [.github/workflows/release.yml](.github/workflows/release.yml);
    check that run. In order:
-   - It runs the Gate, the full CI (Linux and macOS, built against the
-     Spinel release the tag pins) and the blog image's build and smoke test
-     ([.github/workflows/blog-image.yml](.github/workflows/blog-image.yml))
+   - It runs, in parallel, the Gate, CI (built against the Spinel release
+     the tag pins) and the two images' builds and smoke tests
+     ([.github/workflows/blog-image.yml](.github/workflows/blog-image.yml),
+     [.github/workflows/playground-image.yml](.github/workflows/playground-image.yml))
      on the tagged commit. If any of those fails, nothing is published.
    - It pushes, in parallel, the playground image
      `ghcr.io/saeki-mototsune/cybertrain-playground:X.Y.Z`
-     ([.github/workflows/playground-image.yml](.github/workflows/playground-image.yml))
      and the blog image `ghcr.io/saeki-mototsune/cybertrain-blog:X.Y.Z`.
-     The blog image pushed is the one the smoke test ran on, kept as a
-     workflow artifact for 7 days, not a second build: to re-run its push
+     Each image pushed is the one its smoke test ran on, kept as a
+     workflow artifact for 7 days, not a second build: to re-run a push
      later than that, re-run the whole workflow. If one image push fails,
      no release is created, but the other image's `X.Y.Z` may already be
      pushed: check both packages before re-running the failed jobs.
@@ -670,7 +683,8 @@ before the gem is pushed:
      GitHub cancels all but the newest waiting one, which is harmless (each
      would move `latest` to the same image). Nothing else pushes `latest`;
      to repair it, re-run that job.
-   - Its `spinel-prebuilt` job attaches a Linux build of the fork's latest
+   - Its `spinel-prebuilt` job builds (beside the checks) and its
+     `spinel-prebuilt-attach` job attaches a Linux build of the fork's latest
      Spinel release to the release (`spinel-<tag>-linux-x86_64.tar.gz`, for
      Claude Code cloud sessions; see below); check that it passed.
 5. Once the framework is on the spin index, and to put it there the first
