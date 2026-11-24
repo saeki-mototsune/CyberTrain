@@ -288,16 +288,20 @@ for the changes step 4 of [Pull requests](#pull-requests) lists and on
 `main`, it also runs the programs that have differed on macOS and one
 application end to end there. It builds and installs the gem, and
 scaffolds, builds and serves applications. The `e2e` job runs one leg per
-runner, each a script you can run yourself after changing a generator or
-the test command: `script/auth-e2e signup` (or `invite`, `confirmable`,
-`upgrade04-patch`, `upgrade04-force`, `upgrade04-confirmable`, or
-`upgrade04` for the last three; the sign-up leg, and macOS's, run the
-installed gem with `CYBERTRAIN_E2E_CLI=gem`), `script/generators-e2e`,
-`script/test-command-e2e`, and examples/blog's tests (above). Each makes
+runner, from the list [script/e2e-legs](script/e2e-legs) prints (the
+Spinel candidate workflow reads the same list), each a script you can run
+yourself after changing a generator or the test command: `script/auth-e2e
+signup` (or `invite`, `confirmable`, `upgrade04-patch`, `upgrade04-force`,
+`upgrade04-confirmable`, or `upgrade04` for the last three; the sign-up
+leg, and macOS's, run the installed gem with `CYBERTRAIN_E2E_CLI=gem`),
+`script/generators-e2e`, `script/test-command-e2e`, and examples/blog's
+tests (above); `script/e2e-legs run LEG` runs a leg as CI does. Each makes
 its applications in a scratch directory and compiles them, so they are
-slow (12 to 16 minutes a variant of `script/auth-e2e` on a 4-core machine);
+slow (10 to 17 minutes a variant of `script/auth-e2e` on a 4-core machine);
 run the one you changed. Each line they print carries the seconds elapsed
-(`+Ns`), so a log shows which phase took the time.
+(`+Ns`), so a log shows which phase took the time. What the scripts share
+(progress lines, failures, the CLI, the server) is in `script/e2e.d/`,
+which they source.
 
 CI also builds the API reference with YARD (any warning fails it:
 `script/api-docs`, the `api-docs` job). A change to nothing but

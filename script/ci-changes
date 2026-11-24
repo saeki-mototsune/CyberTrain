@@ -17,7 +17,8 @@
 #
 #   false  docs/api/**, script/api-docs, .yardopts (the API reference only)
 #   true   .github/workflows/ci.yml, script/test-shard, script/ci-changes,
-#          script/auth-e2e, script/test-command-e2e, script/generators-e2e
+#          script/auth-e2e, script/test-command-e2e, script/generators-e2e,
+#          script/e2e-legs, script/e2e.d/**
 #   false  what on.paths leaves out: site/**, **.md, script/**, .githooks/**,
 #          .github/workflows/** (in a change that started the workflow
 #          through another file)
@@ -75,7 +76,8 @@
 #                test/websocket_*, test/logger_tls*, test/stream_endpoint*,
 #                test/main_roles*, test/runtime.rb, *.darwin,
 #                .github/actions/**, ci.yml, script/ci-changes,
-#                script/test-cruby, script/test-shard, script/auth-e2e
+#                script/test-cruby, script/test-shard, script/auth-e2e,
+#                script/e2e-legs, script/e2e.d/**
 #   setup_action .github/actions/setup-cybertrain/**, cybertrain/cli/**,
 #                cybertrain/cli.rb, exe/**, cybertrain/generator/**,
 #                cybertrain/generator.rb, cybertrain/version.rb,
@@ -112,7 +114,8 @@
 #   true   test/fixtures/auth_04_app/**, test/fixtures/test_app/**,
 #          test/fixtures/test_app_extra/**, test/fixtures/test_app.expected/**
 #   true   script/auth-e2e, script/generators-e2e, script/test-command-e2e,
-#          .github/workflows/ci.yml, script/ci-changes
+#          script/e2e-legs, script/e2e.d/**, .github/workflows/ci.yml,
+#          script/ci-changes
 #   true   everything else `framework` says true for
 #
 # One path that says true is enough. A path this file does not know says
@@ -145,7 +148,8 @@ decide() {
         test/db_sqlite* | test/job_threads* | test/http_client* | test/net_* | test/openssl* | \
         test/mailer* | test/websocket_* | test/logger_tls* | test/stream_endpoint* | \
         test/main_roles* | test/runtime.rb | *.darwin | .github/actions/* | .github/workflows/ci.yml | \
-        script/ci-changes | script/test-cruby | script/test-shard | script/auth-e2e | \"*) macos=true ;;
+        script/ci-changes | script/test-cruby | script/test-shard | script/auth-e2e | script/e2e-legs | \
+        script/e2e.d/* | \"*) macos=true ;;
     esac
     case "$path" in
       .github/actions/setup-cybertrain/* | cybertrain/cli/* | cybertrain/cli.rb | exe/* | \
@@ -156,7 +160,8 @@ decide() {
     case "$path" in
       "") ;;
       docs/api/* | script/api-docs | .yardopts) ;;
-      .github/workflows/ci.yml | script/ci-changes | script/auth-e2e | script/test-command-e2e | script/generators-e2e) legs=true ;;
+      .github/workflows/ci.yml | script/ci-changes | script/auth-e2e | script/test-command-e2e | script/generators-e2e | \
+        script/e2e-legs | script/e2e.d/*) legs=true ;;
       site/* | *.md | script/* | .githooks/* | .github/workflows/*) ;;
       test/fixtures/auth_04_app/* | test/fixtures/test_app/* | test/fixtures/test_app_extra/* | test/fixtures/test_app.expected/*) legs=true ;;
       test/*) ;;
@@ -168,7 +173,8 @@ decide() {
     case "$path" in
       "") ;;
       docs/api/* | script/api-docs | .yardopts) ;;
-      .github/workflows/ci.yml | script/test-shard | script/ci-changes | script/auth-e2e | script/test-command-e2e | script/generators-e2e) framework=true ;;
+      .github/workflows/ci.yml | script/test-shard | script/ci-changes | script/auth-e2e | script/test-command-e2e | script/generators-e2e | \
+        script/e2e-legs | script/e2e.d/*) framework=true ;;
       site/* | *.md | script/* | .githooks/* | .github/workflows/*) ;;
       *) framework=true ;;
     esac
@@ -233,6 +239,9 @@ if [ "${1:-}" = "--self-test" ]; then
   expect true script/auth-e2e
   expect true script/test-command-e2e
   expect true script/generators-e2e
+  expect true script/e2e-legs
+  expect true script/e2e.d/lib.sh
+  expect true script/e2e.d/smtp_receiver.rb
   expect true test/fixtures/test_app.expected/all.out
   expect true spin.toml
   expect true cybertrain.gemspec
@@ -291,6 +300,8 @@ if [ "${1:-}" = "--self-test" ]; then
   expect_macos true .github/actions/setup-spinel/action.yml
   expect_macos true .github/workflows/ci.yml
   expect_macos true script/auth-e2e
+  expect_macos true script/e2e-legs
+  expect_macos true script/e2e.d/auth_served.sh
   expect_macos true '"cybertrain/caf\303\251.rb"'
   expect_macos true cybertrain/router.rb cybertrain/cli/new_app.rb
   expect_macos false cybertrain/router.rb
@@ -345,6 +356,9 @@ if [ "${1:-}" = "--self-test" ]; then
   expect_legs true script/auth-e2e
   expect_legs true script/generators-e2e
   expect_legs true script/test-command-e2e
+  expect_legs true script/e2e-legs
+  expect_legs true script/e2e.d/lib.sh
+  expect_legs true script/e2e.d/smtp_receiver.rb
   expect_legs true .github/actions/setup-spinel/action.yml
   expect_legs true .github/workflows/ci.yml
   expect_legs true script/ci-changes
