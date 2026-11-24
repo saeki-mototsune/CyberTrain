@@ -127,11 +127,15 @@ jobs:
   # (every macOS job and leg: framework-tests-macos, e2e-macos,
   # cruby-preview's and setup-cybertrain's; the setup-cybertrain job; the
   # end-to-end legs, e2e and e2e-macos): on main, a merge group and a
-  # release they are true, and on a pull request the label `ci:macos` sets
-  # `macos` and the label `ci:e2e` sets `e2e` (read from the event, so add
-  # the label, then push or close and reopen). `e2e` is false for a change
-  # no leg reads, such as one to the framework's own tests (test/*.rb and
-  # their snapshots) or to the CRuby preview alone.
+  # release `macos` and `setup_action` are true and `e2e` is `framework`
+  # (no legs for a change that needs no compiling), and on a pull request
+  # the label `ci:macos` sets `macos` and the label `ci:e2e` sets `e2e`
+  # (read from the event, so add the label, then push or close and
+  # reopen). `e2e` is false for a change no leg reads, such as one to the
+  # framework's own tests (test/*.rb and their snapshots) or to the CRuby
+  # preview alone; script/ci-changes prints it true only with `framework`,
+  # so the e2e jobs read `e2e` alone and the label runs the legs even when
+  # `framework` is false.
   # A release run (a run on a tag: this file's own push runs only on main)
   # runs everything, and so does a run whose changed files cannot be listed.
   changes:
@@ -202,8 +206,9 @@ jobs:
           sed 's/^/  /' "$RUNNER_TEMP/changed"
           script/ci-changes < "$RUNNER_TEMP/changed" > "$RUNNER_TEMP/decided"
           if [ "$EVENT" != pull_request ]; then
-            echo "not a pull request: the macOS legs, setup-cybertrain and the end-to-end legs run whatever changed"
-            sed -i 's/^macos=.*/macos=true/; s/^setup_action=.*/setup_action=true/; s/^e2e=.*/e2e=true/' "$RUNNER_TEMP/decided"
+            echo "not a pull request: the macOS legs and setup-cybertrain run whatever changed, the end-to-end legs whenever framework does"
+            framework=$(sed -n 's/^framework=//p' "$RUNNER_TEMP/decided")
+            sed -i "s/^macos=.*/macos=true/; s/^setup_action=.*/setup_action=true/; s/^e2e=.*/e2e=$framework/" "$RUNNER_TEMP/decided"
           else
             if [ "$MACOS_LABEL" = true ]; then
               echo "label ci:macos: the macOS legs run"
@@ -531,15 +536,17 @@ jobs:
   # Every script prints the seconds elapsed on each line (`+Ns`), so a log
   # shows which phase took the time.
   #
-  # On a pull request the legs run only when `e2e` says so: a change that
+  # The legs run only when `e2e` says so: on a pull request, a change that
   # can reach what a generated application compiles, runs or serves
   # (script/ci-changes has the rule; a change to the framework's own test
-  # programs or their snapshots alone is not one), or the label `ci:e2e`.
+  # programs or their snapshots alone is not one), or the label `ci:e2e`,
+  # which runs them whatever changed; on any other event, whenever
+  # `framework` is true.
   # Skipped, the job is `skipped` and CI's run still concludes `success`,
   # which is what `required` (required.yml) reads.
   e2e:
     needs: changes
-    if: needs.changes.outputs.framework == 'true' && needs.changes.outputs.e2e == 'true'
+    if: needs.changes.outputs.e2e == 'true'
     name: e2e (${{ matrix.leg }})
     strategy:
       fail-fast: false
@@ -593,7 +600,7 @@ jobs:
   # system. Runs when both `macos` and `e2e` say so.
   e2e-macos:
     needs: changes
-    if: needs.changes.outputs.framework == 'true' && needs.changes.outputs.macos == 'true' && needs.changes.outputs.e2e == 'true'
+    if: needs.changes.outputs.macos == 'true' && needs.changes.outputs.e2e == 'true'
     runs-on: macos-latest
     # Provisional until the first runs are read: script/auth-e2e's six
     # variants took 52 minutes together on macOS in the old `test` job

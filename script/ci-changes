@@ -3,12 +3,13 @@
 # stdin and prints `framework=true|false`, `cruby_preview=true|false`,
 # `preview_e2e=true|false`, `macos=true|false`, `setup_action=true|false`
 # and `e2e=true|false`. The `changes` job of .github/workflows/ci.yml
-# runs it. The jobs that compile (the framework tests, the end-to-end legs,
-# the setup-cybertrain action's) run only on `framework=true`, the
-# end-to-end legs (`e2e`, `e2e-macos`) only on `e2e=true` as well; the
-# cruby-preview job only on `cruby_preview=true`; the preview-e2e job only
-# on `preview_e2e=true`. The api-docs job runs on every CI run and is not
-# decided here.
+# runs it. The jobs that compile (the framework tests, the setup-cybertrain
+# action's) run only on `framework=true`; the end-to-end legs (`e2e`,
+# `e2e-macos`) read `e2e=true` alone, which this script prints only with
+# `framework=true` and the label `ci:e2e` sets without it (below); the
+# cruby-preview job runs only on `cruby_preview=true`; the preview-e2e job
+# only on `preview_e2e=true`. The api-docs job runs on every CI run and is
+# not decided here.
 #
 # `on.paths` in ci.yml decides whether the workflow starts at all; it cannot
 # tell the jobs apart, so its rule is repeated here, with one more case: the
@@ -88,8 +89,10 @@
 # e2e (the `e2e` job's legs and `e2e-macos`: applications generated,
 # built, tested and served, examples/blog, test/fixtures/auth_04_app and
 # test_app) narrows a pull request only, as macos does: the `changes` job
-# sets it to true on every other event and when the pull request has the
-# label `ci:e2e`. It is `framework` less what no leg reads: the legs
+# sets it to what `framework` is on every other event (so a push of
+# docs/api/** alone runs no leg), and to true when the pull request has
+# the label `ci:e2e`, whatever changed. It is `framework` less what no leg
+# reads: the legs
 # compile the framework's runtime (cybertrain/**, cybertrain.rb), run its
 # CLI (exe/**, cybertrain/cli/**, the gem cybertrain.gemspec builds), the
 # generators and their templates, against the pins (spin.toml,

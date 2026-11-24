@@ -503,9 +503,10 @@ blank second line) and leaves merge, revert, fixup! and squash! commits alone.
    tests or serves: not for a change to the framework's own test programs
    and their snapshots (`test/*.rb`), the CRuby preview or the
    documentation alone (`e2e` in the same script has the rule); `main` runs
-   all of them after every merge. Add the label `ci:macos` to run macOS
-   anyway, or `ci:e2e` to run the end-to-end legs anyway (a label is read
-   when CI starts: push, or close and reopen).
+   all of them after every merge that needs compiling. Add the label
+   `ci:macos` to run macOS anyway, or `ci:e2e` to run the end-to-end legs
+   anyway, even for a change that needs no compiling (a label is read when
+   CI starts: push, or close and reopen).
    The `required` check waits for all of them and is what `main` asks for
    (see [Branch rules](#branch-rules)). A failure you believe is unrelated
    to your change is still worth a sentence in the pull request.
