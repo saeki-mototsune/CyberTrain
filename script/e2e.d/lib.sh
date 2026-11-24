@@ -17,7 +17,7 @@
 #   e2e_workdir NAME      a new scratch directory, in TMPDIR
 #   free_port             a TCP port nothing listens on
 #   start_server LOG CMD...  CMD in the background, its output in LOG
-#   wait_for_up BASE PORT    until BASE/up.html answers (30 s at most)
+#   wait_for_up BASE PORT    until BASE/up.html answers (30 s at most, in all)
 #   stop_server           the server and the SMTP receiver, if running (on
 #                         EXIT too)
 #   form_token PAGE       the authenticity_token of the first form in PAGE
@@ -25,7 +25,8 @@
 #                         prints the status and the redirect
 #   same_tree WHAT A B [-x PATH | -r SED]...
 #                         fails unless two directories hold the same files
-#                         with the same bytes, but for those named
+#                         with the same bytes (links: the same targets,
+#                         never followed), but for those named
 #
 # Every line a script prints carries the seconds since its scenario started,
 # or since the script did when it has no scenarios, so a CI log shows where
@@ -135,16 +136,23 @@ start_server() {
   SERVER_PID=$!
 }
 
+# `wait_for_up BASE PORT`: probes BASE/up.html every half second while the
+# server starts, until it answers or 30 seconds have gone by in all (SECONDS,
+# whole seconds: 29 to 30). Each probe and each pause is capped to what
+# remains, so a server that accepts the connection and never answers ends
+# the wait at the deadline as well, with the failure and the server's log.
 wait_for_up() {
-  local up=""
-  for _ in $(seq 1 60); do
-    if curl -fsS -o /dev/null "$1/up.html" 2>/dev/null; then
-      up=yes
-      break
+  local deadline=$((SECONDS + 30)) left
+  while left=$((deadline - SECONDS)); [ "$left" -gt 0 ]; do
+    if curl -fsS --max-time "$left" -o /dev/null "$1/up.html" 2>/dev/null; then
+      return 0
     fi
+    left=$((deadline - SECONDS))
+    [ "$left" -gt 0 ] || break
+    # left is a whole number of seconds, at least 1: half a second fits.
     sleep 0.5
   done
-  [ -n "$up" ] || fail "the server did not answer on port $2"
+  fail "the server did not answer on port $2 within 30 seconds"
 }
 
 stop_server() {
@@ -179,13 +187,18 @@ post_status() {
 
 # `same_tree WHAT A B [-x PATH | -r SED]...`: directories A and B must hold
 # the same files (regular files and symbolic links, by their path relative
-# to the directory, `./...`) with the same bytes; directories themselves,
-# empty ones included, are not compared. `-x PATH` leaves that path out of
-# both; `-r SED` rewrites every path through the sed expression before the
-# two lists are matched (for a name that differs by design, such as a
-# timestamp), and each rewritten name must stand for one file on each side.
-# Every difference is listed before the failure: the paths only one side
-# has, then the files whose bytes differ, each with a diff.
+# to the directory, `./...`), each of the same kind on both sides: two
+# regular files with the same bytes, two symbolic links with the same
+# target (`readlink`, never followed, so two identical dangling links are
+# the same and a link is not the file it points to). Directories
+# themselves, empty ones included, are not compared. `-x PATH` leaves that
+# path out of both; `-r SED` rewrites every path through the sed
+# expression before the two lists are matched (for a name that differs by
+# design, such as a timestamp), and each rewritten name must stand for one
+# file on each side. Every difference is listed before the failure: the
+# paths only one side has, then the pairs that are a link on one side and
+# a regular file on the other, the links whose targets differ and the
+# files whose bytes differ, each with a diff.
 same_tree() {
   local what=$1 a=$2 b=$3
   shift 3
@@ -198,10 +211,11 @@ same_tree() {
     esac
     shift 2
   done
-  local tab index_a index_b
+  local tab index_a index_b joined
   tab=$(printf '\t')
   index_a=$(mktemp)
   index_b=$(mktemp)
+  joined=$(mktemp)
   tree_index "$a" > "$index_a"
   tree_index "$b" > "$index_b"
   local problems="" dup only name pa pb
@@ -211,14 +225,30 @@ same_tree() {
   [ -z "$dup" ] || problems+="more than one file in $b is named: $dup"$'\n'
   only=$(LC_ALL=C comm -3 <(cut -f 1 "$index_a") <(cut -f 1 "$index_b"))
   [ -z "$only" ] || problems+="only in $a (flush left) or in $b (indented):"$'\n'"$only"$'\n'
+  # The pairs to a file, not a process substitution: a join that failed
+  # part-way would end the loop early and the trees would pass.
+  if ! LC_ALL=C join -t "$tab" "$index_a" "$index_b" > "$joined"; then
+    rm -f "$index_a" "$index_b" "$joined"
+    fail "$what: same_tree: join failed on the two lists of files"
+  fi
+  local ta tb
   while IFS=$'\t' read -r name pa pb; do
-    if ! cmp -s "$a/$pa" "$b/$pb"; then
+    ta="regular file" tb="regular file"
+    if [ -L "$a/$pa" ]; then ta="symbolic link"; fi
+    if [ -L "$b/$pb" ]; then tb="symbolic link"; fi
+    if [ "$ta" != "$tb" ]; then
+      problems+="differs: $name ($pa, $pb): a $ta in $a, a $tb in $b"$'\n'
+    elif [ "$ta" = "symbolic link" ]; then
+      if [ "$(readlink "$a/$pa")" != "$(readlink "$b/$pb")" ]; then
+        problems+="differs: $name ($pa, $pb): links to $(readlink "$a/$pa") and to $(readlink "$b/$pb")"$'\n'
+      fi
+    elif ! cmp -s "$a/$pa" "$b/$pb"; then
       # diff exits 1 on a difference: `|| true`, or set -e would end the
       # script here, before fail.
       problems+="differs: $name ($pa, $pb):"$'\n'"$(diff -u "$a/$pa" "$b/$pb" | head -n 40 || true)"$'\n'
     fi
-  done < <(LC_ALL=C join -t "$tab" "$index_a" "$index_b")
-  rm -f "$index_a" "$index_b"
+  done < "$joined"
+  rm -f "$index_a" "$index_b" "$joined"
   if [ -n "$problems" ]; then
     printf '%s' "$problems" >&2
     fail "$what: the trees differ (above)"
