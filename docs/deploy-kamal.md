@@ -169,7 +169,9 @@ bridges the previous release's files into the new container for the
 switch-over, and a page loaded before the deploy still finds the files its
 HTML names. Add the line to a `config/deploy.yml` from an older cybertrain;
 its `Dockerfile` also needs `libssl-dev` in the build stage and `libssl3t64`
-in the runtime stage, since every app now links OpenSSL.
+in the runtime stage, since every app now links OpenSSL, and `tzdata` in the
+runtime stage when the app sets a time zone (`c.time_zone`): without the zone
+files the app stops at boot with `time_zone "..." is not a known time zone`.
 
 ## 8-3. Prepare the secrets
 

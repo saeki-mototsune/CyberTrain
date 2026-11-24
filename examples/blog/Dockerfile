@@ -76,8 +76,13 @@ RUN ruby -I/src /src/exe/cybertrain build
 # ---- runtime: the binary, public/ and the libraries it links ------------
 FROM docker.io/library/ubuntu:$UBUNTU_VERSION
 
+# tzdata: Cybertrain::TimeZone reads a configured time zone
+# (c.time_zone, CYBERTRAIN_TIME_ZONE) from /usr/share/zoneinfo, and
+# boot stops on a zone it cannot find. DEBIAN_FRONTEND keeps its
+# install from asking for a region.
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y libsqlite3-0 zlib1g libjemalloc2 libssl3t64 && \
+    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \
+      libsqlite3-0 zlib1g libjemalloc2 libssl3t64 tzdata && \
     rm -rf /var/lib/apt/lists/*
 
 RUN useradd --system --create-home --shell /bin/bash app
