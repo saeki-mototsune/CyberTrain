@@ -288,16 +288,22 @@ for the changes step 4 of [Pull requests](#pull-requests) lists and on
 `main`, it also runs the programs that have differed on macOS and one
 application end to end there. It builds and installs the gem, and
 scaffolds, builds and serves applications. The `e2e` job runs one leg per
-runner, each a script you can run yourself after changing a generator or
-the test command: `script/auth-e2e signup` (or `invite`, `confirmable`,
-`upgrade04-patch`, `upgrade04-force`, `upgrade04-confirmable`, or
-`upgrade04` for the last three; the sign-up leg, and macOS's, run the
-installed gem with `CYBERTRAIN_E2E_CLI=gem`), `script/generators-e2e`,
-`script/test-command-e2e`, and examples/blog's tests (above). Each makes
+runner, from the list [script/e2e-legs](script/e2e-legs) prints (the
+Spinel candidate workflow reads the same list), each a script you can run
+yourself after changing a generator or the test command: `script/auth-e2e
+signup` (or `invite`, `confirmable`, `upgrade04-patch`, `upgrade04-force`,
+`upgrade04-confirmable`, or `upgrade04` for the last three; the sign-up
+leg, and macOS's, run the installed gem with `CYBERTRAIN_E2E_CLI=gem`),
+`script/generators-e2e`, `script/test-command-e2e`, and examples/blog's
+tests (above); `script/e2e-legs run LEG` runs a leg as CI does (the
+`auth-upgrade04` leg is `upgrade04-patch` then `upgrade04-force`, which
+compares its tree with a patched copy's instead of building it). Each makes
 its applications in a scratch directory and compiles them, so they are
-slow (12 to 16 minutes a variant of `script/auth-e2e` on a 4-core machine);
+slow (10 to 17 minutes a variant of `script/auth-e2e` on a 4-core machine);
 run the one you changed. Each line they print carries the seconds elapsed
-(`+Ns`), so a log shows which phase took the time.
+(`+Ns`), so a log shows which phase took the time. What the scripts share
+(progress lines, failures, the CLI, the server) is in `script/e2e.d/`,
+which they source.
 
 CI also builds the API reference with YARD (any warning fails it:
 `script/api-docs`, the `api-docs` job). A change to nothing but
@@ -492,8 +498,15 @@ blank second line) and leaves merge, revert, fixup! and squash! commits alone.
    preview, the HTTP server, the pins, the actions; `macos` in
    [script/ci-changes](script/ci-changes) has the list), and the
    `setup-cybertrain` job only when the action, `cybertrain new` or the pins
-   change; `main` runs both after every merge. Add the label `ci:macos` to
-   run macOS anyway (it is read when CI starts: push, or close and reopen).
+   change, and the end-to-end legs (`e2e`, and `e2e-macos` when macOS runs
+   too) only when the change can reach what a generated application builds,
+   tests or serves: not for a change to the framework's own test programs
+   and their snapshots (`test/*.rb`), the CRuby preview or the
+   documentation alone (`e2e` in the same script has the rule); `main` runs
+   all of them after every merge that needs compiling. Add the label
+   `ci:macos` to run macOS anyway, or `ci:e2e` to run the end-to-end legs
+   anyway, even for a change that needs no compiling (a label is read when
+   CI starts: push, or close and reopen).
    The `required` check waits for all of them and is what `main` asks for
    (see [Branch rules](#branch-rules)). A failure you believe is unrelated
    to your change is still worth a sentence in the pull request.

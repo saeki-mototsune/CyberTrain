@@ -32,7 +32,9 @@
 #
 # The jobs below mirror ci.yml's (framework-tests, e2e,
 # framework-tests-macos, e2e-macos), with the spinel-candidate action in
-# place of setup-spinel: when those change, change these with them. What a bump also
+# place of setup-spinel: when those change, change these with them. The
+# end-to-end legs are not repeated: both workflows read them from
+# script/e2e-legs. What a bump also
 # re-checks by hand is in spikes/NOTES.md, "Workarounds that shape the design".
 name: Spinel candidate
 
@@ -71,10 +73,16 @@ jobs:
       tag: ${{ steps.tag.outputs.tag }}
       commit: ${{ steps.tag.outputs.commit }}
       pinned: ${{ steps.tag.outputs.pinned }}
+      # The e2e job's legs: script/e2e-legs, the list ci.yml's e2e job reads.
+      legs: ${{ steps.legs.outputs.legs }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: List the end-to-end legs
+        id: legs
+        run: echo "legs=$(script/e2e-legs --json)" | tee -a "$GITHUB_OUTPUT"
 
       - name: Resolve the tag
         id: tag
@@ -124,31 +132,18 @@ jobs:
         run: script/test-shard ${{ matrix.shard }} ${{ strategy.job-total }}
 
   # What applications see: the legs of ci.yml's e2e job, with the
-  # candidate. Not its git dependency step: the candidate is an uncommitted
-  # bump of this checkout, and a git dependency fetches the commit.
+  # candidate: script/e2e-legs's list, each leg `script/e2e-legs run LEG`
+  # as there (examples/blog's included, which also checks that the
+  # candidate does not change what gen writes). Not ci.yml's git dependency
+  # step: the candidate is an uncommitted bump of this checkout, and a git
+  # dependency fetches the commit.
   e2e:
     needs: resolve
     name: e2e (${{ matrix.leg }})
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - leg: auth-signup
-            auth: signup
-            cli: gem
-          - leg: auth-invite
-            auth: invite
-          - leg: auth-confirmable
-            auth: confirmable
-          - leg: auth-upgrade04-patch
-            auth: upgrade04-patch
-          - leg: auth-upgrade04-force
-            auth: upgrade04-force
-          - leg: auth-upgrade04-confirmable
-            auth: upgrade04-confirmable
-          - leg: generators
-          - leg: test-command
-          - leg: blog
+        leg: ${{ fromJSON(needs.resolve.outputs.legs) }}
     runs-on: ubuntu-26.04
     # As ci.yml's e2e: provisional until the first runs are read.
     timeout-minutes: 45
@@ -162,46 +157,12 @@ jobs:
           spinel-tag: ${{ needs.resolve.outputs.tag }}
           spinel-commit: ${{ needs.resolve.outputs.commit }}
 
-      - name: Authentication end to end (${{ matrix.auth }})
-        if: matrix.auth
+      - name: End to end (${{ matrix.leg }})
         env:
-          VARIANT: ${{ matrix.auth }}
-          CYBERTRAIN_E2E_CLI: ${{ matrix.cli || 'checkout' }}
-        run: script/auth-e2e "$VARIANT"
-
-      - name: Generated applications' tests pass
-        if: matrix.leg == 'generators'
-        run: script/generators-e2e
-
-      - name: cybertrain test end to end
-        if: matrix.leg == 'test-command'
-        run: script/test-command-e2e
-
-      # Before the blog's tests, which run gen themselves (ci.yml, "Generated
-      # code is fresh"): the candidate must not change what gen writes.
-      - name: Generated code is fresh (examples/blog)
-        if: matrix.leg == 'blog'
+          LEG: ${{ matrix.leg }}
         run: |
-          cd examples/blog
-          SPIN_DEBUG=1 spin run gen
-          changed=$(git status --porcelain --untracked-files=all -- gen/)
-          if [ -n "$changed" ]; then
-            echo "examples/blog/gen/ is not what \`spin run gen\` writes with Spinel $TAG:"
-            echo "$changed"
-            git diff -- gen/
-            exit 1
-          fi
-        env:
-          TAG: ${{ needs.resolve.outputs.tag }}
-
-      # As ci.yml's: the runner's gcc compiles the blog's one test program,
-      # at -O2 as `cybertrain test` always does.
-      - name: Example app tests
-        if: matrix.leg == 'blog'
-        run: |
-          cd examples/blog
-          cybertrain test
-          SPIN_DEBUG=1 spin run gen -- --check
+          spinel --version
+          script/e2e-legs run "$LEG"
 
   # ci.yml's framework-tests-macos: the programs the `macos` rule of
   # script/ci-changes names, in two shards.
@@ -230,7 +191,7 @@ jobs:
           script/test-shard --list --macos ${{ matrix.shard }} ${{ strategy.job-total }}
           script/test-shard --macos ${{ matrix.shard }} ${{ strategy.job-total }}
 
-  # ci.yml's e2e-macos: the sign-up variant through the installed gem.
+  # ci.yml's e2e-macos: the sign-up leg through the installed gem.
   macos-e2e:
     needs: resolve
     if: inputs.macos
@@ -247,10 +208,8 @@ jobs:
           spinel-tag: ${{ needs.resolve.outputs.tag }}
           spinel-commit: ${{ needs.resolve.outputs.commit }}
 
-      - name: Authentication end to end (signup)
-        env:
-          CYBERTRAIN_E2E_CLI: gem
-        run: script/auth-e2e signup
+      - name: Authentication end to end (auth-signup)
+        run: script/e2e-legs run auth-signup
 
   # Informational: a probe that differs fails its step but not the job (nor
   # the run), and the step's outcome goes to the summary through `outcome`.

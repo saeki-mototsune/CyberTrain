@@ -8,6 +8,7 @@ name: CI
 # workflow runs them (script/gate and the checks it calls), and nothing below
 # reads them except script/api-docs, script/test-shard, script/ci-changes,
 # script/auth-e2e, script/test-command-e2e, script/generators-e2e,
+# script/e2e-legs, script/e2e.d/ (what the end-to-end scripts source),
 # script/preview-parity, script/test-cruby and script/preview-e2e, which are
 # brought back in. Nor do the other workflows (release, images, pages, gate): only this
 # file is brought back in (the local actions under .github/actions/ were never
@@ -38,6 +39,8 @@ on:
       - "script/auth-e2e"
       - "script/test-command-e2e"
       - "script/generators-e2e"
+      - "script/e2e-legs"
+      - "script/e2e.d/**"
       - "script/preview-parity"
       - "script/test-cruby"
       - "script/preview-e2e"
@@ -62,6 +65,8 @@ on:
       - "script/auth-e2e"
       - "script/test-command-e2e"
       - "script/generators-e2e"
+      - "script/e2e-legs"
+      - "script/e2e.d/**"
       - "script/preview-parity"
       - "script/test-cruby"
       - "script/preview-e2e"
@@ -118,12 +123,19 @@ jobs:
   # is false when every changed file is one only the API reference reads,
   # or one `paths` above leaves out (script/ci-changes); `cruby_preview`
   # and `preview_e2e` decide the cruby-preview and preview-e2e jobs the
-  # same way. `macos` and `setup_action` narrow a pull request only (every
-  # macOS job and leg: framework-tests-macos, e2e-macos, cruby-preview's
-  # and setup-cybertrain's; and the setup-cybertrain job): on main, a
-  # merge group and a release they are true, and the label `ci:macos` on a
-  # pull request sets `macos` (read from the event, so add the label, then
-  # push or close and reopen).
+  # same way. `macos`, `setup_action` and `e2e` narrow a pull request only
+  # (every macOS job and leg: framework-tests-macos, e2e-macos,
+  # cruby-preview's and setup-cybertrain's; the setup-cybertrain job; the
+  # end-to-end legs, e2e and e2e-macos): on main, a merge group and a
+  # release `macos` and `setup_action` are true and `e2e` is `framework`
+  # (no legs for a change that needs no compiling), and on a pull request
+  # the label `ci:macos` sets `macos` and the label `ci:e2e` sets `e2e`
+  # (read from the event, so add the label, then push or close and
+  # reopen). `e2e` is false for a change no leg reads, such as one to the
+  # framework's own tests (test/*.rb and their snapshots) or to the CRuby
+  # preview alone; script/ci-changes prints it true only with `framework`,
+  # so the e2e jobs read `e2e` alone and the label runs the legs even when
+  # `framework` is false.
   # A release run (a run on a tag: this file's own push runs only on main)
   # runs everything, and so does a run whose changed files cannot be listed.
   changes:
@@ -136,6 +148,10 @@ jobs:
       preview_e2e: ${{ steps.decide.outputs.preview_e2e }}
       macos: ${{ steps.decide.outputs.macos }}
       setup_action: ${{ steps.decide.outputs.setup_action }}
+      e2e: ${{ steps.decide.outputs.e2e }}
+      # The legs of the e2e job's matrix, from script/e2e-legs (the list
+      # spinel-candidate.yml reads too).
+      e2e_legs: ${{ steps.legs.outputs.legs }}
     steps:
       # Two commits: on a pull request the checkout is the merge commit, whose
       # first parent is the base branch; on main, the commit before a merge.
@@ -143,6 +159,10 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 2
+
+      - name: List the end-to-end legs
+        id: legs
+        run: echo "legs=$(script/e2e-legs --json)" | tee -a "$GITHUB_OUTPUT"
 
       - name: Decide from the changed files
         id: decide
@@ -153,6 +173,7 @@ jobs:
           BEFORE: ${{ github.event.before }}
           MERGE_GROUP_BASE: ${{ github.event.merge_group.base_sha }}
           MACOS_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:macos') }}
+          E2E_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'ci:e2e') }}
         run: |
           base=""
           if [ "$REF_TYPE" = tag ]; then
@@ -176,6 +197,7 @@ jobs:
               echo "preview_e2e=true"
               echo "macos=true"
               echo "setup_action=true"
+              echo "e2e=true"
             } >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -184,11 +206,18 @@ jobs:
           sed 's/^/  /' "$RUNNER_TEMP/changed"
           script/ci-changes < "$RUNNER_TEMP/changed" > "$RUNNER_TEMP/decided"
           if [ "$EVENT" != pull_request ]; then
-            echo "not a pull request: the macOS legs and setup-cybertrain run whatever changed"
-            sed -i 's/^macos=.*/macos=true/; s/^setup_action=.*/setup_action=true/' "$RUNNER_TEMP/decided"
-          elif [ "$MACOS_LABEL" = true ]; then
-            echo "label ci:macos: the macOS legs run"
-            sed -i 's/^macos=.*/macos=true/' "$RUNNER_TEMP/decided"
+            echo "not a pull request: the macOS legs and setup-cybertrain run whatever changed, the end-to-end legs whenever framework does"
+            framework=$(sed -n 's/^framework=//p' "$RUNNER_TEMP/decided")
+            sed -i "s/^macos=.*/macos=true/; s/^setup_action=.*/setup_action=true/; s/^e2e=.*/e2e=$framework/" "$RUNNER_TEMP/decided"
+          else
+            if [ "$MACOS_LABEL" = true ]; then
+              echo "label ci:macos: the macOS legs run"
+              sed -i 's/^macos=.*/macos=true/' "$RUNNER_TEMP/decided"
+            fi
+            if [ "$E2E_LABEL" = true ]; then
+              echo "label ci:e2e: the end-to-end legs run"
+              sed -i 's/^e2e=.*/e2e=true/' "$RUNNER_TEMP/decided"
+            fi
           fi
           tee -a "$GITHUB_OUTPUT" < "$RUNNER_TEMP/decided"
 
@@ -452,61 +481,77 @@ jobs:
   # runner per leg, since every leg is one or a few compiles of a whole
   # application, each single-threaded, and the legs share nothing. They
   # used to be the steps of one job, `test`, which took more than 135
-  # minutes on Spinel 2026.11.23.7035 (CI run 45170129576). Each leg makes
+  # minutes on Spinel 2026.11.23.7035 (CI run 45170129576). The legs are
+  # script/e2e-legs's list, read by the `changes` job into this matrix (and
+  # by spinel-candidate.yml into its own); each leg runs as
+  # `script/e2e-legs run LEG`, which a contributor can run too. Each makes
   # its applications in a scratch directory with this checkout as their
   # framework:
   #
-  #   auth-*       script/auth-e2e, one variant each: a new app with a
-  #                scaffold and `generate authentication` (sign-up,
-  #                --invite-only, --confirmable), every test the app has
-  #                run by `cybertrain test`, the binary served and probed
-  #                with curl and the user command, the mails (reset; with
+  #   auth-*       script/auth-e2e: auth-signup, auth-invite and
+  #                auth-confirmable each a new app with a scaffold and
+  #                `generate authentication` (sign-up, --invite-only,
+  #                --confirmable), every test the app has run by
+  #                `cybertrain test`, the binary served and probed with
+  #                curl and the user command, the mails (reset; with
   #                --confirmable the confirmations) through an SMTP
-  #                receiver, the account page; and upgrade04, the generator
-  #                over test/fixtures/auth_04_app (an app v0.4.1 generated):
-  #                its diffs applied with patch, or --force, or with
-  #                --confirmable over a migrated copy, then every test
-  #                passing. The sign-up leg runs the installed gem's CLI
-  #                (CYBERTRAIN_E2E_CLI=gem), the others this checkout's.
-  #                About 12 to 16 minutes each.
+  #                receiver, the account page. auth-upgrade04: the
+  #                generator over test/fixtures/auth_04_app (an app v0.4.1
+  #                generated), its diffs applied with patch, built and
+  #                every test passing; then --force over another copy,
+  #                whose tree must equal a patched copy's file for file
+  #                (but for the generator's output, patch's log and the
+  #                migration's timestamp), so it is not built on its own
+  #                (until 2026-11-24 it was a leg of its own, a second
+  #                build of the same tree). auth-upgrade04-confirmable:
+  #                --confirmable over a migrated copy with a 0.4 user; the
+  #                concern refusing an unconfirmed account through 0.4's
+  #                sessions controller (one test program; that state's
+  #                release build is no longer made), then the fully
+  #                patched app built and every test passing. The sign-up
+  #                leg runs the installed gem's CLI (script/e2e-legs says
+  #                which CLI each leg runs), the others this checkout's.
+  #                About 10 to 13 minutes each.
   #   generators   script/generators-e2e: a scaffold of every column type,
   #                a references field, a component, a helper, a job and a
   #                scaffold with an attachment, `cybertrain test` (every
   #                generated test passes), build, gen --check, then the
   #                attachment uploaded through the served binary and
-  #                downloaded with send_blob's headers. About 7 minutes.
+  #                downloaded with send_blob's headers. About 10 minutes.
   #   test-command script/test-command-e2e (`cybertrain test`'s filters,
-  #                failures and exits on test/fixtures/test_app), then the
-  #                framework as a git dependency. About 14 minutes.
+  #                failures and exits on test/fixtures/test_app, two
+  #                compiles: the failing and the sentry test share the
+  #                second since 2026-11-24), then the framework as a git
+  #                dependency (the step below, this workflow's alone).
+  #                About 12 minutes.
   #   blog         examples/blog: gen/ fresh, its tests, gen --check. About
-  #                8 minutes, most of it the blog's one test program.
+  #                6 minutes, most of it the blog's one test program, which
+  #                gcc compiles at spinel's default -O2, as `cybertrain
+  #                test` always does: gen writes one small method per test,
+  #                so no C function holds every test (6m09s for the whole
+  #                leg locally, 4 cores, 7033, where one run_case holding
+  #                them all took gcc 31 minutes; docs/design.md, D34, the
+  #                statuses of 2026-11-24).
   #
   # Every script prints the seconds elapsed on each line (`+Ns`), so a log
   # shows which phase took the time.
+  #
+  # The legs run only when `e2e` says so: on a pull request, a change that
+  # can reach what a generated application compiles, runs or serves
+  # (script/ci-changes has the rule; a change to the framework's own test
+  # programs or their snapshots alone is not one), or the label `ci:e2e`,
+  # which runs them whatever changed; on any other event, whenever
+  # `framework` is true.
+  # Skipped, the job is `skipped` and CI's run still concludes `success`,
+  # which is what `required` (required.yml) reads.
   e2e:
     needs: changes
-    if: needs.changes.outputs.framework == 'true'
+    if: needs.changes.outputs.e2e == 'true'
     name: e2e (${{ matrix.leg }})
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - leg: auth-signup
-            auth: signup
-            cli: gem
-          - leg: auth-invite
-            auth: invite
-          - leg: auth-confirmable
-            auth: confirmable
-          - leg: auth-upgrade04-patch
-            auth: upgrade04-patch
-          - leg: auth-upgrade04-force
-            auth: upgrade04-force
-          - leg: auth-upgrade04-confirmable
-            auth: upgrade04-confirmable
-          - leg: generators
-          - leg: test-command
-          - leg: blog
+        leg: ${{ fromJSON(needs.changes.outputs.e2e_legs) }}
     runs-on: ubuntu-26.04
     # Provisional until the first runs of the legs are read: the legs are
     # expected to take 10 to 25 minutes.
@@ -523,20 +568,12 @@ jobs:
       # `cybertrain`, so the gem's file list is tested where users meet it.
       - uses: ./.github/actions/setup-spinel
 
-      - name: Authentication end to end (${{ matrix.auth }})
-        if: matrix.auth
+      - name: End to end (${{ matrix.leg }})
         env:
-          VARIANT: ${{ matrix.auth }}
-          CYBERTRAIN_E2E_CLI: ${{ matrix.cli || 'checkout' }}
-        run: script/auth-e2e "$VARIANT"
-
-      - name: Generated applications' tests pass
-        if: matrix.leg == 'generators'
-        run: script/generators-e2e
-
-      - name: cybertrain test end to end
-        if: matrix.leg == 'test-command'
-        run: script/test-command-e2e
+          LEG: ${{ matrix.leg }}
+        run: |
+          spinel --version
+          script/e2e-legs run "$LEG"
 
       # What `cybertrain new` does for users: the framework as a git
       # dependency that spin fetches and locks (here this checkout, at a
@@ -554,52 +591,16 @@ jobs:
           cybertrain db migrate
           SPIN_DEBUG=1 cybertrain spin run gen -- --check
 
-      # `git status`, not `git diff`: a file the generator writes that was
-      # never committed is untracked, and `git diff` does not see it.
-      - name: Generated code is fresh (examples/blog)
-        if: matrix.leg == 'blog'
-        run: |
-          cd examples/blog
-          # SPIN_DEBUG=1: the mode the cybertrain CLI builds gen in, so the
-          # step below reuses this gen binary.
-          SPIN_DEBUG=1 spin run gen
-          changed=$(git status --porcelain --untracked-files=all -- gen/)
-          if [ -n "$changed" ]; then
-            echo "examples/blog/gen/ is not what \`spin run gen\` writes (M changed, D gone, ?? never committed):"
-            echo "$changed"
-            git diff -- gen/
-            exit 1
-          fi
-
-      # Every test of the blog (test/**/*_test.rb: Rails-shaped classes on
-      # test/fixtures) in one program, then gen --check. `cybertrain test`
-      # has just run gen, so the check cannot prove gen/ is as committed
-      # (the "Generated code is fresh" step above is that guard); it proves
-      # the test run wrote nothing gen would not write. SPIN_DEBUG=1: the
-      # mode `cybertrain test` builds gen in, so gen is not built again.
-      #
-      # The blog's one test program is compiled by gcc, the runner's `cc`,
-      # at spinel's default -O2, as `cybertrain test` always compiles it.
-      # gen writes one small method per test, so no C function holds every
-      # test: 6m09s for the whole step locally (4 cores, 7033), where one
-      # run_case holding them all took gcc 31 minutes (docs/design.md, D34,
-      # the statuses of 2026-11-24).
-      - name: Example app tests
-        if: matrix.leg == 'blog'
-        run: |
-          cd examples/blog
-          cybertrain test
-          SPIN_DEBUG=1 spin run gen -- --check
-
   # The one end-to-end leg on macOS: script/auth-e2e's sign-up variant, the
   # whole toolchain path an application takes there (a new app, the
   # generators, `cybertrain test`, build, the binary served, the mail sent
-  # by its job thread), through the installed gem as on Ubuntu. The other
-  # legs of `e2e` exercise the generators and the test command, whose
-  # output does not depend on the system. Runs when `macos` says so.
+  # by its job thread), through the installed gem as on Ubuntu (the leg
+  # auth-signup of script/e2e-legs). The other legs of `e2e` exercise the
+  # generators and the test command, whose output does not depend on the
+  # system. Runs when both `macos` and `e2e` say so.
   e2e-macos:
     needs: changes
-    if: needs.changes.outputs.framework == 'true' && needs.changes.outputs.macos == 'true'
+    if: needs.changes.outputs.macos == 'true' && needs.changes.outputs.e2e == 'true'
     runs-on: macos-latest
     # Provisional until the first runs are read: script/auth-e2e's six
     # variants took 52 minutes together on macOS in the old `test` job
@@ -612,10 +613,8 @@ jobs:
 
       - uses: ./.github/actions/setup-spinel
 
-      - name: Authentication end to end (signup)
-        env:
-          CYBERTRAIN_E2E_CLI: gem
-        run: script/auth-e2e signup
+      - name: Authentication end to end (auth-signup)
+        run: script/e2e-legs run auth-signup
 
   # The action applications use (.github/actions/setup-cybertrain, which the
   # workflow `cybertrain new` writes calls at a release tag), run from this
