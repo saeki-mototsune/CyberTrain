@@ -39,124 +39,201 @@ module Gen
     CASE_NAME = ["renders the title", "renders the form partial", "a new article is broadcast", "a new article answers with a Turbo Stream", "lists the rows", "shows one through its path helper", "creates one and follows the redirect", "an unknown path fails with the top-level form's message", "shows the form for a new one", "mail is stored, not sent", "deliveries start empty and deliver_later counts", "a job queued in the block runs, and the mail it queues", "title must be present", "belongs to its author", "keeps a boolean, a datetime and a decimal", "starts from empty tables", "a slug from the support helper", "fixtures: a test changes and adds rows", "fixtures: the next test sees exactly the fixture rows"].freeze
     CASE_METHOD = ["test_renders_the_title", "test_renders_the_form_partial", "test_a_new_article_is_broadcast", "test_a_new_article_answers_with_a_Turbo_Stream", "test_lists_the_rows", "test_shows_one_through_its_path_helper", "test_creates_one_and_follows_the_redirect", "test_an_unknown_path_fails_with_the_top_level_form_s_message", "test_shows_the_form_for_a_new_one", "test_mail_is_stored__not_sent", "test_deliveries_start_empty_and_deliver_later_counts", "test_a_job_queued_in_the_block_runs__and_the_mail_it_queues", "test_title_must_be_present", "test_belongs_to_its_author", "test_keeps_a_boolean__a_datetime_and_a_decimal", "test_starts_from_empty_tables", "test_a_slug_from_the_support_helper", "test_fixtures__a_test_changes_and_adds_rows", "test_fixtures__the_next_test_sees_exactly_the_fixture_rows"].freeze
 
-    # Runs the class-form test i: before_case, run_body, after_case.
+    # Runs the class-form test i through its method, case_<i>.
     def self.run_case(i)
       case i
-      when 0
-        t = CardComponentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_renders_the_title }
-        end
-        Cybertrain::Test.after_case(t)
-      when 1
-        t = CardComponentTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_renders_the_form_partial }
-        end
-        Cybertrain::Test.after_case(t)
-      when 2
-        t = ArticleStreamsTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_new_article_is_broadcast }
-        end
-        Cybertrain::Test.after_case(t)
-      when 3
-        t = ArticleStreamsTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_new_article_answers_with_a_Turbo_Stream }
-        end
-        Cybertrain::Test.after_case(t)
-      when 4
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_lists_the_rows }
-        end
-        Cybertrain::Test.after_case(t)
-      when 5
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_shows_one_through_its_path_helper }
-        end
-        Cybertrain::Test.after_case(t)
-      when 6
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_creates_one_and_follows_the_redirect }
-        end
-        Cybertrain::Test.after_case(t)
-      when 7
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_an_unknown_path_fails_with_the_top_level_form_s_message }
-        end
-        Cybertrain::Test.after_case(t)
-      when 8
-        t = ArticlesControllerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_shows_the_form_for_a_new_one }
-        end
-        Cybertrain::Test.after_case(t)
-      when 9
-        t = NewsMailerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_mail_is_stored__not_sent }
-        end
-        Cybertrain::Test.after_case(t)
-      when 10
-        t = NewsMailerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_deliveries_start_empty_and_deliver_later_counts }
-        end
-        Cybertrain::Test.after_case(t)
-      when 11
-        t = NewsMailerTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_job_queued_in_the_block_runs__and_the_mail_it_queues }
-        end
-        Cybertrain::Test.after_case(t)
-      when 12
-        t = ArticleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_title_must_be_present }
-        end
-        Cybertrain::Test.after_case(t)
-      when 13
-        t = ArticleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_belongs_to_its_author }
-        end
-        Cybertrain::Test.after_case(t)
-      when 14
-        t = ArticleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_keeps_a_boolean__a_datetime_and_a_decimal }
-        end
-        Cybertrain::Test.after_case(t)
-      when 15
-        t = ArticleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_starts_from_empty_tables }
-        end
-        Cybertrain::Test.after_case(t)
-      when 16
-        t = ArticleTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_a_slug_from_the_support_helper }
-        end
-        Cybertrain::Test.after_case(t)
-      when 17
-        t = ArticleFixturesTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_fixtures__a_test_changes_and_adds_rows }
-        end
-        Cybertrain::Test.after_case(t)
-      when 18
-        t = ArticleFixturesTest.new
-        if Cybertrain::Test.before_case(t)
-          Cybertrain::Test.run_body(t) { t.test_fixtures__the_next_test_sees_exactly_the_fixture_rows }
-        end
-        Cybertrain::Test.after_case(t)
+      when 0 then case_0
+      when 1 then case_1
+      when 2 then case_2
+      when 3 then case_3
+      when 4 then case_4
+      when 5 then case_5
+      when 6 then case_6
+      when 7 then case_7
+      when 8 then case_8
+      when 9 then case_9
+      when 10 then case_10
+      when 11 then case_11
+      when 12 then case_12
+      when 13 then case_13
+      when 14 then case_14
+      when 15 then case_15
+      when 16 then case_16
+      when 17 then case_17
+      when 18 then case_18
       end
+      nil
+    end
+
+    # case_N runs the class-form test N: before_case, run_body, after_case.
+    def self.case_0
+      t = CardComponentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_renders_the_title }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_1
+      t = CardComponentTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_renders_the_form_partial }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_2
+      t = ArticleStreamsTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_new_article_is_broadcast }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_3
+      t = ArticleStreamsTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_new_article_answers_with_a_Turbo_Stream }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_4
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_lists_the_rows }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_5
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_shows_one_through_its_path_helper }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_6
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_creates_one_and_follows_the_redirect }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_7
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_an_unknown_path_fails_with_the_top_level_form_s_message }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_8
+      t = ArticlesControllerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_shows_the_form_for_a_new_one }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_9
+      t = NewsMailerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_mail_is_stored__not_sent }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_10
+      t = NewsMailerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_deliveries_start_empty_and_deliver_later_counts }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_11
+      t = NewsMailerTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_job_queued_in_the_block_runs__and_the_mail_it_queues }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_12
+      t = ArticleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_title_must_be_present }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_13
+      t = ArticleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_belongs_to_its_author }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_14
+      t = ArticleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_keeps_a_boolean__a_datetime_and_a_decimal }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_15
+      t = ArticleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_starts_from_empty_tables }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_16
+      t = ArticleTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_a_slug_from_the_support_helper }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_17
+      t = ArticleFixturesTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_fixtures__a_test_changes_and_adds_rows }
+      end
+      Cybertrain::Test.after_case(t)
+      nil
+    end
+
+    def self.case_18
+      t = ArticleFixturesTest.new
+      if Cybertrain::Test.before_case(t)
+        Cybertrain::Test.run_body(t) { t.test_fixtures__the_next_test_sees_exactly_the_fixture_rows }
+      end
+      Cybertrain::Test.after_case(t)
       nil
     end
 
