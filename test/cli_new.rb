@@ -215,6 +215,8 @@ test "the Dockerfile builds dist/ in the image and runs it on 0.0.0.0:3000" do
   assert_includes dockerfile, "RUN gem install cybertrain -v #{Cybertrain::VERSION} --no-document && cybertrain setup"
   assert_includes dockerfile, "RUN cybertrain build"
   assert_includes dockerfile, "COPY --from=build --chown=app:app /src/dist/ /app/"
+  # The runtime stage has the zone files a configured time zone is read from.
+  assert_includes dockerfile, "libsqlite3-0 zlib1g libjemalloc2 libssl3t64 tzdata"
   assert_includes dockerfile, "CYBERTRAIN_HOST=0.0.0.0"
   assert_includes dockerfile, "EXPOSE 3000"
   # the ENV line itself, not the comment above it

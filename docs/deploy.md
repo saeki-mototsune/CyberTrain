@@ -1063,7 +1063,9 @@ kamal-proxy はすでに http を https にリダイレクトし、アプリに�
 リリースのファイルを新しいコンテナへ引き継ぎ、切り替えの間も、デプロイ前に読み込んだページが
 HTML に書かれたファイルを取得できます。古い cybertrain で作った `config/deploy.yml` にはこの行を
 足してください。どのアプリも OpenSSL をリンクするようになったので、その `Dockerfile` には
-ビルド段に `libssl-dev`、実行段に `libssl3t64` も要ります。
+ビルド段に `libssl-dev`、実行段に `libssl3t64` も要ります。アプリがタイムゾーンを設定している
+（`c.time_zone`）なら、実行段に `tzdata` も要ります。ゾーンのファイルが無いと、アプリは起動時に
+`time_zone "..." is not a known time zone` で止まります。
 
 ### 8-3. 秘密鍵を用意する
 

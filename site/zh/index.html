@@ -80,11 +80,11 @@
     <div class="hero-copy">
       <div class="hero-main">
         <p class="tagline">Rails 风格的 Web 应用，编译为单个原生二进制文件。</p>
-        <p class="pitch">CyberTrain 是一个 Rails 风格的 Web 应用框架，专为 matz 开发的 Ruby AOT 编译器 Spinel 原生编写。你沿用熟悉的词汇（<code>resources</code>、<code>before_action</code>、<code>validates</code>、<code>form_with</code>、脚手架），而 <code>cybertrain build</code> 会把控制器、模型、视图以及框架本身编译成单个原生二进制文件，产物中没有 Rack、没有运行时 gem，也没有 Ruby 解释器。</p>
+        <p class="pitch">像在 Rails 里一样编写路由、控制器、模型和 ERB 视图，脚手架也一样。<code>cybertrain build</code> 通过 matz 的 Ruby 预先编译器 Spinel，把它们连同框架一起编译成一个原生二进制文件：生产环境中没有 Rack，没有 gem，也没有 Ruby 解释器。</p>
         <div class="cta-row">
-          <a class="btn btn-primary" href="tutorial.html">开始使用<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+          <a class="btn btn-primary" href="tutorial.html">开始教程<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
           <a class="btn btn-ghost" href="playground.html">在浏览器中试用</a>
-          <a class="btn btn-ghost" href="https://github.com/saeki-mototsune/CyberTrain" rel="noopener">在 GitHub 上查看</a>
+          <a class="btn btn-ghost" href="guide/index.html">阅读指南</a>
         </div>
       </div>
       <div class="hero-term" id="quick-start">
@@ -92,23 +92,23 @@
         <figure class="code code-term" data-lang="shell">
 <figcaption><span class="code-path">终端 &mdash; 任意目录，之后在&nbsp;blog/</span><span class="code-lang">shell</span></figcaption>
 <pre tabindex="0" role="region" aria-label="代码：快速上手终端"><code><span class="ln cmd">gem install cybertrain</span>
-<span class="ln cmd">cybertrain new blog          <span class="c"># 首次运行时安装 Spinel（需要几分钟）</span></span>
+<span class="ln cmd">cybertrain new blog  <span class="c"># 首次运行时安装 Spinel（几分钟）</span></span>
 <span class="ln cmd">cd blog</span>
 <span class="ln cmd">cybertrain g scaffold article title:string body:text</span>
 <span class="ln cmd">cybertrain db migrate</span>
-<span class="ln cmd">cybertrain server            <span class="c"># http://127.0.0.1:3000/articles</span></span>
-<span class="ln cmd">cybertrain build             <span class="c"># 生产环境：dist/blog、dist/public/、dist/storage/、dist/tmp/</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
+<span class="ln cmd">cybertrain server    <span class="c"># http://127.0.0.1:3000/articles</span></span>
+<span class="ln cmd">cybertrain build     <span class="c"># 生产环境：dist/ 中的一个二进制文件</span></span><span class="term-cursor" aria-hidden="true"></span></code></pre>
 </figure>
-        <p class="term-note"><code>cybertrain</code> 命令和开发时的 CRuby 预览需要 Ruby&nbsp;3.2+（预览还会加载 <code>fiddle</code>；生产环境不需要 Ruby），此外还需要 <code>git</code>、<code>make</code>、<code>curl</code>、C 编译器以及 SQLite&nbsp;3、zlib 和 OpenSSL 的头文件：参见<a href="guide/install.html#requirements">开始之前</a>。设置好 <code>CYBERTRAIN_SECRET_KEY_BASE</code> 后，用 <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code> 运行构建产物。</p>
+        <p class="term-note">需要 Ruby&nbsp;3.2+（带 <code>fiddle</code>）、<code>git</code>、<code>make</code>、<code>curl</code>、C 编译器，以及 SQLite&nbsp;3、zlib 和 OpenSSL 的头文件；<code>cybertrain doctor</code> 会检查它们（<a href="guide/install.html#requirements">环境要求</a>）。构建产物本身不需要 Ruby：设置好 <code>CYBERTRAIN_SECRET_KEY_BASE</code> 后运行 <code>cd dist &amp;&amp; ./blog migrate &amp;&amp; ./blog</code>。</p>
       </div>
     </div>
   </div>
   <div class="wrap">
-    <ul class="spec-strip" aria-label="概览">
-      <li><span class="spec-k">服务器</span><span class="spec-v">HTTP/1.1，无 Rack</span></li>
-      <li><span class="spec-k">运行时</span><span class="spec-v">无 gem，无解释器</span></li>
-      <li><span class="spec-k">数据库</span><span class="spec-v">经 Spinel FFI 访问 SQLite</span></li>
-      <li><span class="spec-k">CI</span><span class="spec-v">Linux 和 macOS</span></li>
+    <ul class="spec-strip spec-why" aria-label="为什么选择 CyberTrain">
+      <li><span class="spec-k">Rails 风格</span><span class="spec-v">熟悉的词汇</span><span class="spec-d"><code>resources</code>、<code>before_action</code>、<code>validates</code>、<code>form_with</code> 和脚手架，与 Rails 一样。</span></li>
+      <li><span class="spec-k">一个二进制文件</span><span class="spec-v">生产环境无需 Ruby</span><span class="spec-d">你的应用和框架被编译进 <code>dist/</code>：没有 Rack，没有 gem，没有解释器。</span></li>
+      <li><span class="spec-k">快速而轻量</span><span class="spec-v">与 Rails 8.1 对比实测</span><span class="spec-d">每秒处理更多请求，只用一小部分内存：<a href="#performance">看数据</a>。</span></li>
+      <li><span class="spec-k">部署简单</span><span class="spec-v">一个二进制文件，一个 SQLite 文件</span><span class="spec-d">放在 Caddy 或 kamal-proxy 后面；<code>cybertrain new</code> 会写好 Kamal 配置。<a href="deploy.html">部署</a>。</span></li>
     </ul>
     <div class="is-not">
       <div class="is-not-head">
@@ -116,7 +116,7 @@
         <p class="is-not-intro">面向想要单个原生二进制文件、并且能接受一个年轻项目和 Ruby 子集的 Rails 开发者。</p>
       </div>
       <ul class="not-list">
-        <li><h3>不兼容 Rails 或 Rack</h3><p>没有 Rack 兼容性，运行时也没有 gem：只能使用 Spinel 自己的、能在其 Ruby 子集下编译的 <code>spin-index</code> 包。</p></li>
+        <li><h3>不能原样运行 Rails 代码</h3><p>应用用 Spinel 的 Ruby 子集、针对 CyberTrain 的 API 编写：没有 Rack，运行时除了 Spinel 自己的 <code>spin-index</code> 包之外也没有 gem。手工移植 Rails 应用是目标之一，由 Rails 应用创建的 SQLite 数据库可以<a href="guide/models.html#taking-over-a-database-rails-created">原样接管</a>。</p></li>
         <li><h3>尚不可用于生产</h3><p>CyberTrain 处于预 Alpha 阶段。示例博客由 CI 在 Linux 和 macOS 上运行测试。</p></li>
       </ul>
     </div>
@@ -225,55 +225,29 @@
   <div class="wrap"><div class="sec-grid">
     <div class="sec-head"><span class="sec-num" aria-hidden="true">02</span><p class="sec-label">现已可用</p></div>
     <div class="sec-body">
-      <h2 id="feat-h">你最先会用到的那部分 Rails，为 Spinel 原生编写。</h2>
+      <h2 id="feat-h">在 Rails 里最先用到的东西，这里都有。</h2>
+      <p class="lead">下面列出的一切如今都能端到端地工作，Rails Getting Started 的博客 <code>examples/blog</code> 就构建在它之上。作业、Turbo Streams、feeds、邮件、缓存、限流和错误报告各只需一行 <code>require</code>，应用只编译它用到的部分。</p>
     </div>
     <ul class="features sec-full">
-      <li class="feature"><span class="feat-idx" aria-hidden="true">01</span><h3>原生 HTTP 服务器</h3><p>纯 Ruby 编写的 HTTP/1.1 服务器，每个连接一个绿色线程，请求和响应都带有类型。没有 Rack 层；需要 TLS 时在前面放 nginx 或 Caddy。</p><p class="feat-ref"><code>TCPServer#accept</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">02</span><h3>路由与控制器</h3><p><code>resources</code>、嵌套路由、<code>before_action</code>、<code>after_action</code> 和 <code>rescue_from</code>，在构建时生成为纯 Ruby。强参数和“先 flash 再重定向”的用法与 Rails 相同。</p><p class="feat-ref"><code>config/routes.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">03</span><h3>会话、flash、CSRF</h3><p>加密的 cookie 会话（AES-256-GCM）、flash 消息和 CSRF 防护默认开启。表单会自动携带令牌；伪造的 POST 请求会得到 403。</p><p class="feat-ref"><code>_cybertrain_session</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">04</span><h3>类 ERB 模板</h3><p>视图看起来就像 Rails 的 ERB，支持布局、局部视图、<code>form_with</code> 和 <code>link_to</code>。开发时从磁盘读取，所以修改后无需重新构建。<code>cybertrain build</code> 会把它们嵌入。</p><p class="feat-ref"><code>app/views/**/*.html.erb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">05</span><h3>SQLite 模型</h3><p>验证、回调，以及由外键推导出的关联。通过 Spinel 的 FFI 和连接池访问 SQLite；所有查询都使用参数绑定。</p><p class="feat-ref"><code>ffi_func · ffi_lib</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">06</span><h3>迁移与脚手架</h3><p><code>cybertrain generate scaffold</code> 会写出迁移、模型、控制器和五个视图。<code>cybertrain db migrate</code> 先生成代码，再执行迁移、重写 <code>db/schema.rb</code>，然后再次生成。</p><p class="feat-ref"><code>db/migrate/*.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">07</span><h3>实时开发循环</h3><p><code>cybertrain server</code> 监视你的代码：Ruby 改动后，CRuby 预览在一秒内响应，同时 Spinel 在后台构建；构建完成后，编译好的二进制文件接管同一端口。构建失败时预览继续提供服务，并显示编译器输出。</p><p class="feat-ref"><code>X-Cybertrain-Runtime: cruby|spinel</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">08</span><h3>测试</h3><p>Rails 风格的测试类（<code>ActiveSupport::TestCase</code>、<code>ActionDispatch::IntegrationTest</code>）和 fixtures，由生成器写好。<code>cybertrain test</code> 把它们编译成一个程序并运行。</p><p class="feat-ref"><code>test/**/*_test.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">09</span><h3>后台作业</h3><p>带重试、cron 计划和作业页面的作业类，保存在应用的 SQLite 数据库里。<code>./blog worker</code> 在单独的进程中运行它们。</p><p class="feat-ref"><code>app/jobs/*.rb</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">10</span><h3>Turbo Streams</h3><p>视图里的 <code>turbo_stream_from</code>，以及动作或作业里的 <code>broadcast_append_to</code>，通过 Server-Sent Events 或 WebSocket 送达。</p><p class="feat-ref"><code>require "cybertrain/streams"</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">11</span><h3>登录与上传</h3><p><code>cybertrain generate authentication</code>（注册或仅限邀请、重置密码、邮箱确认）和 <code>cybertrain generate attachment</code> 写出的代码归你所有，可以随意修改。</p><p class="feat-ref"><code>cybertrain generate</code></p></li>
-      <li class="feature"><span class="feat-idx" aria-hidden="true">12</span><h3>只编译用到的部分</h3><p>作业、Turbo Streams、feeds、邮件、缓存和速率限制各是一行 <code>require</code>；新应用只编译核心。</p><p class="feat-ref"><code>require "cybertrain/core"</code></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">01</span><h3>路由和控制器</h3><p><code>resources</code>、命名空间、格式与 <code>respond_to</code>、<code>before_action</code>、concern 和 strong parameters，在构建时生成为普通的 Ruby 代码。</p><p class="feat-ref"><a href="guide/requests.html">请求</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">02</span><h3>ERB 视图和组件</h3><p>布局、局部模板、<code>form_with</code>、数字和 Turbo 辅助方法、视图组件和应用辅助方法。开发环境下视图从磁盘读取，修改后无需重新构建。</p><p class="feat-ref"><a href="guide/template-language.html">模板语言</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">03</span><h3>SQLite 模型</h3><p>迁移、Rails 的验证器、来自外键或一行声明的关联及 <code>includes</code>、decimal、json 和 date 列、加密列。每个查询都使用绑定参数。</p><p class="feat-ref"><a href="guide/models.html">模型与数据库</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">04</span><h3>脚手架和生成器</h3><p><code>cybertrain generate scaffold</code> 会写出迁移、模型、控制器、视图和测试；辅助方法、组件和作业也有生成器。生成的代码归你所有，可随意修改。</p><p class="feat-ref"><a href="guide/install.html#the-cybertrain-command">cybertrain 命令</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">05</span><h3>实时开发循环</h3><p><code>cybertrain server</code> 监视你的代码；修改 Ruby 后，CRuby 预览会在一秒内响应，同时 Spinel 在后台构建；随后编译好的二进制文件接管同一个端口。构建失败时，预览继续提供服务，并显示编译器输出。</p><p class="feat-ref"><a href="guide/how-it-works.html#the-development-loop">开发循环</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">06</span><h3>生成登录功能</h3><p><code>cybertrain generate authentication</code> 会把登录、注册或仅限邀请、密码重置、邮箱确认、账户锁定、记住我、账户页面和管理员用户写进你的应用。</p><p class="feat-ref"><a href="guide/authentication.html">认证</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">07</span><h3>安全的默认设置</h3><p>加密 cookie 会话（AES-256-GCM）、flash 和 CSRF 防护默认开启；内容安全策略、<code>force_ssl</code>、主机检查和限流也都已内置。</p><p class="feat-ref"><a href="guide/requests.html#cookies-and-the-session">Cookie 与会话</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">08</span><h3>后台作业</h3><p>带重试、<code>every</code> 和 <code>cron</code> 调度以及作业页面的作业类，保存在应用的 SQLite 数据库中。<code>./blog worker</code> 在单独的进程中运行它们。</p><p class="feat-ref"><a href="guide/background-and-operations.html">后台任务</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">09</span><h3>Turbo Streams</h3><p>视图中的 <code>turbo_stream_from</code>，以及来自动作或作业的 <code>broadcast_append_to</code>，通过 Server-Sent Events 或 WebSocket 推送。</p><p class="feat-ref"><a href="guide/realtime.html">实时</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">10</span><h3>资源和翻译</h3><p>带摘要的样式表、图片和 JavaScript，以及 import map；Rails 的 <code>t</code> 和 <code>l</code>，词典在编译时内置，自带英语和日语。</p><p class="feat-ref"><a href="guide/assets.html">资源</a> <span aria-hidden="true">&middot;</span> <a href="guide/i18n.html">国际化</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">11</span><h3>测试</h3><p>Rails 风格的测试类（<code>ActiveSupport::TestCase</code>、<code>ActionDispatch::IntegrationTest</code>），配合 fixture、<code>assert_select</code> 和时间旅行；生成器会写好测试。<code>cybertrain test</code> 把它们编译成一个程序并运行。</p><p class="feat-ref"><a href="guide/testing.html">测试</a></p></li>
+      <li class="feature"><span class="feat-idx" aria-hidden="true">12</span><h3>日志、错误和外部调用</h3><p>带请求 ID 和标签的日志行、供日志收集器使用的 JSON 行、发送到 Sentry 或 GlitchTip 的错误报告，以及用于调用外部服务的 HTTP、SMTP 和 WebSocket 客户端。</p><p class="feat-ref"><a href="guide/logs-and-errors.html">日志与错误</a> <span aria-hidden="true">&middot;</span> <a href="guide/external-services.html">出站调用</a></p></li>
     </ul>
-  </div></div>
-</section>
-
-<section class="sec" id="framework-and-cli" aria-labelledby="parts-h">
-  <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">03</span><p class="sec-label">框架与 CLI</p></div>
-    <div class="sec-body">
-      <h2 id="parts-h">一个名字，两个部分。</h2>
-      <p class="lead"><code>gem install cybertrain</code> 安装的是一个命令，而不是框架。框架是一个 Spinel 包，你的应用依赖它并把它编译进来。这个 gem 提供 <code>cybertrain</code> 命令，它会替你创建应用、安装 Spinel 并运行 Spinel 的工具。</p>
-    </div>
-    <div class="sec-full parts">
-      <article class="part" aria-labelledby="part-fw">
-        <div class="part-head"><p class="part-k">Spinel 包</p><h3 id="part-fw">框架</h3></div>
-        <p class="part-what">你的应用所基于的库。</p>
-        <div class="part-fact"><p class="fact-k">包含什么</p><p>HTTP 服务器、路由和控制器、会话与 CSRF 防护、模板解释器、SQLite 模型和迁移、可选的子系统（作业、Turbo Streams、邮件、缓存）、测试框架，以及 <code>spin run gen</code> 背后的代码生成器。</p></div>
-        <div class="part-fact"><p class="fact-k">如何获取</p><p>你不需要安装它。你的应用的 <code>spin.toml</code> 指定本仓库与你的 <code>cybertrain</code> 命令相对应的发布标签，<code>spin lock</code> 会把它拉取到 spin 的缓存中，并在 <code>spin.lock</code> 中锁定提交。不会有任何内容被复制到你的应用中。</p></div>
-      </article>
-      <article class="part" aria-labelledby="part-cli">
-        <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli"><code>cybertrain</code> 命令</h3></div>
-        <p class="part-what">用来创建、构建和运行你的应用的工具。</p>
-        <div class="part-fact"><p class="fact-k">包含什么</p><p>只有 <code>cybertrain</code> 命令：<code>new</code>、<code>generate</code>（scaffold、authentication、attachment、job、component、helper）、<code>db</code>、<code>server</code>、<code>build</code>、<code>test</code>、<code>secret</code>、<code>spin</code>、<code>setup</code> 和 <code>doctor</code>。框架和 Spinel 都不在这个 gem 里。</p></div>
-        <div class="part-fact"><p class="fact-k">如何获取</p><p><code>gem install cybertrain</code>。首次使用时，它会把锁定的 Spinel 版本构建到 <code>~/.cybertrain</code> 中，除非你的 <code>PATH</code> 上已经有该版本。</p></div>
-      </article>
-    </div>
-    <div class="sec-full">
-      <p class="footnote">两者从同一个标签发布；如果应用的框架是另一个版本，命令会拒绝构建它。安装指南中有<a href="guide/install.html#moving-an-app-to-a-new-release">应用如何迁移到新版本</a>的说明。</p>
-    </div>
   </div></div>
 </section>
 
 <section class="sec" id="how-it-works" aria-labelledby="how-h">
   <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">04</span><p class="sec-label">工作原理</p></div>
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">03</span><p class="sec-label">工作原理</p></div>
     <div class="sec-body">
       <h2 id="how-h">元编程只在构建时发生一次。</h2>
       <p class="lead">Spinel 进行 AOT 编译，没有 <code>eval</code>。因此，凡是 Rails 在运行时借助 <code>method_missing</code> 和 <code>define_method</code> 的地方，<code>spin run gen</code> 都会写出你可以阅读和提交的纯 Ruby 代码，只有视图是解释执行的。</p>
@@ -290,7 +264,7 @@
         <li><span class="step-n" aria-hidden="true">1</span><h3>构建时生成</h3><p><code>spin run gen</code> 读取 <code>db/schema.rb</code> 和 <code>config/routes.rb</code>，扫描 <code>app/controllers</code> 和 <code>app/models</code>，并把可读的纯 Ruby 代码写入 <code>gen/</code>。<code>cybertrain db migrate</code>、<code>server</code> 和 <code>build</code> 会替你运行它。</p></li>
         <li><span class="step-n" aria-hidden="true">2</span><h3>提交 <code>gen/</code></h3><p>它要提交进仓库，因为 <code>spin build</code> 和 <code>spin test</code> 没有可以先执行生成的钩子。CI 会重新运行 <code>spin run gen</code>，一旦有差异就失败，因此过时的生成代码无法合并。</p></li>
         <li><span class="step-n" aria-hidden="true">3</span><h3>解释执行视图</h3><p>一个遍历树的解释器渲染 <code>app/views/**/*.html.erb</code>：开发时从磁盘读取，由 <code>cybertrain build</code> 嵌入二进制文件。Spinel 没有 <code>eval</code>，所以这是一套封闭的语法，而不是真正的 Ruby。</p></li>
-        <li><span class="step-n" aria-hidden="true">4</span><h3>用绿色线程提供服务，用 SQLite 存储</h3><p>纯 Ruby 编写的 HTTP/1.1 服务器为每个连接运行一个 Spinel 绿色线程。模型通过 <code>ffi_func</code>/<code>ffi_lib</code> 访问 SQLite，使用 4 个连接的连接池。</p></li>
+        <li><span class="step-n" aria-hidden="true">4</span><h3>用绿色线程提供服务，用 SQLite 存储</h3><p>纯 Ruby 编写的 HTTP/1.1 服务器 spinel-http 为每个连接运行一个 Spinel 绿色线程。模型通过 <code>ffi_func</code>/<code>ffi_lib</code> 访问 SQLite，使用 4 个连接的连接池。</p></li>
         <li><span class="step-n" aria-hidden="true">5</span><h3>开发时先预览，再编译</h3><p><code>cybertrain server</code> 在 Ruby 改动后立即用 CRuby 预览提供服务，在后台构建二进制文件，构建完成后把端口交给它（在 examples/blog 上约一分钟）。构建失败时预览继续提供服务，并以横幅显示编译器输出；<code>cybertrain server --spinel</code> 只运行编译版的循环。</p></li>
       </ol>
       <div class="cmp-foot">
@@ -302,7 +276,7 @@
 
 <section class="sec" id="rails-vs-cybertrain" aria-labelledby="cmp-h">
   <div class="wrap"><div class="sec-grid">
-    <div class="sec-head"><span class="sec-num" aria-hidden="true">05</span><p class="sec-label">Rails 与 CyberTrain</p></div>
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">04</span><p class="sec-label">Rails 与 CyberTrain</p></div>
     <div class="sec-body">
       <h2 id="cmp-h">词汇相同，规则不同，并且都已写明。</h2>
       <p class="lead">AOT 编译器会改变一些习惯。下面是你最先会遇到的几条。</p>
@@ -328,6 +302,33 @@
         <p>此表并不完整。</p>
         <a class="more" href="guide/how-it-works.html#differences-from-rails">完整表格</a>
       </div>
+    </div>
+  </div></div>
+</section>
+
+<section class="sec" id="framework-and-cli" aria-labelledby="parts-h">
+  <div class="wrap"><div class="sec-grid">
+    <div class="sec-head"><span class="sec-num" aria-hidden="true">05</span><p class="sec-label">框架与 CLI</p></div>
+    <div class="sec-body">
+      <h2 id="parts-h">一个名字，两个部分。</h2>
+      <p class="lead"><code>gem install cybertrain</code> 安装的是一个命令，而不是框架。框架是一个 Spinel 包，你的应用依赖它并把它编译进来。这个 gem 提供 <code>cybertrain</code> 命令，它会替你创建应用、安装 Spinel 并运行 Spinel 的工具。</p>
+    </div>
+    <div class="sec-full parts">
+      <article class="part" aria-labelledby="part-fw">
+        <div class="part-head"><p class="part-k">Spinel 包</p><h3 id="part-fw">框架</h3></div>
+        <p class="part-what">你的应用所基于的库。</p>
+        <div class="part-fact"><p class="fact-k">包含什么</p><p>路由和控制器、会话与 CSRF 防护、模板解释器、SQLite 模型和迁移、可选的子系统（作业、Turbo Streams、邮件、缓存）、测试框架，以及 <code>spin run gen</code> 背后的代码生成器。HTTP 服务器是 <a href="https://github.com/saeki-mototsune/spinel-http" rel="noopener">spinel-http</a>，框架所依赖的一个独立库。</p></div>
+        <div class="part-fact"><p class="fact-k">如何获取</p><p>你不需要安装它。你的应用的 <code>spin.toml</code> 指定本仓库与你的 <code>cybertrain</code> 命令相对应的发布标签，<code>spin lock</code> 会把它连同 spinel-http 一起拉取到 spin 的缓存中，并在 <code>spin.lock</code> 中锁定这两个提交。不会有任何内容被复制到你的应用中。</p></div>
+      </article>
+      <article class="part" aria-labelledby="part-cli">
+        <div class="part-head"><p class="part-k">RubyGem</p><h3 id="part-cli"><code>cybertrain</code> 命令</h3></div>
+        <p class="part-what">用来创建、构建和运行你的应用的工具。</p>
+        <div class="part-fact"><p class="fact-k">包含什么</p><p>只有 <code>cybertrain</code> 命令：<code>new</code>、<code>generate</code>（scaffold、authentication、attachment、job、component、helper）、<code>db</code>、<code>server</code>、<code>build</code>、<code>test</code>、<code>secret</code>、<code>spin</code>、<code>setup</code>、<code>doctor</code> 和 <code>version</code>。框架和 Spinel 都不在这个 gem 里。</p></div>
+        <div class="part-fact"><p class="fact-k">如何获取</p><p><code>gem install cybertrain</code>。首次使用时，它会把锁定的 Spinel 版本构建到 <code>~/.cybertrain</code> 中，除非你的 <code>PATH</code> 上已经有该版本。</p></div>
+      </article>
+    </div>
+    <div class="sec-full">
+      <p class="footnote">两者从同一个标签发布；如果应用的框架是另一个版本，命令会拒绝构建它。<a href="guide/upgrading.html">升级</a>指南一步步说明如何把应用迁移到新版本。</p>
     </div>
   </div></div>
 </section>
@@ -374,9 +375,11 @@
   <div class="wrap closer-inner">
     <div class="closer-main">
       <h2 id="close-h">以原生方式构建 Rails 入门指南中的博客。</h2>
-      <p class="lead">带评论的文章，从 <code>cybertrain new</code> 到 <code>cybertrain build</code>，共十九步。</p>
+      <p class="lead">带评论的文章，从 <code>cybertrain new</code> 到 <code>cybertrain build</code>，一步一步来。想先随便看看？Playground 无需安装任何东西，直接在浏览器中打开这个博客。</p>
       <div class="cta-row">
-        <a class="btn btn-primary" href="tutorial.html">开始使用<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+        <a class="btn btn-primary" href="tutorial.html">开始教程<span class="btn-arrow" aria-hidden="true">&rarr;</span></a>
+        <a class="btn btn-ghost" href="playground.html">打开 Playground</a>
+        <a class="btn btn-ghost" href="guide/index.html">浏览指南</a>
       </div>
     </div>
     <nav class="outline" aria-label="教程大纲">
@@ -394,11 +397,14 @@
         <li><a href="tutorial.html#nested-routes"><span class="ol-n">09</span>嵌套路由</a></li>
         <li><a href="tutorial.html#comments-controller"><span class="ol-n">10</span>CommentsController</a></li>
         <li><a href="tutorial.html#views"><span class="ol-n">11</span>视图与局部视图</a></li>
-        <li><a href="guide/advanced-tutorial.html#component"><span class="ol-n">12</span>组件与辅助方法</a></li>
-        <li><a href="guide/advanced-tutorial.html#turbo"><span class="ol-n">13</span>用 Turbo 实时推送评论</a></li>
-        <li><a href="guide/advanced-tutorial.html#job"><span class="ol-n">14</span>后台作业</a></li>
-        <li><a href="guide/advanced-tutorial.html#json"><span class="ol-n">15</span>返回 JSON</a></li>
-        <li><a href="tutorial.html#test"><span class="ol-n">16</span>测试</a></li>
+        <li><a href="tutorial.html#test"><span class="ol-n">12</span>测试</a></li>
+      </ol>
+      <p class="outline-k">进阶教程</p>
+      <ol start="13">
+        <li><a href="guide/advanced-tutorial.html#component"><span class="ol-n">13</span>组件与辅助方法</a></li>
+        <li><a href="guide/advanced-tutorial.html#turbo"><span class="ol-n">14</span>用 Turbo 实时推送评论</a></li>
+        <li><a href="guide/advanced-tutorial.html#job"><span class="ol-n">15</span>后台作业</a></li>
+        <li><a href="guide/advanced-tutorial.html#json"><span class="ol-n">16</span>返回 JSON</a></li>
         <li><a href="guide/advanced-tutorial.html#authentication"><span class="ol-n">17</span>添加登录</a></li>
         <li><a href="guide/advanced-tutorial.html#attachments"><span class="ol-n">18</span>添加封面图片</a></li>
         <li><a href="guide/advanced-tutorial.html#ship"><span class="ol-n">19</span>为部署而构建</a></li>
