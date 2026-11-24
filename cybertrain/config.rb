@@ -1236,7 +1236,7 @@ module Cybertrain
       # An element-typed empty Array (spikes/NOTES.md rule 9): config/app.rb
       # assigns a literal, the stack reads it.
       @csrf_exempt_prefixes = Array.new(0) { "" }
-      # The same number as Server.new's default (cybertrain/http/server.rb), kept
+      # The same number as Server.new's default (spinel-http/server.rb), kept
       # as a literal here: the HTTP layer must not be required by Config.
       @max_body_bytes = 10_485_760
       # The same literals as Multipart and BlobStore start with; Application#boot

@@ -1,37 +1,4 @@
-ok   port 0 binds an ephemeral port
-ok   two keep-alive requests on one socket get two responses
-ok   pipelined requests are answered in order
-ok   Connection: close closes the socket after one response
-ok   HTTP/1.0 without keep-alive closes after one response
-ok   HEAD returns headers with Content-Length and no body
-ok   every response the server writes carries the security defaults
-ok   POST with a Content-Length body is echoed back
-ok   malformed request line gets 400 and the connection closes
-ok   an oversized head gets 400 and the connection closes
-ok   a body over max_body_bytes gets 413 and the connection closes
-ok   a Content-Length too large for an Integer gets 413
-ok   a zero-padded Content-Length is read as its value
-ok   a head over max_head_bytes with no blank line yet gets 400
-ok   a pipelined multibyte body is framed by bytes, not characters
-ok   a body with NUL bytes is framed by bytes, not cut at the NUL
-ok   chunked transfer encoding gets 411 and the connection closes
-ok   an invalid Content-Length gets 400
-ok   duplicate Content-Length headers get 400 and close the connection
-ok   Transfer-Encoding beside a Content-Length is refused, and the bytes behind it are never read as a request
-ok   Transfer-Encoding: identity is a transfer coding too: 411
-ok   a rejected request ends the connection: a request pipelined behind it is not answered
-ok   Expect: 100-continue gets no interim response; the body is awaited and answered
-ok   a head ended by bare LFs is not a head: nothing is answered and the connection closes at read_timeout
-ok   an absolute-form target is not rewritten: the handler sees it as the path
 ok   HTTP/1.1 without a Host header is served: the host is HostAuthorization's to check
-ok   HTTP/1.0 with Connection: keep-alive keeps the connection
-ok   an exception in the app gets 500 and the connection stays usable
-ok   parameters past Query's limits get 400, not 500, and the connection stays usable
-ok   a JSON::NestingError in the app gets 500, the connection is closed and the server keeps serving
-ok   a JSON::ParserError in the app gets 500 and the server keeps serving
-ok   an idle keep-alive connection is closed after read_timeout
-ok   a failed accept is logged and the server keeps accepting
-ok   stop makes the port refuse connections
 ok   serves a bare HttpHandler with no Context or Middleware involved
 ok   the bare path's 500 carries the id a RequestId set; a handler without one sends none
 ok   the bare path's 500 and 4xx lines carry the request's id; the thread is back on NO_SCOPE after each
@@ -39,36 +6,5 @@ ok   a streamed body is written under the request's Scope, the server's stream e
 ok   an upgraded connection's writer that raises is reported once, with the request's id
 ok   a streamed body whose client went away is logged and not reported
 ok   an upgraded (101) connection behind RequestId: the id echoed, the writer under the request's Scope, NO_SCOPE after
-ok   a handler's exception is logged under the request's log context; the next request on the connection is under NONE
-ok   run serves until stop is called
-ok   request_stop (what the TERM trap calls) makes run return without joining
-ok   request_stop waits for a request in flight and answers it completely
-ok   an idle keep-alive connection does not hold up shutdown
-ok   many idle keep-alive connections are closed by the drain, not waited out
-ok   drain_timeout bounds the wait for a request that takes too long
-ok   a connection accepted as the stop is requested gets its first request answered
-ok   a connection accepted as the stop is requested is answered when its request comes a moment later
-ok   a connection that sends nothing holds up the stop for the first-request grace at most
-ok   connections still in the accept queue at the stop are answered, not reset
-ok   a failed accept in the stop's sweep does not end it: what is queued behind is answered
-ok   with an inherited listener, connections queued at the stop are left for the next server
 ok   start raises Cybertrain::PortInUse when the port is already bound
-ok   PortInUse names the reason the port could not be bound
-ok   starting a server on port 80 as non-root reports permission denied
-ok   reuse_port lets two servers bind one port and both answer
-ok   reuse_port survives stop: the port binds again and the collector leaves the number alone
-ok   a plain listener on the port still raises PortInUse for reuse_port
-ok   a reuse_port listener on the port still raises PortInUse for a plain server
-ok   reuse_port stops on a name with several addresses and binds a name with one
-ok   reuse_port on an IPv6 literal binds it or says why not
-ok   reuse_port on a host that does not resolve stops with a message naming the setting
-ok   reuse_port on an address this machine does not have stops with the same message
-ok   reuse_port is off unless asked for
-ok   listen_fd serves on an inherited listener instead of binding the port
-ok   listen_fd naming a descriptor that is not open raises PortInUse
-ok   listen_fd naming a read-only regular file raises PortInUse
-ok   listen_fd naming a read-write regular file raises PortInUse
-ok   listen_fd naming a connected socket that does not listen raises PortInUse
-ok   where SO_ACCEPTCONN cannot be read (macOS) an inherited listener is still served
-ok   where SO_ACCEPTCONN cannot be read (macOS) a file, a closed number and a connected socket are still refused
-73 tests, 309 assertions, 0 failures
+9 tests, 55 assertions, 0 failures

@@ -1,5 +1,6 @@
 require "json"
 require "cybertrain/context"
+require "cybertrain/request_format"
 require "cybertrain/html"
 require "cybertrain/http/client_error"
 require "cybertrain/http/uploaded_file"

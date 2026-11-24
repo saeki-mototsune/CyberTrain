@@ -1,5 +1,5 @@
 ---
-source_sha256: 3fdb7f0673a0194bd548b024455478697a34e83364317a70e2856800271ac272
+source_sha256: 23f7faa5ecc00ece78c01fdb34adea7dc1c3f7ebff067343998c1f4ce15cdce9
 description: Comment une application CyberTrain est construite et exécutée (génération de code à la compilation, sous-systèmes optionnels, vues interprétées, serveur HTTP, SQLite via FFI, boucle de développement) et les différences avec Rails.
 ---
 # Fonctionnement
@@ -85,7 +85,7 @@ L’origine du source dépend du mode&nbsp;:
 
 `Cybertrain::Server` est un serveur HTTP/1.1 en Ruby pur&nbsp;: `TCPServer#accept` plus un green thread Spinel par connexion (ordonnancement M:N, pas de GVL), `Request`/`Response` typés, pas de couche Rack. TLS/HTTP/2 sont laissés à un reverse proxy. `SPINEL_WORKERS` vaut `1` par défaut — les spikes ont montré que c’est plus rapide et sans blocage pour cette charge limitée par les E/S à 100 connexions simultanées.
 
-Le serveur appelle un `HttpHandler` (`call(request) -> Response`)&nbsp;; `ContextHandler` le relie à la pile de middlewares, de sorte que la couche HTTP (`cybertrain/http/`, plus `Params` et `Logger`) ne dépend pas du reste du framework. `script/check-http-layer` l’impose dans la CI.
+Le serveur appelle un `HttpHandler` (`call(request) -> Response`)&nbsp;; `ContextHandler` le relie à la pile de middlewares. La couche HTTP est une bibliothèque à part, [spinel-http](https://github.com/saeki-mototsune/spinel-http), qui ne charge rien du framework&nbsp;; spin la récupère avec le framework, comme dépendance. Ses classes gardent leurs noms `Cybertrain::`&nbsp;: `Cybertrain::Server` est `SpinelHttp::Server`, une seule classe sous deux noms, et son `name` répond `"SpinelHttp::Server"`.
 
 ## SQLite via FFI
 

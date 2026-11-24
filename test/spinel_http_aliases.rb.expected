@@ -1,0 +1,7 @@
+ok   each Cybertrain:: name of the layer is SpinelHttp's class or module
+ok   assert_raises' list of aliased names is the shims' alias lines
+ok   the String form of assert_raises matches a layer class by its Cybertrain name
+ok   the reopenings reached the layer's classes
+ok   through ContextHandler a missing parameter and a malformed query are 400s
+ok   rescue Cybertrain::PortInUse catches a busy port, and cybertrain server's hint follows it
+6 tests, 66 assertions, 0 failures

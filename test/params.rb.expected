@@ -1,9 +1,3 @@
-ok   set_value stores and reads a scalar
-ok   add_list_value builds a list, absent key returns empty array
-ok   child! creates and returns a nested Params, nested() never stores
-ok   key? is true for scalars, lists and nested params
-ok   inspect lists scalars, then lists, then nested, each in insertion order (Params has no keys)
-ok   set_path assembles nested params from a Query.split_key-shaped path
 ok   require returns the nested Params when present and non-empty
 ok   require raises ParameterMissing when absent or empty
 ok   permit returns only listed scalar keys that are present
@@ -18,19 +12,8 @@ ok   expect takes a spec of exactly one key
 ok   expect never returns an uploaded file
 ok   require(...).permit gains the nested and array forms
 ok   a list sent where a scalar is permitted is dropped, not coerced
-ok   a name can only be one kind at a time: last write wins, like Rack
-ok   to_h returns only scalars, empty? and inspect are deterministic
-ok   set_upload stores a file; upload is nil when absent, upload? says which
-ok   the nullable upload return works in an if, the way a controller uses it
-ok   an empty file still counts as sent
-ok   a file evicts a String, a list and a nested Params of the same name
-ok   set_value, add_list_value and child! evict a file of the same name
 ok   set_upload_path nests like set_path and never appends
 ok   require succeeds for a form that sent only a file
 ok   permit never returns a file
-ok   uploads are inspected after scalars, lists and nested Params
 ok   a file's bytes survive the Params unchanged (NUL and high bytes)
-ok   int reads a bounded decimal and never raises
-ok   parse_int accepts an optional minus and at most 18 digits
-ok   page_number is 1-based and clamped to Params.max_page
-35 tests, 156 assertions, 0 failures
+18 tests, 58 assertions, 0 failures

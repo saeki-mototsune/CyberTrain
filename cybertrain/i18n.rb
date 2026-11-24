@@ -869,12 +869,17 @@ module I18n
   end
 end
 
-module Cybertrain
-  # The HTTP layer's Request (cybertrain/http/request.rb) negotiates a
-  # locale against a default it is given; cybertrain answers with
+module SpinelHttp
+  # The HTTP layer's Request (spinel-http's SpinelHttp::Request, aliased as
+  # Cybertrain::Request by cybertrain/http/request.rb) negotiates a locale
+  # against a default it is given; cybertrain answers with
   # {I18n.default_locale}. Reopened here, beside I18n, so the layer names
-  # no I18n. This file does not require the layer: a program that holds a
-  # Request has loaded it.
+  # no I18n. This file does not require the layer (loading Query beside
+  # Config miscompiles ENV reads, docs/spinel-feedback.md AS): a program
+  # that holds a Request has loaded it. Reopened by its real name, not
+  # through the alias, so that the order the two files load in does not
+  # matter: before the layer, this defines SpinelHttp::Request and the
+  # layer's file reopens it; Cybertrain::Request is only ever the alias.
   class Request
     # {#negotiate_locale} with {I18n.default_locale} as the default: the
     # locale the client prefers among `available`, from `Accept-Language`,

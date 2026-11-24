@@ -298,7 +298,8 @@ cybertrain spin run gen
 `spin lock` keeps the commit it has locked for a git dependency, whatever
 `ref` has become in `spin.toml`, which is why the lock is removed first. In
 an app with other dependencies you can delete only the `[lock.cybertrain]`
-table from `spin.lock` instead, and keep the other pins.
+table and the `[lock.spinel-http]` table (the HTTP layer the framework
+depends on) from `spin.lock` instead, and keep the other pins.
 
 An app that depends on [an index version](#an-index-version) needs no `rm`,
 since there `spin lock` moves the pin: run `cybertrain spin search

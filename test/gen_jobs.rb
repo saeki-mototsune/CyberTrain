@@ -5,6 +5,7 @@ require "cybertrain/generator"
 require "cybertrain/generator/job_scan"
 require "cybertrain/generator/jobs_emitter"
 require_relative "support/file_tree"
+require_relative "support/spinel_http"
 
 # The job generator as text (CRuby-portable, no database): Gen::JobScan
 # reads app/jobs/**/*.rb, Gen::JobsEmitter writes gen/jobs.rb. The
@@ -387,6 +388,19 @@ def framework_class_lines(path)
   out
 end
 
+# The aliases cybertrain/http/*.rb hold: [the aliased name, the shim as
+# "http/query"] for each `  Name = SpinelHttp::Name` line.
+def shim_aliases
+  out = []
+  Dir.glob("cybertrain/http/*.rb").sort.each do |path|
+    File.read(path, encoding: "UTF-8").each_line do |raw|
+      m = raw.match(/\A  ([A-Z]\w*) = SpinelHttp::([A-Z]\w*)\s*\z/)
+      out << [m[1], path.delete_prefix("cybertrain/").delete_suffix(".rb")] if m && m[1] == m[2]
+    end
+  end
+  out
+end
+
 # The files `require "cybertrain/core"` loads, directly or through the files
 # it requires, as "db/error" (cybertrain/ and .rb left out). The keywords
 # are built from pieces: spinel reads a line that looks like a require of a
@@ -434,6 +448,26 @@ test "FRAMEWORK_ERRORS names every exception class under cybertrain/, and PRELOA
             path.start_with?("cybertrain/preview/") || path.start_with?("cybertrain/test/") || path == "cybertrain/test.rb"
 
     framework_class_lines(path).each { |line| lines << (line + [path.delete_prefix("cybertrain/").delete_suffix(".rb")]) }
+  end
+  # The HTTP layer is spinel-http's (docs/design.md D91): its classes are
+  # Cybertrain's by the aliases cybertrain/http/*.rb hold, so an exception
+  # class of spinel-http whose outermost name a shim aliases is found under
+  # that name (`SpinelHttp::Server::Rejected` as `Cybertrain::Server::Rejected`),
+  # with the shim as its file.
+  aliased = shim_aliases
+  dir = SpinelHttpDir.path("#{TMP}/spinel-http-dir")
+  Dir.glob("#{dir}/spinel-http/**/*.rb").sort.each do |path|
+    framework_class_lines(path).each do |line|
+      parts = line[0].split("::")
+      next unless parts.size > 1 && parts[0] == "SpinelHttp"
+
+      shim = ""
+      aliased.each { |pair| shim = pair[1] if pair[0] == parts[1] }
+      next if shim == ""
+
+      scope = line[2] == "SpinelHttp" || line[2].start_with?("SpinelHttp::") ? "Cybertrain#{line[2].delete_prefix("SpinelHttp")}" : line[2]
+      lines << ["Cybertrain::#{parts[1..].join("::")}", line[1], scope, shim]
+    end
   end
   roots = ["Exception", "ScriptError", "NotImplementedError"] + Cybertrain::Gen::JobScan::CORE_ERRORS
   found = []

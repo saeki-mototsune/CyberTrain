@@ -75,7 +75,7 @@ def exchange(port, target)
   end
 end
 
-puts "registered: #{Cybertrain::ClientError.extra_faults.include?("Cybertrain::Params::ParameterMissing")}"
+puts "registered: #{Cybertrain::ClientError.extra_faults.include?("SpinelHttp::Params::ParameterMissing")}"
 log = RecordingHttpLog.new
 server = Cybertrain::Server.new(ParamsFaultHandler.new, port: 0, logger: log)
 server.start

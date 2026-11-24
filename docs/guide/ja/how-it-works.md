@@ -1,5 +1,5 @@
 ---
-source_sha256: 3fdb7f0673a0194bd548b024455478697a34e83364317a70e2856800271ac272
+source_sha256: 23f7faa5ecc00ece78c01fdb34adea7dc1c3f7ebff067343998c1f4ce15cdce9
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、オプションのサブシステム、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -83,7 +83,7 @@ gen が見つけないケースが 2 つあります：`cybertrain/jobs` なし�
 
 `Cybertrain::Server` は素の Ruby による HTTP/1.1 です：`TCPServer#accept` と、接続ごとに 1 つの Spinel グリーンスレッド（M:N スケジューリング、GVL なし）、型付きの `Request`/`Response` からなり、Rack の層はありません。TLS と HTTP/2 はリバースプロキシに任せます。`SPINEL_WORKERS` のデフォルトは `1` です：検証の結果、同時接続 100 のこの I/O 律速の形では、そのほうが速く、詰まりもないことがわかりました。
 
-サーバーは `HttpHandler`（`call(request) -> Response`）を呼び出し、`ContextHandler` がそれをミドルウェアのスタックにつなぐので、HTTP の層（`cybertrain/http/` と `Params`、`Logger`）はフレームワークの残りの部分に依存しません。CI では `script/check-http-layer` がこれを強制します。
+サーバーは `HttpHandler`（`call(request) -> Response`）を呼び出し、`ContextHandler` がそれをミドルウェアのスタックにつなぎます。HTTP の層は独立したライブラリ [spinel-http](https://github.com/saeki-mototsune/spinel-http) で、フレームワークのものは何も読み込みません。spin はフレームワークの依存としてそれを取得します。そのクラスは `Cybertrain::` の名前のままです。`Cybertrain::Server` は `SpinelHttp::Server` で、二つの名前を持つ一つのクラスであり、その `name` は `"SpinelHttp::Server"` を返します。
 
 ## FFI による SQLite
 

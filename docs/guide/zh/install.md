@@ -1,5 +1,5 @@
 ---
-source_sha256: d29713ab9a0a7d9c68b0dee1b1c47c3b269ecf60b632ed1961477498dcd853a7
+source_sha256: f99d8abbfba8092d6c2a52866127e06e828d05c87e0cb4fe6a5ac406028699d5
 ---
 # 安装
 
@@ -127,7 +127,7 @@ cybertrain spin lock
 cybertrain spin run gen
 ```
 
-对于 git 依赖，无论 `spin.toml` 中的 `ref` 变成什么，`spin lock` 都会保留它已锁定的提交，所以要先删除锁文件。如果应用还有其他依赖，可以改为只从 `spin.lock` 中删除 `[lock.cybertrain]` 表，保留其他锁定。
+对于 git 依赖，无论 `spin.toml` 中的 `ref` 变成什么，`spin lock` 都会保留它已锁定的提交，所以要先删除锁文件。如果应用还有其他依赖，可以改为只从 `spin.lock` 中删除 `[lock.cybertrain]` 表和 `[lock.spinel-http]` 表（框架依赖的 HTTP 层），保留其他锁定。
 
 依赖[索引中的版本](#an-index-version)的应用不需要 `rm`，因为此时 `spin lock` 会移动锁定：先运行 `cybertrain spin search cybertrain` 更新 spin 的索引副本，再把 `spin.toml` 中 `cybertrain =` 一行的版本改为新的发布版本，然后运行 `cybertrain spin lock` 和 `cybertrain spin run gen`。
 

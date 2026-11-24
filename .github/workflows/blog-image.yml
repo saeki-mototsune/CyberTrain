@@ -30,9 +30,11 @@ on:
       - ".github/workflows/blog-image.yml"
       # The CLI that builds the image (cybertrain.gemspec's spec.files) and
       # the pins: the version and the Spinel release in
-      # cybertrain/version.rb, the packages in spin.toml.
+      # cybertrain/version.rb, the packages in spin.toml, and the commits in
+      # spin.lock (examples/blog/Dockerfile writes the blog's lock from it).
       - "cybertrain.gemspec"
       - "spin.toml"
+      - "spin.lock"
       - "exe/**"
       - "cybertrain/cli.rb"
       - "cybertrain/cli/**"

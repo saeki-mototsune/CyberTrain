@@ -1,6 +1,6 @@
 #!/bin/sh
 # How close the CRuby preview is to the compiled program, as a checked fact:
-# runs each test/*.rb as `ruby -E UTF-8 -I. -r cybertrain/preview <file>`
+# runs each test/*.rb as `ruby -E UTF-8 -I. -I <spinel-http> -r cybertrain/preview <file>`
 # (PREVIEW_PARITY_TIMEOUT seconds at most, default 60) and compares its stdout
 # and stderr, together, with the snapshot the compiled binary produced
 # (test/<name>.rb.expected). A test that matches must also exit with status 0
@@ -39,10 +39,11 @@
 #
 # A test may spawn `ruby` itself (the tests' CRuby branch re-runs $0 in a
 # child). The script sets RUBYOPT for every run, so such a child loads the
-# shim and reads text as UTF-8 too, as the test's own process does through
-# its command line; RUBYOPT is the one way a grandchild inherits them. RUBYOPT
-# is split at spaces and takes no quoting, so a checkout path with a space
-# cannot go into it: the script stops with a message instead.
+# shim, finds spinel-http and reads text as UTF-8 too, as the test's own
+# process does through its command line; RUBYOPT is the one way a grandchild
+# inherits them. RUBYOPT is split at spaces and takes no quoting, so a
+# checkout or spinel-http path with a space cannot go into it: the script
+# stops with a message instead.
 #
 # usage: script/preview-parity [test/<name>.rb ...]     (default: every test)
 #        script/preview-parity --regen-gaps [file ...]  rewrite the gap snapshots
@@ -56,6 +57,9 @@ set -u
 cd "$(dirname "$0")/.." || exit 2
 gaps=test/cruby/parity-gaps.txt
 snapdir=test/cruby/parity
+# spinel-http, the HTTP layer the framework requires (docs/design.md D91),
+# on the load path as `spin flags` puts it: the checkout spin.lock pins.
+spinel_http=$(ruby script/spinel_http_path.rb) || exit 2
 
 regen=false
 if [ "${1:-}" = "--regen-gaps" ]; then
@@ -73,9 +77,11 @@ if [ "$#" -eq 0 ]; then
   fi
 fi
 
-case "$PWD" in
-  *" "*) echo "preview-parity: the checkout path has a space, which RUBYOPT cannot carry: $PWD" >&2; exit 2 ;;
-esac
+for dir in "$PWD" "$spinel_http"; do
+  case "$dir" in
+    *" "*) echo "preview-parity: the path has a space, which RUBYOPT cannot carry: $dir" >&2; exit 2 ;;
+  esac
+done
 
 work=$(mktemp -d) || exit 2
 # The shim compiles each test's FFI libraries into tmp/cybertrain-dev/ffi/ of
@@ -93,7 +99,7 @@ cleanup() {
   rm -rf "$work"
 }
 trap cleanup EXIT
-export RUBYOPT="-E UTF-8 -I$PWD -rcybertrain/preview"
+export RUBYOPT="-E UTF-8 -I$PWD -I$spinel_http -rcybertrain/preview"
 
 limit=${PREVIEW_PARITY_TIMEOUT:-60}
 match=0
@@ -129,7 +135,7 @@ for file in "$@"; do
     echo "preview-parity: $file is not in $gaps" >&2
     exit 2
   fi
-  timeout "$limit" ruby -E UTF-8 -I. -r cybertrain/preview "$file" > "$work/out" 2>&1
+  timeout "$limit" ruby -E UTF-8 -I. -I "$spinel_http" -r cybertrain/preview "$file" > "$work/out" 2>&1
   rc=$?
   if [ "$rc" -eq 124 ] || [ "$rc" -gt 128 ]; then
     if [ "$rc" -eq 124 ]; then how="timed out after ${limit} s"; else how="killed by a signal (status $rc)"; fi

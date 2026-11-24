@@ -81,7 +81,10 @@ require "cybertrain/feature"
 require "cybertrain/application"
 require "cybertrain/main"
 
-# The gzip inflater behind Request#decoded_body (system zlib through FFI):
-# installed here, since cybertrain/http/request.rb itself must load under
+# The gzip inflater behind Request#decoded_body (system zlib through FFI),
+# spinel-http's spinel-http/gzip.rb, which installs itself when it loads
+# (cybertrain/http/gzip_ffi above requires it); the call states it here as
+# well and installs the same inflater again. It lives in its own file, not
+# in spinel-http/request.rb, because the request file must load under
 # CRuby, where the FFI DSL does not exist.
 Cybertrain::GzipFFI.install!

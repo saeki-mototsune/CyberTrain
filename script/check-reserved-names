@@ -32,6 +32,7 @@
 #
 # usage: ruby script/check-reserved-names
 require File.expand_path("../cybertrain/ident", __dir__)
+require_relative "spinel_http_path"
 
 # Model is model.rb and the files it requires at its end that reopen it
 # (model/bulk_writes.rb); every one of them, or a moved name drops out.
@@ -207,7 +208,8 @@ fixtures_missing = fixture_taken - Cybertrain::Gen::FixtureScan::TAKEN_NAMES
 # phases 4a and 4b gave it (seeded once per phase, so tasks running in
 # parallel never edit the table; a name the seeding did not foresee is added
 # by its task). A
-# `def` of a listed name in any other file under cybertrain/ fails the
+# `def` of a listed name in any other file under cybertrain/ or spinel-http's
+# source (spinel-http/NAME.rb, from spin's checkout) fails the
 # check, as does an emitted `def` line (a String in
 # cybertrain/generator/*_emitter.rb), which counts as its emitter's. A name
 # with no row is not checked: a brand-new name with no other definer needs
@@ -217,7 +219,7 @@ NAME_HOMES = {
   # dev/state_file.rb's is Dev::StateFile.format (the state file's text, a
   # String, as Console::Printer.format's), a module function called on its
   # module; compiled beside Request#format (a Symbol) in test/main.rb.
-  "format" => %w[cybertrain/console/printer.rb cybertrain/http/request.rb cybertrain/dev/state_file.rb],
+  "format" => %w[cybertrain/console/printer.rb cybertrain/request_format.rb cybertrain/dev/state_file.rb],
   "expect" => %w[cybertrain/mailer.rb cybertrain/params.rb],
   "select" => %w[],
   # cli/templates.rb's is `def self.layout` (the generated layout's text);
@@ -245,7 +247,7 @@ NAME_HOMES = {
   # variable); a fourth definer needs a reason here. The fourth is
   # ActionDispatch::IntegrationTest#cookies (phase 5a), the test's client's
   # jar, the same Hash as Test::Client#cookies.
-  "cookies" => %w[cybertrain/controller.rb cybertrain/http/response.rb cybertrain/test/client.rb cybertrain/test/integration.rb],
+  "cookies" => %w[cybertrain/controller.rb spinel-http/response.rb cybertrain/test/client.rb cybertrain/test/integration.rb],
   "signed" => %w[cybertrain/cookie_jar.rb],
   # model_scan.rb's is ModelInfo's `attr_reader ... :encrypted` (the
   # encrypts attributes, an Array<String>), gen-only: a ModelInfo and a
@@ -280,7 +282,7 @@ NAME_HOMES = {
   "install" => %w[cybertrain/assets.rb cybertrain/cli/toolchain.rb],
   # Response#redirect returns nil next to the routes DSL's Mapper#redirect
   # (a RedirectSpec, run only by `spin run gen`); both redirect_to return nil.
-  "redirect" => %w[cybertrain/http/response.rb cybertrain/generator/routes_dsl.rb],
+  "redirect" => %w[spinel-http/response.rb cybertrain/generator/routes_dsl.rb],
   "redirect_to" => %w[cybertrain/controller.rb cybertrain/router.rb],
   # The routes DSL's `scope "/v1" do` (nil), the model macro `scope :x,
   # -> { }` (nil) and the generated Gen::Console.scope(name) (a Relation).
@@ -307,7 +309,7 @@ NAME_HOMES = {
   "available_locales" => %w[cybertrain/i18n.rb],
   # The HTTP layer negotiates against a default it is given; cybertrain's
   # reopening of Request beside I18n supplies I18n.default_locale.
-  "negotiate_locale" => %w[cybertrain/http/request.rb],
+  "negotiate_locale" => %w[spinel-http/request.rb],
   "preferred_locale" => %w[cybertrain/i18n.rb],
   "human_attribute_name" => %w[cybertrain/i18n.rb cybertrain/generator/models_emitter.rb],
   # gen/locales.rb's Gen::Locales and the checked-in locales/bundled.rb's
@@ -477,18 +479,18 @@ NAME_HOMES = {
   # (spikes/phase5/error_names.rb, deleted since).
   # Logger#error and the HttpLog#error it overrides (nil), Template::Parser's
   # two private #error (raise) and Cybertrain.error (the ErrorReporter).
-  "error" => %w[cybertrain/logger.rb cybertrain/http/log.rb cybertrain/template/parser.rb cybertrain/error_reporter.rb],
+  "error" => %w[cybertrain/logger.rb spinel-http/log.rb cybertrain/template/parser.rb cybertrain/error_reporter.rb],
   # CLI::Toolchain.report prints; ErrorReporter#report and
   # ErrorSubscriber#report answer nil (a subscriber's override may answer
   # anything: the spike's answered an Array).
   "report" => %w[cybertrain/cli/toolchain.rb cybertrain/error_reporter.rb],
   # Job.handle (nil), Server#handle, ErrorReporter#handle (the block's value).
-  "handle" => %w[cybertrain/job.rb cybertrain/http/server.rb cybertrain/error_reporter.rb],
+  "handle" => %w[cybertrain/job.rb spinel-http/server.rb cybertrain/error_reporter.rb],
   # WebSocket.subscribe (a Subscription), Stream::Hub#subscribe (a
   # Subscriber), ErrorReporter#subscribe (nil).
   "subscribe" => %w[cybertrain/websocket.rb cybertrain/stream/hub.rb cybertrain/error_reporter.rb],
   "tagged" => %w[cybertrain/logger.rb],
-  "request_id" => %w[cybertrain/http/request.rb],
+  "request_id" => %w[spinel-http/request.rb],
   # Lease.release (nil) beside Config#release (a String).
   "release" => %w[cybertrain/lease.rb cybertrain/config.rb],
   # DB::Connection#error_message(sql), I18n.error_message and
@@ -496,19 +498,22 @@ NAME_HOMES = {
   "error_message" => %w[cybertrain/db/connection.rb cybertrain/i18n.rb cybertrain/error_reporter.rb],
   # HttpLogSwitch's and its Logger::ScopeSwitch overrides (an
   # HttpLogContext): no other definer, kept so a new one is checked.
-  "current_context" => %w[cybertrain/http/log.rb cybertrain/logger.rb],
-  "swap_context" => %w[cybertrain/http/log.rb cybertrain/logger.rb],
+  "current_context" => %w[spinel-http/log.rb cybertrain/logger.rb],
+  "swap_context" => %w[spinel-http/log.rb cybertrain/logger.rb],
   # GzipDecoder.installed (a GzipDecoder). HttpLogSwitch's slot is
   # installed_switch (an HttpLogSwitch), not installed: one return type
   # per name (rule 34), and core loads both files.
-  "installed" => %w[cybertrain/http/gzip_decoder.rb],
-  "installed_switch" => %w[cybertrain/http/log.rb],
+  "installed" => %w[spinel-http/gzip_decoder.rb],
+  "installed_switch" => %w[spinel-http/log.rb],
+  # SpinelHttp.stream_failure (a StreamFailure) and its forwarder,
+  # Cybertrain.stream_failure, which answers the same (docs/design.md D91).
+  "stream_failure" => %w[spinel-http/stream_failure.rb cybertrain/http/stream_failure.rb],
   # Logger#info and the HttpLog#info it overrides (nil).
-  "info" => %w[cybertrain/cli/toolchain.rb cybertrain/logger.rb cybertrain/http/log.rb],
+  "info" => %w[cybertrain/cli/toolchain.rb cybertrain/logger.rb spinel-http/log.rb],
   # Server#drain; the reporter's is drain_reports. The CRuby preview's
   # holding desk (cli/dev_server/holding.rb, Desk#drain, nil as Server's)
   # runs only under CRuby: Spinel never compiles it.
-  "drain" => %w[cybertrain/http/server.rb cybertrain/cli/dev_server/holding.rb],
+  "drain" => %w[spinel-http/server.rb cybertrain/cli/dev_server/holding.rb],
   # ErrorReporter::Sender#sender_name ("") and SentrySender's ("sentry"):
   # one String-typed hook the boot check reads.
   "sender_name" => %w[cybertrain/error_reporter.rb cybertrain/error_reporter/sentry.rb]
@@ -521,6 +526,15 @@ NAME_CANDIDATES = %w[select format expect layout cookies signed encrypted perman
                      error report handle subscribe tagged request_id release installed].freeze
 root = File.expand_path("..", __dir__)
 home_rows_missing = NAME_CANDIDATES - NAME_HOMES.keys
+# The framework's files and spinel-http's (the HTTP layer, docs/design.md
+# D91, read from the checkout spin.lock pins: script/spinel_http_path.rb),
+# which every application compiles together, so one name's return type is
+# checked across both: [absolute path, name in the messages], spinel-http's
+# named spinel-http/NAME.rb.
+spinel_http = SpinelHttpPath.root
+program_files = Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.map { |f| [f, f.delete_prefix("#{root}/")] } +
+                ([File.join(spinel_http, "spinel-http.rb")] + Dir.glob(File.join(spinel_http, "spinel-http", "**", "*.rb")).sort)
+                .map { |f| [f, f.delete_prefix("#{spinel_http}/")] }
 homeless = []
 # `def x`, `def self.x`, `private def x` and `protected def x`; an
 # attr_reader, attr_accessor or attr_writer line defines each name it lists
@@ -563,8 +577,7 @@ end
   attr_names.call(sample.lines, 0).each { |name| got << name }
   abort "check-reserved-names: self-check: #{sample.strip.inspect} gives #{got.inspect}, expected #{want.inspect}" unless got == want
 end
-Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
-  rel = file.delete_prefix("#{root}/")
+program_files.each do |file, rel|
   emitter = rel.match?(%r{\Acybertrain/generator/[^/]+_emitter\.rb\z})
   lines = File.readlines(file, encoding: "UTF-8")
   lines.each_with_index do |line, index|
@@ -615,8 +628,7 @@ Cybertrain::Ident::UNTYPED_FRAMEWORK_NAMES.each_key do |name|
   typed_problems << "#{name} is in Ident::UNTYPED_FRAMEWORK_NAMES too" if typed.key?(name)
 end
 instance_def = /^\s*(?:(?:private|protected|public)\s+)?def\s+([a-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_?!=.])/
-Dir.glob(File.join(root, "cybertrain", "**", "*.rb")).sort.each do |file|
-  rel = file.delete_prefix("#{root}/")
+program_files.each do |file, rel|
   lines = File.readlines(file, encoding: "UTF-8")
   lines.each_with_index do |line, index|
     next if line.lstrip.start_with?("#")

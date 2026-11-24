@@ -75,12 +75,14 @@ rm spin.lock
 cybertrain spin lock
 ```
 
-It prints `locked 1 package(s)`, and `git diff spin.lock` shows the new
-`version` and a new `ref` (the tag's commit) under `[lock.cybertrain]`.
-Without the `rm`, `spin lock` keeps the commit it had locked and the diff is
-empty. An application with other dependencies, or one that depends on a
-version from the spin index, relocks as
-[Moving an app to a new release](install.md#moving-an-app-to-a-new-release)
+It prints `locked 2 package(s)`, and `git diff spin.lock` shows the new
+`version` and a new `ref` (the tag's commit) under `[lock.cybertrain]`, and
+under `[lock.spinel-http]` the release of the HTTP layer that the framework
+depends on ([The HTTP server](how-it-works.md#the-http-server)) when the
+framework moved to another. Without the `rm`, `spin lock` keeps the commits
+it had locked and the diff is empty. An application with other
+dependencies, or one that depends on a version from the spin index, relocks
+as [Moving an app to a new release](install.md#moving-an-app-to-a-new-release)
 describes.
 
 Two files `cybertrain new` wrote name the release as well. Change them when
@@ -304,6 +306,26 @@ What changes for an application written for 0.4:
   password reset, lockout, remember me, the account page and admin users,
   and prints diffs for the files 0.4 wrote
   ([From 0.4: authentication](#from-04-authentication)).
+- The HTTP layer is a library of its own, spinel-http, which the framework
+  depends on ([The HTTP server](how-it-works.md#the-http-server)). spin
+  locks it for the application, so after the relock above `spin.lock` also
+  has a `[lock.spinel-http]` table: commit it. A lock written by an earlier
+  release has none; spin still finds spinel-http through the framework and
+  the application builds, but nothing pins it, and the CI step
+  `spin.lock is current` that `cybertrain new` writes fails until
+  `cybertrain spin lock` is run and the lock committed.
+  `Cybertrain::Server`, `Request` and the layer's other names, and its
+  `require "cybertrain/http/..."` paths, stay; a class's `name`, as a log
+  line prints it, reads `SpinelHttp::Server`. So do an uploaded file's
+  `inspect` (`#<SpinelHttp::UploadedFile ...>`) and an error event's
+  `error_class` (Sentry's `exception.type`): a test or an alert that
+  matches `"Cybertrain::QueryMalformed"` there now sees
+  `"SpinelHttp::QueryMalformed"` (the String form of `assert_raises` still
+  takes the `Cybertrain::` name). Code that reopens a layer class to add
+  methods may still name it `Cybertrain::Request`, but a constant added
+  through that name is a `NameError` in the compiled program when read
+  from outside the class: add it by reopening `SpinelHttp::Request` (the
+  real name) instead.
 
 ### From 0.4: models and the database
 

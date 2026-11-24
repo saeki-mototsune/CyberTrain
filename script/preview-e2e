@@ -7,7 +7,8 @@
 # The copy is `cp -a examples/blog` into a temporary directory ($TMPDIR),
 # with spin.toml pointing at this checkout, the copied development database,
 # tmp/cybertrain-dev/, tmp/rebuild.log and any build lock removed, the
-# database migrated under CRuby (bin/db.rb with the preview), a user
+# database migrated under CRuby (bin/db.rb with the preview, on the load
+# path `spin flags` gives the copy, as `cybertrain server` runs it), a user
 # created there (`bin/blog.rb user`, under CRuby too: the blog's article
 # forms need a signed-in user), and Article's
 # `length: { minimum: 10 }` taken off the body so that step 3 can add it
@@ -107,6 +108,8 @@ require "socket"
 require "tmpdir"
 
 REPO = File.expand_path("..", __dir__)
+$LOAD_PATH.unshift(REPO)
+require "cybertrain/cli/dev_server"
 
 # The bounds the steps check (seconds).
 FIRST_CRUBY = 5
@@ -184,18 +187,29 @@ class Run
     raise StepFailed, "#{MODEL} no longer has the body's length rule this script takes off" if relaxed == model
 
     File.write(path(MODEL), relaxed)
-    out = IO.popen({ "CYBERTRAIN_ENV" => "development" },
-                   [RbConfig.ruby, "-E", "UTF-8", "-I", REPO, "-I", @app, "-r", "cybertrain/preview", "bin/db.rb", "migrate"],
+    out = IO.popen({ "CYBERTRAIN_ENV" => "development" }, cruby + ["bin/db.rb", "migrate"],
                    chdir: @app, err: [:child, :out], &:read)
     raise StepFailed, "the migration under CRuby failed:\n#{out}" unless $?.success?
 
-    out = IO.popen({ "CYBERTRAIN_ENV" => "development" },
-                   [RbConfig.ruby, "-E", "UTF-8", "-I", REPO, "-I", @app, "-r", "cybertrain/preview", "bin/blog.rb", "user",
-                    USER_EMAIL, USER_PASSWORD],
+    out = IO.popen({ "CYBERTRAIN_ENV" => "development" }, cruby + ["bin/blog.rb", "user", USER_EMAIL, USER_PASSWORD],
                    chdir: @app, err: [:child, :out], &:read)
     raise StepFailed, "`bin/blog.rb user` under CRuby failed:\n#{out}" unless $?.success?
 
     @port = free_port
+  end
+
+  # `ruby -E UTF-8 -I<dir>... -r cybertrain/preview` as `cybertrain server`
+  # starts its children: the -I directories are those of `spin flags` in the
+  # copy (DevServer.load_path), which hold the application, this checkout
+  # and spinel-http's checkout, the HTTP layer cybertrain/http/*.rb require
+  # (docs/design.md D91).
+  def cruby
+    @cruby ||= begin
+      load_path = Cybertrain::CLI::DevServer.load_path(Cybertrain::CLI::DevServer.spin_flags(@app))
+      [RbConfig.ruby, "-E", "UTF-8"] + load_path.map { |dir| "-I#{dir}" } + ["-r", "cybertrain/preview"]
+    rescue Cybertrain::CLI::DevServer::Failure => e
+      raise StepFailed, e.message
+    end
   end
 
   # A port below the ephemeral range (no client's own port), from the PID.

@@ -1,5 +1,5 @@
 ---
-source_sha256: 45a936279cc9a0eb9a65fd3141efb6218521a5d3bb4a7b17ee0efb2db4fe9659
+source_sha256: 1cb9b3e64fe318d289c631fe4208fe60ad0804f122583b822b2149454db538f6
 ---
 # アップグレード
 
@@ -50,7 +50,7 @@ rm spin.lock
 cybertrain spin lock
 ```
 
-`locked 1 package(s)` と表示され、`git diff spin.lock` は `[lock.cybertrain]` の新しい `version` と新しい `ref`（タグのコミット）を示します。`rm` をしないと、`spin lock` はロック済みのコミットをそのまま保ち、差分は空です。ほかの依存があるアプリケーションや、spin のインデックスのバージョンに依存するアプリケーションは、[アプリを新しいリリースに移行する](install.md#moving-an-app-to-a-new-release) のとおりにロックし直します。
+`locked 2 package(s)` と表示され、`git diff spin.lock` は `[lock.cybertrain]` の新しい `version` と新しい `ref`（タグのコミット）を示し、フレームワークが依存する HTTP の層のリリースが変わったときは `[lock.spinel-http]` の下にそれを示します（[HTTP サーバー](how-it-works.md#the-http-server)）。`rm` をしないと、`spin lock` はロック済みのコミットをそのまま保ち、差分は空です。ほかの依存があるアプリケーションや、spin のインデックスのバージョンに依存するアプリケーションは、[アプリを新しいリリースに移行する](install.md#moving-an-app-to-a-new-release) のとおりにロックし直します。
 
 `cybertrain new` が書いたファイルのうち 2 つにも、リリースが書かれています。アプリケーションにあれば変えてください：
 
@@ -168,6 +168,7 @@ cybertrain build
 - `format:` なし、または書式名つきの `time_tag` は `I18n.l` で整形されます（英語のページでは以前と同じ英語の文面です）。
 - gen は `gen/locales.rb`（`config/locales/` がなければ空）を書き、`app/mailers/**/*.rb` を読み込みます。`cybertrain new` は `config/locales/en.yml` を書きます。古いアプリケーションも足せます。
 - `allow_unauthenticated_access` はフレームワークのメソッドになりました。0.4 のジェネレーターが `ApplicationController` に書いたものも動き続け、そちらが優先されます。`cybertrain generate authentication` をもう一度実行すると、パスワードリセット、ロックアウト、ログインしたままにする、アカウントページ、管理者ユーザーが加わり、0.4 が書いたファイルの差分が表示されます（[0.4 から：認証](#from-04-authentication)）。
+- HTTP の層は独立したライブラリ spinel-http になり、フレームワークはそれに依存します（[HTTP サーバー](how-it-works.md#the-http-server)）。spin はアプリケーションのためにもそれをロックするので、上のロックし直しの後の `spin.lock` には `[lock.spinel-http]` のテーブルもあります。それをコミットしてください。以前のリリースが書いたロックにはこのテーブルがありません。spin はフレームワークを通じて spinel-http を見つけるのでアプリケーションはビルドできますが、何も固定されず、`cybertrain new` が書く CI のステップ `spin.lock is current` は、`cybertrain spin lock` を実行してロックをコミットするまで失敗します。`Cybertrain::Server`、`Request` などの層の名前と `require "cybertrain/http/..."` のパスはそのままです。クラスの `name` は、ログの行に出るとおり `SpinelHttp::Server` になります。アップロードされたファイルの `inspect`（`#<SpinelHttp::UploadedFile ...>`）とエラーイベントの `error_class`（Sentry の `exception.type`）も同じです。そこで `"Cybertrain::QueryMalformed"` と照合するテストやアラートは、いまは `"SpinelHttp::QueryMalformed"` を見ます（`assert_raises` の文字列形式は `Cybertrain::` の名前のままで照合できます）。層のクラスを開き直してメソッドを足すコードは `Cybertrain::Request` の名前のままで構いませんが、その名前を通して足した定数は、コンパイルしたプログラムでクラスの外から読むと `NameError` になります。定数は `SpinelHttp::Request`（本当の名前）を開き直して足してください。
 
 ### 0.4 から：モデルとデータベース
 

@@ -227,17 +227,56 @@ module Cybertrain
       end
     end
 
+    # The HTTP layer's names that cybertrain/http/*.rb alias into Cybertrain
+    # (`Cybertrain::Server = SpinelHttp::Server`, docs/design.md D91): the
+    # one class object answers `name` with `SpinelHttp::...`, while a test
+    # written before the move names it `"Cybertrain::..."`. A fixed list,
+    # since Spinel looks no constant up by a String; test/spinel_http_aliases.rb
+    # checks it against the shims' alias lines.
+    SPINEL_HTTP_ALIASES = [
+      "BlockWriter", "BodyTooLarge", "BodyUndecodable", "BodyWriter", "ClientError", "Cookies",
+      "GzipDecoder", "GzipFFI", "GzipFFIDecoder", "HeaderName", "HttpHandler", "HttpLog",
+      "HttpLogContext", "HttpLogSwitch", "HttpParser", "IpAddress", "Key", "Multipart",
+      "MultipartForm", "MultipartFormParser", "MultipartHeaderTooLarge", "MultipartMalformed",
+      "MultipartParser", "MultipartPartTooLarge", "MultipartTooManyParts", "Params", "PortInUse",
+      "Query", "QueryInvalid", "QueryLimitExceeded", "QueryMalformed", "QueryTooDeep",
+      "QueryTooMany", "Request", "RequestHead", "Response", "SSE", "Server", "Sink",
+      "StreamFailure", "UnsupportedMediaType", "UploadedFile"
+    ]
+
+    # The name a class of the HTTP layer has under its Cybertrain alias
+    # (`SpinelHttp::Params::ParameterMissing` ->
+    # `Cybertrain::Params::ParameterMissing`), "" for any other class.
+    # @param name [String] a class's name
+    # @return [String]
+    def self.cybertrain_name(name)
+      prefix = "SpinelHttp::"
+      return "" unless name.start_with?(prefix)
+
+      rest = name.byteslice(prefix.bytesize, name.bytesize - prefix.bytesize).to_s
+      sep = rest.index("::")
+      top = sep.nil? ? rest : rest.byteslice(0, sep).to_s
+      return "" unless SPINEL_HTTP_ALIASES.include?(top)
+
+      "Cybertrain::#{rest}"
+    end
+
     # Whether the raised class `raised` is what `expected` names: a Class
     # by name along the superclass chain (rules 46, 47), a String as part
-    # of the name, "" any StandardError (`standard`: the exception is one,
-    # Minitest's default). A built-in class whose parent is unknown fails
+    # of the name (or of the name a class of the HTTP layer has under its
+    # Cybertrain alias, {.cybertrain_name}), "" any StandardError
+    # (`standard`: the exception is one, Minitest's default). A built-in
+    # class whose parent is unknown fails
     # the assertion when it is a StandardError, and does not match (so it
     # is raised on) when it is not.
     def self.raised_matches?(expected, raised, standard)
       if expected.is_a?(String)
         return standard if expected == ""
 
-        return raised.name.to_s.include?(expected)
+        name = raised.name.to_s
+        return true if name.include?(expected)
+
+        return Test.cybertrain_name(name).include?(expected)
       end
       want = expected.name.to_s
       k = raised

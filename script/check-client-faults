@@ -1,23 +1,29 @@
 #!/usr/bin/env ruby
-# Guards Cybertrain::ClientError::CLIENT_FAULTS and ClientError.extra_faults,
+# Guards ClientError::CLIENT_FAULTS and ClientError.extra_faults (spinel-http's
+# SpinelHttp::ClientError, aliased as Cybertrain::ClientError),
 # the lists of exceptions answered as a 400. They are matched by class NAME,
 # not walked with `is_a?` (NOTES rules 47 and 54, and their status rows, have
 # why), so a QueryInvalid subclass nobody listed would be a 500. This loads
 # the framework under CRuby (cybertrain/params adds ParameterMissing to
 # extra_faults at load; cybertrain/context loads it) and fails (exit 1) when:
 #
-# - a required client fault, a class at or below Cybertrain::QueryInvalid or
-#   Cybertrain::Params::ParameterMissing, is in neither list;
-# - a CLIENT_FAULTS entry is not a loaded class at or below QueryInvalid
+# - a required client fault, a class at or below QueryInvalid or
+#   Params::ParameterMissing, is in none of CLIENT_FAULTS, UNSUPPORTED_FAULTS
+#   (the 415s) and extra_faults (by the names Class#name answers:
+#   SpinelHttp::QueryMalformed, SpinelHttp::Params::ParameterMissing);
+# - a CLIENT_FAULTS or UNSUPPORTED_FAULTS entry is not a loaded class at or
+#   below QueryInvalid
 #   (the list is the layer's own faults, nothing else);
 # - an extra_faults entry does not name a loaded exception class. Any one
 #   will do: a library registers its own faults there, whatever they
 #   subclass, so they are not held to the QueryInvalid hierarchy.
 #
-# CRuby only (needs ObjectSpace). Run by CI.
+# CRuby only (needs ObjectSpace). Run by CI. spinel-http's source comes from
+# the checkout spin.lock pins (script/spinel_http_path.rb).
 #
 # usage: ruby script/check-client-faults
-$LOAD_PATH.unshift(File.expand_path("..", __dir__))
+require_relative "spinel_http_path"
+$LOAD_PATH.unshift(File.expand_path("..", __dir__), SpinelHttpPath.root)
 require "cybertrain/context"
 require "cybertrain/http/query"
 require "cybertrain/http/multipart"
@@ -25,6 +31,9 @@ require "cybertrain/http/request"
 require "cybertrain/http/client_error"
 
 builtin = Cybertrain::ClientError::CLIENT_FAULTS
+# The 415s (a multipart body with no parser loaded): client faults too, in
+# their own list.
+unsupported = Cybertrain::ClientError::UNSUPPORTED_FAULTS
 extra = Cybertrain::ClientError.extra_faults
 query_faults = ObjectSpace.each_object(Class).select { |c| c <= Cybertrain::QueryInvalid }.map(&:name).compact.uniq
 required = query_faults + [Cybertrain::Params::ParameterMissing.name]
@@ -38,12 +47,12 @@ rescue NameError
 end
 
 failed = false
-(required - builtin - extra).each do |n|
-  warn "#{n} is a client fault but is in neither ClientError::CLIENT_FAULTS nor extra_faults (it would answer 500)"
+(required - builtin - unsupported - extra).each do |n|
+  warn "#{n} is a client fault but is in none of ClientError::CLIENT_FAULTS, UNSUPPORTED_FAULTS and extra_faults (it would answer 500)"
   failed = true
 end
-(builtin - query_faults).each do |n|
-  warn "ClientError::CLIENT_FAULTS lists #{n}, which is not a loaded QueryInvalid subclass"
+(builtin + unsupported - query_faults).each do |n|
+  warn "ClientError::CLIENT_FAULTS or UNSUPPORTED_FAULTS lists #{n}, which is not a loaded QueryInvalid subclass"
   failed = true
 end
 extra.each do |n|
@@ -54,6 +63,6 @@ extra.each do |n|
   failed = true
 end
 exit 1 if failed
-puts "client faults: #{builtin.length} in CLIENT_FAULTS, all QueryInvalid classes; " \
+puts "client faults: #{builtin.length} in CLIENT_FAULTS and #{unsupported.length} in UNSUPPORTED_FAULTS, all QueryInvalid classes; " \
      "#{extra.length} in extra_faults, all loaded exception classes; " \
      "#{required.length} required, none missing"

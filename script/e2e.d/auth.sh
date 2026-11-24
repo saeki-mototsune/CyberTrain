@@ -9,7 +9,11 @@
 # its port lands in DIR/smtp.port, each message (Subject, To, a blank line,
 # the text part) in DIR/mail-N.txt as it arrives (await_mail N waits for it).
 start_smtp_receiver() {
-  ruby -I"$ROOT" "$ROOT/script/e2e.d/smtp_receiver.rb" "$1/smtp.port" "$1/mail" "$2" > "$1/smtp.log" 2>&1 &
+  # The receiver loads the framework, whose cybertrain/http/*.rb require
+  # spinel-http (docs/design.md D91): its checkout goes on the load path too.
+  local spinel_http
+  spinel_http=$(ruby "$ROOT/script/spinel_http_path.rb") || fail "script/spinel_http_path.rb found no spinel-http"
+  ruby -I"$ROOT" -I"$spinel_http" "$ROOT/script/e2e.d/smtp_receiver.rb" "$1/smtp.port" "$1/mail" "$2" > "$1/smtp.log" 2>&1 &
   # shellcheck disable=SC2034 # lib.sh's stop_server reads it
   SMTP_PID=$!
   for _ in $(seq 1 40); do

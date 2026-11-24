@@ -241,7 +241,7 @@ the cell names another build.
 | C | bug |  | closed | 2026.10.26.7019 (#10258, #10259) and, for the refusal under it, 2026.11.04.7026 (#10525, #10524): test/template_engine.rb is back in its earlier form |
 | D | constraint | 25 | settled: by design; still raises RangeError on the pin (status 25) |  |
 | E | cost |  | not re-checked on the pin (last: no change against 2026.10.27.7020 on 2026.11.04.7026, 2026-11-05) |  |
-| F | bug | 126 | closed | 2026.10.26.7019 (#10260); never had a workaround on the pin. Rule 126 is for upstream 2026.10.25, which predates #10260 and which CI's http-upstream job builds the HTTP layer's tests with |
+| F | bug | 126 | closed | 2026.10.26.7019 (#10260); never had a workaround on the pin. Rule 126 is for upstream 2026.10.25, which predates #10260; since 2026-11-23 it is spinel-http's NOTES.md rule 1, whose CI builds the HTTP layer's tests with that release (cybertrain's http-upstream job, which did until then, is removed) |
 | G | bug |  | closed | 2026.10.26.7019 (#10262); never had a workaround |
 | H | bug | 77 | closed | 2026.10.27.7020 (#10415); test/db_with_value.rb covers the plain form. The body of rule 77 was cut on 2026-11-21, and what only it held is in H |
 | I | bug |  | closed | 2026.11.04.7026 (#10735, #10786); never had a workaround |
@@ -2047,7 +2047,10 @@ puts b.size            # 1 on 2026.10.25-7018; 0 on 2026.09.12, 2026.10.26.7019 
 Seen in test/http_response.rb: `assert_nil res.drop_header("Location")`
 compiled to `sp_assert_nil(NULL)`, so the header was never dropped and the
 next assertion failed. Tests are where this shape is common (`assert_nil`
-around a mutating call), and they then test nothing.
+around a mutating call), and they then test nothing. That test moved to
+spinel-http on 2026-11-23 (docs/design.md D91), and its workaround for
+upstream 2026.10.25 with it: spinel-http's NOTES.md rule 1, until then
+spikes/NOTES.md rule 126.
 
 - Fix: evaluate the argument for its side effects, then pass nil.
 

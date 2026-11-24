@@ -112,8 +112,8 @@ module Cybertrain
       # What `cybertrain server` prints after "port N on HOST" when the
       # port cannot be bound, restated: Cybertrain::PortInUse's reason and
       # the hint Roles::ServerRunner.port_message adds to it live in the
-      # framework (cybertrain/http/server.rb, cybertrain/roles/server.rb),
-      # which the gem does not ship. test/cruby/dev_server.rb compares the
+      # HTTP layer and the framework (spinel-http/server.rb,
+      # cybertrain/roles/server.rb), which the gem does not ship. test/cruby/dev_server.rb compares the
       # whole line with port_message's, hint included.
       PORT_IN_USE = "is already in use (stop the other server or set PORT)"
       PORT_DENIED = "cannot be bound: permission denied (ports below 1024 need root or a capability)"

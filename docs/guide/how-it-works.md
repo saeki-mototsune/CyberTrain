@@ -189,9 +189,13 @@ Spinel green thread per connection (M:N scheduled, no GVL), typed
 this I/O-bound shape at 100 concurrent connections.
 
 The server calls an `HttpHandler` (`call(request) -> Response`);
-`ContextHandler` joins it to the middleware stack, so the HTTP layer
-(`cybertrain/http/`, plus `Params` and `Logger`) does not depend on the rest
-of the framework. `script/check-http-layer` enforces that in CI.
+`ContextHandler` joins it to the middleware stack. The HTTP layer is a
+library of its own,
+[spinel-http](https://github.com/saeki-mototsune/spinel-http), which loads
+nothing of the framework; spin fetches it with the framework, as a
+dependency. Its classes keep their `Cybertrain::` names: `Cybertrain::Server`
+is `SpinelHttp::Server`, one class under two names, and its `name` answers
+`"SpinelHttp::Server"`.
 
 ## SQLite via FFI
 

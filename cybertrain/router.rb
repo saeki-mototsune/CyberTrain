@@ -1,6 +1,7 @@
 require "uri"
 require "cybertrain/middleware"
 require "cybertrain/http/query"
+require "cybertrain/request_format"
 require "cybertrain/http/multipart"
 
 module Cybertrain

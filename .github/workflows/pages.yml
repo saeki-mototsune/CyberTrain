@@ -22,6 +22,11 @@ on:
       - "docs/guide/**"
       - ".yardopts"
       - "script/api-docs"
+      # The reference also documents spinel-http's classes, read from the
+      # commit spin.lock pins, found by script/spinel_http_path.rb: a
+      # relock that moves the commit changes the pages.
+      - "spin.lock"
+      - "script/spinel_http_path.rb"
       # The guide pages' generator (see script/guide-pages).
       - "script/guide-pages"
       - "script/guide-pages.d/**"

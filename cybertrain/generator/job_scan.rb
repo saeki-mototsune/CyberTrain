@@ -115,7 +115,10 @@ module Cybertrain
       # command), the CRuby preview (cybertrain/preview, never compiled) and
       # the test harness (cybertrain/test.rb and cybertrain/test/, not part of
       # an application's program), each with the file under cybertrain/ that
-      # defines it. test/gen_jobs.rb checks the list against the source.
+      # defines it. The HTTP layer's are spinel-http's classes under the
+      # names cybertrain/http/*.rb alias them to (docs/design.md D91): the
+      # names an application writes, each with the file holding its alias.
+      # test/gen_jobs.rb checks the list against the source.
       FRAMEWORK_ERRORS = [
         ["Cybertrain::Assets::UnknownAsset", "assets"],
         ["Cybertrain::BlobKeyInvalid", "blob_store"],
@@ -143,10 +146,10 @@ module Cybertrain
         ["Cybertrain::Mailer::RejectedError", "mailer"],
         ["Cybertrain::Migration::IrreversibleMigration", "migration"],
         ["Cybertrain::MissingTemplate", "rendering"],
-        ["Cybertrain::MultipartHeaderTooLarge", "http/multipart"],
-        ["Cybertrain::MultipartMalformed", "http/multipart"],
-        ["Cybertrain::MultipartPartTooLarge", "http/multipart"],
-        ["Cybertrain::MultipartTooManyParts", "http/multipart"],
+        ["Cybertrain::MultipartHeaderTooLarge", "http/multipart_form"],
+        ["Cybertrain::MultipartMalformed", "http/multipart_form"],
+        ["Cybertrain::MultipartPartTooLarge", "http/multipart_form"],
+        ["Cybertrain::MultipartTooManyParts", "http/multipart_form"],
         ["Cybertrain::Net::Error", "net/socket"],
         ["Cybertrain::Net::TimeoutError", "net/socket"],
         ["Cybertrain::Net::ConnectError", "net/socket"],
@@ -170,6 +173,7 @@ module Cybertrain
         ["Cybertrain::Template::CallSyntaxError", "template/ast"],
         ["Cybertrain::Template::MissingTemplate", "template/engine"],
         ["Cybertrain::UnknownCallback", "controller"],
+        ["Cybertrain::UnsupportedMediaType", "http/multipart_form"],
         ["Cybertrain::Views::NoRoutes", "views"],
         ["Cybertrain::Views::OutsideRequest", "template/interpreter"],
         ["Cybertrain::WebSocket::Error", "websocket/frame"],
@@ -193,7 +197,7 @@ module Cybertrain
       # before the jobs. test/gen_jobs.rb checks this against core.rb.
       PRELOADED_FILES = [
         "assets", "blob_store", "console", "controller", "db/error", "encryptor",
-        "http/multipart", "http/parser", "http/query", "http/request", "http/server", "i18n",
+        "http/multipart_form", "http/parser", "http/query", "http/request", "http/server", "i18n",
         "migration", "model", "params", "rendering", "session", "template/ast",
         "template/engine", "template/interpreter", "views"
       ]

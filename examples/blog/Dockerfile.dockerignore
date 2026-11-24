@@ -5,6 +5,7 @@
 !cybertrain.gemspec
 !cybertrain.rb
 !spin.toml
+!spin.lock
 !README.md
 !exe/
 !cybertrain/

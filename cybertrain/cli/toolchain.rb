@@ -620,8 +620,8 @@ module Cybertrain
       end
 
       # zlib's header and library: Request#decoded_body inflates gzip request
-      # bodies through the system zlib (cybertrain/http/gzip_ffi.rb), so an
-      # application does not build without them.
+      # bodies through the system zlib (spinel-http's spinel-http/gzip.rb),
+      # so an application does not build without them.
       def self.zlib_ok?
         compiles?("zlib.h", "zlibVersion() != 0 ? 0 : 1", "-lz")
       end

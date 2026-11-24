@@ -16,8 +16,7 @@
 # The format switch, the lock and the time source are class-level, so a
 # test that swaps Cybertrain.logger for a StringIO logger keeps them.
 #
-# The time follows the Clock (a test's `travel_to`), but this file is in
-# the HTTP layer, which loads alone (script/check-http-layer) and cannot
+# The time follows the Clock (a test's `travel_to`), but this file does not
 # name the Clock: cybertrain/clock.rb pushes each change of its instant
 # here through {Logger.follow_clock}; -1 means real time.
 #

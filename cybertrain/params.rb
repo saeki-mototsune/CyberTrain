@@ -3,7 +3,8 @@
 #
 # The structure (four typed Hashes: scalars, lists, nested Params, uploaded
 # files; the readers; what Query and Multipart fill) is the HTTP layer's,
-# in cybertrain/http/params.rb. This file reopens the class to add the
+# spinel-http's SpinelHttp::Params (cybertrain/http/params.rb aliases it
+# as Cybertrain::Params). This file reopens the class to add the
 # strong parameters, ParameterMissing and #filtered_inspect, the formatter
 # that redacts the values ParameterFilter names; the layer's #inspect does
 # not redact.
@@ -262,5 +263,8 @@ module Cybertrain
   # ClientError classifies it (Server's bare-app path, ErrorPages,
   # Dev::ErrorPage, Controller). See the header for why through
   # cybertrain/http/extra_faults.rb alone.
-  ClientError.extra_faults = ClientError.extra_faults + ["Cybertrain::Params::ParameterMissing"]
+  # The name is what Class#name answers: Params is spinel-http's class
+  # (Cybertrain::Params is an alias of SpinelHttp::Params), so its nested
+  # ParameterMissing is SpinelHttp::Params::ParameterMissing.
+  ClientError.extra_faults = ClientError.extra_faults + ["SpinelHttp::Params::ParameterMissing"]
 end

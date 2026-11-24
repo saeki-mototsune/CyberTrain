@@ -1,55 +1,10 @@
-ok   target splits into path and query_string
-ok   query_string is empty when absent
-ok   header lookup is case-insensitive
-ok   header lookup works for headers given in mixed case
-ok   content_length parses the header and defaults to 0
-ok   content_type keeps only the media type
-ok   keep_alive? for HTTP/1.1
-ok   keep_alive? for HTTP/1.0
-ok   keep_alive? matches Connection tokens exactly, not substrings
-ok   content_length of an overlong all-digit value is Int64 max, not a RangeError
 ok   Accept decides the format when there is no extension
 ok   Accept with q-values and wildcards
 ok   the extension wins over Accept, and setting it again forgets the memo
 ok   extensions map to Rails' registered formats
-ok   method predicates
-ok   override_method! upper-cases the new method
-ok   cookie_header returns the Cookie header or empty string
-ok   body and headers are exposed
-ok   utf8_query_string and utf8_body are the validated text, the same object on every call
-ok   utf8_query_string and utf8_body: a raw invalid byte raises QueryMalformed on every call
-ok   path_segments decodes once and returns the same Array every time
-ok   path_segments: an invalid decoded byte sequence is QueryMalformed and is not cached
-ok   path_segments: a raw invalid byte anywhere in the path is QueryMalformed, as is half a character raw
-ok   form_value and query_value: the last pair wins, absent is empty
-ok   form_or_query_value: the form body wins, the query string is the fallback, absent is empty
-ok   form_value and query_value decode keys and values like a parse
-ok   form_value and query_value: name[]= and name[x]= evict an earlier scalar, a later name= writes it again
-ok   form_value and query_value: MAX_PAIRS segments are counted, one more is QueryTooMany; invalid bytes are QueryMalformed
-ok   form_value on the 4096 x 32 body answers like the parse
-ok   content_encoding is the lowercased header, empty when absent
-ok   decoded_body is the body itself without a Content-Encoding or with identity, the same String every time
-ok   a plain body over the limit is BodyTooLarge, at the limit it passes
-ok   a cached body is checked against a smaller limit asked for later
-ok   decoded_body refuses an encoding it does not decode
-ok   a gzip body that is not gzip, or too short to be, is undecodable before the inflater is asked
-ok   a well-formed gzip body is undecodable while no inflater is installed, and the error is not cached
-ok   an installed inflater is what decodes gzip, and it is given the body and the limit
-ok   multipart? is true for multipart/form-data only, form? stays false
-ok   multipart_boundary reads the parameter the media type drops
-ok   multipart_form parses once and is the same object every time
-ok   form_or_query_value reads a multipart text part: the body wins, a file never answers, the query is the fallback
-ok   multipart_form refuses an encoded body and a malformed one, and does not cache the raise
-ok   header_params reads a Digest-style header: scheme dropped, names lowercased, quotes undone
-ok   header_params treats ; and , as separators (Forwarded, Prefer), first occurrence wins
-ok   header_params unquotes backslash escapes and keeps separators inside quotes
-ok   header_params skips junk, keeps bare names as empty values and trims blanks
-ok   header_scheme reads Bearer; the credential is a bare parameter
-ok   header_params is empty for a missing header and one over 8 KiB
-ok   header_params tolerates any bytes in values
 ok   preferred_locale with q-values, regions, wildcards and junk
 ok   preferred_locale reads at most 4 KB and 32 entries and survives a huge header
 ok   preferred_locale never raises on a header that is not valid UTF-8
 ok   negotiate_locale answers the given default, not I18n's
 ok   a ?locale= value from the query only passes when it names an available locale
-54 tests, 334 assertions, 0 failures
+9 tests, 103 assertions, 0 failures

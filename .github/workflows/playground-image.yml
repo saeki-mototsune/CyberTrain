@@ -34,9 +34,11 @@ on:
       # The gem the image builds and runs (the Dockerfile's cli-src stage,
       # which is cybertrain.gemspec's spec.files) and the pins: the version
       # and the Spinel release in cybertrain/version.rb, the packages in
-      # spin.toml.
+      # spin.toml, and the commit of spinel-http in spin.lock (the
+      # Dockerfile's spinel-http mirror holds that commit).
       - "cybertrain.gemspec"
       - "spin.toml"
+      - "spin.lock"
       - "exe/**"
       - "cybertrain/cli.rb"
       - "cybertrain/cli/**"
