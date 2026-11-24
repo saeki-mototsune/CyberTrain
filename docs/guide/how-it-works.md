@@ -207,7 +207,8 @@ A pool (`SizedQueue`, 4 connections by default) hands out connections with:
 
 - WAL, with `synchronous = NORMAL`: the WAL is synced at a checkpoint, not at
   every commit, so a crash of the process loses nothing but a power loss or an
-  OS crash can lose the last commits (the file stays consistent);
+  OS crash can lose the commits made since the last checkpoint (the file stays
+  consistent);
 - a busy timeout of about five seconds, waited out in a green-thread `sleep`
   (100 µs at first, then up to 1 ms) so the connection holding the lock keeps
   running even on one worker; a schema script waits inside SQLite instead
