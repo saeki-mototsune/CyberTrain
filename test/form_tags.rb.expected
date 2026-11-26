@@ -1,8 +1,9 @@
 ok   select_tag with options_for_select
 ok   options_for_select takes values, pairs, a Hash and several selected values, compared as strings
+ok   a SafeString attribute value has its quotes escaped and its entities kept
 ok   options_from_collection_for_select reads each record
 ok   label_tag, text_field_tag, hidden_field_tag and submit_tag
 ok   check_box_tag is a box with no hidden field, value 1 unless given
 ok   the tag helpers check their arguments
 ok   a Time takes no Array or Hash arm in attributes, class names, safe_join and options
-7 tests, 53 assertions, 0 failures
+8 tests, 57 assertions, 0 failures

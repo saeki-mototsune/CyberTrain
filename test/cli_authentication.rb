@@ -340,14 +340,24 @@ test "writes the Authentication concern and includes it" do
       # an action runs), or the app runs its tests. In any other
       # environment (production, staging, ...) "" and an ERROR line: the
       # mail named `mail` is not sent, as a link built from a Host header
-      # anyone can forge would carry its token to their site.
+      # anyone can forge would carry its token to their site. Outside
+      # development and the tests that address must also be https (a
+      # trusted proxy's X-Forwarded-Proto, its first element as
+      # SslRedirect reads it: SslRedirect.base_url_of), or the
+      # same: an http link would carry its token in clear.
       def mail_link_base(mail)
         c = Cybertrain.config
         configured = c.string_setting(:base_url)
         return configured.delete_suffix("/") unless configured.empty?
-        return request.base_url if c.host_check? || c.test?
 
-        Cybertrain.logger.error("\#{mail} mail not sent: set SHOP_BASE_URL (or CYBERTRAIN_HOSTS)")
+        unless c.host_check? || c.test?
+          Cybertrain.logger.error("\#{mail} mail not sent: set SHOP_BASE_URL (or CYBERTRAIN_HOSTS)")
+          return ""
+        end
+        base = Cybertrain::SslRedirect.base_url_of(request)
+        return base if c.development? || c.test? || base.start_with?("https://")
+
+        Cybertrain.logger.error("\#{mail} mail not sent: the request came over http; set SHOP_BASE_URL to the https address (or CYBERTRAIN_TRUSTED_PROXY behind a TLS proxy)")
         ""
       end
     end
@@ -1699,14 +1709,24 @@ test "password reset: the token in the model, the base URL in the concern" do
       # an action runs), or the app runs its tests. In any other
       # environment (production, staging, ...) "" and an ERROR line: the
       # mail named `mail` is not sent, as a link built from a Host header
-      # anyone can forge would carry its token to their site.
+      # anyone can forge would carry its token to their site. Outside
+      # development and the tests that address must also be https (a
+      # trusted proxy's X-Forwarded-Proto, its first element as
+      # SslRedirect reads it: SslRedirect.base_url_of), or the
+      # same: an http link would carry its token in clear.
       def mail_link_base(mail)
         c = Cybertrain.config
         configured = c.string_setting(:base_url)
         return configured.delete_suffix("/") unless configured.empty?
-        return request.base_url if c.host_check? || c.test?
 
-        Cybertrain.logger.error("\#{mail} mail not sent: set SHOP_BASE_URL (or CYBERTRAIN_HOSTS)")
+        unless c.host_check? || c.test?
+          Cybertrain.logger.error("\#{mail} mail not sent: set SHOP_BASE_URL (or CYBERTRAIN_HOSTS)")
+          return ""
+        end
+        base = Cybertrain::SslRedirect.base_url_of(request)
+        return base if c.development? || c.test? || base.start_with?("https://")
+
+        Cybertrain.logger.error("\#{mail} mail not sent: the request came over http; set SHOP_BASE_URL to the https address (or CYBERTRAIN_TRUSTED_PROXY behind a TLS proxy)")
         ""
       end
   RUBY
@@ -1726,8 +1746,8 @@ test "password reset: the route, the sign-in link and the base_url setting in bo
       # SHOP_BASE_URL=https://shop.example.com: set it, with https, wherever the
       # app is served. Unset, they take the address the request came to,
       # which is trusted only in development, in tests, or when
-      # CYBERTRAIN_HOSTS lists the app's hosts; anywhere else a reset mail
-      # is not sent and the log says why.
+      # CYBERTRAIN_HOSTS lists the app's hosts and the request is https;
+      # anywhere else a reset mail is not sent and the log says why.
       c.setting_string :base_url, env: "SHOP_BASE_URL", default: ""
 
       # c.port = 3000

@@ -187,6 +187,25 @@ test "ParameterFilter.filter_path masks token-shaped segments only" do
   kept.each { |path| assert_equal path, f.filter_path(path) }
 end
 
+test "ParameterFilter.filter_path masks a token whatever bytes of it are percent-encoded" do
+  # The Router matches on decoded segments, so these reach the action as the token.
+  f = Cybertrain::ParameterFilter
+  assert_equal "/passwords/[FILTERED]/edit", f.filter_path("/passwords/%37--1900--#{"0123456789abcdef" * 4}/edit")
+  assert_equal "/p/[FILTERED]", f.filter_path("/p/7%2D%2d1900--#{"0123456789abcdef" * 3}%30123456789abcd%45f")
+  assert_equal "/p/[FILTERED].json", f.filter_path("/p/#{PATH_TOKEN}.json")
+  assert_equal "/p/[FILTERED]%2Ejson", f.filter_path("/p/#{PATH_TOKEN}%2Ejson")
+  # Still not a token once decoded: kept as sent.
+  kept = ["/p/%37--1900--#{"ab" * 31}", "/p/%3--1900--#{"ab" * 32}", "/p/%G7--1900--#{"ab" * 32}",
+          "/p/#{PATH_TOKEN}%30", "/p/#{PATH_TOKEN}%2", "/p/%"]
+  kept.each { |path| assert_equal path, f.filter_path(path) }
+  # A listed prefix spelt with escapes is still that prefix (an escaped "/" is not a separator).
+  f.path_prefixes = ["/results/"]
+  assert_equal "/result%73/[FILTERED]", f.filter_path("/result%73/Zm9v")
+  assert_equal "/%72esults/[FILTERED]/x", f.filter_path("/%72esults/Zm9v/x")
+  assert_equal "/results%2FZm9v", f.filter_path("/results%2FZm9v")
+  f.path_prefixes = []
+end
+
 test "ParameterFilter.filter_path masks the whole segment after a listed prefix" do
   f = Cybertrain::ParameterFilter
   assert_equal 0, f.path_prefixes.size

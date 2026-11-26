@@ -1,5 +1,5 @@
 ---
-source_sha256: 6a1655f18b429bd1cfd676a69d23b8a7edf43720044e4bc6ff0b24537c141f17
+source_sha256: 8eee615f131af513a326deaed48ebbd9806241fcc18f5f4993103cf38b59c5db
 ---
 # 认证
 
@@ -113,7 +113,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 
 ### 邮件中的链接
 
-链接以生成器在 `config/app.rb` 中声明的 `base_url` 设置开头，取自 `<APP>_BASE_URL`（`BLOG_BASE_URL=https://blog.example.com`）。在提供应用的每个地方都用 https 设置它。未设置时，只有在 `Host` 头受到检查（开发环境，或设置了 `CYBERTRAIN_HOSTS`）或在测试中时，链接才使用请求到达的地址；其他情况下不发送邮件，日志写出 `ERROR [<request id>] password reset mail not sent: set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)`，页面照常回答。伪造的 `Host` 永远不会进入链接。
+链接以生成器在 `config/app.rb` 中声明的 `base_url` 设置开头，取自 `<APP>_BASE_URL`（`BLOG_BASE_URL=https://blog.example.com`）。在提供应用的每个地方都用 https 设置它。未设置时，只有在 `Host` 头受到检查（开发环境，或设置了 `CYBERTRAIN_HOSTS`）或在测试中时，链接才使用请求到达的地址；其他情况下不发送邮件，日志写出 `ERROR [<request id>] password reset mail not sent: set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)`，页面照常回答。伪造的 `Host` 永远不会进入链接。在开发环境和测试之外，该地址还必须是 https；在 TLS 代理后面，只有用 `CYBERTRAIN_TRUSTED_PROXY` 或 `CYBERTRAIN_TRUSTED_PROXIES` 声明的代理（它的 `X-Forwarded-Proto`）才能说明这一点：通过 http 到达的请求同样不发送邮件，因为链接会以明文携带令牌，日志写出 `password reset mail not sent: the request came over http; set <APP>_BASE_URL to the https address (or CYBERTRAIN_TRUSTED_PROXY behind a TLS proxy)`。
 
 ## 确认地址
 

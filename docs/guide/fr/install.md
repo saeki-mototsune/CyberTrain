@@ -1,5 +1,5 @@
 ---
-source_sha256: 6bf5394a6e48281e555dd03cd02b963e9f8a3f0d9efc3898432c239020ce33ef
+source_sha256: 62e9c689219c4db26ce385321689566020292b1006b3883b3c811e280c7de675
 ---
 # Installer cybertrain
 
@@ -108,12 +108,17 @@ partir de là, de `cybertrain new` à `cybertrain build`.
   confirmer son adresse par e-mail à un nouveau compte avant qu’il puisse se
   connecter, et `--force` écrase les fichiers pour lesquels une seconde
   exécution n’affiche sinon qu’un diff ([Authentification](authentication.md)).
-- `cybertrain generate attachment MODEL FIELD [--any]` ajoute l’envoi d’un
+- `cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]`
+  ajoute l’envoi d’un
   fichier à un modèle généré par scaffold&nbsp;: cinq colonnes de métadonnées,
   des méthodes et callbacks de modèle, une action de téléchargement, la route,
   le champ de formulaire et un test (voir
   [Ajouter une image de couverture](advanced-tutorial.md#attachments)). Un champ de scaffold
-  `cover:attachment` fait la même chose.
+  `cover:attachment` fait la même chose. Le téléchargement n’exécute pas le
+  code de `def show`&nbsp;: un `show` qui a son propre code est refusé, sauf
+  s’il est vidé ou si `--show-checks-nothing` indique que ce code ne
+  restreint personne&nbsp;; une vérification qu’il fait passe d’abord dans un
+  `before_action`.
 - `cybertrain generate helper NAME [--force]` ajoute
   `app/helpers/NAME_helper.rb`, un module dont tout template peut appeler
   les méthodes une fois `spin run gen` lancé, et un test

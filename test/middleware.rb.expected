@@ -10,6 +10,7 @@ ok   RequestLogger writes filtered query values as [FILTERED], other pairs untou
 ok   RequestLogger filters with the installed list; an empty list filters nothing
 ok   RequestLogger writes a signed token in the path as [FILTERED]
 ok   ParameterFilter.filter_path masks token-shaped segments only
+ok   ParameterFilter.filter_path masks a token whatever bytes of it are percent-encoded
 ok   ParameterFilter.filter_path masks the whole segment after a listed prefix
 ok   RequestLogger writes the segment after a listed prefix as [FILTERED]
 ok   Config#filter_path_prefixes is empty by default
@@ -26,4 +27,4 @@ ok   MethodOverride and the Router share one validation of the form body
 ok   a foreign cookie that does not percent-decode does not fail the request
 ok   App runs the default stack down to the router
 ok   App without logging writes nothing to its logger
-28 tests, 119 assertions, 0 failures
+29 tests, 132 assertions, 0 failures

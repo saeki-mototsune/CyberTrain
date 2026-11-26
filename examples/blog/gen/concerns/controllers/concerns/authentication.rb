@@ -152,14 +152,24 @@ module Authentication
   # an action runs), or the app runs its tests. In any other
   # environment (production, staging, ...) "" and an ERROR line: the
   # mail named `mail` is not sent, as a link built from a Host header
-  # anyone can forge would carry its token to their site.
+  # anyone can forge would carry its token to their site. Outside
+  # development and the tests that address must also be https (a
+  # trusted proxy's X-Forwarded-Proto, its first element as
+  # SslRedirect reads it: SslRedirect.base_url_of), or the
+  # same: an http link would carry its token in clear.
   def mail_link_base(mail)
     c = Cybertrain.config
     configured = c.string_setting(:base_url)
     return configured.delete_suffix("/") unless configured.empty?
-    return request.base_url if c.host_check? || c.test?
 
-    Cybertrain.logger.error("#{mail} mail not sent: set BLOG_BASE_URL (or CYBERTRAIN_HOSTS)")
+    unless c.host_check? || c.test?
+      Cybertrain.logger.error("#{mail} mail not sent: set BLOG_BASE_URL (or CYBERTRAIN_HOSTS)")
+      return ""
+    end
+    base = Cybertrain::SslRedirect.base_url_of(request)
+    return base if c.development? || c.test? || base.start_with?("https://")
+
+    Cybertrain.logger.error("#{mail} mail not sent: the request came over http; set BLOG_BASE_URL to the https address (or CYBERTRAIN_TRUSTED_PROXY behind a TLS proxy)")
     ""
   end
 end

@@ -1,5 +1,5 @@
 ---
-source_sha256: f3d5e388be9dc562f649c6e1dcf1afcea8d74ed13d2d2c8f461e12945ecee24b
+source_sha256: 5d24dbdc8e00a61e292b5bf9047d5b659fa65689048f6d643e2264065be1b3d4
 title: "発展編チュートリアル：ブログをさらに進める"
 description: "Getting Started のブログを CyberTrain でさらに進めます：コンポーネントとヘルパー、Turbo Streams によるコメントのライブ更新、バックグラウンドジョブ、JSON、サインイン、アップロードしたカバー画像、cybertrain build によるデプロイ用ビルド。"
 og_title: "発展編チュートリアル：CyberTrain のブログをさらに進める"
@@ -432,15 +432,15 @@ class CommentsControllerTest < ActionDispatch::IntegrationTest
 > [!WHY]
 > 記事に画像を添えられるようにします。サインインと同じ役割分担です。フレームワークが `multipart/form-data` を解析してバイト列を保存し、残りはひとつのコマンドが、Active Storage の `has_one_attached` の代わりに、アプリが所有するコードとして書き出します。
 
-画像は記事のページに表示されます。このページはステップ 17 から訪問者も読めるので、画像のダウンロードも訪問者に開いておく必要があります。ジェネレーターを実行する前に、ステップ 17 で書いたリストに `:cover` を加えます：
+画像は記事のページに表示されます。このページはステップ 17 から訪問者も読めるので、画像のダウンロードも訪問者に開いておく必要があります。ジェネレーターを実行する前に、ステップ 17 で書いたリストに `:cover` を加えます。また、ダウンロードは `def show` の中のコードを実行しません。この `show` にはコードがある（フォーム用の空のコメントを用意し、フォーマットを選ぶ）ので、そのコードが誰も制限しないことを `--show-checks-nothing` で示さない限り、ジェネレーターは止まります。このコードは誰も制限しません：
 
 ```ruby app/controllers/articles_controller.rb（抜粋）
   allow_unauthenticated_access only: [:index, :show, :cover]
 ```
 
 ```shell ターミナル — blog/
-cybertrain generate attachment article cover   # 新しいモデルなら: generate scaffold NAME field:type ... cover:attachment
-cybertrain db migrate                          # articles に cover_* のカラムを追加する
+cybertrain generate attachment article cover --show-checks-nothing   # 新しいモデルなら: generate scaffold NAME field:type ... cover:attachment
+cybertrain db migrate                                                # articles に cover_* のカラムを追加する
 ```
 
 `articles` に 5 つのカラム（`cover_key`、`cover_filename`、`cover_content_type`、`cover_byte_size`、`cover_checksum`。ファイルそのものは SQLite には入りません）を追加するマイグレーションと、`Article` に `cover_file=`、`cover_attached?`、`cover_url`、バリデーション、保存時と削除時のコールバックを持つブロックを書き出します。`ArticlesController` には、`before_action :set_article` の対象となる `cover` アクションと、`create` と `update` にそれぞれ 1 行を追加します：
@@ -473,13 +473,13 @@ class ArticlesController < ApplicationController
     if @article.update(article_params)
 ```
 
-ダウンロードは `show` と同じく `set_article` を通して記事を見つけるので、`set_article` がユーザーに見せる記事を制限しているなら、その制限はダウンロードにも及びます。この `show` には独自のコードがあるので、ジェネレーターは出力の中で警告を表示します：
+ダウンロードは `show` と同じく `set_article` を通して記事を見つけるので、`set_article` がユーザーに見せる記事を制限しているなら、その制限はダウンロードにも及びます。この `show` には独自のコードがあるので、ジェネレーターは出力の中でそれでも警告を表示します：
 
 ```text 出力 — cybertrain generate attachment
 warning: app/controllers/articles_controller.rb: def show has code of its own, which def cover does not run; if that code limits who may see articles, check the same in def cover
 ```
 
-ここでは、そのコードはコメントを用意してフォーマットを選ぶだけで、誰の閲覧も拒みません。したがって `cover` に写すものはありません。
+ここでは、そのコードはコメントを用意してフォーマットを選ぶだけで、誰の閲覧も拒みません。したがって `cover` に写すものはありません。もし誰かを拒むコード（`head 404 if @article.draft?`）だったなら、そのチェックの置き場所は `:show` と `:cover` の両方を挙げる `before_action` で、ジェネレーターはそれを読み取れます。ただし、チェックを移しても、コメントを用意してフォーマットを選ぶこの `show` は空にならないので、ジェネレーターはやはり止まります。`show` を空にして実行するか、`show` に残ったコードが誰も制限しないことを確かめたうえで `--show-checks-nothing` を付けて実行します。
 
 ジェネレーターは、`config/routes.rb` に `get "/articles/:id/cover"` を、フォームに `multipart: true` と、送信ボタンの上のファイル入力を、表示ページの `<h1>` の直後に画像を、それぞれ追加します：
 
@@ -498,7 +498,7 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 ```
 
 > [!NOTE]
-> ジェネレーターは `show` のアクセスルールをダウンロードに写しますが、写すのは読み取れるもの、つまりコールバックだけです。`set_article` 以外の `before_action` が、新しいアクションを含まずに `:show` を挙げていると、`cannot preserve show's authorization for :cover` と表示して止まり、何も書き出しません。`def show` の中のコードは、何を確かめているのかを読み取れません。警告が出るのはそのためです。`show` が空なら、`:show` が挙がっている `allow_unauthenticated_access` にジェネレーターが自分で `:cover` を加えます。`show` にコードがあるとその行には手を付けず、そこに `:cover` がなければ画像にはサインインが必要になります。
+> ジェネレーターは `show` のアクセスルールをダウンロードに写しますが、写すのは読み取れるもの、つまりコールバックだけです。`set_article` 以外の `before_action` が、新しいアクションを含まずに `:show` を挙げていると、`cannot preserve show's authorization for :cover` と表示して止まり、何も書き出しません。`def show` の中のコードは、何を確かめているのかを読み取れません。そのため `--show-checks-nothing` で保証しない限り同じように止まり、保証すれば警告を表示します。`show` が空なら、`:show` が挙がっている `allow_unauthenticated_access` にジェネレーターが自分で `:cover` を加えます。`show` にコードがあるとその行には手を付けず、そこに `:cover` がなければ画像にはサインインが必要になります。
 
 > [!RULE] has_one_attached は書き下される
 > ### `has_one_attached` は書き下される
