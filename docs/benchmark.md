@@ -1,59 +1,418 @@
-# Benchmark: the blog, CyberTrain vs Rails
+# Benchmark: the generated scaffold, CyberTrain vs Rails
 
-[examples/blog](../examples/blog) is the Rails Guides' "Getting Started"
-blog built on CyberTrain, grown since into a small application: sign-in, two
-languages, a cache, jobs, live comments. [bench/rails_blog](../bench/rails_blog)
-is the same blog written in Rails 8.1 with Rails 8's own defaults for each of
-those ([What is compared](#what-is-compared)). [bench/run](../bench/run)
-builds both, runs each in production mode on the same machine and loads them
-with the same requests; [bench/report](../bench/report) turns its JSON into
-the tables below. The recorded run is
-[bench/results/2026-11-24.json](../bench/results/2026-11-24.json)
-(cybertrain 0.4.2, Spinel 2026.11.23.7035), on a different machine from the
-earlier runs and with both apps much bigger than they were then, so its
-numbers are not comparable with theirs ([The apps today](#the-apps-today)).
-The earlier runs stay in bench/results: [2026-11-05.json](../bench/results/2026-11-05.json)
-(cybertrain 0.4.1, Spinel 2026.11.04.7026, the blog before sign-in),
-[2026-10-09.json](../bench/results/2026-10-09.json) (cybertrain 0.2.1, Spinel
-2026.09.12), the "after" of the speedups described below, and the first,
-before them, [2026-10-07.json](../bench/results/2026-10-07.json).
-bench/results also holds a run made earlier on 2026-11-24
-([2026-11-24-first.json](../bench/results/2026-11-24-first.json), see
-[Results](#results)), an earlier run of 0.2.1,
-[2026-10-08.json](../bench/results/2026-10-08.json), and the results of a
-check of the Spinel package 2026.10.09-7009 (edb9dd0) made on 2026-10-13
+What each framework gives you in the first five minutes: the application its
+`new` command writes, plus `generate scaffold` for an article with a title
+and a body, and the root route. On the CyberTrain side `bench/run` generates
+that app afresh on every run from the checkout it runs in;
+[bench/rails_app](../bench/rails_app) is the same thing from `rails new` in
+Rails 8.1, committed with its `Gemfile.lock` ([What is compared](#what-is-compared)).
+[bench/run](../bench/run) builds both, runs each in production mode on the
+same machine and loads them with the same requests;
+[bench/report](../bench/report) turns its JSON into the tables below. The
+recorded run is
+[bench/results/2026-11-24-scaffold.json](../bench/results/2026-11-24-scaffold.json)
+(cybertrain 0.4.2 at main's b67380e5, Spinel 2026.11.23.7035), with an
+earlier run of the same day beside it,
+[2026-11-24-scaffold-first.json](../bench/results/2026-11-24-scaffold-first.json),
+to show the spread ([Results](#results)).
+
+Until this run the benchmark compared [examples/blog](../examples/blog), the
+Rails Guides' blog grown into a small application, with the same blog
+rewritten in Rails ([The apps today](#the-apps-today)). That comparison
+measured two heavily featured applications, each with code written for the
+benchmark on the Rails side; the scaffold has none. The last run of it is
+[2026-11-24.json](../bench/results/2026-11-24.json) (and
+[2026-11-24-first.json](../bench/results/2026-11-24-first.json)); the earlier
+runs stay in bench/results too: [2026-11-05.json](../bench/results/2026-11-05.json)
+(cybertrain 0.4.1, the blog before sign-in),
+[2026-10-09.json](../bench/results/2026-10-09.json) (cybertrain 0.2.1), the
+"after" of the speedups described below, and the first, before them,
+[2026-10-07.json](../bench/results/2026-10-07.json), plus an earlier run of
+0.2.1, [2026-10-08.json](../bench/results/2026-10-08.json), and the check of
+the Spinel package 2026.10.09-7009 made on 2026-10-13
 (`2026-10-13-spinel-ab.txt`, `2026-10-13-spinel-edb9dd0.json`;
-[spinel-feedback.md](spinel-feedback.md) mentions that check); none of them
-is tabulated here.
+[spinel-feedback.md](spinel-feedback.md) mentions it). None of them is
+tabulated here, and none is comparable with this run: the apps differ.
 
-On one CPU core, CyberTrain serves 2.5 to 5.6 times the requests per second
-of Rails 8.1 (YJIT, Puma) at 16 connections for the same pages, answers a
-single request in 0.9 to 1.7 ms (median) against 4.6 to 6.2 ms, uses a sixth
-of the memory (30 MB against 189 MB), starts in 0.04 s against 2.1 s, and
-deploys as one 11.7 MB file against 114 MB of Ruby, gems and source. With
-jemalloc in both, it is 2.1 to 5.7 times on one core. A second core helps
-Rails more (Puma adds a whole process: 1.8 to 2.7 times its one-core rate on
-the pages, while CyberTrain's second worker adds 37 to 55%), so on two cores
-the lead is 1.2 to 4.3 times (1.7 to 4.7 with jemalloc). The comment POST is
-CyberTrain's weak spot: on two cores it is 1.2 times Rails (1.7 with
-jemalloc) and slower than on one core, and its 99th percentile is worse than
-Rails' at one connection in every configuration and at 16 connections in
-three of the four. The price is a compile of four and a half minutes
-(271 s on this machine).
+On one CPU core, with 16 connections, the CyberTrain scaffold serves 3.6 to
+10.1 times the requests per second of the Rails 8.1 scaffold (YJIT, Puma) on
+its pages and its create, and 2.3 times on the stylesheet; it answers a
+single page request in 0.16 to 0.48 ms (median) against 1.6 to 2.5 ms, uses
+24 MB against 177 MB, starts in 0.016 s against 1.3 s, and deploys as one
+10.6 MB file against 134 MB of Ruby, gems and source. A second core helps
+Rails more (Puma adds a whole process: 1.9 to 2.2 times its one-core rate,
+where CyberTrain's second worker adds 34 to 56%), so on two cores the lead is
+1.8 to 7.5 times. jemalloc in both changes none of this by more than the
+spread between runs. The price is a compile of three and a half minutes
+(207 s on this machine).
 
 | 16 connections, req/s | 1 core: CyberTrain | Rails | | 2 cores: CyberTrain | Rails | |
 | --- | --: | --: | --: | --: | --: | --: |
-| `GET /articles` | 696 | 155 | 4.5x | 989 | 422 | 2.3x |
-| `GET /articles/1` | 1,119 | 199 | 5.6x | 1,538 | 359 | 4.3x |
-| `POST /articles/2/comments` | 417 | 98 | 4.3x | 274 | 221 | 1.2x |
-| the digested stylesheet | 13,676 | 5,554 | 2.5x | 22,310 | 11,926 | 1.9x |
+| `GET /articles` | 2,091 | 372 | 5.6x | 3,268 | 817 | 4.0x |
+| `GET /articles/1` | 5,562 | 550 | 10.1x | 8,540 | 1,136 | 7.5x |
+| `POST /articles` | 2,058 | 566 | 3.6x | 2,756 | 1,075 | 2.6x |
+| the digested stylesheet | 15,742 | 6,995 | 2.3x | 24,602 | 13,643 | 1.8x |
 | *with jemalloc in both:* | | | | | | |
-| `GET /articles` | 665 | 125 | 5.3x | 1,002 | 342 | 2.9x |
-| `GET /articles/1` | 1,060 | 186 | 5.7x | 1,647 | 349 | 4.7x |
-| `POST /articles/2/comments` | 418 | 122 | 3.4x | 360 | 218 | 1.7x |
-| the digested stylesheet | 12,944 | 6,260 | 2.1x | 19,585 | 11,702 | 1.7x |
+| `GET /articles` | 2,214 | 393 | 5.6x | 3,248 | 819 | 4.0x |
+| `GET /articles/1` | 5,726 | 573 | 10.0x | 8,536 | 1,155 | 7.4x |
+| `POST /articles` | 2,037 | 555 | 3.7x | 2,989 | 1,105 | 2.7x |
+| the digested stylesheet | 16,115 | 7,925 | 2.0x | 25,228 | 13,881 | 1.8x |
+
+## What is compared
+
+Each framework's own starting point, untouched: the application its `new`
+command writes, plus the scaffold of an article. That is what a developer
+gets first with either framework, and neither side has been written for the
+benchmark, so neither can have been written to look good in it.
+
+The CyberTrain app is generated by `bench/run` on every run, into
+`bench/tmp/bench_app/`, from the checkout it runs in, so it always measures
+what the generator writes today, with the framework at that commit (the app
+depends on the checkout through `--path`, never on a released gem or tag):
+
+```sh
+cybertrain new bench_app --path <this checkout>
+cd bench_app
+cybertrain generate scaffold article title:string body:text
+#   config/routes.rb: root "articles#index", as the tutorial's step 04 adds
+cybertrain db migrate
+cybertrain build              # dist/bench_app and dist/public/
+```
+
+The Rails app is [bench/rails_app](../bench/rails_app), made with Rails
+8.1.4.1 on Ruby 3.4.6 and committed with its `Gemfile.lock`:
+
+```sh
+rails new rails_app
+cd rails_app
+bin/rails generate scaffold Article title:string body:text
+#   config/routes.rb: the generated '# root "posts#index"' becomes root "articles#index"
+```
+
+[Its README](../bench/rails_app/README.md) lists the only other differences
+from what `rails new` wrote: no credentials file (its key cannot be
+committed; production reads `SECRET_KEY_BASE` from the environment), and
+whitespace removed from the unused CI workflow it generates. `bench/run`
+changes nothing in either app's configuration. It sends a current Chrome
+`User-Agent` with every request, so the generated Rails `allow_browser`
+check passes as it would for a real visitor.
+
+- **Same storage.** SQLite, as each framework sets it up. CyberTrain links
+  the system's SQLite (3.45.1 here) and keeps one database file; Rails'
+  generated `config/database.yml` uses the sqlite3 gem's own SQLite (3.54.1),
+  with the articles in `storage/production.sqlite3` (and files for Solid
+  Cache, Solid Queue and Solid Cable, which no measured request touches).
+- **Same mode.** Production. CyberTrain runs `dist/bench_app` from
+  `cybertrain build` (views embedded, digested assets in `dist/public/`).
+  Rails runs `bin/rails server` with `RAILS_ENV=production` after
+  `bin/rails db:prepare assets:precompile`: eager loading, YJIT (Rails 8
+  turns it on when the Ruby has it), Puma with its generated
+  `config/puma.rb` (3 threads), Solid Queue not started (the scaffold
+  enqueues nothing, and `config/puma.rb` starts it only when
+  `SOLID_QUEUE_IN_PUMA` is set). Both log every request at `info` to STDOUT,
+  which `bench/run` sends to `/dev/null`. Neither enables a Content
+  Security Policy by default.
+- **Defaults, not `rails new --minimal`.** `--minimal` leaves out Action
+  Cable, Action Mailer, Action Mailbox, Action Text, Active Job, Active
+  Storage, bootsnap, Hotwire and the import map, jbuilder, the Solid gems,
+  Kamal, Thruster and the rest of the tooling. `cybertrain new` has no such
+  switch because its app is already the core alone: its `bin/bench_app.rb`
+  requires `cybertrain/core`, and jobs, streams, the mailer and the cache
+  are one `require` line each. Comparing CyberTrain's default with a Rails
+  stripped by hand would compare a default with a configuration most Rails
+  apps do not start from; each framework's own default is the baseline its
+  users get. What Rails loads by default and these four requests never use
+  is counted in its memory, startup and size figures, and that is part of
+  what its default costs. A `--minimal` Rails would be smaller and start
+  faster; it was not measured.
+
+What the two scaffolds do is close but not identical, and the numbers
+include the differences:
+
+- **The pages.** Both list every article's title and body with a link to
+  it, and show one article with links to edit it, go back and delete it (a
+  `button_to` form). Rails' list renders a partial per article, and its
+  layout carries more: three icon links and an import map of seven pins
+  (Turbo, Stimulus and its controllers) with their `modulepreload` links,
+  against CyberTrain's one pin. The list is 14.3 kB in Rails and 10.3 kB in
+  CyberTrain, the article page 2.7 kB and 1.4 kB.
+- **Per request.** Rails' generated `ApplicationController` parses the
+  `User-Agent` (`allow_browser versions: :modern`) and its HTML responses
+  get an `ETag` (`Rack::ETag`, `stale_when_importmap_changes`), behind its
+  middleware stack (request id, remote IP, security headers). Rails signs a
+  separate CSRF token per form; CyberTrain puts one token per session in
+  every form. Both keep the flash in an encrypted session cookie.
+- **The create.** CyberTrain's scaffold validates the title's presence
+  (`generate scaffold` adds that for the first string field); Rails'
+  scaffold adds no validation. Both insert the row, set the flash and
+  redirect to the new article (CyberTrain with 303, Rails with 302).
+- **The stylesheet.** Each app's generated `application.css`, digested:
+  852 bytes in CyberTrain (a few base rules), 491 in Rails (a comment).
+
+### The apps today
+
+From 2026-10-07 to the run of 2026-11-24 made before this one, the benchmark
+compared examples/blog with `bench/rails_blog`, the same blog written in
+Rails 8.1 and brought up to it feature by feature: sign-in, an encrypted
+session, English and Japanese, a Content Security Policy with a nonce, the
+comment counts and a cached article count on the list, a Turbo Stream
+subscription, a job and a broadcast on every comment, a uniqueness
+validation, `dependent: :destroy`, Propshaft. That measured two heavily
+featured applications, and the Rails one was hand-written to match the
+CyberTrain one, so how fair it was depended on how faithfully that was
+done. The scaffold comparison replaces it: both apps are what the
+generators write, the requests are the scaffold's own, and nothing on
+either side was written for the benchmark. `bench/rails_blog` is gone from
+the tree (its last version is in main at b67380e5), and its results stay in
+bench/results.
+
+The figures of the two comparisons cannot be set side by side: the
+scaffold's pages do much less work (no comments, no counts, no forms per
+comment, no CSP, no sign-in check) and its POST inserts one row with no job
+or broadcast.
+
+## Method
+
+How the results below were measured.
+
+- **Machine.** One cloud VM (details under Results). Each server is pinned
+  with `taskset` to CPU 0 (the 1-CPU runs) or CPUs 0-1 (the 2-CPU runs); wrk
+  is pinned to CPUs 2-3, so the load generator never takes the server's CPU.
+  A shared cloud VM is noisy: repeated runs move by several percent, so read
+  the ratios rather than the third digit. Each recorded run started only
+  once the machine was idle (a load average under 0.5 and no process using
+  a quarter of a CPU), and a sampler beside it saw no other busy process
+  while it ran.
+- **Workers.** On one CPU: CyberTrain `SPINEL_WORKERS=1` (its default) and
+  Puma in single mode with 3 threads (Rails' default). On two CPUs:
+  `SPINEL_WORKERS=2` and Puma with `WEB_CONCURRENCY=2` (two worker
+  processes, 3 threads each).
+- **malloc.** Each CPU configuration runs twice: with the system's malloc
+  (glibc), which is what both frameworks get out of the box, and with
+  jemalloc preloaded into both servers (`LD_PRELOAD`), which is what Rails'
+  generated Dockerfile does in production and what `allocator = "jemalloc"`
+  in an app's spin.toml does for CyberTrain (linking it measures the same as
+  preloading it).
+- **Data.** Each server starts on an empty database. It is seeded over HTTP
+  through the scaffold's own form, as a browser would fill it in: a visitor
+  writes 30 articles (neither scaffold has sign-in).
+- **Requests.** `GET /articles` (the list of the 30 articles),
+  `GET /articles/1` (one article), the digested stylesheet
+  `GET /assets/application-<digest>.css` (a static file, its path read from
+  the list page each app serves) and `POST /articles` (the scaffold's
+  create: inserts an article and redirects). Every request is the
+  visitor's, carries the visitor's session cookie, a browser's `Accept`
+  header and a current Chrome `User-Agent`, and the POST carries the new
+  article form's CSRF token.
+- **Load.** [wrk](https://github.com/wg/wrk) 4.1, keep-alive, 10 s per run:
+  1 connection (one request at a time: the latency of a single request) and
+  16 connections (2 wrk threads: throughput). Each endpoint gets 10 s of load
+  at 16 connections that is not measured (YJIT compiles during it) just
+  before its own runs, in the order above, so the GETs are measured on the
+  seeded data and the POST, which adds thousands of articles, comes last.
+  Each figure is the median of 3 runs. A run that sees a socket error or a
+  status other than 2xx/3xx fails.
+- **Memory.** `VmRSS` from `/proc`, summed over the server's processes
+  (Puma's workers included), after seeding and after all the load runs;
+  `Pss` too, which splits the pages processes share.
+- **Startup.** From spawning the server to the first 200 for `GET /` (the
+  list) on a fresh, empty database, 5 boots, median (Rails with a warm
+  bootsnap cache).
+- **What the server needs.** CyberTrain: `dist/bench_app`, one file that
+  links against libc, zlib, OpenSSL and the system SQLite. Rails: the app's
+  source (the precompiled assets included), the gems `bundle list` names
+  outside the development and test groups, and the Ruby install without its
+  gem directory (so the gems Ruby itself bundles are not counted for Rails).
+
+## Results
+
+Recorded 2026-11-24 at commit a312f9ef: Intel(R) Xeon(R) Processor @ 2.10GHz, 4 CPUs, 15.7 GB, Ubuntu 24.04.5 LTS (Linux 6.18.44-fc-v819).
+
+The machine is the 4-vCPU cloud VM of the blog runs of 2026-11-24 (`nproc`
+4, an Intel(R) Xeon(R) Processor @ 2.10GHz, `/proc/cpuinfo` gives no other
+model name, 15.7 GB, Linux 6.18.44-fc-v819); cybertrain 0.4.2 with Spinel
+2026.11.23.7035, against Rails 8.1.4.1 on Ruby 3.4.6 (YJIT, the
+ruby/ruby-builder build) with Puma 8.1.2 and the sqlite3 gem 2.10.2. Servers
+and wrk are pinned as the method says (CPU 0 or 0-1, wrk on 2-3).
+
+The commit recorded, a312f9ef, is the benchmark change on top of main at
+b67380e5: the framework, the CLI and the generator are main's (the last
+commit to change them is 3331d6f5). It does **not** include
+saeki-mototsune/CyberTrain#267 (SQLite `synchronous=NORMAL` and job threads
+that yield while they drain), which was merged into main after these runs
+had started; that change mostly concerns writes, so the `POST /articles`
+rows are the ones it could move.
+
+The same session made one run just before this one with the same apps and
+method: [2026-11-24-scaffold-first.json](../bench/results/2026-11-24-scaffold-first.json),
+not tabulated. Its request figures show how far one run moves from the next
+on this VM: of the 64 medians, 57 are within 10% of this run's and all 64
+within 20%; the largest gaps are at one connection (CyberTrain's article
+page on two cores, 4,929 there and 5,875 here; Rails' list on two cores,
+304 and 357; CyberTrain's list on one core with jemalloc, 2,098 and 1,757).
+At 16 connections the ratios were 2.2 to 11.4 times on one core there (2.3
+to 10.1 here) and 1.9 to 8.1 times on two (1.8 to 7.5 here). Startup was
+0.017 s against 1.36 s.
+
+| | CyberTrain | Rails |
+| --- | --- | --- |
+| Version | cybertrain 0.4.2, spinel 2026.11.23.7035 (86421ea5) | Rails 8.1.4.1, Puma 8.1.2, sqlite3 gem 2.10.2 |
+| Runtime | native binary (cc 13.3.0, `-O2`), system SQLite 3.45.1 | ruby 3.4.6, YJIT on, SQLite 3.54.1 (the gem's own) |
+
+### One CPU core, system malloc: server on CPU 0 (CyberTrain `SPINEL_WORKERS=1`; Puma single mode, 3 threads)
+
+| Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |
+| --- | --: | --: | --: | --: | --: | --: |
+| GET /articles (the scaffold's list, 30 articles) | 1 | 1,854 | 368 | 5.0x | 0.48 / 1.62 ms | 2.49 / 5.68 ms |
+| GET /articles (the scaffold's list, 30 articles) | 16 | 2,091 | 372 | 5.6x | 7.02 / 13.2 ms | 40.3 / 76.4 ms |
+| GET /articles/1 (the scaffold's article page) | 1 | 4,965 | 557 | 8.9x | 0.16 / 0.77 ms | 1.60 / 3.73 ms |
+| GET /articles/1 (the scaffold's article page) | 16 | 5,562 | 550 | 10.1x | 2.67 / 5.21 ms | 27.8 / 44.3 ms |
+| GET /assets/application-<digest>.css (the digested stylesheet) | 1 | 12,065 | 6,378 | 1.9x | 0.07 / 0.54 ms | 0.12 / 1.92 ms |
+| GET /assets/application-<digest>.css (the digested stylesheet) | 16 | 15,742 | 6,995 | 2.3x | 1.03 / 1.85 ms | 2.11 / 7.55 ms |
+| POST /articles (validate, insert, redirect) | 1 | 1,964 | 554 | 3.5x | 0.47 / 1.37 ms | 1.60 / 5.38 ms |
+| POST /articles (validate, insert, redirect) | 16 | 2,058 | 566 | 3.6x | 7.17 / 14.2 ms | 26.3 / 54.4 ms |
+
+| Memory (RSS, all processes) | CyberTrain | Rails |
+| --- | --: | --: |
+| After seeding, before load | 22.6 MB | 152.2 MB |
+| After the load runs | 23.7 MB | 176.7 MB |
+| After the load runs (PSS) | 21.7 MB | 174.4 MB |
+
+### Two CPU cores, system malloc: server on CPU 0,1 (CyberTrain `SPINEL_WORKERS=2`; Puma 2 workers x 3 threads)
+
+| Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |
+| --- | --: | --: | --: | --: | --: | --: |
+| GET /articles (the scaffold's list, 30 articles) | 1 | 1,828 | 357 | 5.1x | 0.47 / 1.81 ms | 2.58 / 5.83 ms |
+| GET /articles (the scaffold's list, 30 articles) | 16 | 3,268 | 817 | 4.0x | 6.27 / 13.6 ms | 19.2 / 34.1 ms |
+| GET /articles/1 (the scaffold's article page) | 1 | 5,875 | 520 | 11.3x | 0.14 / 0.72 ms | 1.76 / 4.46 ms |
+| GET /articles/1 (the scaffold's article page) | 16 | 8,540 | 1,136 | 7.5x | 2.30 / 5.99 ms | 13.7 / 25.3 ms |
+| GET /assets/application-<digest>.css (the digested stylesheet) | 1 | 12,317 | 4,948 | 2.5x | 0.07 / 0.67 ms | 0.17 / 1.89 ms |
+| GET /assets/application-<digest>.css (the digested stylesheet) | 16 | 24,602 | 13,643 | 1.8x | 0.79 / 2.73 ms | 1.03 / 5.34 ms |
+| POST /articles (validate, insert, redirect) | 1 | 1,895 | 482 | 3.9x | 0.48 / 2.55 ms | 1.86 / 6.42 ms |
+| POST /articles (validate, insert, redirect) | 16 | 2,756 | 1,075 | 2.6x | 5.30 / 36.7 ms | 13.5 / 35.3 ms |
+
+| Memory (RSS, all processes) | CyberTrain | Rails |
+| --- | --: | --: |
+| After seeding, before load | 25.0 MB | 388.8 MB |
+| After the load runs | 28.9 MB | 446.8 MB |
+| After the load runs (PSS) | 27.0 MB | 316.8 MB |
+
+### One CPU core, jemalloc: server on CPU 0 (CyberTrain `SPINEL_WORKERS=1`; Puma single mode, 3 threads; jemalloc preloaded into both)
+
+| Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |
+| --- | --: | --: | --: | --: | --: | --: |
+| GET /articles (the scaffold's list, 30 articles) | 1 | 1,757 | 371 | 4.7x | 0.55 / 1.31 ms | 2.39 / 7.49 ms |
+| GET /articles (the scaffold's list, 30 articles) | 16 | 2,214 | 393 | 5.6x | 6.49 / 12.1 ms | 39.0 / 64.6 ms |
+| GET /articles/1 (the scaffold's article page) | 1 | 5,251 | 618 | 8.5x | 0.15 / 0.78 ms | 1.46 / 3.42 ms |
+| GET /articles/1 (the scaffold's article page) | 16 | 5,726 | 573 | 10.0x | 2.60 / 5.39 ms | 26.6 / 41.7 ms |
+| GET /assets/application-<digest>.css (the digested stylesheet) | 1 | 11,160 | 6,363 | 1.8x | 0.08 / 0.55 ms | 0.12 / 1.73 ms |
+| GET /assets/application-<digest>.css (the digested stylesheet) | 16 | 16,115 | 7,925 | 2.0x | 1.00 / 1.80 ms | 1.89 / 5.93 ms |
+| POST /articles (validate, insert, redirect) | 1 | 1,800 | 555 | 3.2x | 0.51 / 3.47 ms | 1.61 / 5.83 ms |
+| POST /articles (validate, insert, redirect) | 16 | 2,037 | 555 | 3.7x | 7.40 / 15.4 ms | 26.9 / 56.6 ms |
+
+| Memory (RSS, all processes) | CyberTrain | Rails |
+| --- | --: | --: |
+| After seeding, before load | 24.8 MB | 148.3 MB |
+| After the load runs | 26.0 MB | 166.4 MB |
+| After the load runs (PSS) | 24.0 MB | 164.2 MB |
+
+### Two CPU cores, jemalloc: server on CPU 0,1 (CyberTrain `SPINEL_WORKERS=2`; Puma 2 workers x 3 threads; jemalloc preloaded into both)
+
+| Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |
+| --- | --: | --: | --: | --: | --: | --: |
+| GET /articles (the scaffold's list, 30 articles) | 1 | 1,868 | 341 | 5.5x | 0.47 / 1.17 ms | 2.67 / 6.75 ms |
+| GET /articles (the scaffold's list, 30 articles) | 16 | 3,248 | 819 | 4.0x | 5.96 / 13.8 ms | 19.1 / 37.1 ms |
+| GET /articles/1 (the scaffold's article page) | 1 | 5,550 | 549 | 10.1x | 0.15 / 0.69 ms | 1.66 / 4.47 ms |
+| GET /articles/1 (the scaffold's article page) | 16 | 8,536 | 1,155 | 7.4x | 2.26 / 6.20 ms | 13.1 / 24.0 ms |
+| GET /assets/application-<digest>.css (the digested stylesheet) | 1 | 13,526 | 4,900 | 2.8x | 0.07 / 0.48 ms | 0.18 / 1.88 ms |
+| GET /assets/application-<digest>.css (the digested stylesheet) | 16 | 25,228 | 13,881 | 1.8x | 0.78 / 2.55 ms | 1.01 / 5.01 ms |
+| POST /articles (validate, insert, redirect) | 1 | 1,885 | 523 | 3.6x | 0.49 / 1.92 ms | 1.75 / 5.80 ms |
+| POST /articles (validate, insert, redirect) | 16 | 2,989 | 1,105 | 2.7x | 4.87 / 30.6 ms | 13.3 / 35.0 ms |
+
+| Memory (RSS, all processes) | CyberTrain | Rails |
+| --- | --: | --: |
+| After seeding, before load | 28.2 MB | 386.6 MB |
+| After the load runs | 31.1 MB | 425.9 MB |
+| After the load runs (PSS) | 29.1 MB | 282.5 MB |
+
+| Startup (5 boots, median) | CyberTrain | Rails |
+| --- | --: | --: |
+| Spawn to first 200 for `GET /` | 0.016 s | 1.297 s |
+| RSS then | 20.7 MB | 136.3 MB |
+
+| What the server needs | CyberTrain | Rails |
+| --- | --: | --: |
+| The application | 10.6 MB binary (`dist/bench_app`) | 1.86 MB of source |
+| Gems | none | 81.3 MB (94 gems) |
+| Ruby | none | 50.5 MB |
+| Total | 10.6 MB | 133.6 MB |
+| Shared libraries | libm.so.6, libz.so.1, libsqlite3.so.0, libssl.so.3, libcrypto.so.3, libc.so.6, /lib64/ld-linux-x86-64.so.2 | (Ruby's own, and the gems' native extensions) |
+
+`cybertrain build` took 207 s.
+
+## Reading the results
+
+These notes read the recorded run of 2026-11-24
+(`2026-11-24-scaffold.json`).
+
+- **One core: 3.6 to 10.1 times the requests** at 16 connections on the
+  pages and the create, 2.3 times on the static file (3.7 to 10.0 and 2.0
+  with jemalloc in both). The gap is widest on the article page (5,562
+  against 550 req/s): it is small, so what is left is mostly each
+  framework's fixed cost per request, which is where a compiled binary
+  differs most from Rails' middleware stack, controller callbacks and view
+  lookup. The list renders 30 rows, and Rails a partial for each: 2,091
+  against 372. The create is 2,058 against 566; much of it is SQLite's
+  write, the same work in both.
+- **Latency.** One request at a time, CyberTrain answers the pages and the
+  create in 0.16 to 0.48 ms (median) and Rails in 1.6 to 2.5 ms. With 16
+  connections on one core, CyberTrain's 99th percentile is 5 to 14 ms
+  against 44 to 76 ms for Rails.
+- **Two cores.** Puma's second worker process gives Rails 1.9 to 2.2 times
+  its one-core rate. CyberTrain's second worker (`SPINEL_WORKERS=2`) adds 54
+  to 56% on the pages and the static file and 34% on the create, so the
+  lead narrows to 1.8 to 7.5 times. The create is where CyberTrain does
+  worst on two cores: its 99th percentile at 16 connections is 36.7 ms
+  against Rails' 35.3 (30.6 against 35.0 with jemalloc), though its median
+  is 5.3 ms against 13.5 and its throughput 2.6 times Rails'. The cause was
+  not measured in this run; two workers' inserts meeting on the database's
+  write lock is the likely place to look, and this run does not include
+  #267, which changes how SQLite syncs those writes.
+- **Static file.** CyberTrain 15,700 req/s on one core and 24,600 on two,
+  Rails 7,000 and 13,600. In production both would usually sit behind a
+  proxy that serves the assets itself ([deploy.en.md](deploy.en.md) puts
+  Caddy in front), so these rows are there for completeness.
+- **jemalloc.** It moves both apps by amounts within the spread between
+  runs on this VM (on one core CyberTrain's requests -8 to +6%, Rails' -2 to
+  +13%), so it shows no clear effect either way.
+- **Memory.** One CyberTrain process serving 16 connections stays near
+  24 MB (26 MB with jemalloc). One Puma process with Rails is 177 MB after
+  the load; on two cores (a master and two workers) 447 MB by RSS, 317 MB
+  by PSS, against CyberTrain's 29 MB (27 MB).
+- **Startup.** The binary answers its first request 0.016 s after it is
+  spawned; Rails takes 1.3 s with bootsnap's cache warm.
+- **Size.** The server needs one 10.6 MB file, which links libc, zlib,
+  OpenSSL and the system SQLite (and libjemalloc when chosen), against Ruby,
+  94 gems and the app: 134 MB. The gems are what `rails new` puts in the
+  Gemfile's default group, Kamal, Thruster and image_processing among them;
+  a `--minimal` app would need fewer.
+- **What it costs.** The binary has to be built: `cybertrain build` took
+  207 s on this machine for the scaffold, and every Ruby change needs a
+  rebuild (`cybertrain server` does it for you in development), where Rails
+  runs its source as it is. And the comparison covers only the slice of
+  Rails a scaffold uses; CyberTrain's ORM and router are smaller (see
+  [Differences from Rails](guide/how-it-works.md#differences-from-rails)).
+- **The machine.** It is a shared cloud VM and not the same host from day to
+  day: the runs of 2026-10-07 and 2026-10-08 were on a 2.10 GHz Xeon, that of
+  2026-10-09 on a 2.80 GHz one, that of 2026-11-05 on a 2.30 GHz one, those
+  of 2026-11-24 on a 2.10 GHz one, and the apps differ between the blog runs
+  and the scaffold runs. Compare numbers within one run, not across runs.
 
 ## How CyberTrain got faster
+
+This history was measured on examples/blog and the blog comparison that
+preceded the scaffold one ([The apps today](#the-apps-today)); its figures
+are those of the blog, not of the scaffold.
 
 The first recorded run (2026-10-07) had CyberTrain at 1,026 and 1,064 requests
 a second for the list and the article page on one core. Profiling it (perf with
@@ -195,363 +554,22 @@ framework. jemalloc is not linked by default, because it needs its development
 package to build; `cybertrain new` writes `allocator = "jemalloc"` into spin.toml
 commented out, with that note.
 
-## What is compared
-
-The two apps are the same application, and this section describes them as
-they were at the run of 2026-11-24.
-[bench/rails_blog/README.md](../bench/rails_blog/README.md) lists every
-change from `rails new` and every difference left.
-
-- **Same pages.** `bench/rails_blog/app/views/` follows examples/blog's: the
-  layout (the language links, the sign-in link, the flash, the CSRF and CSP
-  meta tags, the digested stylesheet, an import map), the article list (the
-  number of articles, a date and order filter form, a comment count per
-  article), the article page (the date in a `<time>`, the subscription to
-  the article's stream, each comment with its author through an application
-  helper and a delete button, the comment form). The HTML both apps send for
-  an article page differs only in markup details: the tokens themselves,
-  where `button_to` puts its hidden token field, `/>` against `>`, Rails'
-  `accept-charset` on forms, the stream tag (`<turbo-stream-source>` over
-  server-sent events against Action Cable's `<turbo-cable-stream-source>`)
-  and the import map's pins (Turbo from jsDelivr against turbo-rails' own
-  copy). A comment is a component in examples/blog and a partial in Rails.
-- **Same code.** The routes, the controllers and the models are
-  examples/blog's, in Rails' spelling: the validations (the title's
-  uniqueness among them, a query on every save), `dependent: :destroy`, the
-  list's `includes(:comments)` and its article count read from the cache
-  for a minute, the locale picked from `?locale=`, a cookie or
-  `Accept-Language`, a Content Security Policy with a fresh nonce on every
-  response, and on a comment a job enqueued and the comment broadcast to the
-  article's stream, rendered in the request, before the redirect.
-- **Each framework's own way.** Signing in is `cybertrain generate
-  authentication` against Rails 8's authentication generator; the
-  stylesheet is digested by `cybertrain build` against Propshaft; the cache,
-  the jobs and the stream messages are tables of examples/blog's one SQLite
-  database against Solid Cache, Solid Queue and Solid Cable, Rails 8's
-  defaults, each in its own SQLite file. examples/blog runs its jobs on a
-  thread of the server process; Rails runs Solid Queue inside Puma in its
-  `async` mode (threads of the Puma process), rather than in the three
-  processes of the default `fork` mode, which the memory figures would
-  count.
-- **Same storage.** SQLite files in WAL mode, foreign keys on. CyberTrain
-  links the system's SQLite (3.45.1 here); the sqlite3 gem brings its own
-  (3.53.2).
-- **Same defaults.** Neither app is tuned. CyberTrain runs `dist/blog` from
-  `cybertrain build` (views embedded, digested assets in `dist/public/assets/`, production by default).
-  Rails runs `bin/rails server` with `RAILS_ENV=production` after
-  `bin/rails assets:precompile`: eager loading, YJIT (Rails 8 turns it on
-  when the Ruby has it), Puma with its generated `config/puma.rb` (3
-  threads). Both log every request at the `info` level to STDOUT, which
-  `bench/run` sends to `/dev/null`.
-
-What each framework does per request by default is still not identical, and
-the numbers include that: both encrypt the session cookie (AES-256-GCM), but
-Rails signs a separate CSRF token for each form (`per_form_csrf_tokens`) where
-CyberTrain puts one token per session in every form, Rails computes an `ETag`
-for every response (`Rack::ETag`, and the generated
-`stale_when_importmap_changes`) behind a longer middleware stack (request id,
-remote IP, security headers), and Rails asks Active Storage whether an
-article has a cover (a query on the article page) where examples/blog reads
-its own columns.
-
-### The apps today
-
-The run of 2026-11-05 compared the blog as it was then: articles and
-comments, no users, a signed session, one language, `public/style.css`.
-examples/blog has grown since (sign-in, an encrypted session, English and
-Japanese, a CSP, the comment counts and the cached article count on the
-list, a Turbo Stream subscription, a job and a broadcast on every comment, a
-uniqueness validation, `dependent: :destroy`, a digested stylesheet, a cover
-image), and before the run of 2026-11-24 `bench/rails_blog` was brought up
-to it on everything a measured request does, as above. So the numbers below
-measure a bigger application than those of 2026-11-05, in both frameworks,
-and on another machine: they are not comparable with the earlier runs.
-
-Left out of the Rails app, on no measured request: examples/blog's account
-page, "keep me signed in", the idle timeout and the lockout after wrong
-passwords, its first-run `/setup` page and `user` command, the jobs page and
-its scheduled task (Solid Queue's generated `recurring.yml` is the nearest).
-Both apps serve a cover image; neither is requested or seeded.
-
-## Method
-
-How the results below were measured.
-
-- **Machine.** One cloud VM (details under Results). Each server is pinned
-  with `taskset` to CPU 0 (the 1-CPU runs) or CPUs 0-1 (the 2-CPU runs); wrk
-  is pinned to CPUs 2-3, so the load generator never takes the server's CPU.
-  A shared cloud VM is noisy: repeated runs move by several
-  percent, so read the ratios rather than the third digit. The recorded run
-  started only once the machine was idle (a load average under 0.5 and no
-  other process using a quarter of a CPU), and a sampler beside it saw no
-  other busy process while it ran.
-- **Workers.** On one CPU: CyberTrain `SPINEL_WORKERS=1` (its default) and
-  Puma in single mode with 3 threads (Rails' default). On two CPUs:
-  `SPINEL_WORKERS=2` and Puma with `WEB_CONCURRENCY=2` (two worker
-  processes, 3 threads each). Each app runs its jobs in the server: a
-  CyberTrain job thread; Solid Queue's threads in the Puma process (the
-  master, in cluster mode).
-- **malloc.** Each CPU configuration runs twice: with the system's malloc
-  (glibc), which is what both frameworks get out of the box, and with
-  jemalloc preloaded into both servers (`LD_PRELOAD`), which is what Rails'
-  generated Dockerfile does in production and what `allocator = "jemalloc"`
-  in an app's spin.toml does for CyberTrain (linking it measures the same as
-  preloading it).
-- **Data.** Each server starts on an empty database holding one user. It is
-  seeded over HTTP through its own forms, as a browser would fill them in:
-  the user signs in and writes 30 articles, then a visitor posts 10 comments
-  on the first.
-- **Requests.** `GET /articles` (the list: 30 articles, each with its comment
-  count, the article count, the filter form), `GET /articles/1` (the
-  article, its 10 comments and 12 forms: a `button_to` for the article and
-  for each comment, and the comment form), the digested stylesheet
-  `GET /assets/application-<digest>.css` (a static file, its path read from
-  the list page each app serves) and `POST /articles/2/comments` (validates,
-  inserts a comment, enqueues a job, broadcasts the comment, answers 303).
-  Every request is the visitor's, carries the visitor's session cookie and a
-  browser's `Accept` header (a plain form submission; Turbo would ask for a
-  Turbo Stream), and the POST carries the comment form's CSRF token.
-- **Load.** [wrk](https://github.com/wg/wrk) 4.1, keep-alive, 10 s per run:
-  1 connection (one request at a time: the latency of a single request) and
-  16 connections (2 wrk threads: throughput). Each endpoint gets 10 s of load
-  at 16 connections that is not measured (YJIT compiles during it) just
-  before its own runs, in the order above, so the GETs are measured on the
-  seeded data and the POST, which adds thousands of comments, comes last.
-  Each figure is the median of 3 runs. A run that sees a socket error or a
-  status other than 2xx/3xx fails.
-- **Memory.** `VmRSS` from `/proc`, summed over the server's processes
-  (Puma's workers included), after seeding and after all the load runs;
-  `Pss` too, which splits the pages processes share.
-- **Startup.** From spawning the server to the first 200 for `GET /` (the
-  list) on a fresh database holding only the user, 5 boots, median (Rails
-  with a warm bootsnap cache).
-- **What the server needs.** CyberTrain: `dist/blog`, one file that links
-  against libc and the system SQLite. Rails: the app's source, the gems
-  `bundle list` names outside the development and test groups, and the Ruby
-  install without its gem directory (so the gems Ruby itself bundles are
-  not counted for Rails).
-
-## Results
-
-Recorded 2026-11-24 at commit 7b77d370: Intel(R) Xeon(R) Processor @ 2.10GHz, 4 CPUs, 15.7 GB, Ubuntu 24.04.5 LTS (Linux 6.18.44-fc-v819).
-
-The machine is not the one of the earlier runs: a 4-vCPU cloud VM (`nproc`
-4) with an Intel(R) Xeon(R) Processor @ 2.10GHz (`/proc/cpuinfo` gives no
-other model name), 15.7 GB, Linux 6.18.44-fc-v819; cybertrain 0.4.2 with
-Spinel 2026.11.23.7035, against Rails 8.1.4.1 on Ruby 3.4.6 (YJIT, the
-ruby/ruby-builder build) with Puma 8.1.2, Solid Queue 1.7.2, Solid Cache
-1.0.10, Solid Cable 4.1.0 and Propshaft 1.3.2. The earlier runs were on
-other hosts (2.10, 2.80 and 2.30 GHz Xeons) and measured smaller apps, so
-none of their figures is comparable with these. Servers and wrk are pinned
-as the method says (CPU 0 or 0-1, wrk on 2-3).
-
-The same session made one run before this one, at commit 6bce6390, with the
-same apps and method except that it timed the startup on the database the
-last configuration had left, thousands of comments included (fixed in
-7b77d370): [2026-11-24-first.json](../bench/results/2026-11-24-first.json),
-not tabulated. Its request figures show how far one run moves from the next
-on this VM: of the 64 medians, 32 are within 10% of this run's and 47 within
-20%; most of the rest are Rails' list and static file and CyberTrain's comment
-POST, 21 to 31% apart (Rails' list at 16 connections on one core: 225 req/s
-there, 155 here), and CyberTrain's POST at 16 connections on one core is the
-largest gap, 259 there and 417 here. Rails came out lower in this run on most
-rows. With the system malloc, the ratios at 16 connections were 2.1 to 5.1
-times on one core there (2.5 to 5.6 here) and 1.2 to 4.0 times on two (1.2 to
-4.3 here).
-
-
-| | CyberTrain | Rails |
-| --- | --- | --- |
-| Version | cybertrain 0.4.2, spinel 2026.11.23.7035 (86421ea5) | Rails 8.1.4.1, Puma 8.1.2, sqlite3 gem 2.9.6 |
-| Runtime | native binary (cc 13.3.0, `-O2`), system SQLite 3.45.1 | ruby 3.4.6, YJIT on, SQLite 3.53.2 (the gem's own) |
-
-### One CPU core, system malloc: server on CPU 0 (CyberTrain `SPINEL_WORKERS=1`; Puma single mode, 3 threads)
-
-| Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |
-| --- | --: | --: | --: | --: | --: | --: |
-| GET /articles (30 articles, comment counts) | 1 | 691 | 187 | 3.7x | 1.48 / 2.58 ms | 5.01 / 10.9 ms |
-| GET /articles (30 articles, comment counts) | 16 | 696 | 155 | 4.5x | 20.9 / 39.2 ms | 85.2 / 288.5 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 1 | 1,001 | 206 | 4.9x | 0.92 / 2.60 ms | 4.55 / 8.85 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 16 | 1,119 | 199 | 5.6x | 13.3 / 23.6 ms | 71.5 / 266.5 ms |
-| GET /assets/application-<digest>.css (the digested stylesheet) | 1 | 10,056 | 5,380 | 1.9x | 0.08 / 1.30 ms | 0.14 / 2.09 ms |
-| GET /assets/application-<digest>.css (the digested stylesheet) | 16 | 13,676 | 5,554 | 2.5x | 1.11 / 2.65 ms | 2.58 / 10.5 ms |
-| POST /articles/2/comments (insert, job, broadcast, 303) | 1 | 423 | 110 | 3.8x | 1.71 / 65.1 ms | 6.23 / 42.4 ms |
-| POST /articles/2/comments (insert, job, broadcast, 303) | 16 | 417 | 98 | 4.3x | 29.8 / 93.0 ms | 159.8 / 275.7 ms |
-
-| Memory (RSS, all processes) | CyberTrain | Rails |
-| --- | --: | --: |
-| After seeding, before load | 27.7 MB | 137.0 MB |
-| After the load runs | 29.6 MB | 188.6 MB |
-| After the load runs (PSS) | 27.6 MB | 186.4 MB |
-
-### Two CPU cores, system malloc: server on CPU 0,1 (CyberTrain `SPINEL_WORKERS=2`; Puma 2 workers x 3 threads)
-
-| Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |
-| --- | --: | --: | --: | --: | --: | --: |
-| GET /articles (30 articles, comment counts) | 1 | 540 | 190 | 2.8x | 1.77 / 3.78 ms | 4.96 / 11.2 ms |
-| GET /articles (30 articles, comment counts) | 16 | 989 | 422 | 2.3x | 18.7 / 40.5 ms | 33.4 / 176.6 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 1 | 946 | 180 | 5.3x | 0.98 / 2.68 ms | 5.15 / 11.6 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 16 | 1,538 | 359 | 4.3x | 12.4 / 28.0 ms | 38.4 / 243.2 ms |
-| GET /assets/application-<digest>.css (the digested stylesheet) | 1 | 10,165 | 3,550 | 2.9x | 0.08 / 1.59 ms | 0.23 / 1.99 ms |
-| GET /assets/application-<digest>.css (the digested stylesheet) | 16 | 22,310 | 11,926 | 1.9x | 0.73 / 2.73 ms | 1.17 / 5.47 ms |
-| POST /articles/2/comments (insert, job, broadcast, 303) | 1 | 402 | 155 | 2.6x | 1.63 / 139.2 ms | 5.84 / 16.0 ms |
-| POST /articles/2/comments (insert, job, broadcast, 303) | 16 | 274 | 221 | 1.2x | 50.3 / 317.0 ms | 69.8 / 151.7 ms |
-
-| Memory (RSS, all processes) | CyberTrain | Rails |
-| --- | --: | --: |
-| After seeding, before load | 31.3 MB | 364.6 MB |
-| After the load runs | 35.0 MB | 457.9 MB |
-| After the load runs (PSS) | 33.0 MB | 361.2 MB |
-
-### One CPU core, jemalloc: server on CPU 0 (CyberTrain `SPINEL_WORKERS=1`; Puma single mode, 3 threads; jemalloc preloaded into both)
-
-| Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |
-| --- | --: | --: | --: | --: | --: | --: |
-| GET /articles (30 articles, comment counts) | 1 | 625 | 179 | 3.5x | 1.54 / 3.26 ms | 5.24 / 11.4 ms |
-| GET /articles (30 articles, comment counts) | 16 | 665 | 125 | 5.3x | 22.2 / 55.5 ms | 130.6 / 343.0 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 1 | 889 | 182 | 4.9x | 1.03 / 3.04 ms | 5.23 / 9.98 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 16 | 1,060 | 186 | 5.7x | 14.0 / 23.3 ms | 77.8 / 287.2 ms |
-| GET /assets/application-<digest>.css (the digested stylesheet) | 1 | 10,687 | 4,253 | 2.5x | 0.08 / 0.81 ms | 0.18 / 2.08 ms |
-| GET /assets/application-<digest>.css (the digested stylesheet) | 16 | 12,944 | 6,260 | 2.1x | 1.18 / 3.29 ms | 2.35 / 8.49 ms |
-| POST /articles/2/comments (insert, job, broadcast, 303) | 1 | 342 | 127 | 2.7x | 2.01 / 55.5 ms | 5.72 / 33.9 ms |
-| POST /articles/2/comments (insert, job, broadcast, 303) | 16 | 418 | 122 | 3.4x | 29.2 / 343.8 ms | 124.4 / 232.2 ms |
-
-| Memory (RSS, all processes) | CyberTrain | Rails |
-| --- | --: | --: |
-| After seeding, before load | 30.2 MB | 135.0 MB |
-| After the load runs | 31.4 MB | 182.4 MB |
-| After the load runs (PSS) | 29.4 MB | 180.1 MB |
-
-### Two CPU cores, jemalloc: server on CPU 0,1 (CyberTrain `SPINEL_WORKERS=2`; Puma 2 workers x 3 threads; jemalloc preloaded into both)
-
-| Request | Connections | CyberTrain req/s | Rails req/s | CyberTrain / Rails | CyberTrain p50 / p99 | Rails p50 / p99 |
-| --- | --: | --: | --: | --: | --: | --: |
-| GET /articles (30 articles, comment counts) | 1 | 534 | 164 | 3.3x | 1.80 / 3.99 ms | 5.84 / 12.6 ms |
-| GET /articles (30 articles, comment counts) | 16 | 1,002 | 342 | 2.9x | 20.6 / 42.8 ms | 41.9 / 208.5 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 1 | 972 | 157 | 6.2x | 0.97 / 2.60 ms | 5.96 / 14.3 ms |
-| GET /articles/1 (an article, 10 comments, 12 forms) | 16 | 1,647 | 349 | 4.7x | 11.7 / 26.0 ms | 40.4 / 249.4 ms |
-| GET /assets/application-<digest>.css (the digested stylesheet) | 1 | 10,628 | 3,079 | 3.5x | 0.08 / 1.17 ms | 0.28 / 2.59 ms |
-| GET /assets/application-<digest>.css (the digested stylesheet) | 16 | 19,585 | 11,702 | 1.7x | 0.77 / 3.74 ms | 1.20 / 5.83 ms |
-| POST /articles/2/comments (insert, job, broadcast, 303) | 1 | 308 | 136 | 2.3x | 2.29 / 139.2 ms | 6.70 / 20.2 ms |
-| POST /articles/2/comments (insert, job, broadcast, 303) | 16 | 360 | 218 | 1.7x | 37.9 / 272.6 ms | 69.7 / 155.0 ms |
-
-| Memory (RSS, all processes) | CyberTrain | Rails |
-| --- | --: | --: |
-| After seeding, before load | 34.2 MB | 364.4 MB |
-| After the load runs | 37.2 MB | 423.8 MB |
-| After the load runs (PSS) | 35.1 MB | 310.0 MB |
-
-| Startup (5 boots, median) | CyberTrain | Rails |
-| --- | --: | --: |
-| Spawn to first 200 for `GET /` | 0.041 s | 2.064 s |
-| RSS then | 23.3 MB | 114.8 MB |
-
-| What the server needs | CyberTrain | Rails |
-| --- | --: | --: |
-| The application | 11.7 MB binary (`dist/blog`) | 0.94 MB of source |
-| Gems | none | 62.6 MB (79 gems) |
-| Ruby | none | 50.5 MB |
-| Total | 11.7 MB | 114.0 MB |
-| Shared libraries | libm.so.6, libz.so.1, libsqlite3.so.0, libssl.so.3, libcrypto.so.3, libc.so.6, /lib64/ld-linux-x86-64.so.2 | (Ruby's own, and the gems' native extensions) |
-
-`cybertrain build` took 271 s.
-
-## Reading the results
-
-These notes read the recorded run of 2026-11-24.
-
-- **One core: 2.5 to 5.6 times the requests** at 16 connections (2.1 to 5.7
-  with jemalloc in both). The gap is widest on the article page: 10 comments
-  and 12 forms, each with a CSRF token (a separately signed one per form in
-  Rails), and a signed stream name. CyberTrain now serves the article page
-  faster than the list (1,119 and 696 req/s): the list preloads every
-  article's comments for its counts, reads the article count from the cache
-  table and renders the filter form. Rails serves the two at about the same
-  rate (199 and 155).
-- **Latency.** One request at a time, CyberTrain answers the pages and the
-  POST in 0.9 to 1.7 ms (median) and Rails in 4.6 to 6.2 ms. With 16
-  connections on one core, CyberTrain's 99th percentile on the pages is 24 to
-  39 ms against 267 to 289 ms for Rails.
-- **The comment POST** is where CyberTrain does worst. Each one inserts the
-  comment, a job row and a stream message into examples/blog's one SQLite
-  database, and the server's job thread runs the job, on the same CPUs; the
-  Rails app writes the comment, the job and the message to three files
-  (Solid Queue's and Solid Cable's own databases). One request at a time,
-  CyberTrain's median is 3.6 times faster but its 99th percentile is worse in
-  every configuration (55 to 139 ms against 16 to 42 ms for Rails). On two
-  cores its throughput at 16 connections falls below its one-core figure (274
-  against 417 req/s; 360 against 418 with jemalloc) and its 99th percentile
-  reaches 317 ms against Rails' 152, so its lead there is 1.2 times (1.7 with
-  jemalloc). It also moves the most from run to run (259 req/s on one core in
-  the first run of the day, 417 here). A check run (`--quick`, 1 s runs)
-  found 118 of 910 CyberTrain jobs still queued when its server stopped,
-  where Solid Queue had finished all 649 of its own. The cause was measured
-  after this run ([design.md, D92](design.md#d92-synchronous--normal-and-a-job-thread-that-parks-during-a-backlog-2026-11-24)),
-  and it was not the lock: each POST made five commits (the comment, the
-  job row and the stream message in the request, then the job's claim and
-  outcome), each commit synced the WAL (`synchronous = FULL`, 0.3 ms and
-  more on this VM's disk, with a few syncs of 5 to 70 ms), and the sync
-  holds the server's OS worker; and the job thread, which wakes once a
-  second and then drains the queue without parking, kept a one-worker
-  server for about 50 ms at a time while it did, which was the 99th
-  percentile at one connection. Since D92 the framework syncs at
-  checkpoints only (`synchronous = NORMAL`, Rails' default too) and a job
-  thread parks every 2 ms while it drains; the figures above are from
-  before that change and were not taken again.
-- **Two cores.** Puma's second worker process gives Rails 1.8 to 2.7 times
-  its one-core rate on the pages and 2.3 times on the POST. CyberTrain's
-  second worker (`SPINEL_WORKERS=2`, for which the server has asked Spinel
-  for one more worker since
-  [saeki-mototsune/CyberTrain#128](https://github.com/saeki-mototsune/CyberTrain/pull/128),
-  so that two OS threads serve requests; [spikes/NOTES.md](../spikes/NOTES.md)
-  rule 22) adds 37 to 55% on the pages and 63% on the static file, and the
-  POST loses a third. So the lead narrows to 1.2 to 4.3 times.
-- **Static file.** Both apps serve the same 1,556-byte digested stylesheet:
-  CyberTrain 13,700 req/s on one core and 22,300 on two, Rails 5,600 and
-  11,900. In production both would usually sit behind a proxy that serves
-  the assets itself ([deploy.en.md](deploy.en.md) puts Caddy in front), so
-  these rows are there for completeness.
-- **jemalloc.** In this run it moves both apps by amounts within the spread
-  between runs on this VM (on one core CyberTrain's requests -5 to 0%,
-  Rails' -19 to +24%), so it shows no clear effect either way.
-- **Memory.** One CyberTrain process serving 16 connections, its job thread
-  included, stays near 30 MB (31 MB with jemalloc). One Puma process with
-  Rails, Solid Queue's threads included, is 189 MB after the load; on two
-  cores (a master that also runs the jobs, and two workers) 458 MB by RSS,
-  361 MB by PSS, against CyberTrain's 35 MB (33 MB).
-- **Startup.** The binary answers its first request 0.041 s after it is
-  spawned; Rails, which also starts Solid Queue, takes 2.1 s with bootsnap's
-  cache warm.
-- **Size.** The server needs one 11.7 MB file, which links libc, zlib,
-  OpenSSL and the system SQLite (and libjemalloc when chosen), against Ruby,
-  79 gems and the app: 114 MB. The binary was 4.0 MB on 2026-11-05: the
-  framework and the blog have grown since, and the binary now links OpenSSL.
-- **What it costs.** The binary has to be built: `cybertrain build` took
-  271 s on this machine, and every Ruby change needs a rebuild
-  (`cybertrain server` does it for you in development), where Rails runs its
-  source as it is. And the comparison covers only the slice of Rails both
-  apps use; CyberTrain's ORM and router are smaller (see
-  [Differences from Rails](guide/how-it-works.md#differences-from-rails)).
-- **The machine.** It is a shared cloud VM and not the same host from day to
-  day: the runs of 2026-10-07 and 2026-10-08 were on a 2.10 GHz Xeon, that of
-  2026-10-09 on a 2.80 GHz one, that of 2026-11-05 on a 2.30 GHz one, this one
-  on a 2.10 GHz one, and the apps differ from run to run as well. Compare
-  numbers within one run, not across runs; even within a day on one VM, the
-  two runs of 2026-11-24 differ by 21 to 31% on a few rows, and by 61% on
-  CyberTrain's one-core POST (see [Results](#results)).
-
 ## Running it
 
 On Linux with at least 4 CPUs, from a checkout:
 
 ```sh
-cybertrain setup                 # Spinel, for examples/blog
+cybertrain setup                 # Spinel, for the CyberTrain app
 sudo apt-get install -y wrk libjemalloc2   # jemalloc for the -jemalloc configurations
-cd bench/rails_blog && bundle install && cd ../..
-BENCH_RAILS_RUBY=/path/to/ruby/bin/ruby bench/run   # about 45 minutes; --quick to check the setup
+cd bench/rails_app && bundle install && cd ../..
+BENCH_RAILS_RUBY=/path/to/ruby/bin/ruby bench/run   # about 50 minutes; --quick to check the setup
 bench/report                     # the tables above, from the newest bench/results/*.json
 ```
 
+`bench/run` generates the CyberTrain app into `bench/tmp/bench_app/` with
+the CLI and the framework of the working tree it runs in (`cybertrain new`
+runs `spin lock`, which needs spin's package cache or the network for
+spinel-http); `--no-build` reuses the app and binary of the previous run.
 `BENCH_RAILS_RUBY` is the Ruby that runs Rails (default: the `ruby` on
 `PATH`); give it one built with YJIT, or the numbers undersell Rails (bench/run
 warns). The recorded run used Ruby 3.4.6 from

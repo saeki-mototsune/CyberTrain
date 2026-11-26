@@ -118,9 +118,10 @@ Or try it with nothing installed:
 [open the playground in GitHub Codespaces](https://codespaces.new/saeki-mototsune/CyberTrain?quickstart=1)
 ([what the playground holds](https://www.cybertrain.dev/playground.html)).
 
-On one CPU core, with 16 connections, the blog served 2.5 to 5.6 times the
-requests per second of the same app in Rails 8.1, in about a sixth of the
-memory, in the run of 2026-11-24
+On one CPU core, with 16 connections, the app `cybertrain new` and its
+scaffold write served 3.6 to 10.1 times the requests per second of what
+`rails new` and its scaffold write in Rails 8.1 (2.3 times on a static
+file), in about a seventh of the memory, in the run of 2026-11-24
 ([numbers](https://www.cybertrain.dev/index.html#performance),
 [method and caveats](docs/benchmark.md)).
 

@@ -3,11 +3,15 @@
 
 # Prints the Markdown tables of docs/benchmark.md from a bench/run result.
 #
-# usage: bench/report [bench/results/<date>.json]   (default: the newest)
+# usage: bench/report [bench/results/<date>.json]   (default: the newest run)
 require "json"
 
 ROOT = File.expand_path("..", __dir__)
-path = ARGV[0] || Dir.glob(File.join(ROOT, "bench", "results", "*.json")).max
+# The newest run by the date it records (several runs can share a day: the
+# names of those days carry a suffix), leaving out the "-first" runs kept
+# only to show the spread.
+path = ARGV[0] || Dir.glob(File.join(ROOT, "bench", "results", "*.json")).reject { |f| f.end_with?("-first.json") }
+                     .max_by { |f| JSON.parse(File.read(f)).dig("environment", "date").to_s }
 abort "usage: bench/report [RESULT.json]" if path.nil? || !File.exist?(path)
 
 r = JSON.parse(File.read(path))
@@ -78,7 +82,7 @@ z = r["sizes"]
 rails_total = z["rails"]["app_bytes"] + z["rails"]["gems_bytes"] + z["rails"]["ruby_bytes"]
 puts "| What the server needs | CyberTrain | Rails |"
 puts "| --- | --: | --: |"
-puts "| The application | #{num(z["cybertrain"]["binary_bytes"] / 1e6, 1)} MB binary (`dist/blog`) | #{num(z["rails"]["app_bytes"] / 1e6, 2)} MB of source |"
+puts "| The application | #{num(z["cybertrain"]["binary_bytes"] / 1e6, 1)} MB binary (`dist/#{z["cybertrain"]["app_name"] || "blog"}`) | #{num(z["rails"]["app_bytes"] / 1e6, 2)} MB of source |"
 puts "| Gems | none | #{num(z["rails"]["gems_bytes"] / 1e6, 1)} MB (#{z["rails"]["gems_count"]} gems) |"
 puts "| Ruby | none | #{num(z["rails"]["ruby_bytes"] / 1e6, 1)} MB |"
 puts "| Total | #{num(z["cybertrain"]["binary_bytes"] / 1e6, 1)} MB | #{num(rails_total / 1e6, 1)} MB |"
