@@ -1,7 +1,8 @@
 # `cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]` (docs/design.md D83): every
 # test of the application in one program. The arguments are checked first
 # (Test::Args, the same parser the compiled bundle filters with), then
-# `SPIN_DEBUG=1 spin run gen` writes gen/tests.rb and gen/test/**, gen/tests.rb is
+# gen writes gen/tests.rb and gen/test/** (Build.run_tool: build/bin/gen as
+# it is while its sources are unchanged, else built first), gen/tests.rb is
 # compiled into build/test/tests only when an input changed since that
 # binary, and the binary runs with the arguments: a filter never
 # recompiles. gen's and the compiler's output go to stderr, so stdout is
@@ -12,14 +13,12 @@ require "cybertrain/test_files"
 require "cybertrain/test/args"
 require "cybertrain/cli/templates"
 require "cybertrain/cli/toolchain"
+require "cybertrain/cli/build"
 
 module Cybertrain
   module CLI
     module TestCommand
       BINARY = "build/test/tests".freeze
-      # gen in spin's debug mode, as every other command builds it
-      # (Shell::TOOL_SPIN): one gen binary, never rebuilt for a mode switch.
-      GEN = "#{Shell::TOOL_SPIN} run gen".freeze
       # The application's top-level directories whose files are no input of
       # the bundle: build output, the release, scratch files, data.
       SKIPPED = ["build", "dist", "tmp", "storage"].freeze
@@ -32,16 +31,19 @@ module Cybertrain
       RECORD = ".inputs".freeze
 
       # The world outside the command: the toolchain, the shell and stdout.
-      # TestCommand.run takes one so tests can stand in for spin.
-      class Runner
+      # TestCommand.run takes one so tests can stand in for spin. A
+      # Build::Runner, so the gen step is the one every command runs
+      # (Build.run_tool, with Build::Runner#tool_fresh?): the same debug
+      # gen binary, built only when a file it is compiled from changed.
+      class Runner < Build::Runner
         # Whether a Spinel of the pinned release is on PATH (installed the
         # first time).
         def ready?
           Toolchain.ensure!
         end
 
-        # Runs a spin or spinel command in root, its output on stderr; true
-        # when it succeeds.
+        # Runs a spin or spinel command or build/bin/gen in root, its
+        # output on stderr; true when it succeeds.
         def run_step(root, command)
           system("cd #{Shell.quote(root)} && #{command} 1>&2")
         end
@@ -87,7 +89,7 @@ module Cybertrain
           return 0
         end
         return 1 unless runner.ready?
-        return 1 unless runner.run_step(root, GEN)
+        return 1 unless Build.run_tool(root, "gen", "", runner)
 
         problem = refusal(root)
         unless problem.empty?
