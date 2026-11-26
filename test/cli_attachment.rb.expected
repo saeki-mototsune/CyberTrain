@@ -1687,7 +1687,7 @@ create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
 create test/controllers/plans_controller_test.rb
 route resources :plans
-error: app/controllers/plans_controller.rb: cannot preserve show's authorization for :photo: def show has code of its own, which def photo would not run; move any check it makes into a before_action listing both :show and :photo (before_action :authorize_plan, only: [:show, :photo]), or, if that code limits nobody (it builds a form object, picks a format), run again with --show-checks-nothing; no attachment files were written
+error: app/controllers/plans_controller.rb: cannot preserve show's authorization for :photo: def show has code of its own, which def photo would not run; move any check it makes into a before_action listing both :show and :photo (before_action :authorize_plan, only: [:show, :photo]), then run again with def show empty, or, once the code left in it limits nobody (it builds a form object, picks a format), with --show-checks-nothing; no attachment files were written
 create db/migrate/20260925120001_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)

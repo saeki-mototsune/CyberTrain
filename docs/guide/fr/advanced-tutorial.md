@@ -1,5 +1,5 @@
 ---
-source_sha256: a1bd7b8890459f79a2b34e6ee1a7243e28b482a3d52c59ff76ec795c361cd256
+source_sha256: 5d24dbdc8e00a61e292b5bf9047d5b659fa65689048f6d643e2264065be1b3d4
 title: "Tutoriel avancé&nbsp;: pousser le blog plus loin"
 description: "Poursuivez le blog du Getting Started avec CyberTrain&nbsp;: un composant et un helper, des commentaires en direct avec Turbo Streams, un job d’arrière-plan, JSON, la connexion, une image de couverture envoyée et un build pour le déploiement avec cybertrain build."
 og_title: "Tutoriel avancé&nbsp;: pousser plus loin le blog CyberTrain"
@@ -659,7 +659,10 @@ Ici, ce code construit un commentaire et choisit un format&nbsp;; il ne refuse
 personne, il n’y a donc rien à recopier dans `cover`. S’il refusait quelqu’un
 (`head 404 if @article.draft?`), la place de cette vérification serait un
 `before_action` listant à la fois `:show` et `:cover`, que le générateur sait
-lire&nbsp;; aucun drapeau ne serait alors nécessaire.
+lire. La déplacer ne viderait pas ce `show`, qui construit toujours le
+commentaire et choisit le format&nbsp;: le générateur s’arrêterait encore. Il
+faut alors le lancer avec un `show` vide, ou avec `--show-checks-nothing` une
+fois vérifié que le code resté dans `show` ne restreint personne.
 
 Le générateur ajoute aussi `get "/articles/:id/cover"` à `config/routes.rb`,
 `multipart: true` et un champ de fichier au formulaire, au-dessus du bouton

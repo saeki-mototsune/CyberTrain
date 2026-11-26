@@ -649,7 +649,10 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 Here that code builds a comment and picks a format; it refuses nobody, so
 there is nothing to copy into `cover`. Had it refused someone (`head 404 if
 @article.draft?`), the place for that check is a `before_action` listing both
-`:show` and `:cover`, which the generator reads, and then no flag is needed.
+`:show` and `:cover`, which the generator reads. Moving it out does not empty
+this `show`, which still builds the comment and picks the format, so the
+generator would still stop: run it with an empty `show`, or with
+`--show-checks-nothing` once the code left in `show` limits nobody.
 
 The generator also adds `get "/articles/:id/cover"` to `config/routes.rb`,
 `multipart: true` and a file input to the form, above the submit button, and

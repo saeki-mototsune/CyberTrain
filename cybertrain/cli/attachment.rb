@@ -210,7 +210,7 @@ module Cybertrain
         if safe
           return nil if show_checks_nothing || !new_action || !show_has_body?(source)
 
-          raise InvalidArgument, "#{controller_file(spec)}: cannot preserve show's authorization for :#{spec.field}: def show has code of its own, which def #{spec.field} would not run; move any check it makes into a before_action listing both :show and :#{spec.field} (before_action :authorize_#{spec.singular}, only: [:show, :#{spec.field}]), or, if that code limits nobody (it builds a form object, picks a format), run again with --show-checks-nothing; no attachment files were written"
+          raise InvalidArgument, "#{controller_file(spec)}: cannot preserve show's authorization for :#{spec.field}: def show has code of its own, which def #{spec.field} would not run; move any check it makes into a before_action listing both :show and :#{spec.field} (before_action :authorize_#{spec.singular}, only: [:show, :#{spec.field}]), then run again with def show empty, or, once the code left in it limits nobody (it builds a form object, picks a format), with --show-checks-nothing; no attachment files were written"
         end
 
         raise InvalidArgument, "#{controller_file(spec)}: cannot preserve show's authorization for :#{spec.field}; use the same explicit before_action policy for :show and :#{spec.field}, move checks out of def show, and load both through before_action :set_#{spec.singular} (including inherited policies); no attachment files were written"

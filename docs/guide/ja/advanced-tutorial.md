@@ -1,5 +1,5 @@
 ---
-source_sha256: a1bd7b8890459f79a2b34e6ee1a7243e28b482a3d52c59ff76ec795c361cd256
+source_sha256: 5d24dbdc8e00a61e292b5bf9047d5b659fa65689048f6d643e2264065be1b3d4
 title: "発展編チュートリアル：ブログをさらに進める"
 description: "Getting Started のブログを CyberTrain でさらに進めます：コンポーネントとヘルパー、Turbo Streams によるコメントのライブ更新、バックグラウンドジョブ、JSON、サインイン、アップロードしたカバー画像、cybertrain build によるデプロイ用ビルド。"
 og_title: "発展編チュートリアル：CyberTrain のブログをさらに進める"
@@ -479,7 +479,7 @@ class ArticlesController < ApplicationController
 warning: app/controllers/articles_controller.rb: def show has code of its own, which def cover does not run; if that code limits who may see articles, check the same in def cover
 ```
 
-ここでは、そのコードはコメントを用意してフォーマットを選ぶだけで、誰の閲覧も拒みません。したがって `cover` に写すものはありません。もし誰かを拒むコード（`head 404 if @article.draft?`）だったなら、そのチェックの置き場所は `:show` と `:cover` の両方を挙げる `before_action` です。ジェネレーターはそれを読み取れるので、フラグは要りません。
+ここでは、そのコードはコメントを用意してフォーマットを選ぶだけで、誰の閲覧も拒みません。したがって `cover` に写すものはありません。もし誰かを拒むコード（`head 404 if @article.draft?`）だったなら、そのチェックの置き場所は `:show` と `:cover` の両方を挙げる `before_action` で、ジェネレーターはそれを読み取れます。ただし、チェックを移しても、コメントを用意してフォーマットを選ぶこの `show` は空にならないので、ジェネレーターはやはり止まります。`show` を空にして実行するか、`show` に残ったコードが誰も制限しないことを確かめたうえで `--show-checks-nothing` を付けて実行します。
 
 ジェネレーターは、`config/routes.rb` に `get "/articles/:id/cover"` を、フォームに `multipart: true` と、送信ボタンの上のファイル入力を、表示ページの `<h1>` の直後に画像を、それぞれ追加します：
 

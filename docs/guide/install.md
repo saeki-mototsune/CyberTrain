@@ -107,8 +107,9 @@ from there, from `cybertrain new` to `cybertrain build`.
   callbacks, a download action, the route, the form field and a test (see
   [Add a cover image](advanced-tutorial.md#attachments)). A scaffold field `cover:attachment` does the same.
   The download does not run the code inside `def show`, so a `show` with
-  code of its own is refused until that code moves into a `before_action`
-  or `--show-checks-nothing` says it limits nobody.
+  code of its own is refused unless it is emptied or `--show-checks-nothing`
+  says that code limits nobody; a check it makes moves into a
+  `before_action` first.
 - `cybertrain generate helper NAME [--force]` adds
   `app/helpers/NAME_helper.rb`, a module whose methods every template can
   call once `spin run gen` has run, and a test

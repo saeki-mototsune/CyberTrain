@@ -1,5 +1,5 @@
 ---
-source_sha256: 7668770b93afdae738f5be1d07f25ed22a7d0f9ee50f915269e0bb61de6f0485
+source_sha256: 62e9c689219c4db26ce385321689566020292b1006b3883b3c811e280c7de675
 ---
 # Installer cybertrain
 
@@ -115,9 +115,10 @@ partir de là, de `cybertrain new` à `cybertrain build`.
   le champ de formulaire et un test (voir
   [Ajouter une image de couverture](advanced-tutorial.md#attachments)). Un champ de scaffold
   `cover:attachment` fait la même chose. Le téléchargement n’exécute pas le
-  code de `def show`&nbsp;: un `show` qui a son propre code est refusé tant
-  que ce code n’est pas déplacé dans un `before_action` ou que
-  `--show-checks-nothing` n’indique pas qu’il ne restreint personne.
+  code de `def show`&nbsp;: un `show` qui a son propre code est refusé, sauf
+  s’il est vidé ou si `--show-checks-nothing` indique que ce code ne
+  restreint personne&nbsp;; une vérification qu’il fait passe d’abord dans un
+  `before_action`.
 - `cybertrain generate helper NAME [--force]` ajoute
   `app/helpers/NAME_helper.rb`, un module dont tout template peut appeler
   les méthodes une fois `spin run gen` lancé, et un test

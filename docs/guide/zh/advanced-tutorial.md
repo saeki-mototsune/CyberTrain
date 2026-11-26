@@ -1,5 +1,5 @@
 ---
-source_sha256: a1bd7b8890459f79a2b34e6ee1a7243e28b482a3d52c59ff76ec795c361cd256
+source_sha256: 5d24dbdc8e00a61e292b5bf9047d5b659fa65689048f6d643e2264065be1b3d4
 title: "进阶教程：把博客继续推进"
 description: "用 CyberTrain 继续推进入门指南中的博客：组件和辅助方法、用 Turbo Streams 实时推送评论、后台作业、JSON、登录、上传的封面图片，以及用 cybertrain build 为部署而构建。"
 og_title: "进阶教程：把 CyberTrain 博客继续推进"
@@ -479,7 +479,7 @@ class ArticlesController < ApplicationController
 warning: app/controllers/articles_controller.rb: def show has code of its own, which def cover does not run; if that code limits who may see articles, check the same in def cover
 ```
 
-在这里，那段代码构建一条评论并选择格式；它不拒绝任何人，所以没有什么需要复制到 `cover` 中。如果它会拒绝某些人（`head 404 if @article.draft?`），这项检查应放在同时列出 `:show` 和 `:cover` 的 `before_action` 中，生成器能读懂它，也就不需要这个标志。
+在这里，那段代码构建一条评论并选择格式；它不拒绝任何人，所以没有什么需要复制到 `cover` 中。如果它会拒绝某些人（`head 404 if @article.draft?`），这项检查应放在同时列出 `:show` 和 `:cover` 的 `before_action` 中，生成器能读懂它。但移走这项检查并不会让这个 `show` 变空，它仍然构建评论并选择格式，所以生成器仍会停止：要么在 `show` 为空时运行，要么在确认 `show` 中剩下的代码不限制任何人之后，加上 `--show-checks-nothing` 运行。
 
 生成器还会在 `config/routes.rb` 中添加 `get "/articles/:id/cover"`，在表单中添加 `multipart: true` 和一个位于提交按钮上方的文件输入框，并在显示页面中紧跟 `<h1>` 之后添加这张图片：
 
