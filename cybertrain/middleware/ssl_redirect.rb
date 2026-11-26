@@ -1,6 +1,7 @@
 require "cybertrain/middleware"
 require "cybertrain/config"
 require "cybertrain/http/parser"
+require "cybertrain/http/request"
 
 module Cybertrain
   # Config#force_ssl (docs/design.md D61; Rails'
@@ -12,7 +13,9 @@ module Cybertrain
   # redirect: nothing else is decided by it here). Request#base_url
   # trusts the header only from a trusted proxy, so behind a proxy also
   # set Config#trusted_proxy or #trusted_proxies, or URLs the application
-  # builds (a `turbo_stream_from ws: true` URL) stay http/ws.
+  # builds (a `turbo_stream_from ws: true` URL) stay http/ws. Mail links
+  # take SslRedirect.base_url_of, which reads the header as this
+  # middleware does once the proxy is trusted.
   #
   # - https: the app answers, and the response gets
   #   `Strict-Transport-Security: max-age=63072000; includeSubDomains`
@@ -69,6 +72,23 @@ module Cybertrain
       comma = text.index(",")
       first = comma.nil? ? text : text[0, comma].to_s
       first.strip.downcase == "https"
+    end
+
+    # `<scheme>://<Host header>`, the base of links built from the request
+    # (the Authentication concern's mail_link_base): https when the peer is
+    # a trusted proxy (Request.trusted_peer?, the rule Request#base_url
+    # uses) and its X-Forwarded-Proto says https by {SslRedirect.https?}
+    # (the first element, as this middleware reads it), else http.
+    # Request#base_url compares the whole header with "https", so behind a
+    # chain of proxies (`https, http`) it gave http for a request this
+    # middleware took as https.
+    # @param request [Cybertrain::Request]
+    # @return [String]
+    # @api public
+    def self.base_url_of(request)
+      host = request.header("host").to_s
+      https = Request.trusted_peer?(request.remote_addr) && SslRedirect.https?(request.header("x-forwarded-proto"))
+      "#{https ? "https" : "http"}://#{host}"
     end
 
     # `https://<host>[:port]<path>[?query]`, or "" when the Host is not a
