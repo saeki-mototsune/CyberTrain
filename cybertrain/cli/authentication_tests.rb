@@ -1687,15 +1687,33 @@ module Cybertrain
               link = last_mail_link
               assert link.start_with?("http://localhost:3000/passwords/"), link
               # Production with CYBERTRAIN_HOSTS (the Host header is checked): the
-              # request's address too.
-              with_config("production", ["shop.example"], "") do
-                assert Cybertrain.config.host_check?
-                request_reset("one@example.com", "shop.example")
-                assert_redirected_to "/session/new"
+              # request's address too, once a trusted proxy says it is https.
+              trusted = Cybertrain::Request.trusted_proxy
+              begin
+                Cybertrain::Request.trusted_proxy = true
+                with_config("production", ["shop.example"], "") do
+                  assert Cybertrain.config.host_check?
+                  request_reset("one@example.com", "shop.example", "https")
+                  assert_redirected_to "/session/new"
+                end
+              ensure
+                Cybertrain::Request.trusted_proxy = trusted
               end
               assert_equal 1, perform_enqueued_jobs
               link = last_mail_link
-              assert link.start_with?("http://shop.example/passwords/"), link
+              assert link.start_with?("https://shop.example/passwords/"), link
+              # Over http (an X-Forwarded-Proto from a peer not trusted is not
+              # believed): no mail, as its token would cross the network in clear.
+              log = StringIO.new
+              with_config("production", ["shop.example"], "", log) do
+                request_reset("one@example.com", "shop.example", "https")
+                assert_redirected_to "/session/new"
+                follow_redirect!
+                assert_includes response.body, SENT
+              end
+              assert_no_enqueued_jobs "cybertrain mail"
+              assert_includes log.string, " ERROR "
+              assert_includes log.string, "password reset mail not sent: the request came over http; set @BASE_URL_ENV@ to the https address (or CYBERTRAIN_TRUSTED_PROXY behind a TLS proxy)\n"
               # Production with base_url: base_url, whatever the Host.
               with_config("production", NO_HOSTS, "https://shop.example") do
                 request_reset("one@example.com", "evil.example")
@@ -1950,10 +1968,13 @@ module Cybertrain
             private
 
             # Sends the address form as a browser would, with the Host header
-            # given. The rate limit's counts are forgotten first.
-            def request_reset(email_address, host = "www.example.com")
+            # given (and `proto`, unless empty, as X-Forwarded-Proto). The rate
+            # limit's counts are forgotten first.
+            def request_reset(email_address, host = "www.example.com", proto = "")
               Cybertrain::RateLimit.reset_all!
-              post "/passwords", params: { email_address: email_address }, headers: { "host" => host }
+              headers = { "host" => host }
+              headers["x-forwarded-proto"] = proto unless proto.empty?
+              post "/passwords", params: { email_address: email_address }, headers: headers
               nil
             end
 

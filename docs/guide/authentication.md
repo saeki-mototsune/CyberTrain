@@ -223,7 +223,13 @@ takes the address the request came to only when the `Host` header is
 checked (development, or `CYBERTRAIN_HOSTS` set) or in tests; anywhere
 else no mail is sent, the log says `ERROR [<request id>] password reset mail not sent:
 set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)`, and the page answers as usual. A
-forged `Host` never reaches a link.
+forged `Host` never reaches a link. Outside development and the tests that
+address must also be https, which behind a TLS proxy only a proxy declared
+with `CYBERTRAIN_TRUSTED_PROXY` or `CYBERTRAIN_TRUSTED_PROXIES` can say
+(its `X-Forwarded-Proto`): over http no mail is sent either, as the link
+would carry its token in clear, and the log says `password reset mail not
+sent: the request came over http; set <APP>_BASE_URL to the https address
+(or CYBERTRAIN_TRUSTED_PROXY behind a TLS proxy)`.
 
 ## Confirming addresses
 

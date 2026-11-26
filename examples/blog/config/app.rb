@@ -13,8 +13,8 @@ Cybertrain.configure do |c|
   # BLOG_BASE_URL=https://blog.example.com: set it, with https, wherever the
   # app is served. Unset, they take the address the request came to,
   # which is trusted only in development, in tests, or when
-  # CYBERTRAIN_HOSTS lists the app's hosts; anywhere else a reset mail
-  # is not sent and the log says why.
+  # CYBERTRAIN_HOSTS lists the app's hosts and the request is https;
+  # anywhere else a reset mail is not sent and the log says why.
   c.setting_string :base_url, env: "BLOG_BASE_URL", default: ""
 
   # c.port = 3000
