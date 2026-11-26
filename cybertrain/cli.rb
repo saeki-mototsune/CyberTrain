@@ -39,9 +39,10 @@ module Cybertrain
             Create an application in NAME, then run `spin lock` and
             generate in it (skipped with --skip-spin). Generating is
             build/bin/gen, which SPIN_DEBUG=1 spin build gen builds first
-            (spin's debug mode, as for db) unless a file it is compiled
-            from changed since its last build; new, db, server --spinel,
-            build and test all generate this way. Its spin.toml
+            (spin's debug mode, as for db) only when a file it is compiled
+            from changed since its last build, or it has none on record;
+            new, db, server --spinel, build and test all generate this
+            way. Its spin.toml
             depends on this cybertrain's release by default:
               git tag v#{Cybertrain::VERSION} of #{Cybertrain::REPOSITORY}
             --path DIR: the framework checkout at DIR (relative to the
