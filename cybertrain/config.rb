@@ -472,6 +472,26 @@ module Cybertrain
     # @api public
     attr_accessor :max_body_bytes
 
+    # Seconds the whole request body may take to arrive, counted from the
+    # end of the head, `120`; past it the request is answered 408 and the
+    # connection closes, however steadily the client trickles bytes (each
+    # single wait is bounded by the server's 15 s read timeout). Raise it if
+    # clients upload {#max_body_bytes} over slow links. At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :body_timeout
+
+    # The most connections the server holds open at once, `1024`, each a
+    # thread; one accepted past it is answered 503 and closed. Stream
+    # connections ({#stream_max_connections}) count too. Each holds a file
+    # descriptor: keep it well below the process's limit (`ulimit -n`),
+    # leaving room for the listener, logs, the database and other open
+    # files, or the server cannot accept a connection even to answer 503.
+    # At least 1.
+    # @return [Integer]
+    # @api public
+    attr_accessor :max_connections
+
     # The largest single uploaded file in a `multipart/form-data` body, in
     # bytes, `5242880` (5 MiB); a bigger file part is answered 400. Boot
     # refuses a value over {#max_body_bytes}, which bounds the whole body
@@ -1239,6 +1259,9 @@ module Cybertrain
       # The same number as Server.new's default (spinel-http/server.rb), kept
       # as a literal here: the HTTP layer must not be required by Config.
       @max_body_bytes = 10_485_760
+      # Server.new's body_timeout (as an Integer) and max_connections defaults.
+      @body_timeout = 120
+      @max_connections = 1024
       # The same literals as Multipart and BlobStore start with; Application#boot
       # hands the configured values to both.
       @max_upload_bytes = 5_242_880

@@ -29,7 +29,7 @@ front of the binary ([docs/deploy.md](deploy.md)). The split:
 | --- | --- | --- |
 | TLS, certificates, HTTP/2 and HTTP/3 | the proxy | the server speaks cleartext HTTP/1.0 and 1.1 only; `force_ssl` and `X-Forwarded-Proto` are how the application learns the outer scheme (D61) |
 | Request bodies sent with `Transfer-Encoding: chunked` | the proxy | it must buffer and forward with `Content-Length`: nginx does by default (`proxy_request_buffering on`), Caddy only when `reverse_proxy` is given `request_buffers` (the Caddyfile in docs/deploy.md does not set it, so a client that uploads chunked through it gets the 411; browsers and most clients send a length). The server answers a transfer coding with 411 |
-| Slow or hostile clients, connection limits, request rate | the proxy first | the server bounds what it reads (`read_timeout` on every wait for request bytes, `max_head_bytes`, `max_body_bytes`) and a streaming response's writes (`stream_write_timeout`), and `rate_limit` works per action. It does not bound the write of an ordinary response (a client that stops reading a large one holds its connection until the kernel gives up) and has no cap on open connections apart from the stream endpoint's `stream_max_connections`: both are the proxy's to bound |
+| Slow or hostile clients, connection limits, request rate | the proxy first | the server bounds what it reads (`read_timeout` on every wait for request bytes, a whole head within 30 s of its first byte and a whole body within `body_timeout`, `max_head_bytes`, `max_body_bytes`), the connections open at once (`max_connections`, 1024; the stream endpoint's own `stream_max_connections` within it) and a streaming response's writes (`stream_write_timeout`), and `rate_limit` works per action. It does not bound the write of an ordinary response (a client that stops reading a large one holds its connection until the kernel gives up), and a cap on connections is a cap for all clients, not one: per-client limits and the write are the proxy's to bound |
 | Compression of responses | the proxy | the server never encodes a response; it inflates a gzip **request** body on demand (`request.decoded_body`) |
 | The client's address | both | the server reports the peer; `request.client_ip` reads `X-Forwarded-For` only from `trusted_proxy` / `trusted_proxies` (D26) |
 | `Host` validation | the application stack | `HostAuthorization` (development, or `CYBERTRAIN_HOSTS`), not the server: a request without `Host` is served |
@@ -59,9 +59,12 @@ has no TLS and no chunked request bodies.
 | Trailers, `TE`, `Upgrade: h2c`, CONNECT, pipelined requests after an error | not supported: trailers cannot arrive without chunked; `h2c` is ignored (the request is served as HTTP/1.1); a rejected request closes the connection and what was pipelined behind it is dropped | spinel-http's test/server.rb ("a rejected request ends the connection ...") |
 
 Every refusal is a plain-text response with `Connection: close`, written
-once, after which the socket is closed: 400 (malformed), 411 (a transfer
-coding), 413 (too large). A client that sends nothing gets nothing: an idle
-or half-sent request is closed silently at `read_timeout` (15 s).
+once, after which the socket is closed: 400 (malformed), 408 (a head not
+whole within 30 s of its first byte, or a body not whole within
+`body_timeout`, 120 s), 411 (a transfer coding), 413 (too large), 503 (a
+connection past `max_connections`, answered before anything is read). A
+client that sends nothing gets nothing: an idle or half-sent request whose
+client goes silent is closed silently at `read_timeout` (15 s).
 
 ## Responses
 

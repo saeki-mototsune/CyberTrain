@@ -5,4 +5,4 @@ version = "0.4.2"
 
 [dependencies]
 # The HTTP layer (docs/design.md D91). spin.lock pins the commit the tag names.
-spinel-http = { git = "https://github.com/saeki-mototsune/spinel-http", ref = "v0.1.2" }
+spinel-http = { git = "https://github.com/saeki-mototsune/spinel-http", ref = "v0.2.0" }

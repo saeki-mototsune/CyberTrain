@@ -103,6 +103,8 @@ test "config defaults in development" do
   assert c.csrf
   assert c.csrf_exempt_prefixes.empty?
   assert_equal 10_485_760, c.max_body_bytes
+  assert_equal 120, c.body_timeout
+  assert_equal 1024, c.max_connections
   assert_equal 5_242_880, c.max_upload_bytes
   assert_equal 128, c.max_multipart_parts
   assert_equal "storage/uploads", c.upload_root
@@ -218,6 +220,19 @@ test "max_body_bytes_error names a value that is not a positive Integer" do
   assert_equal "", c.max_body_bytes_error
   c.max_body_bytes = 0
   assert_includes c.max_body_bytes_error, "at least 1 (got 0)"
+end
+
+test "connection_limits_error names a body_timeout or max_connections that is not a positive Integer" do
+  c = Cybertrain::Config.new
+  assert_equal "", c.connection_limits_error
+  c.body_timeout = 1
+  c.max_connections = 1
+  assert_equal "", c.connection_limits_error
+  c.body_timeout = 0
+  assert_equal "body_timeout must be an Integer of at least 1 (got 0)", c.connection_limits_error
+  c.body_timeout = 1
+  c.max_connections = 0
+  assert_equal "max_connections must be an Integer of at least 1 (got 0)", c.connection_limits_error
 end
 
 test "upload_limits_error names a setting that is unusable" do
@@ -799,6 +814,43 @@ test "max_body_bytes reaches the server: a longer Content-Length is 413 before t
   sock.close
   server.stop
   assert_includes raw, "HTTP/1.1 413"
+end
+
+test "max_connections reaches the server: a connection past it is 503" do
+  c = Cybertrain::Config.new
+  c.log_level = :none
+  c.max_connections = 1
+  c.secret_key_base = "small-secret"
+  capped_app = Cybertrain::Application.new(router: router, url_resolver: ->(name, args, options) { "/" }, config: c)
+  # The server takes the logger it is built with: the cap's warning goes
+  # to the sink, not the snapshot.
+  saved = Cybertrain.logger
+  sink = StringIO.new
+  Cybertrain.logger = Cybertrain::Logger.new(sink)
+  server = capped_app.server
+  Cybertrain.logger = saved
+  server.start
+  held = TCPSocket.new("127.0.0.1", server.port)
+  tries = 0
+  while server.open_connections < 1 && tries < 200
+    sleep 0.01
+    tries += 1
+  end
+  sock = TCPSocket.new("127.0.0.1", server.port)
+  raw = +""
+  while true
+    break if sock.wait_readable(5).nil?
+    begin
+      raw << sock.readpartial(4096)
+    rescue EOFError, Errno::ECONNRESET
+      break
+    end
+  end
+  sock.close
+  held.close
+  server.stop
+  assert_includes raw, "HTTP/1.1 503"
+  assert_logged sink.string, "WARN", "max_connections (1) reached"
 end
 
 # The stack is built only to look at the Server's settings: no boot, no bind.

@@ -60,6 +60,8 @@ module Cybertrain
           listen_fd = Dev::Supervision.active?(config.env) ? Dev::Supervision.listen_fd : -1
           built = Server.new(ContextHandler.new(front_app), host: config.host, port: config.port,
                                                             max_body_bytes: config.max_body_bytes,
+                                                            body_timeout: config.body_timeout.to_f,
+                                                            max_connections: config.max_connections,
                                                             reuse_port: reuse_port?,
                                                             stream_write_timeout: config.stream_ping_interval,
                                                             listen_fd: listen_fd, logger: Cybertrain.logger)
