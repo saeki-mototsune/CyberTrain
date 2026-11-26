@@ -564,9 +564,14 @@ up as issues, is [spinel-feedback.md](spinel-feedback.md).
   `RT_SAN_PKG_MT_OBJS` lists them. A matched build of J's
   program reports one site that is not J: a one-byte read in front of a
   string literal in `sp_mark_string`, the collector's tag-byte test.
-  The runtime archive and the program are built with
-  `-fsanitize-recover=address`, so `halt_on_error=0` lets a run go on
-  past it.
+  That is spinel-feedback.md BA: `Thread.new` hands the runtime the
+  program's file name as a bare C literal, and the runtime roots it as a
+  String. A report whose stack ends in `sp_Thread_spawn_fiber_at`, 1 byte
+  before the file name, is BA. The runtime archive and the program are
+  built with `-fsanitize-recover=address`, so `halt_on_error=0` lets a
+  run go on past it. Add `use_sigaltstack=0` for a program whose threads
+  end before it is stopped: without it AddressSanitizer stops at the
+  first thread's exit, failing to unmap its alternate signal stack.
   The object slab (on by default; 2026.09.12 had none) recycles freed
   slots itself, so with it on AddressSanitizer does not see a freed
   object being read: run a matched build both ways, with
