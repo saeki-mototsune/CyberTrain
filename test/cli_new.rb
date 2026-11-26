@@ -428,9 +428,11 @@ test "CLI new defaults to this version's release tag" do
                   "cybertrain = { git = \"https://github.com/saeki-mototsune/cybertrain\", ref = \"v#{Cybertrain::VERSION}\" }"
 end
 
-test "new bootstraps the app with spin lock and a debug-mode spin run gen" do
-  assert_equal "cd 'notes' && spin lock && SPIN_DEBUG=1 spin run gen", Cybertrain::CLI::NewApp.bootstrap_command("notes")
-  assert_equal "cd 'it'\\''s' && spin lock && SPIN_DEBUG=1 spin run gen", Cybertrain::CLI::NewApp.bootstrap_command("it's")
+# gen after the lock is Build.run_tool's (test/cli_tool_binary.rb).
+test "new bootstraps the app with spin lock, then gen built in debug mode" do
+  assert_equal "cd 'notes' && spin lock", Cybertrain::CLI::NewApp.lock_command("notes")
+  assert_equal "cd 'it'\\''s' && spin lock", Cybertrain::CLI::NewApp.lock_command("it's")
+  assert_equal "SPIN_DEBUG=1 spin build gen", Cybertrain::CLI::ToolBinary.build_command("gen")
   assert_equal "cd 'notes' && cybertrain spin lock && SPIN_DEBUG=1 cybertrain spin run gen", Cybertrain::CLI::NewApp.recovery_command("notes")
 end
 

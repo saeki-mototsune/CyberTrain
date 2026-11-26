@@ -13,4 +13,19 @@ ok   a failed build leaves no record, and neither does a program whose sources a
 ok   db commands generate first, and again after migrate and rollback
 ok   a stale tool is built by spin in debug mode, then run; a failed build stops the command
 ok   db status after db migrate builds nothing when the migration changed only what the tools write
-15 tests, 183 assertions, 0 failures
+
+dist/shop       (production by default)
+dist/public/
+run:  cd dist && ./shop migrate && ./shop
+
+dist/shop       (production by default)
+dist/public/
+run:  cd dist && ./shop migrate && ./shop
+
+dist/shop       (production by default)
+dist/public/
+run:  cd dist && ./shop migrate && ./shop
+ok   build, test and server after db migrate run gen as it is, until a file gen is compiled from changes
+warning: gen/views.rb still holds the embedded views; run spin run gen
+ok   cybertrain build stops at a gen that cannot be built, and still restores gen/views.rb
+17 tests, 208 assertions, 0 failures

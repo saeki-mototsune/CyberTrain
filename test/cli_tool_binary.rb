@@ -6,7 +6,8 @@ require_relative "support/file_tree"
 # build/bin/gen and build/bin/db reused while what they are compiled from
 # is unchanged (Cybertrain::CLI::ToolBinary, docs/design.md D12): how a
 # line's require is read, the files a program reaches, when a binary is
-# fresh, what a build records, and the steps of `cybertrain db`. Nothing
+# fresh, what a build records, the steps of `cybertrain db`, and the gen
+# step of `cybertrain build`, `test` and `server --spinel`. Nothing
 # is compiled: a stand-in runner writes the binary. CRuby-portable; the
 # freshness tests call `spin flags`, so spin must be on PATH.
 
@@ -84,6 +85,44 @@ class StubRunner < Cybertrain::CLI::Build::Runner
     return @fresh == "yes" unless @fresh.empty?
 
     Cybertrain::CLI::ToolBinary.fresh?(root, tool)
+  end
+end
+
+# `cybertrain test`'s runner with the same stand-ins: the steps are recorded
+# (a build of gen writes its binary), the test program is never stale and
+# its run is a step. The freshness check is the real one.
+class StubTestRunner < Cybertrain::CLI::TestCommand::Runner
+  attr_reader :steps
+
+  def initialize
+    @steps = Array.new(0) { "" }
+  end
+
+  def ready?
+    true
+  end
+
+  def run_step(root, command)
+    @steps << command
+    if command == "SPIN_DEBUG=1 spin build gen"
+      Cybertrain::CLI::Templates.mkdir_p("#{root}/build/bin")
+      File.write("#{root}/build/bin/gen", "binary")
+    end
+    true
+  end
+
+  def stale?(root)
+    false
+  end
+
+  def run_tests(root, argv)
+    @steps << "tests"
+    0
+  end
+
+  def say(text)
+    @steps << "say #{text}"
+    nil
   end
 end
 
@@ -456,6 +495,81 @@ test "db status after db migrate builds nothing when the migration changed only 
   assert_equal 0, Cybertrain::CLI::Build.run_db(APP, ["status"], runner)
   assert_equal ["fresh? gen", "./build/bin/gen", "fresh? db", "SPIN_DEBUG=1 spin build db", "./build/bin/db status"], runner.steps
   refute runner.had_binary
+end
+
+# The three commands' steps, each with a runner of its own; build/bin/shop
+# stands in for the application's binary, which `cybertrain build` copies;
+# it is gone again before the server starts, which therefore always has its
+# incremental build to run.
+def build_test_server_steps
+  write("#{APP}/build/bin/shop", "application")
+  out = Array.new(0) { "" }
+  runner = StubRunner.new
+  assert_equal 0, Cybertrain::CLI::Build.run(APP, "shop", runner)
+  out << runner.steps.join(", ")
+  File.delete("#{APP}/build/bin/shop")
+  tests = StubTestRunner.new
+  assert_equal 0, Cybertrain::CLI::TestCommand.run(APP, Array.new(0) { "" }, tests)
+  out << tests.steps.join(", ")
+  runner = StubRunner.new
+  assert_equal 0, Cybertrain::CLI::Build.run_server(APP, "shop", "", runner)
+  out << runner.steps.join(", ")
+  FileTree.remove("#{APP}/dist")
+  out
+end
+
+test "build, test and server after db migrate run gen as it is, until a file gen is compiled from changes" do
+  write("#{APP}/test/models/article_test.rb", "require \"test_helper\"\n")
+  FileTree.remove("#{APP}/build")
+  runner = StubRunner.new
+  assert_equal 0, Cybertrain::CLI::Build.run_db(APP, ["migrate"], runner)
+  assert_equal "SPIN_DEBUG=1 spin build gen", runner.steps[1]
+  # What the migration and the second generation wrote, and what every
+  # later gen step writes: all newer than the binary, none compiled into it.
+  write_later("#{APP}/gen/models/article.rb", "class Article\n  # written by gen, again\nend\n")
+  write("#{APP}/gen/tests.rb", "# tests, a third time\n")
+  write("#{APP}/gen/views.rb", "# the embedded views\n")
+  # `cybertrain build` embeds and restores with the one binary: the first
+  # step wrote gen/views.rb, and the second ran gen all the same.
+  build_steps = "fresh? gen, ./build/bin/gen --embed-views, spin build shop, fresh? gen, ./build/bin/gen"
+  test_steps = "./build/bin/gen, tests"
+  server_steps = "fresh? gen, ./build/bin/gen, spin build shop -- --incremental, spin run shop"
+  assert_equal [build_steps, test_steps, server_steps], build_test_server_steps
+
+  # A route added: gen is compiled from config/routes.rb, so the first
+  # command to generate builds gen, and the ones after it do not.
+  touch_later("#{APP}/config/routes.rb")
+  steps = build_test_server_steps
+  assert_equal "fresh? gen, SPIN_DEBUG=1 spin build gen, ./build/bin/gen --embed-views, spin build shop, fresh? gen, ./build/bin/gen", steps[0]
+  assert_equal [test_steps, server_steps], [steps[1], steps[2]]
+
+  touch_later("#{APP}/db/schema.rb")
+  tests = StubTestRunner.new
+  assert_equal 0, Cybertrain::CLI::TestCommand.run(APP, Array.new(0) { "" }, tests)
+  assert_equal ["SPIN_DEBUG=1 spin build gen", "./build/bin/gen", "tests"], tests.steps
+  touch_later("#{APP}/bin/gen.rb")
+  runner = StubRunner.new
+  assert_equal 0, Cybertrain::CLI::Build.run_server(APP, "shop", "4000", runner)
+  assert_equal ["fresh? gen", "SPIN_DEBUG=1 spin build gen", "./build/bin/gen", "spin build shop -- --incremental", "spin run shop -- 4000"], runner.steps
+  refute runner.had_binary
+  assert_equal [build_steps, test_steps, server_steps], build_test_server_steps
+end
+
+# The restore runs whatever happened before it, and the build's result is
+# the first failure's.
+test "cybertrain build stops at a gen that cannot be built, and still restores gen/views.rb" do
+  write("#{APP}/build/bin/shop", "application")
+  runner = StubRunner.new
+  runner.fresh = "no"
+  runner.fail_build = true
+  assert_equal 1, Cybertrain::CLI::Build.run(APP, "shop", runner)
+  assert_equal ["fresh? gen", "SPIN_DEBUG=1 spin build gen", "fresh? gen", "SPIN_DEBUG=1 spin build gen"], runner.steps
+  refute File.exist?("#{APP}/dist")
+  runner = StubRunner.new
+  runner.fresh = "no"
+  runner.fail_build = true
+  assert_equal 1, Cybertrain::CLI::Build.run_server(APP, "shop", "", runner)
+  assert_equal ["fresh? gen", "SPIN_DEBUG=1 spin build gen"], runner.steps
 end
 
 Cybertrain::Test.run!

@@ -84,11 +84,17 @@ module Cybertrain
       # command strings stay safe for a caller that skipped that, whatever the
       # spelling. An empty name cannot reach these from the CLI (run_in_app
       # refuses it first); a direct caller passing "" gets `spin build ''`.
-      # gen is built in debug mode (Shell::TOOL_SPIN), the application in
-      # release mode.
-      def self.commands(name)
-        ["#{Shell::TOOL_SPIN} run gen -- --embed-views", "spin build #{quote_arg(name)}", "#{Shell::TOOL_SPIN} run gen"]
+      # The application's release build, the middle step of `cybertrain
+      # build`: Build.run has gen embed the views before it (EMBED_VIEWS)
+      # and write the empty table back after it, each through run_tool. gen
+      # is built in debug mode (ToolBinary.build_command), the application
+      # in release mode.
+      def self.release_command(name)
+        "spin build #{quote_arg(name)}"
       end
+
+      # gen's argument for the release build: gen/views.rb holds app/views.
+      EMBED_VIEWS = "--embed-views"
 
       # `cybertrain db ARGS`, through bin/db.rb (the app binary cannot compile
       # before the first migration has produced gen/models). bin/db.rb only
@@ -112,7 +118,11 @@ module Cybertrain
       # (ToolBinary.fresh?): spin itself rebuilds a tool whenever any Ruby
       # file of the package is newer, and both tools write Ruby files, so
       # `spin run db -- status` after a migration compiled gen and db again
-      # (docs/design.md D12, the 2026-11-24 note).
+      # (docs/design.md D12, the 2026-11-24 note). Every command's gen step
+      # is this one (db, build, server, test, new): gen writes gen/**/*.rb,
+      # so by spin's rule each run of gen left gen stale for the next, and
+      # `cybertrain build`, whose first step writes gen/views.rb, always
+      # built gen a second time to write it back (the 2026-11-26 note).
       def self.run_tool(root, tool, words, runner)
         return false unless runner.tool_fresh?(root, tool) || ToolBinary.build(root, tool, runner)
 
@@ -126,13 +136,12 @@ module Cybertrain
         Shell.quote(text)
       end
 
-      # port is "" (the app's default, 3000) or a port? string. The gen step
-      # and the run step; run_server puts incremental_command between them
-      # when the binary is stale.
-      def self.server_commands(name, port)
+      # port is "" (the app's default, 3000) or a port? string. The run
+      # step; run_server runs gen (run_tool) before it, and
+      # incremental_command between the two when the binary is stale.
+      def self.server_command(name, port)
         target = quote_arg(name)
-        run = port == "" ? "spin run #{target}" : "spin run #{target} -- #{quote_arg(port)}"
-        ["#{Shell::TOOL_SPIN} run gen", run]
+        port == "" ? "spin run #{target}" : "spin run #{target} -- #{quote_arg(port)}"
       end
 
       # The build the development rebuilder runs after an edit
@@ -212,15 +221,14 @@ module Cybertrain
         time.to_i * 1_000_000_000 + time.nsec
       end
 
-      # `cybertrain server`: gen, then, when the binary is stale, the
-      # incremental build, then the server. Stops at the first step that
-      # fails and returns 1; 0 when the server exits 0.
+      # `cybertrain server`: gen (run_tool), then, when the binary is
+      # stale, the incremental build, then the server. Stops at the first
+      # step that fails and returns 1; 0 when the server exits 0.
       def self.run_server(root, name, port, runner = Runner.new)
-        steps = server_commands(name, port)
-        return 1 unless runner.run_step(root, steps[0])
+        return 1 unless run_tool(root, "gen", "", runner)
         return 1 if binary_stale?(root, name) && !runner.run_step(root, incremental_command(name))
 
-        runner.run_step(root, steps[1]) ? 0 : 1
+        runner.run_step(root, server_command(name, port)) ? 0 : 1
       end
 
       # All digits, 1 to 65535 (the app reads 0 as "no port").
@@ -231,9 +239,11 @@ module Cybertrain
         text.to_i >= 1 && text.to_i <= 65535
       end
 
-      # Runs one build step (a spin command) in root; true when it succeeds.
-      # Build.run and Build.run_server take a Runner so tests can stand in
-      # for spin.
+      # Runs one build step (a spin command or a tool's binary) in root;
+      # true when it succeeds. Build.run, run_server and run_db take a
+      # Runner so tests can stand in for spin; run_tool asks it whether a
+      # tool's binary can run as it is. TestCommand::Runner is a subclass
+      # (its steps write to stderr).
       class Runner
         def run_step(root, command)
           Build.run_in(root, command)
@@ -248,7 +258,6 @@ module Cybertrain
       # name must already have passed require_dist_name!: CLI.build_app checks
       # it once, before the toolchain is fetched.
       def self.run(root, name, runner = Runner.new)
-        steps = commands(name)
         ok = false
         restored = false
         code = 1
@@ -268,11 +277,12 @@ module Cybertrain
         end
         begin
           begin
-            ok = runner.run_step(root, steps[0]) && runner.run_step(root, steps[1])
+            ok = run_tool(root, "gen", EMBED_VIEWS, runner) && runner.run_step(root, release_command(name))
           ensure
             # Always put gen/views.rb back to the empty table, even after a
-            # failure or Ctrl-C.
-            restored = runner.run_step(root, steps[2])
+            # failure or Ctrl-C. gen/views.rb is not compiled into gen, so
+            # this runs the binary the first step ran (run_tool).
+            restored = run_tool(root, "gen", "", runner)
             puts "warning: gen/views.rb still holds the embedded views; run spin run gen" unless restored
           end
           if ok && restored

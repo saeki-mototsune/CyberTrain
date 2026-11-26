@@ -70,7 +70,10 @@ module Cybertrain
 
       # What `rails new` does with `bundle install`: resolve and lock the
       # framework (fetching it into spin's cache, ~/.cache/spin), then write
-      # gen/ so `spin build` works straight away. Installs Spinel first when
+      # gen/ so `spin build` works straight away: gen through Build.run_tool,
+      # which records what the binary was built from, so the next command
+      # runs it as it is (without the record spin would build it again:
+      # this run of gen wrote gen/**/*.rb). Installs Spinel first when
       # this machine has none of the pinned release (Toolchain.ensure!).
       # Returns false when a step failed.
       def self.bootstrap(dir)
@@ -80,18 +83,18 @@ module Cybertrain
           return false
         end
 
-        puts "run    spin lock && #{Shell::TOOL_SPIN} run gen"
-        return true if system(bootstrap_command(dir))
+        puts "run    spin lock"
+        return true if system(lock_command(dir)) && Build.run_tool(dir, "gen", "", Build::Runner.new)
 
         puts "error: bootstrapping #{dir} failed; fix the cause, then run: #{recovery_command(dir)}"
         false
       end
 
       # Run by bootstrap once Toolchain.ensure! has put spin on this
-      # process's PATH. gen in debug mode, as every CLI command builds it
-      # (Shell::TOOL_SPIN).
-      def self.bootstrap_command(dir)
-        "cd #{Shell.quote(dir)} && spin lock && #{Shell::TOOL_SPIN} run gen"
+      # process's PATH; gen follows it, in debug mode as every CLI command
+      # builds it (Build.run_tool).
+      def self.lock_command(dir)
+        "cd #{Shell.quote(dir)} && spin lock"
       end
 
       # The same steps for the user to run by hand: through `cybertrain

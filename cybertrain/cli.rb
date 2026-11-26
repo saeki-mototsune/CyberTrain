@@ -37,8 +37,12 @@ module Cybertrain
       Usage:
         cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
             Create an application in NAME, then run `spin lock` and
-            `SPIN_DEBUG=1 spin run gen` in it (skipped with --skip-spin;
-            gen and db are built in spin's debug mode). Its spin.toml
+            generate in it (skipped with --skip-spin). Generating is
+            build/bin/gen, which SPIN_DEBUG=1 spin build gen builds first
+            (spin's debug mode, as for db) only when a file it is compiled
+            from changed since its last build, or it has none on record;
+            new, db, server --spinel, build and test all generate this
+            way. Its spin.toml
             depends on this cybertrain's release by default:
               git tag v#{Cybertrain::VERSION} of #{Cybertrain::REPOSITORY}
             --path DIR: the framework checkout at DIR (relative to the
@@ -105,10 +109,8 @@ module Cybertrain
             running it. Queue it with NameJob.perform_later("id" => 1) once
             `spin run gen` has written gen/jobs.rb.
         cybertrain db migrate
-            Generate, apply pending migrations, generate again (as
-            SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate;
-            SPIN_DEBUG=1 spin run gen, but a tool whose sources are
-            unchanged since its build is run without asking spin).
+            Generate, apply pending migrations (build/bin/db migrate,
+            built like gen), generate again.
         cybertrain db COMMAND...
             Any other database command, after generating: status,
             rollback [N] (generates again afterwards), schema,
@@ -121,16 +123,17 @@ module Cybertrain
             takes the port when its build succeeds. The application's
             responses carry X-Cybertrain-Runtime: cruby or spinel.
             --spinel: the compiled loop only, every change waiting for its
-            build (SPIN_DEBUG=1 spin run gen; spin build NAME -- --incremental
+            build (generate; spin build NAME -- --incremental
             when a Ruby file is newer than build/bin/NAME; spin run NAME
             [-- PORT]). The native CLI that `spin install` builds always
             runs this one.
         cybertrain build
-            Build NAME with app/views embedded and assemble dist/
+            Build NAME with app/views embedded (generate with
+            --embed-views; spin build NAME; generate) and assemble dist/
             (the binary, public/, storage/, tmp/).
         cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
             Run the application's tests (test/**/*_test.rb and test/*.rb)
-            as one program: SPIN_DEBUG=1 spin run gen, then gen/tests.rb compiled into
+            as one program: generate, then gen/tests.rb compiled into
             build/test/tests when a source is newer than it, then run.
             FILE or DIR keeps the tests of those files; -n NAME the test
             named NAME (or its method name, test_...); -n /TEXT/ the tests

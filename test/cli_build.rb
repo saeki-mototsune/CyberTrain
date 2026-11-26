@@ -109,8 +109,8 @@ test "app_name rejects only a name that breaks the build/bin/<name> path" do
   # "my-app" or "MyApp" builds as it did before the check existed.
   File.write("spin.toml", "[package]\nname = \"my-app\"\n")
   assert_equal "my-app", Cybertrain::CLI::Build.app_name(".")
-  assert_equal "spin build my-app", Cybertrain::CLI::Build.commands("my-app")[1]
-  assert_equal "spin build 'my app'", Cybertrain::CLI::Build.commands("my app")[1]
+  assert_equal "spin build my-app", Cybertrain::CLI::Build.release_command("my-app")
+  assert_equal "spin build 'my app'", Cybertrain::CLI::Build.release_command("my app")
   File.write("spin.toml", "[package]\nname = \"MyApp\"\n")
   assert_equal "MyApp", Cybertrain::CLI::Build.app_name(".")
   File.write("spin.toml", "[package]\nname = \"blog\"\nversion = \"0.1.0\"\n")
@@ -120,9 +120,9 @@ end
 test "command strings quote every interpolated value" do
   assert_equal "'x; touch PWNED #'", Cybertrain::CLI::Build.quote_arg("x; touch PWNED #")
   assert_equal "'it'\\''s'", Cybertrain::CLI::Build.quote_arg("it's")
-  assert_equal "spin build 'x; touch PWNED #'", Cybertrain::CLI::Build.commands("x; touch PWNED #")[1]
-  assert_equal "spin run 'x; touch PWNED #'", Cybertrain::CLI::Build.server_commands("x; touch PWNED #", "")[1]
-  assert_equal "spin run blog -- '1; id'", Cybertrain::CLI::Build.server_commands("blog", "1; id")[1]
+  assert_equal "spin build 'x; touch PWNED #'", Cybertrain::CLI::Build.release_command("x; touch PWNED #")
+  assert_equal "spin run 'x; touch PWNED #'", Cybertrain::CLI::Build.server_command("x; touch PWNED #", "")
+  assert_equal "spin run blog -- '1; id'", Cybertrain::CLI::Build.server_command("blog", "1; id")
 end
 
 test "an empty application name never reaches the commands from the CLI" do
@@ -132,8 +132,8 @@ test "an empty application name never reaches the commands from the CLI" do
   yielded = false
   assert_equal 1, Cybertrain::CLI.run_in_app { |_n| yielded = true; 0 }
   refute yielded
-  assert_equal "spin build ''", Cybertrain::CLI::Build.commands("")[1]
-  assert_equal "spin run ''", Cybertrain::CLI::Build.server_commands("", "")[1]
+  assert_equal "spin build ''", Cybertrain::CLI::Build.release_command("")
+  assert_equal "spin run ''", Cybertrain::CLI::Build.server_command("", "")
   File.write("spin.toml", "[package]\nname = \"blog\"\n")
 end
 
@@ -143,8 +143,12 @@ test "gen and db are built in spin's debug mode" do
   assert_equal "SPIN_DEBUG=1 spin", Cybertrain::Shell::TOOL_SPIN
 end
 
+# The gen steps around it are run_tool's (the tests of Build.run below, and
+# test/cli_tool_binary.rb for when gen is built first).
 test "build embeds the views, builds, then restores the empty table" do
-  assert_equal ["SPIN_DEBUG=1 spin run gen -- --embed-views", "spin build blog", "SPIN_DEBUG=1 spin run gen"], Cybertrain::CLI::Build.commands("blog")
+  assert_equal "--embed-views", Cybertrain::CLI::Build::EMBED_VIEWS
+  assert_equal "spin build blog", Cybertrain::CLI::Build.release_command("blog")
+  assert_equal "./build/bin/gen --embed-views", Cybertrain::CLI::ToolBinary.direct_command("gen", Cybertrain::CLI::Build::EMBED_VIEWS)
   assert_equal "'a'\\''b'", Cybertrain::Shell.quote("a'b")
 end
 
@@ -159,8 +163,8 @@ test "db without a command prints its usage" do
 end
 
 test "server generates first and passes an optional port" do
-  assert_equal ["SPIN_DEBUG=1 spin run gen", "spin run blog"], Cybertrain::CLI::Build.server_commands("blog", "")
-  assert_equal ["SPIN_DEBUG=1 spin run gen", "spin run blog -- 4000"], Cybertrain::CLI::Build.server_commands("blog", "4000")
+  assert_equal "spin run blog", Cybertrain::CLI::Build.server_command("blog", "")
+  assert_equal "spin run blog -- 4000", Cybertrain::CLI::Build.server_command("blog", "4000")
   assert Cybertrain::CLI::Build.port?("4000")
   assert Cybertrain::CLI::Build.port?("65535")
   refute Cybertrain::CLI::Build.port?("65536")
@@ -197,21 +201,25 @@ def spinel_port_checks(fake)
   [["server", "--spinel", "4000"], ["server", "4000", "--spinel"]].each do |argv|
     File.delete("#{fake}/calls") if File.exist?("#{fake}/calls")
     assert_equal 0, Cybertrain::CLI.run(argv)
-    assert_equal "run gen\nbuild blog -- --incremental\nrun blog -- 4000\n", File.read("#{fake}/calls")
+    assert_equal "flags\nbuild gen\nbuild blog -- --incremental\nrun blog -- 4000\n", File.read("#{fake}/calls")
   end
   nil
 end
 
 # Wherever the flag stands, PORT reaches the compiled loop's commands. A fake
 # pinned Spinel (CYBERTRAIN_SPINEL_HOME) satisfies the toolchain check, and
-# its spin records each command instead of running it.
+# its spin records each command instead of running it; `spin build gen`
+# leaves a build/bin/gen that does nothing, which the gen step then runs
+# (the scratch application has no bin/gen.rb, so gen's sources are not known
+# and each start asks spin: `flags`, then the build).
 test "server --spinel passes PORT to the compiled loop, before or after the flag" do
   fake = "#{ROOT}/spinel_fake"
   app = "#{ROOT}/spinel_app"
   Dir.mkdir(fake)
   Dir.mkdir(app)
   File.write("#{fake}/spinel", "#!/bin/sh\necho \"spinel #{Cybertrain::SPINEL_TAG} (abc123def) [cc 13.3.0]\"\n")
-  File.write("#{fake}/spin", "#!/bin/sh\necho \"$*\" >> #{fake}/calls\n")
+  File.write("#{fake}/spin", "#!/bin/sh\necho \"$*\" >> #{fake}/calls\n" \
+                             "if [ \"$*\" = \"build gen\" ]; then mkdir -p build/bin && printf '#!/bin/sh\\n' > build/bin/gen && chmod +x build/bin/gen; fi\n")
   File.chmod(0o755, "#{fake}/spinel")
   File.chmod(0o755, "#{fake}/spin")
   File.write("#{app}/spin.toml", "[package]\nname = \"blog\"\nversion = \"0.1.0\"\n")
@@ -233,11 +241,15 @@ test "server --spinel passes PORT to the compiled loop, before or after the flag
   nil
 end
 
-# Stands in for the three spin commands: records each one with whether the
+# Stands in for spin and build/bin/gen: records each step with whether the
 # build lock (holding this process's PID) was held while it ran, and fails
 # the one named `failing`. With `writes`, a gen step writes that file (a path
-# under root), as gen does when a route or the schema changed.
+# under root), as gen does when a route or the schema changed. gen's binary
+# counts as fresh, so run_tool's step is the binary alone; the steps when it
+# is not are in test/cli_tool_binary.rb.
 class FakeRunner < Cybertrain::CLI::Build::Runner
+  GEN = "./build/bin/gen"
+
   attr_reader :log
 
   def initialize(failing, writes = "")
@@ -253,8 +265,12 @@ class FakeRunner < Cybertrain::CLI::Build::Runner
       lock = File.read(path) == Process.pid.to_s ? "locked" : "locked by #{File.read(path).inspect}"
     end
     @log << "#{command} (#{lock})"
-    File.write("#{root}/#{@writes}", "# written by gen\n") if @writes != "" && command.include?(" run gen")
+    File.write("#{root}/#{@writes}", "# written by gen\n") if @writes != "" && command.start_with?(GEN)
     command != @failing
+  end
+
+  def tool_fresh?(root, tool)
+    true
   end
 end
 
@@ -274,7 +290,7 @@ end
 test "build runs the three steps under tmp/cybertrain-build.lock, then assembles dist/" do
   runner = FakeRunner.new("")
   assert_equal 0, Cybertrain::CLI::Build.run(".", "blog", runner)
-  assert_equal ["SPIN_DEBUG=1 spin run gen -- --embed-views (locked)", "spin build blog (locked)", "SPIN_DEBUG=1 spin run gen (locked)"], runner.log
+  assert_equal ["./build/bin/gen --embed-views (locked)", "spin build blog (locked)", "./build/bin/gen (locked)"], runner.log
   refute File.exist?("tmp/cybertrain-build.lock")
   assert_equal "#!/bin/sh\necho built\n", File.read("dist/blog")
   assert File.directory?("dist/public")
@@ -284,13 +300,13 @@ end
 test "a failed spin build still restores gen/views.rb, skips assemble and exits 1" do
   runner = FakeRunner.new("spin build blog")
   assert_equal 1, Cybertrain::CLI::Build.run(".", "blog", runner)
-  assert_equal ["SPIN_DEBUG=1 spin run gen -- --embed-views (locked)", "spin build blog (locked)", "SPIN_DEBUG=1 spin run gen (locked)"], runner.log
+  assert_equal ["./build/bin/gen --embed-views (locked)", "spin build blog (locked)", "./build/bin/gen (locked)"], runner.log
   refute File.exist?("dist")
   refute File.exist?("tmp/cybertrain-build.lock")
 end
 
 test "a failed restore exits 1, warns about gen/views.rb and releases the lock" do
-  runner = FakeRunner.new("SPIN_DEBUG=1 spin run gen")
+  runner = FakeRunner.new("./build/bin/gen")
   assert_equal 1, Cybertrain::CLI::Build.run(".", "blog", runner)
   assert_equal 3, runner.log.size
   refute File.exist?("dist")
@@ -744,11 +760,11 @@ test "server builds incrementally only when the binary is stale, then runs it" d
   stale_app
   runner = FakeRunner.new("")
   assert_equal 0, Cybertrain::CLI::Build.run_server(STALE_APP, "blog", "", runner)
-  assert_equal ["SPIN_DEBUG=1 spin run gen (unlocked)", "spin run blog (unlocked)"], runner.log
+  assert_equal ["./build/bin/gen (unlocked)", "spin run blog (unlocked)"], runner.log
   stale_touch("app/models/post.rb", 100)
   runner = FakeRunner.new("")
   assert_equal 0, Cybertrain::CLI::Build.run_server(STALE_APP, "blog", "4000", runner)
-  assert_equal ["SPIN_DEBUG=1 spin run gen (unlocked)", "spin build blog -- --incremental (unlocked)", "spin run blog -- 4000 (unlocked)"], runner.log
+  assert_equal ["./build/bin/gen (unlocked)", "spin build blog -- --incremental (unlocked)", "spin run blog -- 4000 (unlocked)"], runner.log
   stale_cleanup
 end
 
@@ -758,19 +774,19 @@ test "server builds incrementally when the gen step wrote a Ruby file" do
   stale_app
   runner = FakeRunner.new("", "gen/routes.rb")
   assert_equal 0, Cybertrain::CLI::Build.run_server(STALE_APP, "blog", "", runner)
-  assert_equal ["SPIN_DEBUG=1 spin run gen (unlocked)", "spin build blog -- --incremental (unlocked)", "spin run blog (unlocked)"], runner.log
+  assert_equal ["./build/bin/gen (unlocked)", "spin build blog -- --incremental (unlocked)", "spin run blog (unlocked)"], runner.log
   stale_cleanup
 end
 
 test "server stops at a failing gen or incremental build" do
   stale_app
   stale_touch("app/models/post.rb", 100)
-  runner = FakeRunner.new("SPIN_DEBUG=1 spin run gen")
+  runner = FakeRunner.new("./build/bin/gen")
   assert_equal 1, Cybertrain::CLI::Build.run_server(STALE_APP, "blog", "", runner)
-  assert_equal ["SPIN_DEBUG=1 spin run gen (unlocked)"], runner.log
+  assert_equal ["./build/bin/gen (unlocked)"], runner.log
   runner = FakeRunner.new("spin build blog -- --incremental")
   assert_equal 1, Cybertrain::CLI::Build.run_server(STALE_APP, "blog", "", runner)
-  assert_equal ["SPIN_DEBUG=1 spin run gen (unlocked)", "spin build blog -- --incremental (unlocked)"], runner.log
+  assert_equal ["./build/bin/gen (unlocked)", "spin build blog -- --incremental (unlocked)"], runner.log
   runner = FakeRunner.new("spin run blog")
   assert_equal 1, Cybertrain::CLI::Build.run_server(STALE_APP, "blog", "", runner)
   assert_equal 3, runner.log.size
