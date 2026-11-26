@@ -483,8 +483,11 @@ module Cybertrain
 
     # The most connections the server holds open at once, `1024`, each a
     # thread; one accepted past it is answered 503 and closed. Stream
-    # connections ({#stream_max_connections}) count too. Keep it below the
-    # process's descriptor limit (`ulimit -n`). At least 1.
+    # connections ({#stream_max_connections}) count too. Each holds a file
+    # descriptor: keep it well below the process's limit (`ulimit -n`),
+    # leaving room for the listener, logs, the database and other open
+    # files, or the server cannot accept a connection even to answer 503.
+    # At least 1.
     # @return [Integer]
     # @api public
     attr_accessor :max_connections

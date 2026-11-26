@@ -1,5 +1,5 @@
 ---
-source_sha256: 7ff907352b54feafaa630c1a66a61c1b77a05e2484ae8e9050d98f48c0fe2bb7
+source_sha256: e32d060026ee89e81d8d10cb10d7b869f44492533353eb0ab56b1584ab7c5317
 ---
 # Configuration
 
@@ -100,7 +100,7 @@ Les autres attributs n’ont pas de variable&nbsp;; `config/app.rb` les définit
 | `csrf_exempt_prefixes` | `[]` | Des préfixes de chemin dont les requêtes autres que GET sautent la vérification CSRF (voir plus bas) |
 | `max_body_bytes` | `10485760` (10&nbsp;Mio) | Un corps de requête plus long, tel qu’envoyé, reçoit une 413 avant d’être lu&nbsp;; augmentez-le pour les gros envois de fichiers. La taille décompressée d’un corps gzip est bornée séparément, par `request.decoded_body(limit)` |
 | `body_timeout` | `120` | Secondes que peut prendre tout le corps de la requête, à partir de la fin de l’en-tête&nbsp;; au-delà, la requête reçoit une 408 et la connexion est fermée, si régulièrement que le client envoie (slowloris). Augmentez-le pour de gros envois sur des liaisons lentes |
-| `max_connections` | `1024` | Connexions ouvertes à la fois, connexions de flux comprises&nbsp;; la suivante reçoit une 503 et est fermée. Gardez-le sous la limite de descripteurs du processus (`ulimit -n`) |
+| `max_connections` | `1024` | Connexions ouvertes à la fois, connexions de flux comprises&nbsp;; la suivante reçoit une 503 et est fermée. Chaque connexion tient un descripteur de fichier&nbsp;: gardez-le nettement sous la limite du processus (`ulimit -n`), en laissant de la place pour le socket d’écoute, les journaux, la base de données et les autres fichiers ouverts&nbsp;; une fois la limite atteinte, le serveur ne peut même plus accepter une connexion pour répondre 503 |
 | `max_render_depth` | `12` | Rendus ouverts à la fois, la page et ses partiels&nbsp;: la page est à la profondeur 1, les partiels s’imbriquent donc sur 11 niveaux (le layout est rendu après la page et ne s’imbrique pas). Au-delà, c’est une erreur de template&nbsp;; au moins 1, sinon le démarrage échoue |
 | `max_upload_bytes` | `5242880` (5&nbsp;Mio) | La taille maximale d’un fichier envoyé&nbsp;; ne doit pas dépasser `max_body_bytes` |
 | `max_multipart_parts` | `128` | Le nombre maximal de parties d’un corps multipart, champs texte compris&nbsp;; au plus 4096 |
