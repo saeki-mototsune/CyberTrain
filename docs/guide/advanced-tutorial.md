@@ -587,15 +587,19 @@ A scaffold generated from now on signs in by itself.
 
 The image will be shown on the article page, which visitors may read since
 step 17, so its download has to be open to them too. Before running the
-generator, add `:cover` to the list step 17 wrote:
+generator, add `:cover` to the list step 17 wrote. The download will not
+run the code inside `def show` either, and this `show` has some (it builds a
+blank comment for the form and picks a format), so the generator stops unless
+`--show-checks-nothing` says that code limits nobody, which this code does
+not:
 
 ```ruby app/controllers/articles_controller.rb (excerpt)
   allow_unauthenticated_access only: [:index, :show, :cover]
 ```
 
 ```shell terminal — blog/
-cybertrain generate attachment article cover   # a new model: generate scaffold NAME field:type ... cover:attachment
-cybertrain db migrate                          # adds the cover_* columns to articles
+cybertrain generate attachment article cover --show-checks-nothing   # a new model: generate scaffold NAME field:type ... cover:attachment
+cybertrain db migrate                                                # adds the cover_* columns to articles
 ```
 
 It writes a migration that adds five columns to `articles` (`cover_key`,
@@ -635,15 +639,17 @@ class ArticlesController < ApplicationController
 
 The download finds its article through `set_article`, as `show` does, so
 whatever `set_article` does to limit which articles a user may see limits the
-download too. Among its lines the generator prints a warning, because this
-`show` has code of its own:
+download too. Among its lines the generator still prints a warning, because
+this `show` has code of its own:
 
 ```text output — cybertrain generate attachment
 warning: app/controllers/articles_controller.rb: def show has code of its own, which def cover does not run; if that code limits who may see articles, check the same in def cover
 ```
 
 Here that code builds a comment and picks a format; it refuses nobody, so
-there is nothing to copy into `cover`.
+there is nothing to copy into `cover`. Had it refused someone (`head 404 if
+@article.draft?`), the place for that check is a `before_action` listing both
+`:show` and `:cover`, which the generator reads, and then no flag is needed.
 
 The generator also adds `get "/articles/:id/cover"` to `config/routes.rb`,
 `multipart: true` and a file input to the form, above the submit button, and
@@ -668,7 +674,8 @@ the image to the show page, right after the `<h1>`:
 > those it can read: the callbacks. A `before_action` other than `set_article`
 > that lists `:show` without the new action stops it with `cannot preserve
 > show's authorization for :cover`, and nothing is written. Code inside
-> `def show` it cannot read for what it checks, hence the warning. With an
+> `def show` it cannot read for what it checks, so it stops the same way
+> unless `--show-checks-nothing` vouches for it, and then warns. With an
 > empty `show` it adds `:cover` to `allow_unauthenticated_access` by itself
 > where `:show` is listed; with code in `show` it leaves the line alone, and
 > without `:cover` there the image needs a sign-in.

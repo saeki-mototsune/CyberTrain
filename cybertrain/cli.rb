@@ -3,7 +3,7 @@
 #
 #   cybertrain new NAME [--path DIR | --version V | --git URL [--ref R]] [--skip-spin]
 #   cybertrain generate scaffold NAME field:type ... [parent:references] [--any]
-#   cybertrain generate attachment MODEL FIELD [--any]
+#   cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]
 #   cybertrain generate authentication [--invite-only] [--confirmable] [--force]
 #   cybertrain generate helper NAME [--force] | generate component NAME [attr[:type]...] [--force]
 #   cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
@@ -52,7 +52,7 @@ module Cybertrain
             Types: #{Field::TYPES.join(", ")} (default string).
             A field of type attachment (cover:attachment) is an uploaded file:
             see `generate attachment`; --any applies to it.
-        cybertrain generate attachment MODEL FIELD [--any]
+        cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]
             Attach an uploaded file to a model of the application in the
             current directory (`generate attachment post cover`): five
             columns in a migration, cover_* methods and callbacks in the model,
@@ -60,7 +60,10 @@ module Cybertrain
             form, and a test. The bytes are kept in storage/uploads/ (back it
             up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
             accepted, unless --any allows any file; the stored type is always
-            the one detected from the bytes.
+            the one detected from the bytes. The download runs show's
+            callbacks but not show's own code, so a def show with code is
+            refused, unless --show-checks-nothing says that code limits
+            nobody (it builds a form object, picks a format).
         cybertrain generate authentication [--invite-only] [--confirmable] [--force]
             Add email-and-password sign-in to the application in the current
             directory: users and sessions tables, User and Session models,
@@ -399,10 +402,10 @@ module Cybertrain
 
         Scaffold.generate(".", args[0], args[1, args.size - 1], argv.include?("--any"))
       when "attachment"
-        args = without_flag(argv[2, argv.size - 2], "--any")
-        raise InvalidArgument, "usage: cybertrain generate attachment MODEL FIELD [--any]" unless args.size == 2
+        args = without_flag(without_flag(argv[2, argv.size - 2], "--any"), "--show-checks-nothing")
+        raise InvalidArgument, "usage: cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]" unless args.size == 2
 
-        Attachment.generate(".", args[0], args[1], argv.include?("--any"))
+        Attachment.generate(".", args[0], args[1], argv.include?("--any"), argv.include?("--show-checks-nothing"))
         puts Attachment::BACKUP_NOTE
         puts ""
         puts "next:"

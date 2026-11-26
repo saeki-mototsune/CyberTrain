@@ -1,5 +1,5 @@
 ---
-source_sha256: 6bf5394a6e48281e555dd03cd02b963e9f8a3f0d9efc3898432c239020ce33ef
+source_sha256: 7668770b93afdae738f5be1d07f25ed22a7d0f9ee50f915269e0bb61de6f0485
 ---
 # 安装
 
@@ -45,7 +45,7 @@ cybertrain doctor
   [--skip-spin]` 在 NAME 中创建应用，然后在其中运行 `spin lock` 和 `SPIN_DEBUG=1 spin run gen`，需要时会先安装 Spinel（CLI 以 spin 的调试模式构建 gen 和 `bin/db.rb`）。
 - `cybertrain generate scaffold NAME field:type ... [parent:references] [--any]`（别名 `g scaffold`）为当前目录中的应用添加一个资源；`parent:references` 字段就是 `parent_id` 列，`--any` 用于附件字段（见下）。
 - `cybertrain generate authentication [--invite-only] [--confirmable] [--force]` 为其添加用邮箱和密码登录的功能：users 和 sessions 表、`User` 和 `Session` 模型、`ApplicationController` 所 include 的 `Authentication` concern、登录、注册、密码重置和账户的控制器与视图、路由、由 `require_admin` 保护的作业页面、`bin/<app>.rb` 和 `bin/db.rb` 中它需要的子系统行，以及测试。`--invite-only` 不生成注册页面；`--confirmable` 让新账户在登录前先通过邮件确认地址；再次运行时，对会被改动的文件只打印差异，加上 `--force` 则直接覆盖（[认证](authentication.md)）。
-- `cybertrain generate attachment MODEL FIELD [--any]` 为已生成脚手架的模型添加文件上传功能：五个元数据列、模型方法和回调、一个下载动作、路由、表单字段和一个测试（参见[添加封面图片](advanced-tutorial.md#attachments)）。脚手架字段 `cover:attachment` 的作用相同。
+- `cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]` 为已生成脚手架的模型添加文件上传功能：五个元数据列、模型方法和回调、一个下载动作、路由、表单字段和一个测试（参见[添加封面图片](advanced-tutorial.md#attachments)）。脚手架字段 `cover:attachment` 的作用相同。下载动作不会运行 `def show` 中的代码，因此带有自身代码的 `show` 会被拒绝，直到这段代码移入 `before_action`，或用 `--show-checks-nothing` 表明它不限制任何人。
 - `cybertrain generate helper NAME [--force]` 添加 `app/helpers/NAME_helper.rb` 和一个测试；运行 `spin run gen` 之后，这个模块的方法可以在任何模板中调用（[应用的辅助方法](template-language.md#application-helpers)）。
 - `cybertrain generate component NAME [attr[:type] ...] [--force]` 添加一个视图组件：`app/components/NAME_component.rb`、它的模板和一个测试（[组件](template-language.md#components)）。
 - `cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]` 添加 `app/jobs/NAME_job.rb` 和一个测试，并在 `bin/<app>.rb` 和 `bin/db.rb` 中加入 `require "cybertrain/jobs"`（[后台任务](background-and-operations.md#background-work)）。

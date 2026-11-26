@@ -1,5 +1,5 @@
 ---
-source_sha256: f3d5e388be9dc562f649c6e1dcf1afcea8d74ed13d2d2c8f461e12945ecee24b
+source_sha256: a1bd7b8890459f79a2b34e6ee1a7243e28b482a3d52c59ff76ec795c361cd256
 title: "Продвинутый учебник: развиваем блог дальше"
 description: "Продолжите блог из Getting Started на CyberTrain: компонент и хелпер, живые комментарии через Turbo Streams, фоновая задача, JSON, вход, загруженная обложка и сборка для развёртывания командой cybertrain build."
 og_title: "Продвинутый учебник: развиваем блог на CyberTrain дальше"
@@ -580,15 +580,19 @@ class CommentsControllerTest < ActionDispatch::IntegrationTest
 
 Картинка будет показана на странице статьи, которую посетители могут читать с
 шага 17, поэтому её скачивание тоже должно быть им открыто. Перед запуском
-генератора добавьте `:cover` в список, который написал шаг 17:
+генератора добавьте `:cover` в список, который написал шаг 17. Код внутри
+`def show` скачивание тоже не выполняет, а в этом `show` он есть (создаёт
+пустой комментарий для формы и выбирает формат), поэтому генератор
+останавливается, если `--show-checks-nothing` не подтвердит, что этот код
+никого не ограничивает, — а он никого не ограничивает:
 
 ```ruby app/controllers/articles_controller.rb (фрагмент)
   allow_unauthenticated_access only: [:index, :show, :cover]
 ```
 
 ```shell терминал — blog/
-cybertrain generate attachment article cover   # для новой модели: generate scaffold NAME field:type ... cover:attachment
-cybertrain db migrate                          # добавляет столбцы cover_* в articles
+cybertrain generate attachment article cover --show-checks-nothing   # для новой модели: generate scaffold NAME field:type ... cover:attachment
+cybertrain db migrate                                                # добавляет столбцы cover_* в articles
 ```
 
 Она пишет миграцию, которая добавляет в `articles` пять столбцов (`cover_key`,
@@ -628,15 +632,17 @@ class ArticlesController < ApplicationController
 
 Скачивание находит свою статью через `set_article`, как и `show`, поэтому всё,
 что `set_article` делает для ограничения видимых пользователю статей,
-ограничивает и скачивание. Среди своих строк генератор выводит предупреждение,
-потому что в этом `show` есть собственный код:
+ограничивает и скачивание. Среди своих строк генератор всё же выводит
+предупреждение, потому что в этом `show` есть собственный код:
 
 ```text вывод — cybertrain generate attachment
 warning: app/controllers/articles_controller.rb: def show has code of its own, which def cover does not run; if that code limits who may see articles, check the same in def cover
 ```
 
 Здесь этот код создаёт комментарий и выбирает формат; он никому не отказывает,
-так что переносить в `cover` нечего.
+так что переносить в `cover` нечего. Если бы он кому-то отказывал (`head 404
+if @article.draft?`), место такой проверки — `before_action`, перечисляющий и
+`:show`, и `:cover`: его генератор читает, и флаг тогда не нужен.
 
 Генератор также добавляет `get "/articles/:id/cover"` в `config/routes.rb`,
 `multipart: true` и поле выбора файла в форму, над кнопкой отправки, а на
@@ -662,8 +668,9 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 > `set_article`, перечисляет `:show` без нового действия, генератор
 > останавливается с сообщением
 > `cannot preserve show's authorization for :cover` и ничего не пишет. Что
-> проверяет код внутри `def show`, он прочитать не может — отсюда и
-> предупреждение. При пустом `show` он сам добавляет `:cover` в
+> проверяет код внутри `def show`, он прочитать не может, поэтому так же
+> останавливается, если за код не ручается `--show-checks-nothing`, а с ним
+> выводит предупреждение. При пустом `show` он сам добавляет `:cover` в
 > `allow_unauthenticated_access` там, где перечислен `:show`; если в `show`
 > есть код, он эту строку не трогает, а без `:cover` в ней изображение требует
 > входа.

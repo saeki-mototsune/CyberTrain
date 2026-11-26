@@ -1,5 +1,5 @@
 ---
-source_sha256: 6bf5394a6e48281e555dd03cd02b963e9f8a3f0d9efc3898432c239020ce33ef
+source_sha256: 7668770b93afdae738f5be1d07f25ed22a7d0f9ee50f915269e0bb61de6f0485
 ---
 # インストール
 
@@ -45,7 +45,7 @@ cybertrain doctor
   [--skip-spin]` は NAME にアプリケーションを作成し、その中で `spin lock` と `SPIN_DEBUG=1 spin run gen` を実行します。必要なら先に Spinel をインストールします（CLI は gen と `bin/db.rb` を spin のデバッグモードでビルドします）。
 - `cybertrain generate scaffold NAME field:type ... [parent:references] [--any]`（エイリアスは `g scaffold`）は、カレントディレクトリのアプリケーションにリソースを追加します。`parent:references` のフィールドは `parent_id` カラムになり、`--any` は添付ファイルのフィールド（後述）に対するものです。
 - `cybertrain generate authentication [--invite-only] [--confirmable] [--force]` は、そのアプリケーションにメールアドレスとパスワードによるサインインを追加します：users と sessions のテーブル、`User` と `Session` のモデル、`ApplicationController` が include する `Authentication` コンサーン、サインイン、サインアップ、パスワードリセット、アカウントのコントローラーとビュー、ルート、`require_admin` で保護されたジョブページ、`bin/<app>.rb` と `bin/db.rb` に必要なサブシステムの行、そしてテストです。`--invite-only` はサインアップのページを省き、`--confirmable` は新しいアカウントに、サインインの前にメールでアドレスを確認させます。もう一度実行したとき、変更されるファイルについては差分を表示するだけですが、`--force` を付けると上書きします（[認証](authentication.md)）。
-- `cybertrain generate attachment MODEL FIELD [--any]` は、スキャフォールド済みのモデルにファイルアップロードを追加します：5 つのメタデータカラム、モデルのメソッドとコールバック、ダウンロードのアクション、ルート、フォームのフィールド、そしてテストです（[カバー画像を追加する](advanced-tutorial.md#attachments)を参照）。スキャフォールドのフィールド `cover:attachment` も同じことを行います。
+- `cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]` は、スキャフォールド済みのモデルにファイルアップロードを追加します：5 つのメタデータカラム、モデルのメソッドとコールバック、ダウンロードのアクション、ルート、フォームのフィールド、そしてテストです（[カバー画像を追加する](advanced-tutorial.md#attachments)を参照）。スキャフォールドのフィールド `cover:attachment` も同じことを行います。ダウンロードは `def show` の中のコードを実行しないので、独自のコードを持つ `show` は、そのコードを `before_action` に移すか、`--show-checks-nothing` でそのコードが誰も制限しないと示すまで拒否されます。
 - `cybertrain generate helper NAME [--force]` は `app/helpers/NAME_helper.rb` とテストを追加します。このモジュールのメソッドは、`spin run gen` を実行すればどのテンプレートからも呼べます（[アプリケーションのヘルパー](template-language.md#application-helpers)）。
 - `cybertrain generate component NAME [attr[:type] ...] [--force]` はビューコンポーネントを追加します：`app/components/NAME_component.rb`、そのテンプレート、そしてテストです（[コンポーネント](template-language.md#components)）。
 - `cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]` は `app/jobs/NAME_job.rb` とテストを追加し、`bin/<app>.rb` と `bin/db.rb` に `require "cybertrain/jobs"` を加えます（[バックグラウンド処理](background-and-operations.md#background-work)）。

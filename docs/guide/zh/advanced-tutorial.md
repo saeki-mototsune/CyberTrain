@@ -1,5 +1,5 @@
 ---
-source_sha256: f3d5e388be9dc562f649c6e1dcf1afcea8d74ed13d2d2c8f461e12945ecee24b
+source_sha256: a1bd7b8890459f79a2b34e6ee1a7243e28b482a3d52c59ff76ec795c361cd256
 title: "进阶教程：把博客继续推进"
 description: "用 CyberTrain 继续推进入门指南中的博客：组件和辅助方法、用 Turbo Streams 实时推送评论、后台作业、JSON、登录、上传的封面图片，以及用 cybertrain build 为部署而构建。"
 og_title: "进阶教程：把 CyberTrain 博客继续推进"
@@ -432,15 +432,15 @@ class CommentsControllerTest < ActionDispatch::IntegrationTest
 > [!WHY]
 > 文章可以带一张图片。分工和登录一样：框架负责解析 `multipart/form-data` 并保存字节，其余部分由一条命令写成归应用所有的代码，以此取代 Active Storage 的 `has_one_attached`。
 
-图片会显示在文章页面上，而从步骤 17 起访客就可以阅读这个页面，所以它的下载也必须对他们开放。在运行生成器之前，先把 `:cover` 加入步骤 17 写下的列表：
+图片会显示在文章页面上，而从步骤 17 起访客就可以阅读这个页面，所以它的下载也必须对他们开放。在运行生成器之前，先把 `:cover` 加入步骤 17 写下的列表。下载也不会运行 `def show` 中的代码，而这个 `show` 有代码（为表单构建一条空评论并选择格式），所以除非用 `--show-checks-nothing` 表明这段代码不限制任何人，生成器会停止；这段代码确实不限制任何人：
 
 ```ruby app/controllers/articles_controller.rb （节选）
   allow_unauthenticated_access only: [:index, :show, :cover]
 ```
 
 ```shell 终端 — blog/
-cybertrain generate attachment article cover   # 新模型则用：generate scaffold NAME field:type ... cover:attachment
-cybertrain db migrate                          # 给 articles 添加 cover_* 列
+cybertrain generate attachment article cover --show-checks-nothing   # 新模型则用：generate scaffold NAME field:type ... cover:attachment
+cybertrain db migrate                                                # 给 articles 添加 cover_* 列
 ```
 
 它会写出一个迁移，为 `articles` 添加五列（`cover_key`, `cover_filename`, `cover_content_type`, `cover_byte_size`, `cover_checksum`；文件本身不在 SQLite 中），并在 `Article` 中写出一个代码块，包含 `cover_file=`、`cover_attached?`、`cover_url`、一个验证，以及保存和销毁回调。在 `ArticlesController` 中，它添加一个由 `before_action :set_article` 保护的 `cover` 动作，并在 `create` 和 `update` 中各加一行：
@@ -473,13 +473,13 @@ class ArticlesController < ApplicationController
     if @article.update(article_params)
 ```
 
-下载和 `show` 一样通过 `set_article` 找到它的文章，所以 `set_article` 中用来限制用户能看到哪些文章的任何做法，同样会限制下载。生成器打印的各行中有一条警告，因为这个 `show` 里有它自己的代码：
+下载和 `show` 一样通过 `set_article` 找到它的文章，所以 `set_article` 中用来限制用户能看到哪些文章的任何做法，同样会限制下载。生成器打印的各行中仍有一条警告，因为这个 `show` 里有它自己的代码：
 
 ```text 输出 — cybertrain generate attachment
 warning: app/controllers/articles_controller.rb: def show has code of its own, which def cover does not run; if that code limits who may see articles, check the same in def cover
 ```
 
-在这里，那段代码构建一条评论并选择格式；它不拒绝任何人，所以没有什么需要复制到 `cover` 中。
+在这里，那段代码构建一条评论并选择格式；它不拒绝任何人，所以没有什么需要复制到 `cover` 中。如果它会拒绝某些人（`head 404 if @article.draft?`），这项检查应放在同时列出 `:show` 和 `:cover` 的 `before_action` 中，生成器能读懂它，也就不需要这个标志。
 
 生成器还会在 `config/routes.rb` 中添加 `get "/articles/:id/cover"`，在表单中添加 `multipart: true` 和一个位于提交按钮上方的文件输入框，并在显示页面中紧跟 `<h1>` 之后添加这张图片：
 
@@ -498,7 +498,7 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 ```
 
 > [!NOTE]
-> 生成器会把 `show` 的访问规则复制到下载上，但只复制它能读懂的那些，也就是回调。如果除 `set_article` 之外还有一个 `before_action` 列出了 `:show` 却没有列出新动作，它会以 `cannot preserve show's authorization for :cover` 停止，什么也不写。`def show` 中的代码检查的是什么，它读不出来，所以才有那条警告。`show` 为空时，只要 `allow_unauthenticated_access` 列出了 `:show`，它就会自行把 `:cover` 加进去；`show` 中有代码时，它不改动这一行，而这一行里没有 `:cover` 的话，图片需要登录才能看到。
+> 生成器会把 `show` 的访问规则复制到下载上，但只复制它能读懂的那些，也就是回调。如果除 `set_article` 之外还有一个 `before_action` 列出了 `:show` 却没有列出新动作，它会以 `cannot preserve show's authorization for :cover` 停止，什么也不写。`def show` 中的代码检查的是什么，它读不出来，所以除非 `--show-checks-nothing` 为它担保，生成器同样会停止；有了担保，它会给出警告。`show` 为空时，只要 `allow_unauthenticated_access` 列出了 `:show`，它就会自行把 `:cover` 加进去；`show` 中有代码时，它不改动这一行，而这一行里没有 `:cover` 的话，图片需要登录才能看到。
 
 > [!RULE] has_one_attached 被逐一写出
 > ### `has_one_attached` 被逐一写出
