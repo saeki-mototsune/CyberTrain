@@ -1702,14 +1702,39 @@ module Cybertrain
               assert_equal 1, perform_enqueued_jobs
               link = last_mail_link
               assert link.start_with?("https://shop.example/passwords/"), link
+              # Behind a chain of proxies the header lists each hop's scheme:
+              # its first element, the one the client reached, is the one read
+              # (as by force_ssl's redirect).
+              begin
+                Cybertrain::Request.trusted_proxy = true
+                with_config("production", ["shop.example"], "") do
+                  request_reset("one@example.com", "shop.example", "https, http")
+                  assert_redirected_to "/session/new"
+                end
+              ensure
+                Cybertrain::Request.trusted_proxy = trusted
+              end
+              assert_equal 1, perform_enqueued_jobs
+              link = last_mail_link
+              assert link.start_with?("https://shop.example/passwords/"), link
               # Over http (an X-Forwarded-Proto from a peer not trusted is not
               # believed): no mail, as its token would cross the network in clear.
+              # Neither trust setting may cover this test's loopback peer here,
+              # whatever the environment set.
+              proxies = Cybertrain::Request.trusted_proxies
               log = StringIO.new
-              with_config("production", ["shop.example"], "", log) do
-                request_reset("one@example.com", "shop.example", "https")
-                assert_redirected_to "/session/new"
-                follow_redirect!
-                assert_includes response.body, SENT
+              begin
+                Cybertrain::Request.trusted_proxy = false
+                Cybertrain::Request.trusted_proxies = Array.new(0) { "" }
+                with_config("production", ["shop.example"], "", log) do
+                  request_reset("one@example.com", "shop.example", "https")
+                  assert_redirected_to "/session/new"
+                  follow_redirect!
+                  assert_includes response.body, SENT
+                end
+              ensure
+                Cybertrain::Request.trusted_proxy = trusted
+                Cybertrain::Request.trusted_proxies = proxies
               end
               assert_no_enqueued_jobs "cybertrain mail"
               assert_includes log.string, " ERROR "
