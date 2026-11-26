@@ -1,6 +1,6 @@
-# `cybertrain generate attachment MODEL FIELD [--any]`: a file attached to a
-# model (`cover` on `Post`), as code the application owns (docs/design.md
-# D15, D16). The framework supplies the parts that are easy to get wrong
+# `cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]`:
+# a file attached to a model (`cover` on `Post`), as code the application
+# owns (docs/design.md D15, D16). The framework supplies the parts that are easy to get wrong
 # (the multipart parser, Cybertrain::UploadedFile, Cybertrain::BlobStore,
 # Controller#send_blob); this writes the rest:
 #
@@ -23,6 +23,10 @@
 # random key plus the server-detected type, size and SHA-256. Without
 # --any only PNG, JPEG, GIF and WebP are accepted, and
 # Controller#send_blob serves those inline and anything else as a download.
+#
+# The download runs show's callbacks, not show's body: a def show with code
+# of its own is refused (check_download_policy!) unless
+# --show-checks-nothing says that code limits nobody.
 #
 # `generate scaffold post title:string cover:attachment` ends in the same
 # edits (Scaffold.generate calls install_code); it writes the columns in
@@ -86,8 +90,10 @@ module Cybertrain
 
       # Returns the paths it created. Raises InvalidArgument, before anything
       # is written, when the field name is unusable or `root` is not an
-      # application with that model, its controller and a routes file.
-      def self.generate(root, model, field, any)
+      # application with that model, its controller and a routes file, or
+      # when def show has code of its own and `show_checks_nothing` (the
+      # flag --show-checks-nothing) does not say that code limits nobody.
+      def self.generate(root, model, field, any, show_checks_nothing = false)
         spec = AttachmentSpec.new(model, field, any)
         check_names!(spec)
 
@@ -109,7 +115,7 @@ module Cybertrain
            File.read(model_path).index(model_marker(spec)).nil?
           raise InvalidArgument, "#{schema_path} already has a \"#{field}_key\" column in \"#{spec.plural}\": #{spec.class_name} already has a #{field}, or pick another field name"
         end
-        check_download_policy!(root, spec, File.read(controller_path))
+        check_download_policy!(root, spec, File.read(controller_path), show_checks_nothing)
 
         created = Array.new(0) { "" }
         record(created, root, migration_path(root, spec), migration(spec))
@@ -161,11 +167,15 @@ module Cybertrain
       # Authentication alone cannot replace a show-only authorization check.
       # Only the shared record callback is extended automatically; any other
       # policy a callback declares must explicitly cover both show and the
-      # download already. Code inside def show is not refused: it cannot be
-      # read for what it checks, so the download is generated, never made
+      # download already. Code inside def show cannot be read for what it
+      # checks (`@comment = Comment.new` and `head 404 if @post.draft?` are
+      # both a line), and the new download would not run it, so it is
+      # refused too unless `show_checks_nothing` (--show-checks-nothing)
+      # says it limits nobody; then the download is generated, never made
       # public with show (add_public_download), and warned about
-      # (warn_show_body).
-      def self.check_download_policy!(root, spec, source)
+      # (warn_show_body). A download already there (a re-run) is not
+      # refused: refusing would write nothing new.
+      def self.check_download_policy!(root, spec, source, show_checks_nothing = false)
         coverage = set_record_coverage(source, spec, spec.field)
         new_action = line_start(source, "def #{spec.field}", "exact") < 0
         source = add_to_only_list(source, spec, spec.field) if coverage == "add" && new_action
@@ -197,7 +207,11 @@ module Cybertrain
             parent = inherited[at, line_end(inherited, at) - at].to_s.strip.delete_prefix(head) if safe
           end
         end
-        return nil if safe
+        if safe
+          return nil if show_checks_nothing || !new_action || !show_has_body?(source)
+
+          raise InvalidArgument, "#{controller_file(spec)}: cannot preserve show's authorization for :#{spec.field}: def show has code of its own, which def #{spec.field} would not run; move any check it makes into a before_action listing both :show and :#{spec.field} (before_action :authorize_#{spec.singular}, only: [:show, :#{spec.field}]), or, if that code limits nobody (it builds a form object, picks a format), run again with --show-checks-nothing; no attachment files were written"
+        end
 
         raise InvalidArgument, "#{controller_file(spec)}: cannot preserve show's authorization for :#{spec.field}; use the same explicit before_action policy for :show and :#{spec.field}, move checks out of def show, and load both through before_action :set_#{spec.singular} (including inherited policies); no attachment files were written"
       end

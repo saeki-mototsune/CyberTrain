@@ -1,5 +1,5 @@
 ---
-source_sha256: 6bf5394a6e48281e555dd03cd02b963e9f8a3f0d9efc3898432c239020ce33ef
+source_sha256: 7668770b93afdae738f5be1d07f25ed22a7d0f9ee50f915269e0bb61de6f0485
 ---
 # Установка
 
@@ -105,10 +105,14 @@ cybertrain doctor
   `--confirmable` требует, чтобы новая учётная запись подтвердила адрес по
   почте до входа, а `--force` перезаписывает файлы, для которых повторный
   запуск иначе только печатает diff ([Аутентификация](authentication.md)).
-- `cybertrain generate attachment MODEL FIELD [--any]` добавляет загрузку файла
+- `cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]`
+  добавляет загрузку файла
   в модель со скаффолдом: пять столбцов метаданных, методы и колбэки модели,
   действие для скачивания, маршрут, поле формы и тест (см.
   [Добавление обложки](advanced-tutorial.md#attachments)). Поле скаффолда `cover:attachment` делает то же самое.
+  Скачивание не выполняет код внутри `def show`, поэтому `show` с собственным
+  кодом отклоняется, пока этот код не перенесён в `before_action` или
+  `--show-checks-nothing` не подтвердит, что он никого не ограничивает.
 - `cybertrain generate helper NAME [--force]` добавляет
   `app/helpers/NAME_helper.rb`, модуль, методы которого после `spin run gen`
   может вызывать любой шаблон, и тест

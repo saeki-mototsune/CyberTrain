@@ -486,10 +486,13 @@ test "show restrictions are preserved or attachment generation is refused" do
   end
 end
 
-# Code inside def show cannot be read for what it checks, so it is accepted
-# with a warning (the lines are in the snapshot), and the download is not
-# made public with show: it keeps the sign-in until the application says so.
-test "a show with a body is accepted, warned about, and its download stays private" do
+# Code inside def show cannot be read for what it checks, and the download
+# would not run it, so it is refused before anything is written, with the
+# flag that overrides it named. With --show-checks-nothing the application
+# says that code limits nobody: the download is generated with a warning
+# (the lines are in the snapshot), and it is not made public with show: it
+# keeps the sign-in until the application says so.
+test "a show with a body is refused, and accepted with --show-checks-nothing as private" do
   public_line = "  allow_unauthenticated_access only: [:index, :show]\n"
   [
     ["shed", "  def show\n    head 404 if @plan.title.empty?\n  end\n"],
@@ -502,7 +505,13 @@ test "a show with a body is accepted, warned about, and its download stays priva
     controller_path = "#{app}/app/controllers/plans_controller.rb"
     add_after_class(controller_path, public_line)
     File.write(controller_path, read(controller_path).sub("  def show\n  end\n", show))
-    Cybertrain::CLI::Attachment.generate(app, "plan", "photo", false)
+    before = attachment_tree(app)
+    message = assert_raises("InvalidArgument") { Cybertrain::CLI::Attachment.generate(app, "plan", "photo", false) }
+    assert_includes message, "cannot preserve show's authorization for :photo: def show has code of its own"
+    assert_includes message, "--show-checks-nothing"
+    assert_equal before, attachment_tree(app)
+
+    Cybertrain::CLI::Attachment.generate(app, "plan", "photo", false, true)
     controller = read(controller_path)
     assert_includes controller, "  def photo\n"
     assert_includes controller, show
@@ -510,24 +519,35 @@ test "a show with a body is accepted, warned about, and its download stays priva
     assert_includes controller, "  before_action :set_plan, only: [:show, :edit, :update, :destroy, :photo]\n"
     assert_includes read("#{app}/test/integration/plan_photo_attachment_test.rb"), "assert_redirected_to \"/session/new\""
 
-    # A second run edits nothing and does not warn again about an action
-    # it did not add.
+    # A second run, even without the flag, edits nothing and does not warn
+    # again about an action it did not add.
     before = attachment_tree(app)
     Cybertrain::CLI::Attachment.generate(app, "plan", "photo", false)
     assert_equal before, attachment_tree(app)
   end
 end
 
-# Without authentication nothing keeps the download closed: the warning is
-# all there is, so it is printed here too.
-test "a show with a body is accepted without authentication as well" do
+# Without authentication nothing keeps the download closed, so a check in
+# show (here: drafts are hidden) would be skipped for everyone: refused
+# too, from the command line as well. The flag still overrides it, and the
+# warning is printed.
+test "a show with a body is refused without authentication as well" do
   Cybertrain::CLI::NewApp.create("open", "{ path = \"../cybertrain\" }")
   Cybertrain::CLI::Scaffold.generate("open", "plan", ["title:string"])
   controller_path = "open/app/controllers/plans_controller.rb"
-  File.write(controller_path, read(controller_path).sub("  def show\n  end\n", "  def show\n    @note = Note.new\n  end\n"))
-  Cybertrain::CLI::Attachment.generate("open", "plan", "photo", false)
+  show = "  def show\n    head 404 if @plan.title == \"draft\"\n  end\n"
+  File.write(controller_path, read(controller_path).sub("  def show\n  end\n", show))
+  before = attachment_tree("open")
+  message = assert_raises("InvalidArgument") { Cybertrain::CLI::Attachment.generate("open", "plan", "photo", false) }
+  assert_includes message, "cannot preserve show's authorization for :photo"
+  assert_equal before, attachment_tree("open")
+  status = Dir.chdir("open") { Cybertrain::CLI.run(["generate", "attachment", "plan", "photo"]) }
+  assert_equal 1, status
+  assert_equal before, attachment_tree("open")
+  status = Dir.chdir("open") { Cybertrain::CLI.run(["generate", "attachment", "plan", "photo", "--show-checks-nothing"]) }
+  assert_equal 0, status
   assert_includes read(controller_path), "  def photo\n"
-  assert_includes read(controller_path), "  def show\n    @note = Note.new\n  end\n"
+  assert_includes read(controller_path), show
 end
 
 # Authentication is independent of record/role authorization. These checks

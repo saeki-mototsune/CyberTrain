@@ -1,5 +1,5 @@
 ---
-source_sha256: f3d5e388be9dc562f649c6e1dcf1afcea8d74ed13d2d2c8f461e12945ecee24b
+source_sha256: a1bd7b8890459f79a2b34e6ee1a7243e28b482a3d52c59ff76ec795c361cd256
 title: "Tutoriel avancé&nbsp;: pousser le blog plus loin"
 description: "Poursuivez le blog du Getting Started avec CyberTrain&nbsp;: un composant et un helper, des commentaires en direct avec Turbo Streams, un job d’arrière-plan, JSON, la connexion, une image de couverture envoyée et un build pour le déploiement avec cybertrain build."
 og_title: "Tutoriel avancé&nbsp;: pousser plus loin le blog CyberTrain"
@@ -594,15 +594,18 @@ Un scaffold généré désormais se connecte de lui-même.
 L’image sera affichée sur la page de l’article, que les visiteurs peuvent lire
 depuis l’étape 17&nbsp;: son téléchargement doit donc leur être ouvert aussi.
 Avant de lancer le générateur, ajoutez `:cover` à la liste écrite à
-l’étape 17&nbsp;:
+l’étape 17. Le téléchargement n’exécute pas non plus le code de `def show`, et
+ce `show` en a (il prépare un commentaire vide pour le formulaire et choisit un
+format)&nbsp;: le générateur s’arrête donc, sauf si `--show-checks-nothing`
+indique que ce code ne restreint personne, ce qui est le cas ici&nbsp;:
 
 ```ruby app/controllers/articles_controller.rb (extrait)
   allow_unauthenticated_access only: [:index, :show, :cover]
 ```
 
 ```shell terminal — blog/
-cybertrain generate attachment article cover   # pour un nouveau modèle : generate scaffold NAME field:type ... cover:attachment
-cybertrain db migrate                          # ajoute les colonnes cover_* à articles
+cybertrain generate attachment article cover --show-checks-nothing   # pour un nouveau modèle : generate scaffold NAME field:type ... cover:attachment
+cybertrain db migrate                                                # ajoute les colonnes cover_* à articles
 ```
 
 Elle écrit une migration qui ajoute cinq colonnes à `articles` (`cover_key`,
@@ -645,7 +648,7 @@ class ArticlesController < ApplicationController
 Le téléchargement trouve son article par `set_article`, comme `show`&nbsp;:
 tout ce que `set_article` fait pour limiter les articles qu’un utilisateur
 peut voir limite donc aussi le téléchargement. Parmi les lignes qu’il affiche,
-le générateur émet un avertissement, parce que ce `show` a du code qui lui est
+le générateur émet tout de même un avertissement, parce que ce `show` a du code qui lui est
 propre&nbsp;:
 
 ```text sortie — cybertrain generate attachment
@@ -653,7 +656,10 @@ warning: app/controllers/articles_controller.rb: def show has code of its own, w
 ```
 
 Ici, ce code construit un commentaire et choisit un format&nbsp;; il ne refuse
-personne, il n’y a donc rien à recopier dans `cover`.
+personne, il n’y a donc rien à recopier dans `cover`. S’il refusait quelqu’un
+(`head 404 if @article.draft?`), la place de cette vérification serait un
+`before_action` listant à la fois `:show` et `:cover`, que le générateur sait
+lire&nbsp;; aucun drapeau ne serait alors nécessaire.
 
 Le générateur ajoute aussi `get "/articles/:id/cover"` à `config/routes.rb`,
 `multipart: true` et un champ de fichier au formulaire, au-dessus du bouton
@@ -678,8 +684,9 @@ d’envoi, et l’image à la page d’affichage, juste après le `<h1>`&nbsp;:
 > seulement celles qu’il peut lire&nbsp;: les callbacks. Un `before_action`
 > autre que `set_article` qui liste `:show` sans la nouvelle action l’arrête
 > avec `cannot preserve show's authorization for :cover`, et rien n’est écrit.
-> Le code placé dans `def show`, il ne peut pas lire ce qu’il vérifie, d’où
-> l’avertissement. Avec un `show` vide, il ajoute de lui-même `:cover` à
+> Le code placé dans `def show`, il ne peut pas lire ce qu’il vérifie&nbsp;: il
+> s’arrête donc de la même façon, sauf si `--show-checks-nothing` s’en porte
+> garant, et avertit alors. Avec un `show` vide, il ajoute de lui-même `:cover` à
 > `allow_unauthenticated_access` là où `:show` figure&nbsp;; avec du code dans
 > `show`, il ne touche pas à cette ligne, et sans `:cover` à cet endroit
 > l’image exige une connexion.

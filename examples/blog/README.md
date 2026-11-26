@@ -144,7 +144,7 @@ An article can carry a picture, added the way the tutorial's cover image step
 adds it:
 
 ```sh
-cybertrain generate attachment article cover
+cybertrain generate attachment article cover --show-checks-nothing
 cybertrain db migrate
 ```
 
@@ -162,10 +162,12 @@ cybertrain db migrate
   signed-in user) may attach, replace or remove its cover with `create` and
   `update`, and whoever may read it (anyone) may fetch the cover:
   `ArticlesController` lists `:cover` in `allow_unauthenticated_access`
-  beside `:index` and `:show`, by hand. `show` has code of its own, so the
-  generator printed its warning that `cover` does not run it and left
-  `:cover` out of that list; that code builds a comment and picks a format,
-  and refuses nobody, so the download is opened as `show` is.
+  beside `:index` and `:show`, by hand. `show` has code of its own, which
+  `cover` does not run, so the generator refuses it without
+  `--show-checks-nothing`; with the flag it printed its warning and left
+  `:cover` out of that list. That code builds a comment and picks a format,
+  and refuses nobody, so the flag is true and the download is opened as
+  `show` is.
 - **Its messages.** The two validation messages are in the blog's
   dictionaries (`activerecord.errors.models.article.attributes.cover`), in
   English and Japanese, with the attribute's name (`Cover`, `カバー画像`).

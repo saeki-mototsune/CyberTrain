@@ -1636,7 +1636,7 @@ identical route plan_photo
 identical .gitignore (/storage/uploads/ already ignored)
 identical test/fixtures/files/photo.png
 identical test/integration/plan_photo_attachment_test.rb
-ok   a show with a body is accepted, warned about, and its download stays private
+ok   a show with a body is refused, and accepted with --show-checks-nothing as private
 create spin.toml
 create .gitignore
 create .env.example
@@ -1687,6 +1687,7 @@ create app/views/plans/edit.html.erb
 create app/views/plans/_form.html.erb
 create test/controllers/plans_controller_test.rb
 route resources :plans
+error: app/controllers/plans_controller.rb: cannot preserve show's authorization for :photo: def show has code of its own, which def photo would not run; move any check it makes into a before_action listing both :show and :photo (before_action :authorize_plan, only: [:show, :photo]), or, if that code limits nobody (it builds a form object, picks a format), run again with --show-checks-nothing; no attachment files were written
 create db/migrate/20260925120001_add_photo_to_plans.rb
 insert app/views/plans/_form.html.erb (photo file field, multipart: true)
 insert app/views/plans/show.html.erb (photo)
@@ -1700,7 +1701,13 @@ route plan_photo (GET /plans/:id/photo)
 identical .gitignore (/storage/uploads/ already ignored)
 create test/fixtures/files/photo.png
 create test/integration/plan_photo_attachment_test.rb
-ok   a show with a body is accepted without authentication as well
+note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
+
+next:
+  cybertrain db migrate
+  cybertrain server
+  cybertrain test        # test/integration/*_attachment_test.rb among the others
+ok   a show with a body is refused without authentication as well
 create spin.toml
 create .gitignore
 create .env.example
@@ -2319,9 +2326,9 @@ create app/views/posts/_form.html.erb
 create test/controllers/posts_controller_test.rb
 route resources :posts
 ok   a bad field, model or tree is refused before anything is written
-error: usage: cybertrain generate attachment MODEL FIELD [--any]
-error: usage: cybertrain generate attachment MODEL FIELD [--any]
-error: usage: cybertrain generate attachment MODEL FIELD [--any]
+error: usage: cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]
+error: usage: cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]
+error: usage: cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]
 error: usage: cybertrain generate scaffold NAME field:type ... [--any]
 error: only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper`, `generate component` and `generate job` are supported
 ok   the command line: usage, --any, and the unknown generator message
@@ -2631,4 +2638,4 @@ create test/integration/item_set_post_attachment_test.rb
 note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file
 ok   the scaffold refuses a duplicate column or a bad attachment name before writing
 ok   the callback line check keeps its verdicts and stays fast on pathological lines
-39 tests, 402 assertions, 0 failures
+39 tests, 420 assertions, 0 failures

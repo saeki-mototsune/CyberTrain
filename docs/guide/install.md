@@ -101,10 +101,14 @@ from there, from `cybertrain new` to `cybertrain build`.
   `--confirmable` has a new account confirm its address by mail before it
   can sign in, and `--force` overwrites the files for which a second run
   otherwise only prints a diff ([Authentication](authentication.md)).
-- `cybertrain generate attachment MODEL FIELD [--any]` adds a file upload
+- `cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]`
+  adds a file upload
   to a scaffolded model: five metadata columns, model methods and
   callbacks, a download action, the route, the form field and a test (see
   [Add a cover image](advanced-tutorial.md#attachments)). A scaffold field `cover:attachment` does the same.
+  The download does not run the code inside `def show`, so a `show` with
+  code of its own is refused until that code moves into a `before_action`
+  or `--show-checks-nothing` says it limits nobody.
 - `cybertrain generate helper NAME [--force]` adds
   `app/helpers/NAME_helper.rb`, a module whose methods every template can
   call once `spin run gen` has run, and a test

@@ -443,7 +443,7 @@ Usage:
       Types: string, text, integer, float, boolean, date, datetime, references, attachment (default string).
       A field of type attachment (cover:attachment) is an uploaded file:
       see `generate attachment`; --any applies to it.
-  cybertrain generate attachment MODEL FIELD [--any]
+  cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]
       Attach an uploaded file to a model of the application in the
       current directory (`generate attachment post cover`): five
       columns in a migration, cover_* methods and callbacks in the model,
@@ -451,7 +451,10 @@ Usage:
       form, and a test. The bytes are kept in storage/uploads/ (back it
       up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
       accepted, unless --any allows any file; the stored type is always
-      the one detected from the bytes.
+      the one detected from the bytes. The download runs show's
+      callbacks but not show's own code, so a def show with code is
+      refused, unless --show-checks-nothing says that code limits
+      nobody (it builds a form object, picks a format).
   cybertrain generate authentication [--invite-only] [--confirmable] [--force]
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
@@ -561,7 +564,7 @@ Usage:
       Types: string, text, integer, float, boolean, date, datetime, references, attachment (default string).
       A field of type attachment (cover:attachment) is an uploaded file:
       see `generate attachment`; --any applies to it.
-  cybertrain generate attachment MODEL FIELD [--any]
+  cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]
       Attach an uploaded file to a model of the application in the
       current directory (`generate attachment post cover`): five
       columns in a migration, cover_* methods and callbacks in the model,
@@ -569,7 +572,10 @@ Usage:
       form, and a test. The bytes are kept in storage/uploads/ (back it
       up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
       accepted, unless --any allows any file; the stored type is always
-      the one detected from the bytes.
+      the one detected from the bytes. The download runs show's
+      callbacks but not show's own code, so a def show with code is
+      refused, unless --show-checks-nothing says that code limits
+      nobody (it builds a form object, picks a format).
   cybertrain generate authentication [--invite-only] [--confirmable] [--force]
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
@@ -678,7 +684,7 @@ Usage:
       Types: string, text, integer, float, boolean, date, datetime, references, attachment (default string).
       A field of type attachment (cover:attachment) is an uploaded file:
       see `generate attachment`; --any applies to it.
-  cybertrain generate attachment MODEL FIELD [--any]
+  cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]
       Attach an uploaded file to a model of the application in the
       current directory (`generate attachment post cover`): five
       columns in a migration, cover_* methods and callbacks in the model,
@@ -686,7 +692,10 @@ Usage:
       form, and a test. The bytes are kept in storage/uploads/ (back it
       up with the SQLite file). Only PNG, JPEG, GIF and WebP images are
       accepted, unless --any allows any file; the stored type is always
-      the one detected from the bytes.
+      the one detected from the bytes. The download runs show's
+      callbacks but not show's own code, so a def show with code is
+      refused, unless --show-checks-nothing says that code limits
+      nobody (it builds a form object, picks a format).
   cybertrain generate authentication [--invite-only] [--confirmable] [--force]
       Add email-and-password sign-in to the application in the current
       directory: users and sessions tables, User and Session models,
