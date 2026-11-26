@@ -44,6 +44,9 @@ module Cybertrain
       problem = max_body_bytes_error
       return problem unless problem.empty?
 
+      problem = connection_limits_error
+      return problem unless problem.empty?
+
       problem = upload_limits_error
       return problem unless problem.empty?
 
@@ -398,6 +401,26 @@ module Cybertrain
         return "" if value >= 1
       end
       "max_body_bytes must be an Integer of at least 1 (got #{value.inspect})"
+    end
+
+    # The error Application#boot reports when body_timeout or
+    # max_connections is not a positive Integer (a cap of 0 would refuse
+    # every connection); "" when both are.
+    def connection_limits_error
+      timeout = @body_timeout
+      usable = false
+      case timeout
+      when Integer
+        usable = timeout >= 1
+      end
+      return "body_timeout must be an Integer of at least 1 (got #{timeout.inspect})" unless usable
+
+      cap = @max_connections
+      case cap
+      when Integer
+        return "" if cap >= 1
+      end
+      "max_connections must be an Integer of at least 1 (got #{cap.inspect})"
     end
 
     # The error Application#boot reports (and exits 1 on) when the upload

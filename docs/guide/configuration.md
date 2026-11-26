@@ -93,6 +93,8 @@ Other attributes have no variable; `config/app.rb` sets them:
 | `csrf` | `true` | Whether a non-GET request must carry the CSRF token (403 without it) |
 | `csrf_exempt_prefixes` | `[]` | Path prefixes whose non-GET requests skip the CSRF check (see below) |
 | `max_body_bytes` | `10485760` (10 MiB) | A longer request body, as sent, is answered 413 before it is read; raise it for large uploads. A gzip body's inflated size is bounded separately, by `request.decoded_body(limit)` |
+| `body_timeout` | `120` | Seconds the whole request body may take, from the end of the head; past it the request is answered 408 and the connection closes, however steadily the client sends (slowloris). Raise it for large uploads over slow links |
+| `max_connections` | `1024` | Connections open at once, stream connections included; one more is answered 503 and closed. Keep it below the process's descriptor limit (`ulimit -n`) |
 | `max_render_depth` | `12` | Renders open at once, the page and its partials: the page is depth 1, so partials nest 11 levels (the layout renders after the page and does not nest). Deeper is a template error; at least 1, or boot fails |
 | `max_upload_bytes` | `5242880` (5 MiB) | The largest single uploaded file; it must not exceed `max_body_bytes` |
 | `max_multipart_parts` | `128` | The most parts in one multipart body, text fields included; at most 4096 |
