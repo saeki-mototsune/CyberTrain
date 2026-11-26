@@ -1,5 +1,5 @@
 ---
-source_sha256: c6a6fbebb6ac3e6e10a08124e20ba6b77fa34985f1f6601156f5e32b5f2ae280
+source_sha256: 8b55b728745ad20a98f857fac2e714e1f8120561c64374ce27f98f54af6f19d6
 ---
 # Référence du langage de templates de Cybertrain
 
@@ -359,7 +359,7 @@ Chaque méthode renvoie une `SafeString`&nbsp;; une méthode non listée est une
 | `f.check_box :published` | un input caché `value="0"` puis la vraie case à cocher, de sorte qu’une case non cochée envoie quand même `"0"`&nbsp;; `include_hidden: false` omet l’input caché |
 | `f.submit` / `f.submit "Text"` | texte par défaut `"Create Post"`/`"Update Post"` (selon `persisted?`), ou `"Save changes"` sans modèle |
 
-Avec un modèle, les champs sont nommés `post[title]`/`id="post_title"` (avec `Inflector.underscore(model.model_name)` comme portée)&nbsp;; `form_with(..., scope: :q)` utilise plutôt `q[title]`/`id="q_title"`&nbsp;; avec `form_with(url: ...)` et sans modèle ni portée, le nom d’attribut nu est utilisé pour les deux. Chaque valeur d’attribut et chaque texte d’option est échappé une fois (une `SafeString` telle quelle). Les arguments nommés supplémentaires deviennent des attributs HTML dans l’ordre donné&nbsp;: `true` → `attr="attr"`, `false`/`nil` omis, tout le reste → `attr="value"` (échappé), les tirets bas deviennent des traits d’union (`data_confirm: "Sure?"` → `data-confirm="Sure?"`), et `class:` est fusionné avec la classe automatique `field_with_errors` ajoutée quand `model.errors.key?(attr)`.
+Avec un modèle, les champs sont nommés `post[title]`/`id="post_title"` (avec `Inflector.underscore(model.model_name)` comme portée)&nbsp;; `form_with(..., scope: :q)` utilise plutôt `q[title]`/`id="q_title"`&nbsp;; avec `form_with(url: ...)` et sans modèle ni portée, le nom d’attribut nu est utilisé pour les deux. Chaque valeur d’attribut et chaque texte d’option est échappé une fois (une `SafeString` telle quelle, sauf que dans un attribut ses `"` deviennent `&quot;`, comme dans Rails, pour qu’elle ne puisse pas fermer les guillemets). Les arguments nommés supplémentaires deviennent des attributs HTML dans l’ordre donné&nbsp;: `true` → `attr="attr"`, `false`/`nil` omis, tout le reste → `attr="value"` (échappé), les tirets bas deviennent des traits d’union (`data_confirm: "Sure?"` → `data-confirm="Sure?"`), et `class:` est fusionné avec la classe automatique `field_with_errors` ajoutée quand `model.errors.key?(attr)`.
 
 ## Helpers de l’application
 

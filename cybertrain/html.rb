@@ -70,6 +70,37 @@ module Cybertrain
       buf
     end
 
+    # Safe HTML as a double-quoted attribute value: only `"` becomes
+    # `&quot;`, as Rails' tag_option does, so the entities it already has
+    # are not escaped twice and it cannot close the quotes it sits in.
+    # Returns the input itself when it has no `"`.
+    # @param value [String]
+    # @return [String]
+    # @api private
+    def self.escape_quotes(value)
+      str = value.to_s
+      n = str.bytesize
+      i = 0
+      while i < n
+        break if str.getbyte(i) == 34
+        i += 1
+      end
+      return str if i == n
+
+      buf = +""
+      start = 0
+      while i < n
+        if str.getbyte(i) == 34
+          buf << str.byteslice(start, i - start) if i > start
+          buf << "&quot;"
+          start = i + 1
+        end
+        i += 1
+      end
+      buf << str.byteslice(start, n - start) if n > start
+      buf
+    end
+
     # Marks trusted HTML as safe, so it is output as it is.
     # @example
     #   render html: Cybertrain::Html.safe("<p>#{Cybertrain::Html.escape(@article.title)}</p>")

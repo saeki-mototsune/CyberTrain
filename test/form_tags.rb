@@ -71,6 +71,17 @@ test "options_for_select takes values, pairs, a Hash and several selected values
   assert_equal "<option value=\"x\"><b>X</b></option>", render_inline("<%= options_for_select([[raw('<b>X</b>'), 'x']]) %>")
 end
 
+test "a SafeString attribute value has its quotes escaped and its entities kept" do
+  assert_equal "<option value=\"a&quot; onclick=&quot;x&amp;\">t</option>",
+               render_inline("<%= options_for_select([['t', raw('a\" onclick=\"x&amp;')]]) %>")
+  assert_equal "<input type=\"text\" name=\"q\" id=\"a&quot;b\" value=\"&quot;&amp;\" class=\"c&quot;\">",
+               render_inline("<%= text_field_tag 'q', raw('\"&amp;'), id: raw('a\"b'), class: raw('c\"') %>")
+  assert_equal "<a href=\"/x\" class=\"b&quot; onclick=&quot;y\" data-z=\"&quot;\">L</a>",
+               render_inline("<%= link_to 'L', '/x', class: raw('b\" onclick=\"y'), data: { z: raw('\"') } %>")
+  assert_equal "<input type=\"submit\" name=\"commit\" value=\"&quot;&amp;\">",
+               render_inline("<%= submit_tag raw('\"&amp;') %>")
+end
+
 test "options_from_collection_for_select reads each record" do
   assert_equal "<option value=\"1\">Ann</option>\n<option selected=\"selected\" value=\"2\">Bo &lt;3&gt;</option>",
                render_inline("<%= options_from_collection_for_select(authors, :id, :name, 2) %>")

@@ -651,7 +651,7 @@ module Cybertrain
       # default is cybertrain.helpers.submit.no_model in the locale.
       def submit_tag(args, kwargs)
         helper_arity!("submit_tag", args, 0, 1)
-        text = args.empty? ? Html.escape(I18n.t("cybertrain.helpers.submit.no_model")) : FormBuilder.html_text(args[0])
+        text = args.empty? ? Html.escape(I18n.t("cybertrain.helpers.submit.no_model")) : FormBuilder.attr_text(args[0])
         SafeString.of("<input type=\"submit\" name=\"commit\" value=\"#{text}\"#{FormBuilder.attrs_html(kwargs, FormBuilder::NO_KEYS, "")}>")
       end
 
