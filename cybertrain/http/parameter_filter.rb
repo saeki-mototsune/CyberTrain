@@ -161,6 +161,11 @@ module Cybertrain
     # link's token). `/results/` itself, with nothing after the prefix, is
     # kept.
     #
+    # Both are recognized as the Router reads the path, percent-decoded:
+    # `/passwords/%37--1900--<64 hex>` is routed with the token
+    # `7--1900--<64 hex>`, and `/result%73/x` as `/results/x`, so they are
+    # masked too.
+    #
     # Log lines written before routing (no parameter names yet:
     # RequestLogger's `Started`, HostAuthorization's `Blocked host`) use
     # it, and so do the request scope of an error report and the
@@ -185,7 +190,7 @@ module Cybertrain
         stop = ParameterFilter.token_end(s, i, j)
         if i == secret_at
           out << FILTERED
-        elsif stop >= 0 && (stop == j || s.getbyte(stop) == 46)
+        elsif stop >= 0
           out << FILTERED
           out << s.byteslice(stop, j - stop).to_s
         else
@@ -196,43 +201,96 @@ module Cybertrain
       out
     end
 
-    # The byte at which the segment after a listed prefix starts (the
-    # prefix's length: a prefix ends with "/"), for the first of
-    # {.path_prefixes} that s starts with; -1 when s starts with none.
-    # Compared byte by byte: a path may hold invalid UTF-8 (NOTES rule 52).
+    # The byte at which the segment after a listed prefix starts, for the
+    # first of {.path_prefixes} that s starts with; -1 when s starts with
+    # none. s is read percent-decoded as the Router reads it, so
+    # `/result%73/x` starts with `/results/`; a "/" of the prefix must be a
+    # raw "/" (an escaped one does not split segments). Compared byte by
+    # byte: a path may hold invalid UTF-8 (NOTES rule 52).
     def self.prefixed_segment_start(s)
       n = s.bytesize
       p = 0
       while p < @path_prefixes.size
         prefix = @path_prefixes[p]
         m = prefix.bytesize
-        if m <= n
-          k = 0
-          k += 1 while k < m && s.getbyte(k) == prefix.getbyte(k)
-          return m if k == m
+        i = 0
+        k = 0
+        while k < m && i < n
+          want = prefix.getbyte(k)
+          if want == 47
+            break unless s.getbyte(i) == 47
+
+            i += 1
+          else
+            break unless ParameterFilter.decoded_at(s, i, n) == want
+
+            i += ParameterFilter.escape_width(s, i, n)
+          end
+          k += 1
         end
+        return i if k == m
+
         p += 1
       end
       -1
     end
 
     # Where a token shape that starts at byte `from` of s ends (before
-    # `limit`), or -1 when there is none.
+    # `limit`), or -1 when there is none. Read as the Router reads the
+    # segment, percent-decoded (a `%XX` escape is one byte, a malformed one
+    # stays literal), so `%37--1900--...` is the token `7--1900--...`; the
+    # end is a raw byte index. Decoded byte by byte with no String built:
+    # a segment without an escape costs what it did before.
     def self.token_end(s, from, limit)
       i = from
       part = 0
       while part < 2
-        d = i
-        d += 1 while d < limit && s.getbyte(d) >= 48 && s.getbyte(d) <= 57
-        return -1 if d == i || d - i > 18
-        return -1 unless d + 1 < limit && s.getbyte(d) == 45 && s.getbyte(d + 1) == 45
+        count = 0
+        while i < limit && ParameterFilter.digit?(ParameterFilter.decoded_at(s, i, limit))
+          count += 1
+          i += ParameterFilter.escape_width(s, i, limit)
+        end
+        return -1 if count == 0 || count > 18
 
-        i = d + 2
+        dash = 0
+        while dash < 2
+          return -1 unless i < limit && ParameterFilter.decoded_at(s, i, limit) == 45
+
+          i += ParameterFilter.escape_width(s, i, limit)
+          dash += 1
+        end
         part += 1
       end
-      h = i
-      h += 1 while h < limit && ParameterFilter.hex_value(s.getbyte(h)) >= 0
-      h - i == 64 ? h : -1
+      count = 0
+      while i < limit && ParameterFilter.hex_value(ParameterFilter.decoded_at(s, i, limit)) >= 0
+        count += 1
+        i += ParameterFilter.escape_width(s, i, limit)
+      end
+      return -1 unless count == 64
+      return i if i == limit
+
+      ParameterFilter.decoded_at(s, i, limit) == 46 ? i : -1
+    end
+
+    # The byte the Router reads at byte i of s (before `limit`): a valid
+    # `%XX` escape's value, else the byte itself.
+    def self.decoded_at(s, i, limit)
+      b = s.getbyte(i)
+      return b unless ParameterFilter.escape_width(s, i, limit) == 3
+
+      ParameterFilter.hex_value(s.getbyte(i + 1)) * 16 + ParameterFilter.hex_value(s.getbyte(i + 2))
+    end
+
+    # 3 for a valid `%XX` escape at byte i of s (before `limit`), else 1.
+    def self.escape_width(s, i, limit)
+      return 1 unless s.getbyte(i) == 37 && i + 2 < limit
+      return 1 unless ParameterFilter.hex_value(s.getbyte(i + 1)) >= 0 && ParameterFilter.hex_value(s.getbyte(i + 2)) >= 0
+
+      3
+    end
+
+    def self.digit?(b)
+      b >= 48 && b <= 57
     end
 
     # Whether the percent-encoded name in bytes [from, stop) of s, decoded,
