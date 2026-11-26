@@ -1,5 +1,5 @@
 ---
-source_sha256: c6a6fbebb6ac3e6e10a08124e20ba6b77fa34985f1f6601156f5e32b5f2ae280
+source_sha256: 8b55b728745ad20a98f857fac2e714e1f8120561c64374ce27f98f54af6f19d6
 ---
 # Cybertrain テンプレート言語リファレンス
 
@@ -359,7 +359,7 @@ method arg1, key: value  # 同じ呼び出しを括弧なしで（「コマン�
 | `f.check_box :published` | hidden の `value="0"` の input の後に本物のチェックボックスが続くので、チェックしていないボックスも `"0"` を送信する。`include_hidden: false` なら hidden の input を書かない |
 | `f.submit` / `f.submit "Text"` | デフォルトのテキストは（`persisted?` によって）`"Create Post"`/`"Update Post"`、モデルがなければ `"Save changes"` |
 
-モデルがある場合、フィールドの名前は `post[title]`/`id="post_title"` になります（スコープは `Inflector.underscore(model.model_name)`）。`form_with(..., scope: :q)` なら代わりに `q[title]`/`id="q_title"` です。モデルもスコープもない `form_with(url: ...)` では、どちらにも素の属性名が使われます。属性の値と選択肢のテキストは、どれも一度だけエスケープされます（`SafeString` はそのまま）。追加のキーワード引数は、与えた順に HTML の属性になります：`true` → `attr="attr"`、`false`/`nil` は捨てられ、それ以外は → `attr="value"`（エスケープされます）。アンダースコアはハイフンになり（`data_confirm: "Sure?"` → `data-confirm="Sure?"`）、`class:` は、`model.errors.key?(attr)` のときに自動で付く `field_with_errors` クラスと合わせられます。
+モデルがある場合、フィールドの名前は `post[title]`/`id="post_title"` になります（スコープは `Inflector.underscore(model.model_name)`）。`form_with(..., scope: :q)` なら代わりに `q[title]`/`id="q_title"` です。モデルもスコープもない `form_with(url: ...)` では、どちらにも素の属性名が使われます。属性の値と選択肢のテキストは、どれも一度だけエスケープされます（`SafeString` はそのまま。ただし属性の中では、Rails と同じく `"` が `&quot;` になり、引用符を閉じられません）。追加のキーワード引数は、与えた順に HTML の属性になります：`true` → `attr="attr"`、`false`/`nil` は捨てられ、それ以外は → `attr="value"`（エスケープされます）。アンダースコアはハイフンになり（`data_confirm: "Sure?"` → `data-confirm="Sure?"`）、`class:` は、`model.errors.key?(attr)` のときに自動で付く `field_with_errors` クラスと合わせられます。
 
 ## アプリケーションのヘルパー
 

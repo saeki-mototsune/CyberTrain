@@ -20,8 +20,9 @@
 # The class methods build the <option> lists and attributes the standalone
 # tag helpers (select_tag, options_for_select, ... in Template::Helpers)
 # share with the builder. Every attribute value and every option text is
-# escaped once: a SafeString goes in as it is, anything else through
-# Html.escape. Selected and disabled values are compared as Strings, so an
+# escaped once: anything but a SafeString through Html.escape; a
+# SafeString as it is in content, and with its `"` escaped in an
+# attribute (attr_text), where HTML safe as content could close the quotes. Selected and disabled values are compared as Strings, so an
 # Integer column selects the option "3".
 require "cybertrain/html"
 require "cybertrain/model"
@@ -71,10 +72,20 @@ module Cybertrain
       end
     end
 
-    # ` name="value"` for any value: a SafeString as is (it is HTML
-    # already, as in Rails' tag_option), anything else as text, escaped.
+    # A template value as a double-quoted attribute value: a SafeString
+    # keeps its entities but has its `"` escaped (Rails' tag_option), since
+    # HTML safe as content can still close the attribute; anything else
+    # escaped as text.
+    def self.attr_text(v)
+      case v
+      when SafeString then Html.escape_quotes(v.to_s)
+      else Html.escape(FormBuilder.value_text(v))
+      end
+    end
+
+    # ` name="value"` for any value (attr_text).
     def self.text_attr(name, value)
-      " #{name}=\"#{FormBuilder.html_text(value)}\""
+      " #{name}=\"#{FormBuilder.attr_text(value)}\""
     end
 
     # Keyword arguments become attributes in the order given, skipping the
@@ -90,8 +101,8 @@ module Cybertrain
         unless skip.include?(key)
           value = kwargs[key]
           if key == "class"
-            # A SafeString class is HTML already: escaped once, here.
-            classes << FormBuilder.html_text(value)
+            # A SafeString class keeps its entities (attr_text).
+            classes << FormBuilder.attr_text(value)
           else
             out << FormBuilder.attr_html(key.tr("_", "-"), value)
           end
@@ -112,7 +123,7 @@ module Cybertrain
       when true then " #{name}=\"#{name}\""
       # Time before Hash, the order spikes/NOTES.md rule 8 asks for (seen
       # on Spinel 2026.09.12; status 8 has its probe on the pinned build).
-      when Time then " #{name}=\"#{FormBuilder.html_text(value)}\""
+      when Time then " #{name}=\"#{FormBuilder.attr_text(value)}\""
       when Hash
         unless name == "data" || name == "aria"
           msg = "attribute '#{name}' cannot be a Hash"
@@ -127,11 +138,11 @@ module Cybertrain
               msg = "invalid attribute name '#{sub_name}'"
               raise ArgumentError, msg
             end
-            out << " " << sub_name << "=\"" << FormBuilder.html_text(sub_value) << "\""
+            out << " " << sub_name << "=\"" << FormBuilder.attr_text(sub_value) << "\""
           end
         end
         out
-      else " #{name}=\"#{FormBuilder.html_text(value)}\""
+      else " #{name}=\"#{FormBuilder.attr_text(value)}\""
       end
     end
 
@@ -158,7 +169,7 @@ module Cybertrain
       v = FormBuilder.value_text(value)
       sel = selected.include?(v) ? " selected=\"selected\"" : ""
       dis = disabled.include?(v) ? " disabled=\"disabled\"" : ""
-      "<option#{sel}#{dis} value=\"#{FormBuilder.html_text(value)}\">#{FormBuilder.html_text(text)}</option>"
+      "<option#{sel}#{dis} value=\"#{FormBuilder.attr_text(value)}\">#{FormBuilder.html_text(text)}</option>"
     end
 
     # One choice: a value (its own text) or a [text, value] pair.
@@ -181,7 +192,7 @@ module Cybertrain
     end
 
     def self.optgroup(label, choices, selected, disabled)
-      "<optgroup label=\"#{FormBuilder.html_text(label)}\">#{FormBuilder.options_html(choices, selected, disabled)}</optgroup>"
+      "<optgroup label=\"#{FormBuilder.attr_text(label)}\">#{FormBuilder.options_html(choices, selected, disabled)}</optgroup>"
     end
 
     # The <option> tags of choices, joined with "\n" as Rails does: an
@@ -310,7 +321,7 @@ module Cybertrain
     end
 
     # An input's value attribute text: a Time as the date, datetime-local
-    # and time inputs read it (Rails' formats), anything else as HTML.
+    # and time inputs read it (Rails' formats), anything else attr_text.
     def self.input_value_html(type, value)
       case value
       when Time
@@ -318,15 +329,15 @@ module Cybertrain
         return value.strftime("%Y-%m-%d") if type == "date"
         return value.strftime("%H:%M:%S.%L") if type == "time"
       end
-      FormBuilder.html_text(value)
+      FormBuilder.attr_text(value)
     end
 
     # An <input> of the standalone tag helpers: id: replaces the id taken
     # from the name; tail (" autocomplete=\"off\"" or "") follows the value.
     def self.input_tag(type, name, value, kwargs, tail)
       given_id = kwargs["id"]
-      id = given_id.nil? ? Html.escape(FormBuilder.tag_id(name)) : FormBuilder.html_text(given_id)
-      shown = value.nil? ? "" : " value=\"#{FormBuilder.html_text(value)}\""
+      id = given_id.nil? ? Html.escape(FormBuilder.tag_id(name)) : FormBuilder.attr_text(given_id)
+      shown = value.nil? ? "" : " value=\"#{FormBuilder.attr_text(value)}\""
       "<input type=\"#{type}\" name=\"#{Html.escape(name)}\" id=\"#{id}\"#{shown}#{tail}#{FormBuilder.attrs_html(kwargs, TAG_INPUT_KEYS, "")}>"
     end
 
@@ -500,7 +511,7 @@ module Cybertrain
       on = !current.nil? && FormBuilder.value_text(current) == text
       on = kwargs["checked"] == true if kwargs.key?("checked")
       checked = on ? " checked=\"checked\"" : ""
-      SafeString.of("<input type=\"radio\" name=\"#{Html.escape(field_name(attr))}\" id=\"#{Html.escape(field_id(attr))}_#{FormBuilder.value_id(text)}\" value=\"#{FormBuilder.html_text(value)}\"#{checked}#{option_attrs(kwargs, RADIO_KEYS, errors_on?(sym))}>")
+      SafeString.of("<input type=\"radio\" name=\"#{Html.escape(field_name(attr))}\" id=\"#{Html.escape(field_id(attr))}_#{FormBuilder.value_id(text)}\" value=\"#{FormBuilder.attr_text(value)}\"#{checked}#{option_attrs(kwargs, RADIO_KEYS, errors_on?(sym))}>")
     end
 
     # f.select :status, choices, include_blank:, prompt:, selected:,

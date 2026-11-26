@@ -1,5 +1,5 @@
 ---
-source_sha256: c6a6fbebb6ac3e6e10a08124e20ba6b77fa34985f1f6601156f5e32b5f2ae280
+source_sha256: 8b55b728745ad20a98f857fac2e714e1f8120561c64374ce27f98f54af6f19d6
 ---
 # Cybertrain 模板语言参考
 
@@ -359,7 +359,7 @@ method arg1, key: value  # 同一个调用，不带括号（“命令”语法�
 | `f.check_box :published` | 先是隐藏的 `value="0"` 输入框，然后是真正的复选框，所以未勾选的复选框仍会提交 `"0"`；`include_hidden: false` 不写出隐藏输入框 |
 | `f.submit` / `f.submit "Text"` | 默认文本为 `"Create Post"`/`"Update Post"`（根据 `persisted?`），没有模型时为 `"Save changes"` |
 
-有模型时，字段命名为 `post[title]`/`id="post_title"`（以 `Inflector.underscore(model.model_name)` 作为作用域）；`form_with(..., scope: :q)` 则改用 `q[title]`/`id="q_title"`；使用 `form_with(url: ...)` 且没有模型和作用域时，两者都直接使用属性名。每个属性值和选项文本都只转义一次（`SafeString` 原样使用）。额外的关键字参数按给出的顺序变为 HTML 属性：`true` → `attr="attr"`，`false`/`nil` 被丢弃，其他任何值 → `attr="value"`（经过转义），下划线变为连字符（`data_confirm: "Sure?"` → `data-confirm="Sure?"`），并且 `class:` 会与 `model.errors.key?(attr)` 时自动添加的 `field_with_errors` 类合并。
+有模型时，字段命名为 `post[title]`/`id="post_title"`（以 `Inflector.underscore(model.model_name)` 作为作用域）；`form_with(..., scope: :q)` 则改用 `q[title]`/`id="q_title"`；使用 `form_with(url: ...)` 且没有模型和作用域时，两者都直接使用属性名。每个属性值和选项文本都只转义一次（`SafeString` 原样使用，但在属性中其 `"` 会变为 `&quot;`，与 Rails 相同，因此无法闭合引号）。额外的关键字参数按给出的顺序变为 HTML 属性：`true` → `attr="attr"`，`false`/`nil` 被丢弃，其他任何值 → `attr="value"`（经过转义），下划线变为连字符（`data_confirm: "Sure?"` → `data-confirm="Sure?"`），并且 `class:` 会与 `model.errors.key?(attr)` 时自动添加的 `field_with_errors` 类合并。
 
 ## 应用的辅助方法
 

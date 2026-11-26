@@ -434,6 +434,29 @@ test "a data: key is checked, a Hash for another attribute refused, a SafeString
                field(article(nil), "f.text_field :title, class: 'a&b'")
 end
 
+# HTML that is safe as content can still close a quoted attribute: a
+# SafeString keeps its entities in an attribute but has its `"` escaped
+# (Rails' tag_option), so it cannot add an attribute of its own.
+test "a SafeString attribute cannot close its quotes" do
+  env = {}
+  env["article"] = article(nil)
+  env["evil"] = Cybertrain::SafeString.of("<b title=\"x\" onfocus=\"alert(1)\">&amp;</b>")
+  quoted = "<b title=&quot;x&quot; onfocus=&quot;alert(1)&quot;>&amp;</b>"
+  [
+    ["f.text_field :title, placeholder: evil", " placeholder=\"#{quoted}\""],
+    ["f.text_field :title, class: evil", " class=\"#{quoted}\""],
+    ["f.text_field :title, data: { x: evil }", " data-x=\"#{quoted}\""],
+    ["f.radio_button :status, evil", " value=\"#{quoted}\""],
+    ["f.select :status, [['t', evil]]", "<option value=\"#{quoted}\">t</option>"],
+    ["f.select :status, [[evil, ['a']]]", "<optgroup label=\"#{quoted}\">"]
+  ].each do |pair|
+    template = Cybertrain::Template::Template.parse("<%= form_with model: article, url: '/x', method: :get do |f| %><%= #{pair[0]} %><% end %>", "posts/_form")
+    html = Cybertrain::Template::Interpreter.new(helpers).render(template, env)
+    assert html.include?(pair[1]), "#{pair[0]}: #{html}"
+    refute html.include?("onfocus=\"alert"), "#{pair[0]}: #{html}"
+  end
+end
+
 test "nested and array field names round-trip through params.expect" do
   html = render_article("<%= form_with url: '/a', scope: 'article[meta]', method: :get do |f| %><%= f.text_field :source %><% end %>", article(nil))
   assert_equal "<form action=\"/a\" method=\"get\"><input type=\"text\" name=\"article[meta][source]\" id=\"article_meta_source\"></form>", html
