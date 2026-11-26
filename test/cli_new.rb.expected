@@ -496,12 +496,13 @@ Usage:
       running it. Queue it with NameJob.perform_later("id" => 1) once
       `spin run gen` has written gen/jobs.rb.
   cybertrain db migrate
-      Generate, apply pending migrations, generate again
-      (SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate;
-      SPIN_DEBUG=1 spin run gen).
+      Generate, apply pending migrations, generate again (as
+      SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate;
+      SPIN_DEBUG=1 spin run gen, but a tool whose sources are
+      unchanged since its build is run without asking spin).
   cybertrain db COMMAND...
-      Any other database command, after `SPIN_DEBUG=1 spin run gen`:
-      status, rollback [N] (generates again afterwards), schema,
+      Any other database command, after generating: status,
+      rollback [N] (generates again afterwards), schema,
       schema:dump, create.
       `cybertrain migration` is the same as `cybertrain db migrate`.
   cybertrain server [PORT] [--spinel]
@@ -617,12 +618,13 @@ Usage:
       running it. Queue it with NameJob.perform_later("id" => 1) once
       `spin run gen` has written gen/jobs.rb.
   cybertrain db migrate
-      Generate, apply pending migrations, generate again
-      (SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate;
-      SPIN_DEBUG=1 spin run gen).
+      Generate, apply pending migrations, generate again (as
+      SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate;
+      SPIN_DEBUG=1 spin run gen, but a tool whose sources are
+      unchanged since its build is run without asking spin).
   cybertrain db COMMAND...
-      Any other database command, after `SPIN_DEBUG=1 spin run gen`:
-      status, rollback [N] (generates again afterwards), schema,
+      Any other database command, after generating: status,
+      rollback [N] (generates again afterwards), schema,
       schema:dump, create.
       `cybertrain migration` is the same as `cybertrain db migrate`.
   cybertrain server [PORT] [--spinel]
@@ -737,12 +739,13 @@ Usage:
       running it. Queue it with NameJob.perform_later("id" => 1) once
       `spin run gen` has written gen/jobs.rb.
   cybertrain db migrate
-      Generate, apply pending migrations, generate again
-      (SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate;
-      SPIN_DEBUG=1 spin run gen).
+      Generate, apply pending migrations, generate again (as
+      SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate;
+      SPIN_DEBUG=1 spin run gen, but a tool whose sources are
+      unchanged since its build is run without asking spin).
   cybertrain db COMMAND...
-      Any other database command, after `SPIN_DEBUG=1 spin run gen`:
-      status, rollback [N] (generates again afterwards), schema,
+      Any other database command, after generating: status,
+      rollback [N] (generates again afterwards), schema,
       schema:dump, create.
       `cybertrain migration` is the same as `cybertrain db migrate`.
   cybertrain server [PORT] [--spinel]

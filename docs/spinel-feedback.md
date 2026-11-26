@@ -3815,7 +3815,12 @@ gen` 38 s (18 s when its C is split, below) and the next `spin run db`
   and compares it with the C of the binary on disk before it lets spin
   rebuild gen (docs/design.md, section 6); `DB::CLI` no longer rewrites a
   `db/schema.rb` that has not changed; the CLI builds gen and db with
-  `SPIN_DEBUG=1`, which makes the needless compile cheaper, not rarer.
+  `SPIN_DEBUG=1`, which makes the needless compile cheaper, not rarer;
+  and since 2026-11-24 `cybertrain db` lists the files each tool is
+  compiled from by following its requires, records the list beside the
+  binary and runs the binary itself while none of them changed
+  (`CLI::ToolBinary`; docs/design.md D12), because a `db status` after a
+  `db migrate` compiled gen and db again for a status line.
 
 ### spin: no build flags per executable, and a unit just under 4 MiB is one compile
 

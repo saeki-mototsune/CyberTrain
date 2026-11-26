@@ -148,12 +148,8 @@ test "build embeds the views, builds, then restores the empty table" do
   assert_equal "'a'\\''b'", Cybertrain::Shell.quote("a'b")
 end
 
-test "db commands generate first, and again after migrate and rollback" do
-  assert_equal ["SPIN_DEBUG=1 spin run gen", "SPIN_DEBUG=1 spin run db -- migrate", "SPIN_DEBUG=1 spin run gen"], Cybertrain::CLI::Build.db_commands(["migrate"])
-  assert_equal ["SPIN_DEBUG=1 spin run gen", "SPIN_DEBUG=1 spin run db -- rollback 2", "SPIN_DEBUG=1 spin run gen"], Cybertrain::CLI::Build.db_commands(["rollback", "2"])
-  assert_equal ["SPIN_DEBUG=1 spin run gen", "SPIN_DEBUG=1 spin run db -- status"], Cybertrain::CLI::Build.db_commands(["status"])
-  assert_equal ["SPIN_DEBUG=1 spin run gen", "SPIN_DEBUG=1 spin run db -- schema:dump"], Cybertrain::CLI::Build.db_commands(["schema:dump"])
-  assert_equal ["SPIN_DEBUG=1 spin run gen", "SPIN_DEBUG=1 spin run db -- 'a b' ''"], Cybertrain::CLI::Build.db_commands(["a b", ""])
+# The steps of `cybertrain db` are in test/cli_tool_binary.rb.
+test "a db command's arguments are quoted for sh" do
   assert_equal "migrate", Cybertrain::CLI::Build.quote_arg("migrate")
   assert_equal "'x;y'", Cybertrain::CLI::Build.quote_arg("x;y")
 end

@@ -49,6 +49,7 @@ Gem::Specification.new do |spec|
     "cybertrain/cli/templates.rb",
     "cybertrain/cli/build.rb",
     "cybertrain/cli/build_lock.rb",
+    "cybertrain/cli/tool_binary.rb",
     "cybertrain/cli/toolchain.rb",
     "cybertrain/cli/framework_version.rb",
     "cybertrain/cli/dev_server.rb",

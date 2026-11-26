@@ -1,0 +1,16 @@
+ok   a require is followed when it is one plain string literal at the start of a line
+ok   a require that is not a plain literal is not known
+ok   the word where it cannot be Kernel's require is nothing
+ok   sources are the entry and what its requires reach, in every load path directory
+ok   sources are not known past a require that cannot be followed, a missing entry or a path outside the load path
+ok   the framework's gen and db programs are ones whose sources are known
+ok   a tool is fresh after its build until a file it is compiled from changes
+ok   gen is stale after a migration changed the schema, not after its own output
+ok   a tool is stale when its record is missing or differs from what it would be built from now
+ok   a build whose record no longer holds starts without the binary; a first build keeps what spin has
+ok   a source edited while the tool was built is newer than the record
+ok   a failed build leaves no record, and neither does a program whose sources are not known
+ok   db commands generate first, and again after migrate and rollback
+ok   a stale tool is built by spin in debug mode, then run; a failed build stops the command
+ok   db status after db migrate builds nothing when the migration changed only what the tools write
+15 tests, 183 assertions, 0 failures

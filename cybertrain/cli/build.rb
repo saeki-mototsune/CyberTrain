@@ -1,8 +1,9 @@
 # `cybertrain build`: dist/ = the app binary with app/views embedded, plus
-# public/. Also the command lists `cybertrain db` and `server` run. Plain Ruby:
+# public/. Also the steps `cybertrain db` and `server` run. Plain Ruby:
 # runs under CRuby (the gem) and compiles under Spinel (spin install).
 require "cybertrain/app_name"
 require "cybertrain/cli/build_lock"
+require "cybertrain/cli/tool_binary"
 require "cybertrain/shell"
 
 module Cybertrain
@@ -93,14 +94,29 @@ module Cybertrain
       # before the first migration has produced gen/models). bin/db.rb only
       # knows the migrations gen/migrations.rb lists, so gen runs first;
       # migrate and rollback rewrite db/schema.rb, which gen/models is
-      # derived from, so gen runs again after them. Both tools are built in
-      # debug mode (Shell::TOOL_SPIN).
-      def self.db_commands(args)
+      # derived from, so gen runs again after them. Each is run_tool. Stops
+      # at the first step that fails and returns 1.
+      def self.run_db(root, args, runner = Runner.new)
         words = args.map { |arg| quote_arg(arg) }.join(" ")
-        gen = "#{Shell::TOOL_SPIN} run gen"
-        commands = [gen, "#{Shell::TOOL_SPIN} run db -- #{words}"]
-        commands << gen if args[0] == "migrate" || args[0] == "rollback"
-        commands
+        return 1 unless run_tool(root, "gen", "", runner)
+        return 1 unless run_tool(root, "db", words, runner)
+        return 1 if (args[0] == "migrate" || args[0] == "rollback") && !run_tool(root, "gen", "", runner)
+
+        0
+      end
+
+      # Runs build/bin/<tool> with words (arguments quoted for sh, "" for
+      # none) in root; true when it succeeds. spin builds the tool first,
+      # in debug mode (ToolBinary.build_command), unless the binary is the
+      # one built from the files it is compiled from as they are now
+      # (ToolBinary.fresh?): spin itself rebuilds a tool whenever any Ruby
+      # file of the package is newer, and both tools write Ruby files, so
+      # `spin run db -- status` after a migration compiled gen and db again
+      # (docs/design.md D12, the 2026-11-24 note).
+      def self.run_tool(root, tool, words, runner)
+        return false unless runner.tool_fresh?(root, tool) || ToolBinary.build(root, tool, runner)
+
+        runner.run_step(root, ToolBinary.direct_command(tool, words))
       end
 
       # A word sh reads as itself stays bare; anything else is single-quoted.
@@ -221,6 +237,10 @@ module Cybertrain
       class Runner
         def run_step(root, command)
           Build.run_in(root, command)
+        end
+
+        def tool_fresh?(root, tool)
+          ToolBinary.fresh?(root, tool)
         end
       end
 
