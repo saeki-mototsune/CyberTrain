@@ -1,5 +1,5 @@
 ---
-source_sha256: 6a1655f18b429bd1cfd676a69d23b8a7edf43720044e4bc6ff0b24537c141f17
+source_sha256: 8eee615f131af513a326deaed48ebbd9806241fcc18f5f4993103cf38b59c5db
 ---
 # Аутентификация
 
@@ -113,7 +113,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 
 ### Ссылки в письмах
 
-Ссылка начинается с настройки `base_url`, которую генератор объявляет в `config/app.rb`, из `<APP>_BASE_URL` (`BLOG_BASE_URL=https://blog.example.com`). Задайте её с https везде, где работает приложение. Если она не задана, ссылка берёт адрес, на который пришёл запрос, только когда заголовок `Host` проверяется (в разработке или при заданном `CYBERTRAIN_HOSTS`) или в тестах; в остальных случаях письмо не отправляется, журнал пишет `ERROR [<request id>] password reset mail not sent: set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)`, а страница отвечает как обычно. Поддельный `Host` никогда не попадает в ссылку.
+Ссылка начинается с настройки `base_url`, которую генератор объявляет в `config/app.rb`, из `<APP>_BASE_URL` (`BLOG_BASE_URL=https://blog.example.com`). Задайте её с https везде, где работает приложение. Если она не задана, ссылка берёт адрес, на который пришёл запрос, только когда заголовок `Host` проверяется (в разработке или при заданном `CYBERTRAIN_HOSTS`) или в тестах; в остальных случаях письмо не отправляется, журнал пишет `ERROR [<request id>] password reset mail not sent: set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)`, а страница отвечает как обычно. Поддельный `Host` никогда не попадает в ссылку. Вне разработки и тестов этот адрес также должен быть https, а за TLS-прокси сообщить об этом может только прокси, объявленный в `CYBERTRAIN_TRUSTED_PROXY` или `CYBERTRAIN_TRUSTED_PROXIES` (его `X-Forwarded-Proto`): по http письмо тоже не отправляется, так как ссылка несла бы свой токен открытым текстом, а журнал пишет `password reset mail not sent: the request came over http; set <APP>_BASE_URL to the https address (or CYBERTRAIN_TRUSTED_PROXY behind a TLS proxy)`.
 
 ## Подтверждение адресов
 

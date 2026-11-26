@@ -1,5 +1,5 @@
 ---
-source_sha256: 6a1655f18b429bd1cfd676a69d23b8a7edf43720044e4bc6ff0b24537c141f17
+source_sha256: 8eee615f131af513a326deaed48ebbd9806241fcc18f5f4993103cf38b59c5db
 ---
 # Authentification
 
@@ -113,7 +113,7 @@ La page de connexion renvoie vers `/passwords/new`. Le formulaire d’adresse r�
 
 ### Liens dans les courriels
 
-Un lien commence par le réglage `base_url` que le générateur déclare dans `config/app.rb`, issu de `<APP>_BASE_URL` (`BLOG_BASE_URL=https://blog.example.com`). Définissez-le, en https, partout où l’application est servie. Sans lui, le lien ne prend l’adresse à laquelle est arrivée la requête que si l’en-tête `Host` est contrôlé (en développement, ou avec `CYBERTRAIN_HOSTS` défini) ou dans les tests&nbsp;; partout ailleurs aucun courriel n’est envoyé, le journal dit `ERROR [<request id>] password reset mail not sent: set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)`, et la page répond comme d’habitude. Un `Host` forgé n’atteint jamais un lien.
+Un lien commence par le réglage `base_url` que le générateur déclare dans `config/app.rb`, issu de `<APP>_BASE_URL` (`BLOG_BASE_URL=https://blog.example.com`). Définissez-le, en https, partout où l’application est servie. Sans lui, le lien ne prend l’adresse à laquelle est arrivée la requête que si l’en-tête `Host` est contrôlé (en développement, ou avec `CYBERTRAIN_HOSTS` défini) ou dans les tests&nbsp;; partout ailleurs aucun courriel n’est envoyé, le journal dit `ERROR [<request id>] password reset mail not sent: set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)`, et la page répond comme d’habitude. Un `Host` forgé n’atteint jamais un lien. Hors du développement et des tests, cette adresse doit aussi être en https, ce que, derrière un proxy TLS, seul un proxy déclaré par `CYBERTRAIN_TRUSTED_PROXY` ou `CYBERTRAIN_TRUSTED_PROXIES` peut dire (son `X-Forwarded-Proto`)&nbsp;: en http aucun courriel n’est envoyé non plus, car le lien porterait son jeton en clair, et le journal dit `password reset mail not sent: the request came over http; set <APP>_BASE_URL to the https address (or CYBERTRAIN_TRUSTED_PROXY behind a TLS proxy)`.
 
 ## Confirmer les adresses
 

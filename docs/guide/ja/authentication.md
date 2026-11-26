@@ -1,5 +1,5 @@
 ---
-source_sha256: 6a1655f18b429bd1cfd676a69d23b8a7edf43720044e4bc6ff0b24537c141f17
+source_sha256: 8eee615f131af513a326deaed48ebbd9806241fcc18f5f4993103cf38b59c5db
 ---
 # 認証
 
@@ -113,7 +113,7 @@ printf '%s' "$PASSWORD" | ./blog user ann@example.com
 
 ### メール中のリンク
 
-リンクは、ジェネレーターが `config/app.rb` に宣言する `base_url` 設定（`<APP>_BASE_URL` から。`BLOG_BASE_URL=https://blog.example.com`）で始まります。アプリケーションを提供するすべての場所で、https で設定してください。設定がなければ、リンクがリクエストの来たアドレスを使うのは `Host` ヘッダーが検査される場合（開発環境、または `CYBERTRAIN_HOSTS` を設定したとき）かテストのときだけです。それ以外ではメールは送られず、ログに `ERROR [<request id>] password reset mail not sent: set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)` と出て、ページはいつもどおり答えます。偽の `Host` がリンクに入ることはありません。
+リンクは、ジェネレーターが `config/app.rb` に宣言する `base_url` 設定（`<APP>_BASE_URL` から。`BLOG_BASE_URL=https://blog.example.com`）で始まります。アプリケーションを提供するすべての場所で、https で設定してください。設定がなければ、リンクがリクエストの来たアドレスを使うのは `Host` ヘッダーが検査される場合（開発環境、または `CYBERTRAIN_HOSTS` を設定したとき）かテストのときだけです。それ以外ではメールは送られず、ログに `ERROR [<request id>] password reset mail not sent: set <APP>_BASE_URL (or CYBERTRAIN_HOSTS)` と出て、ページはいつもどおり答えます。偽の `Host` がリンクに入ることはありません。開発環境とテスト以外では、そのアドレスは https でもなければなりません。TLS プロキシの後ろでそう伝えられるのは、`CYBERTRAIN_TRUSTED_PROXY` か `CYBERTRAIN_TRUSTED_PROXIES` で宣言したプロキシ（の `X-Forwarded-Proto`）だけです。http で来たリクエストでもメールは送られません。リンクがトークンを平文で運んでしまうからです。ログには `password reset mail not sent: the request came over http; set <APP>_BASE_URL to the https address (or CYBERTRAIN_TRUSTED_PROXY behind a TLS proxy)` と出ます。
 
 ## アドレスの確認
 
