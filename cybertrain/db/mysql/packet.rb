@@ -40,6 +40,19 @@ module Cybertrain
           nil
         end
 
+        # The sequence number the next packet carries.
+        def packet_sequence
+          @seq
+        end
+
+        # Continues another PacketIO's exchange: the switch to TLS
+        # (auth.rb) carries the sequence over to the PacketIO on the TLS
+        # stream.
+        def resume_sequence(seq)
+          @seq = seq & 0xFF
+          nil
+        end
+
         # The next payload, split packets joined.
         # @return [String] binary
         def read_packet

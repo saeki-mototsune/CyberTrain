@@ -1,0 +1,61 @@
+#!/bin/sh
+# A MySQL 8.0 server in Docker for the MySQL adapter's tests: starts it (or
+# reuses the one already running), waits until it answers over TCP, and
+# prints the URL the tests read:
+#
+#   eval "$(script/mysql-dev)"     # sets CYBERTRAIN_TEST_MYSQL_URL
+#   script/mysql-dev stop          # removes the container
+#
+# The server runs with --default-time-zone=+09:00 on purpose: datetimes must
+# round-trip in UTC on a server whose zone is not UTC (the plan's Review
+# Focus 4). Its character set and collation default to utf8mb4 /
+# utf8mb4_0900_bin, the adapter's. Its default authentication plugin stays
+# MySQL 8.0's caching_sha2_password; the test user is switched to
+# mysql_native_password, because the URL is ssl_mode=disabled (a loopback
+# address) and caching_sha2_password's full authentication needs TLS.
+#
+# Development only: the password below is not a secret, and the port is
+# bound to 127.0.0.1. Running it again is harmless (idempotent).
+#
+# usage: script/mysql-dev [start|stop]
+set -eu
+
+name=${CYBERTRAIN_MYSQL_CONTAINER:-cybertrain-mysql}
+port=${CYBERTRAIN_MYSQL_PORT:-33306}
+user=cybertrain
+password=cybertrain-dev
+database=cybertrain_test
+
+if [ "${1:-start}" = "stop" ]; then
+  docker rm -f "$name" >/dev/null 2>&1 || true
+  exit 0
+fi
+
+if [ -z "$(docker ps -q --filter "name=^${name}\$")" ]; then
+  if [ -n "$(docker ps -aq --filter "name=^${name}\$")" ]; then
+    docker start "$name" >/dev/null
+  else
+    docker run -d --name "$name" -p "127.0.0.1:${port}:3306" \
+      -e MYSQL_ROOT_PASSWORD="$password" -e MYSQL_DATABASE="$database" \
+      -e MYSQL_USER="$user" -e MYSQL_PASSWORD="$password" \
+      mysql:8.0 --default-time-zone=+09:00 \
+      --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_bin >/dev/null
+  fi
+fi
+
+# Over TCP, not the socket: the image's first-start initialisation runs a
+# temporary server without networking, which must not count as ready.
+tries=0
+until docker exec "$name" mysqladmin ping -h 127.0.0.1 -uroot -p"$password" --silent >/dev/null 2>&1; do
+  tries=$((tries + 1))
+  if [ "$tries" -ge 180 ]; then
+    echo "script/mysql-dev: $name did not answer within 180 s (docker logs $name)" >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+docker exec "$name" mysql -h 127.0.0.1 -uroot -p"$password" -e \
+  "ALTER USER '$user'@'%' IDENTIFIED WITH mysql_native_password BY '$password'; GRANT ALL ON *.* TO '$user'@'%';" 2>/dev/null
+
+echo "CYBERTRAIN_TEST_MYSQL_URL=mysql://${user}:${password}@127.0.0.1:${port}/${database}?ssl_mode=disabled"
