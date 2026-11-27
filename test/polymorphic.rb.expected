@@ -1,0 +1,10 @@
+ok   the checked-in gen/models files match the emitter (fixture stale otherwise)
+ok   the writer stores Rails' class name and the id, and the reader answers the record
+ok   the reader's cache follows the type and the key
+ok   a required polymorphic belongs_to validates both columns
+ok   a type that is no target raises; so does writing a record of another model
+ok   has_many as: reads the children of its own type only
+ok   includes preloads a polymorphic belongs_to per type, and the has_many and has_one with as:
+ok   dependent: on has_many / has_one as: touches the children of its own type only
+ok   read_association answers the polymorphic parent to templates
+9 tests, 50 assertions, 0 failures

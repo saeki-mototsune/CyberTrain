@@ -99,9 +99,13 @@ module Cybertrain
     # and `foreign_key` are "" when the line does not give them (the emitter
     # infers them); `dependent` is :destroy, :delete_all, :nullify or :none;
     # `optional` and `counter_cache` are belongs_to's (false elsewhere);
-    # `file` and `line` place the error messages.
+    # `file` and `line` place the error messages. `polymorphic` is a
+    # belongs_to's `polymorphic: true`, `as_name` a has_many's or has_one's
+    # `as:` ("" without it): docs/design.md D94, set by `polymorphic!`
+    # after construction.
     class AssociationInfo
-      attr_reader :file, :kind, :name, :class_name, :foreign_key, :dependent, :optional, :counter_cache, :line
+      attr_reader :file, :kind, :name, :class_name, :foreign_key, :dependent, :optional, :counter_cache, :line,
+                  :polymorphic, :as_name
 
       def initialize(file, kind, name, class_name, foreign_key, dependent, optional, counter_cache, line)
         @file = file
@@ -113,6 +117,15 @@ module Cybertrain
         @optional = optional
         @counter_cache = counter_cache
         @line = line
+        @polymorphic = false
+        @as_name = ""
+      end
+
+      # The polymorphic options of the line (D94).
+      def polymorphic!(polymorphic, as_name)
+        @polymorphic = polymorphic
+        @as_name = as_name
+        nil
       end
     end
 
@@ -795,9 +808,9 @@ module Cybertrain
 
       # The options each macro takes, in the order the messages list them.
       def self.association_options(kind)
-        return ["class_name", "foreign_key", "optional", "counter_cache"] if kind == "belongs_to"
+        return ["class_name", "foreign_key", "optional", "counter_cache", "polymorphic"] if kind == "belongs_to"
 
-        ["dependent", "class_name", "foreign_key"]
+        ["dependent", "class_name", "foreign_key", "as"]
       end
 
       # The AssociationInfo of a macro line; raises Error unless it is
@@ -821,6 +834,8 @@ module Cybertrain
         dependent = :none
         optional = false
         counter_cache = false
+        polymorphic = false
+        as_name = ""
         seen = Array.new(0) { "" }
         while rest != ""
           raise Error, shape unless rest.start_with?(",")
@@ -851,11 +866,18 @@ module Cybertrain
             end
 
             dependent = text.to_sym
-          elsif key == "optional" || key == "counter_cache"
+          elsif key == "optional" || key == "counter_cache" || key == "polymorphic"
             raise Error, what + "#{key}: takes true or false (got #{value})" unless value == "true" || value == "false"
 
             optional = value == "true" if key == "optional"
             counter_cache = value == "true" if key == "counter_cache"
+            polymorphic = value == "true" if key == "polymorphic"
+          elsif key == "as"
+            unless value.start_with?(":") && Ident.column?(text)
+              raise Error, what + "as: takes the polymorphic belongs_to's name as a Symbol (got #{value})"
+            end
+
+            as_name = text
           elsif key == "class_name"
             unless (value.start_with?(":") || quoted_literal?(value)) && constant_name?(text)
               raise Error, what + "class_name: takes a model name (got #{value})"
@@ -876,7 +898,21 @@ module Cybertrain
           where = a.file == file ? "on line #{a.line}" : "at #{a.file}:#{a.line}"
           raise Error, what + "an association named #{name} is already declared #{where}"
         end
-        AssociationInfo.new(file, kind.to_sym, name, class_name, foreign_key, dependent, optional, counter_cache, lineno)
+        # A polymorphic pair always uses `<name>_type` and `<name>_id`
+        # (what `t.references :name, polymorphic: true` creates), and its
+        # parent's class is the type column's value (D94).
+        if polymorphic
+          ["class_name", "foreign_key", "counter_cache"].each do |taken|
+            raise Error, what + "#{taken}: is not taken with polymorphic: true" if seen.include?(taken)
+          end
+        end
+        if as_name != "" && seen.include?("foreign_key")
+          raise Error, what + "foreign_key: is not taken with as: (the columns are #{as_name}_type and #{as_name}_id)"
+        end
+        info = AssociationInfo.new(file, kind.to_sym, name, class_name, foreign_key, dependent, optional, counter_cache,
+                                   lineno)
+        info.polymorphic!(polymorphic, as_name)
+        info
       end
 
       # The identifier (word characters) of `text` from index `from`.

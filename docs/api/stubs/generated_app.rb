@@ -74,8 +74,9 @@
 # {Cybertrain::Model.has_one has_one} and
 # {Cybertrain::Model.belongs_to belongs_to} (`optional:`, `counter_cache:`),
 # with `class_name:` and `foreign_key:`; {Article.includes includes}
-# preloads them one level deep. There is no `:through` or polymorphic
-# association.
+# preloads them one level deep. A polymorphic pair is declared with
+# `belongs_to ..., polymorphic: true` and `has_many ..., as:`
+# (docs/design.md D94). There is no `:through` association.
 # @api public
 class Article < Cybertrain::Model
   # @!group Class methods (finders)
