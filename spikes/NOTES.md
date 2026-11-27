@@ -667,8 +667,12 @@ decision, and 77 explicitly retires a workaround.
     so; of the reads tried only `IO#gets` returns a UTF-8 character String
     (`size` 8 for 13 bytes; status 27). Byte offsets stay the rule: they are
     right under both.
-    Kept until docs/spinel-feedback.md AW is closed; the advice to frame
-    by bytes is right under both runtimes and stays after that.
+    On 2026.11.27.7037 `IO#gets` answers ASCII-8BIT and an append of a
+    socket's bytes to a UTF-8 String that holds non-ASCII raises
+    Encoding::CompatibilityError, as under CRuby
+    (rechecks/differing/socket_bytes.rb). The advice to frame by bytes is
+    right under both runtimes and stays.
+    Closed (docs/spinel-feedback.md AW): kept for its number.
 28. `URI.decode_www_form_component` on a malformed escape (`%ZZ`, a trailing
     `%`) raises under CRuby but silently decodes under Spinel (2026.09.12; on
     2026.11.04.7026 the library raises ArgumentError as CRuby does, status
