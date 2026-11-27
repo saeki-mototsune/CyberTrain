@@ -2402,7 +2402,9 @@ decision, and 77 explicitly retires a workaround.
      (cybertrain/console.rb), which the default builders and the `else`
      arms of gen/console.rb call. test/console.rb's rescuing-caller case
      holds the shape and does not compile without the two values.
-     Kept until docs/spinel-feedback.md AY is closed.
+     On 2026.11.27.7037 the program and test/console.rb's case compile
+     without the values, and cybertrain/console.rb no longer has them.
+     Closed (docs/spinel-feedback.md AY): kept for its number.
 125. A frozen heap String is never freed under Spinel 2026.11.15.7033, and
      `Symbol#to_s` answers a new frozen String at every call, so every
      `sym.to_s` leaks it for the life of the process. The runtime pins a
