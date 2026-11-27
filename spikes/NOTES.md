@@ -538,7 +538,9 @@ decision, and 77 explicitly retires a workaround.
     Retry::BACKOFF`, `puts EARLY`) and read before its assignment raises
     NameError compiled too, at top level, in a module body and in a class
     body (status 17). The advice is unchanged.
-    Kept until docs/spinel-feedback.md AV is closed.
+    On 2026.11.27.7037 the class name raises NameError compiled too
+    (rechecks/differing/class_before_definition.rb).
+    Closed (docs/spinel-feedback.md AV): kept for its number.
 18. A module-level `@@class_variable` assigned inside `module Cybertrain`
     miscompiles once an earlier required file has already opened the module
     (C error "incompatible pointer to integer conversion"). Use a module-level
