@@ -167,11 +167,14 @@ These builds are covered, and the source of one more was read:
   matz/spinel#12657 (merged 2026-11-27, by another contributor), which
   2026.11.15.7033 does not; see AB. Nothing else was run on it.
 - **matz/spinel master 6f27d4e99** (2026-11-27 16:47 +0900), built on
-  macOS arm64 on 2026-11-27 to run the programs of AO, AR and AX, and
-  nothing else: AO's and AR's print CRuby's result on it (see AO and AR,
-  and the AR section for the run on 2026.11.23.7035 beside it), and AX's
-  prints what CRuby 4.0.7 with its default json prints (see AX, "What AX
-  turned out to be"). CyberTrain was not built with it.
+  macOS arm64 on 2026-11-27 to run the programs of AG, AM, AO, AQ, AR,
+  AX, AZ and BA, and nothing else: AG's, AO's and AR's print CRuby's
+  result on it (see each, and the AR section for the run on
+  2026.11.23.7035 beside it), AX's prints what CRuby 4.0.7 with its
+  default json prints (see AX, "What AX turned out to be"), AZ's two
+  first programs stay flat and its `clone` shape does not, AM is
+  documented behaviour, and AQ and BA are still there. CyberTrain was not
+  built with it.
 
 2026.11.04.7026, the pin at the time, was used once more on 2026-11-13,
 for the inventory below: forty small programs built with it on Linux x86_64
@@ -307,17 +310,17 @@ request this project sent and matz/spinel merged (brought up to date on
 | AD | bug | 52 | passes on the pin, workaround kept (status 52: `byteindex`; `strip` is AU). Sent and merged as matz/spinel#11787 (2026-11-14) |  |
 | AE | bug | 47, 53, 54 | passes on the pin, workaround kept (status 54; 47 and 53 match in rechecks/exception_shapes.rb) |  |
 | AF | bug | 100 | passes on the pin, workaround kept (status 100). Sent and merged as matz/spinel#11770 (2026-11-14) |  |
-| AG | bug |  | not re-checked on the pin (last: fails on 2026.11.04.7026, 2026-11-13) |  |
+| AG | bug |  | not re-checked on the pin (last: fails on 2026.11.04.7026, 2026-11-13). Fixed upstream, in the pin: 69fb73d00 (matz/spinel#11353, merged 2026-11-08, not from this project), first in 2026.11.14.7031, so in 2026.11.15.7033 and 2026.11.27.7037; its program prints `Errno::EADDRINUSE` on matz/spinel master 6f27d4e99 (macOS arm64, 2026-11-27), not run on the pin's own build. Workaround kept (`Server#bind_listener`) |  |
 | AH | bug |  | no workaround and no rule; not re-checked on the pin as a program; the difference recorded was with CRuby 3.3, and CRuby 4.0.7 writes these Floats as Spinel does (status 100) |  |
 | AI | cost | 101 | open (status 101: still one C function; the time was not reproduced on macOS) |  |
 | AJ | bug | 104 | passes on the pin, workaround kept (status 104) |  |
 | AK | cost |  | not re-checked on the pin (last: seen on 2026.11.04.7026, 2026-11-12) |  |
 | AL | cost | 108 | not re-checked on the pin (last: seen on 2026.11.04.7026, 2026-11-12) |  |
-| AM | bug | 107 | open (status 107) |  |
+| AM | constraint | 107 | settled as documented behaviour (found 2026-11-27): Spinel's docs/limitations.md says `Exception#backtrace` and `caller` answer `[]` in a release build, and `-g` is the opt-in. A request stands: a `-g` backtrace at a cost a server can carry (see AM). Status 107 is the run on 2026.11.15.7033 |  |
 | AN | bug | 109 | passes on the pin, workaround kept (status 109) |  |
 | AO | bug | 110 | open on 2026.11.15.7033 (status 110). Fixed upstream, in the pin: matz/spinel#12334 (5f9e81dfc, another contributor, merged 2026-11-21), in 2026.11.23.7035 and 2026.11.27.7037; its program prints CRuby's result on matz/spinel master 6f27d4e99 (2026-11-27), and was not run on the pin's own build. Workaround kept (rule 110) |  |
 | AP | bug | 117 | passes on the pin, workaround kept (status 117) |  |
-| AQ | bug | 116 | open (status 116) |  |
+| AQ | bug | 116 | open (status 116); still on matz/spinel master 6f27d4e99 (macOS arm64, 2026-11-27), 5 runs of 6 abort. A fix is on a local branch, not sent (see AQ) |  |
 | AR | bug | 122 | open on 2026.11.15.7033 (status 122). Fixed upstream, in the pin: a9c356b7f ("--load-model=graph is the default", 2026-11-21, first in 2026.11.23.7035) makes it go, and 1151b431d ("The --load-model flag goes", 2026-11-25, first in 2026.11.27.7037) removes the inline load model. The two-line program and the other literal shapes compile with `--strict-require` and keep the literal on matz/spinel master 6f27d4e99 and on 2026.11.23.7035 (2026-11-27); not run on the pin's own build. Workaround kept (test/gen_jobs.rb, rule 122): a candidate for a closing pull request |  |
 | AS | bug | 123 | open, not reduced (status 123); upstream 2026.10.25 the same, seen there with cybertrain/http/query and cybertrain/config required together. Not worked around: cybertrain/context.rb, not cybertrain/params.rb, registers ParameterMissing with ClientError, so the programs that load Config without the rest do not load Query |  |
 | AT | bug | 112 | closed | 2026-11-27, by the change that set this row: 2026.11.27.7037 (matz/spinel#12626). spikes/phase5/flock_fstat.rb prints CRuby's lines on it, "a.stat names the old file" included ("2026.11.27.7037" in the list of builds). `CLI::BuildLock#same_file?` (cybertrain/cli/build_lock.rb) takes `f.stat` under both runtimes, with no `IO.for_fd`; test/cli_build.rb's cases "a taker that opened the file before its holder released it ends up on the path's file" and "releasing the build lock leaves a lock another taker holds at the path" pass compiled |
@@ -326,7 +329,8 @@ request this project sent and matz/spinel merged (brought up to date on
 | AW | bug | 27 | closed | 2026-11-27, by the change that set this row: 2026.11.27.7037 (matz/spinel#12629); never had a workaround. Both lines of rechecks/differing/socket_bytes.rb print CRuby's result on it, `gets: ASCII-8BIT 13 13` and `append: Encoding::CompatibilityError`, and rechecks/socket_shapes.rb still matches ("2026.11.27.7037" in the list of builds). Framing by byte stays in rule 27 as advice |
 | AX | bug |  | closed | 2026-11-27, by the change that set this row: withdrawn as not a Spinel behaviour, a difference between json gem releases (see AX, "What AX turned out to be"). On matz/spinel master 6f27d4e99 (macOS arm64) every nesting line of rechecks/differing/json_parse_nesting.rb prints what CRuby 4.0.7 with json 2.18.0, its default gem, prints; the report had compared with CRuby 3.3.6 and json 2.7. Never had a workaround and has no rule |
 | AY | bug | 124 | closed | 2026-11-27, by the change that set this row: 2026.11.27.7037 (matz/spinel#12628). rechecks/differing/raising_helper_beside_lambda.rb builds and prints CRuby's line on it ("2026.11.27.7037" in the list of builds). The typed values after the `raise` are gone from `Console.unknown_model` and `unknown_record` (cybertrain/console.rb), and test/console.rb's case "an unknown model or record raises through a rescuing caller" passes compiled without them |
-| BA | bug |  | open ("Status by rule", row BA): `Thread.new` passes the program's file name to `sp_Thread_spawn_fiber_at` as a bare C literal, which that function roots as a String, so a collection inside the thread record's allocation reads the byte in front of the literal (`sp_mark_string`'s `s[-1]`). Seen only under AddressSanitizer (rechecks/2026.11.15.7033/ba_thread_birth_file.rb, with `SPINEL_GC_THRESHOLD_KB=1`); a plain build reads a byte it then ignores. No workaround and no rule: nothing in the framework can avoid it short of not calling `Thread.new` |  |
+| AZ | cost | 125 | open on 2026.11.15.7033 (the run in AZ, 2026-11-21). Half fixed upstream, in the pin: `Symbol#to_s` (37c296601, matz/spinel#12115) and `.freeze` of a String made at run time (6e08d6934, #12166), both first in 2026.11.23.7035; their programs stay near 2.4 MB of peak RSS on matz/spinel master 6f27d4e99 (macOS arm64, 2026-11-27), not run on the pin's own build. `String#clone` of a frozen String, and `clone(freeze: true)`, still grow there; a fix is on a local branch, not sent. Workaround kept (`Cybertrain::Key.string_of`) |  |
+| BA | bug |  | open ("Status by rule", row BA): `Thread.new` passes the program's file name to `sp_Thread_spawn_fiber_at` as a bare C literal, which that function roots as a String, so a collection inside the thread record's allocation reads the byte in front of the literal (`sp_mark_string`'s `s[-1]`). Seen only under AddressSanitizer (rechecks/2026.11.15.7033/ba_thread_birth_file.rb, with `SPINEL_GC_THRESHOLD_KB=1`); a plain build reads a byte it then ignores. No workaround and no rule: nothing in the framework can avoid it short of not calling `Thread.new`. Still on matz/spinel master 6f27d4e99 (macOS arm64, 2026-11-27); a fix is on a local branch, not sent (see BA) |  |
 | rule 1 | constraint | 1 | settled (1.4: no run-time code); the probes of a computed `send` and of reflection with a non-literal name match on the pin (rechecks/dispatch_shapes.rb) |  |
 | rule 2 | constraint | 2 | settled (1.4); a stored block handed to `instance_exec` still raises when reached on the pin (status 2) |  |
 | rule 3 | bug | 3 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
@@ -647,9 +651,9 @@ not by design. Costs are in 2; what is by design is in 1.4.
 | AE | `Class#superclass` on a package's exception class is NoMethodError | 6 lines | No |
 | AJ | `Class#superclass` on a built-in exception's class is NoMethodError once a package is required or a module defined (AE on the core classes) | 6 lines | No |
 | AF | `Float#round(n)` on a Float narrowed by a `case` rounds the binary product | 12 lines | Sent: #11770, merged 2026-11-14 |
-| AG | `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED` | 9 lines | No |
+| AG | `TCPServer.new` on a port in use raises `Errno::ECONNREFUSED` | 9 lines | No; fixed upstream by #11353 (not from this project), in 2026.11.14.7031 and later (see AG) |
 | AH | `JSON.generate` writes a Float in another form than CRuby's | 2 lines | No |
-| AM | A release build's `e.backtrace` is empty | spikes/phase5/backtrace.rb | No |
+| AM | A release build's `e.backtrace` is empty | spikes/phase5/backtrace.rb | No; by design, documented upstream (2026-11-27, see AM) |
 | AN | A nil-defaulted parameter given a plain Time by a caller crashes the defaulted call | 8 lines | No |
 | AO | A statement `case` on a plain Integer after one on a nullable Integer does not compile | 28 lines | No; fixed upstream by #12334 (another contributor), in 2026.11.27.7037 (see AO) |
 | AP | `pop(timeout:)` on a Queue that was put in an Array is `Array#pop` (phase 5b) | 4 lines | No |
@@ -720,7 +724,12 @@ section records its pull request. Fixed upstream without a report: AO
 Work started on 2026-11-27, in progress and not sent: the analysis time
 (5, "Build time"); the full-collection cadence, 5 (a); allocations (AA,
 an FFI `:str` argument, the copy of `"#{v}"`, `str << int`, URI encoding
-and the SHA-256 state); AB; and fixes for BA, AM, AQ and AG.
+and the SHA-256 state); and AB. Fixed on a local branch, gate pending,
+not sent: BA, AQ, the `String#clone` half of AZ, and the `.cold.N` name
+in a `-g` backtrace found beside AM. Found that day on master 6f27d4e99:
+AG was fixed upstream by #11353 (in the pin), half of AZ by #12115 and
+#12166 (in the pin), and AM is documented behaviour; each item records
+it.
 
 The inventory of 2026-11-13 ("Everything on main, in one place") adds to
 what this section lists: seven bugs with a program each and no report
@@ -925,17 +934,17 @@ run on master 1c0cc5e35:
 | AD | none (the framework validates the text first, and stays that way) | **Ready to report**: the 5-line program in AD. Low in harm. Not reported; not run on master. **Sent and merged**: matz/spinel#11787 (2026-11-14), in 2026.11.15.7033 |
 | AE | the list of client faults by name, `ClientError::CLIENT_FAULTS`, with `script/check-client-faults` (spikes/NOTES.md rules 47 and 54); it stays unless an ancestor walk works for every class | **Ready to report**: the 6-line program in AE. Not reported; not run on master |
 | AF | `Cast.round_digits` in place of `Float#round(scale)` (spikes/NOTES.md rule 100); kept either way, since it is what makes a stored decimal the same under both runtimes | **Ready to report**: the 12-line program in AF (CRuby `1.01`, compiled `1.0` for the same Float). Not reported; not run on master. **Sent and merged**: matz/spinel#11770 (2026-11-14), in 2026.11.15.7033 |
-| AG | `privileged_denied?` in `Server#bind_listener` | **Ready to report**: the 9-line program in AG (CRuby `Errno::EADDRINUSE`, compiled `Errno::ECONNREFUSED`). Not reported; not run on master |
+| AG | `privileged_denied?` in `Server#bind_listener` | **Ready to report**: the 9-line program in AG (CRuby `Errno::EADDRINUSE`, compiled `Errno::ECONNREFUSED`). Not reported; not run on master. **Fixed upstream** (2026-11-27): 69fb73d00, matz/spinel#11353, in 2026.11.14.7031 and later (see AG). Nothing to send |
 | AH | none | The 2-line program in AH. A difference in form, not in value: to be mentioned with AF rather than reported alone |
 | AI | gen/locales.rb fills its Hash through methods of at most 50 stores (spikes/NOTES.md rule 101) | **Ready to report** as a compile-time cost, not a defect: spikes/phase4b/locale_hash.rb and its generator make_keys.rb, with the `--timing` figures (see AI). Not reported upstream yet |
 | AJ | `Test::BUILTIN_PARENTS` and the `Errno::` prefix in `assert_raises` (spikes/NOTES.md rule 104) | **Ready to report**: the 6-line program in AJ, the same defect as AE. Not reported; not run on master |
 | AK | the framework's suite kept one program per file (design D34, D83) | A measurement (spikes/phase5/bundle_suite.sh), to be mentioned as a cost, not reported alone. Not reported |
 | AL | none (the cost is paid) | A request to spin, not to Spinel. Not reported |
-| AM | the test runner names a test by its `test` line (spikes/NOTES.md rule 107) | **Ready to report**: spikes/phase5/backtrace.rb. Not reported; not run on master |
+| AM | the test runner names a test by its `test` line (spikes/NOTES.md rule 107) | **Ready to report**: spikes/phase5/backtrace.rb. Not reported; not run on master. **By design** (2026-11-27): Spinel's docs/limitations.md documents it, and `-g` is the opt-in; what can be sent is a request to format a `-g` backtrace only when it is read, and the `.cold.N` fix on a local branch (see AM) |
 | AN | the sentinel default `Cookies::NO_EXPIRES` (spikes/NOTES.md rule 109) | **Ready to report**: spikes/phase5/nil_default_time.rb (SIGSEGV, exit 139; CRuby `none`, `1970`). Not reported; not run on master |
 | AO | an `if` chain in `HtmlReader.parse` instead of a statement `case` (spikes/NOTES.md rule 110) | **Ready to report**: spikes/phase5/case_nullable_temp.rb (the C compile fails, `'_o1' undeclared`; CRuby `amp`, `long`). Not reported; not run on master. **Fixed upstream** by another contributor (2026-11-27): matz/spinel#12334, in 2026.11.27.7037 (see AO). Nothing to send |
 | AP | no Queue is kept in an Array (spikes/NOTES.md rule 117) | **Ready to report**: the 4-line program in AP (spikes/phase5/queue_in_array.rb). Not reported; not run on master |
-| AQ | `Logger::LOCK` around every log write (spikes/NOTES.md rule 116); kept either way if upstream documents the race instead | **Ready to report**: the 17-line program in AQ (spikes/phase5/stringio_threads.rb). Not reported; not run on master |
+| AQ | `Logger::LOCK` around every log write (spikes/NOTES.md rule 116); kept either way if upstream documents the race instead | **Ready to report**: the 17-line program in AQ (spikes/phase5/stringio_threads.rb). Not reported. Still on master 6f27d4e99 (2026-11-27); a fix is on a local branch, not sent (see AQ) |
 | AR | test/gen_jobs.rb builds the word `require` from pieces (spikes/NOTES.md rule 122) | **Ready to report**: the 2-line program in AR. Not reported; not run on master. **Fixed upstream without a report** (2026-11-27): a9c356b7f and 1151b431d, in 2026.11.27.7037 (see AR). Nothing to send |
 | AS | none (nothing guards the reads; spikes/NOTES.md rule 123) | Nothing yet: seen with two framework files required, the cause read from the generated C, not reduced (see AS). Not reported |
 
@@ -4274,6 +4283,16 @@ is root).
   `PortInUse`; `privileged_denied?` decides between "in use" and "needs
   root" from the port number and the user, since the class cannot.
 - Asked of Spinel: raise the `Errno` class of the failing `bind(2)`.
+- Fixed upstream without a report (found 2026-11-27): 69fb73d00
+  "TCPServer.new on a port in use raises Errno::EADDRINUSE" (merged
+  2026-11-08 as matz/spinel#11353, merge 921f83098, not from this
+  project; its test is test/tcp_server_port_in_use.rb). The cause was
+  `sp_net_listen_host` dropping `bind`'s errno. It is first in the fork's
+  2026.11.14.7031, so in 2026.11.15.7033 and 2026.11.27.7037. The program
+  above prints `Errno::EADDRINUSE` on matz/spinel master 6f27d4e99 (macOS
+  arm64); it was not run on the pin's own build, and the privileged-port
+  case was not run. The workaround stays until a change of its own
+  removes it.
 
 ### AH. `JSON.generate` writes a Float in another form than CRuby's
 
@@ -4494,6 +4513,21 @@ rate.
 - Asked of Spinel: frames (even without line numbers) in a release
   build, at a cost a server can carry.
 - Reproduced by spikes/phase5/backtrace.rb; not reported upstream.
+- By design (found 2026-11-27): Spinel's docs/limitations.md says that
+  `Exception#backtrace` and `caller` answer `[]` in a release build, and
+  that `-g` is the opt-in. On matz/spinel master 6f27d4e99 (macOS arm64)
+  `-g` gives frames with lines at `-O2`, without the methods that were
+  inlined. What keeps a server from `-g` is the cost of a rescued raise:
+  about 130 ms, against 161 ns in a release build. That is most likely
+  because each rescue formats the backtrace at once, through `atos` or
+  `addr2line` run by `popen` (read from the code, not profiled). The kind
+  is now constraint, and the ask is narrower: keep the raw addresses at
+  the raise and format them only when `#backtrace` is called.
+- Found beside it, fixed on a local branch and not sent: a `-g` backtrace
+  named one method twice, once for clang's `.cold.N` piece of it (branch
+  `fix/release-backtrace`, commit a31a8ac03). Also seen and not reduced
+  further: `caller` inside a top-level `rescue` answers `[]` in every
+  build mode, where CRuby answers one `<main>` frame.
 
 ### What the rest of phase 5a met (no new item)
 
@@ -4693,6 +4727,13 @@ an application ported from Ruby may rely on it without knowing.
   docs/thread.md that an object written by several threads needs a
   `Mutex`, so the crash is the documented consequence of a data race.
 - Reproduced by spikes/phase5/stringio_threads.rb; not reported upstream.
+- Still on matz/spinel master 6f27d4e99 (macOS arm64, 2026-11-27): the
+  program aborts in 5 runs of 6. matz/spinel#12672 puts Logger under a
+  Monitor, which does not cover a StringIO written directly. Fixed on a
+  local branch, gate pending, not sent: `fix/stringio-threads`, commit
+  a4a7c6c52, a lock of each StringIO's own around its writes, `puts`
+  writing the line and its newline as one write, and docs/thread.md
+  revised; its test is packages/stringio/test/stringio_threads_write.rb.
 
 ### What the rest of phase 5b met (no new item)
 
@@ -5219,7 +5260,7 @@ spikes/NOTES.md has it as rule 125.
 
 ### AZ. A frozen String made at run time is never freed, and `Symbol#to_s` makes one at every call
 
-Rule 125. The runtime pins every heap String it freezes (`sp_str_freeze_val`
+Rule 125. On 2026.11.15.7033 the runtime pins every heap String it freezes (`sp_str_freeze_val`
 and `sp_str_clone_val` call `sp_slab_pin`, "immortal, as a literal is"), and
 `sp_sym_to_s_new`, which `Symbol#to_s` and the Symbol arm of a boxed `to_s`
 call, answers a new frozen String each time. So this program grows by about
@@ -5252,6 +5293,19 @@ from the collector's own report. In examples/blog, `params[:id]`,
   answer `Symbol#to_s` with a String that is not pinned (CRuby's is a new
   unfrozen String; `Symbol#name` is the cached frozen one).
 - Not reported upstream yet; the reduced program above is ready.
+- Half fixed upstream without a report (found 2026-11-27): `Symbol#to_s`
+  by 37c296601 (matz/spinel#12115) and `.freeze` of a String made at run
+  time by 6e08d6934 (#12166), both first in the fork's 2026.11.23.7035,
+  so in 2026.11.27.7037 and not in 2026.11.15.7033. On matz/spinel master
+  6f27d4e99 (macOS arm64) the program above and the `.freeze` loop stay
+  near 2.4 MB of peak RSS; they were not run on the pin's own build. What
+  is left is `String#clone` of a frozen String and `clone(freeze: true)`:
+  a million of them grow to about 134 MB on that master, because
+  `sp_str_clone_val` and two sites in the generated code still set the
+  0xf1 marker that makes a String immortal. Fixed on a local branch, gate
+  pending, not sent: `fix/string-clone-frozen-collected`, commit
+  f37fc1310, with test/string_clone_frozen_collected.rb. The framework's
+  workaround stays.
 
 ## Found on 2026-11-23
 
@@ -5370,3 +5424,9 @@ alternate signal stack. J's server is killed and never gets there.)
   ready, and an AddressSanitizer job upstream would meet it on any
   threaded program that collects at that point.
 - Not reported upstream yet.
+- Still on matz/spinel master 6f27d4e99 (macOS arm64, 2026-11-27). Fixed on
+  a local branch, gate pending, not sent: `fix/thread-spawn-file-literal`,
+  commit 93b90dcdf, which drops `SP_GC_ROOT_STR(file)` in
+  `sp_Thread_spawn_fiber_at`; its test is
+  test/thread_spawn_birth_file_not_rooted.rb, and `make rt-san-check`
+  shows the read before the fix.
