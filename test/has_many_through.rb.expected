@@ -12,4 +12,5 @@ ok   includes of each kind of path fills every record, empty where nothing match
 ok   reload drops a through has_many's preload
 ok   a through: or source: the generator cannot follow fails with the file and line
 ok   through: takes no dependent:, class_name: or foreign_key:, and source: needs through:
-14 tests, 66 assertions, 0 failures
+ok   a through over a polymorphic association, as its via or its source, fails with the file and line
+15 tests, 76 assertions, 0 failures

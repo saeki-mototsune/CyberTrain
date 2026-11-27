@@ -64,6 +64,13 @@ module Cybertrain
       def self.derived_name(table, columns)
         "index_#{table}_on_#{columns.join("_and_")}"
       end
+
+      # "index_<table>_on_<name>": the name Rails gives the index of a
+      # polymorphic reference (on `<name>_type` and `<name>_id`;
+      # docs/design.md D94).
+      def self.polymorphic_name(table, name)
+        "index_#{table}_on_#{name}"
+      end
     end
 
     class ForeignKey
@@ -95,6 +102,16 @@ module Cybertrain
       def self.check_nullify(action, null)
         if action == :nullify && !null
           raise ArgumentError, "on_delete: :nullify needs null: true (the column is NOT NULL)"
+        end
+        nil
+      end
+
+      # Raises unless `action` is :no_action: a polymorphic reference has no
+      # foreign key for an ON DELETE to belong to.
+      def self.check_polymorphic_on_delete(action)
+        unless action == :no_action
+          raise ArgumentError, "on_delete: needs a foreign key, and a polymorphic reference has none " \
+                               "(got #{action.inspect}); use dependent: on the has_many"
         end
         nil
       end
@@ -342,12 +359,28 @@ module Cybertrain
       #   row too), `:nullify` (sets the column NULL; pass `null: true`) or
       #   `:restrict`
       # @param index [Boolean] false skips the index
+      # @param polymorphic [Boolean] a reference to one of several tables
+      #   (`belongs_to :commentable, polymorphic: true`): the columns
+      #   `<name>_type` (a string, the parent's class name) and `<name>_id`,
+      #   in that order, both NOT NULL unless `null: true`, and the index on
+      #   both named `index_<table>_on_<name>`, as Rails creates them; no
+      #   foreign key (`foreign_key:` is not read, and `on_delete:` must
+      #   stay `:no_action`)
       # @return [nil]
       # @api public
-      def references(name, null: false, foreign_key: true, on_delete: :no_action, index: true)
+      def references(name, null: false, foreign_key: true, on_delete: :no_action, index: true, polymorphic: false)
         Cybertrain::Schema::ForeignKey.check_on_delete(on_delete)
         Cybertrain::Schema::ForeignKey.check_nullify(on_delete, null)
         column_name = "#{name}_id"
+        if polymorphic
+          Cybertrain::Schema::ForeignKey.check_polymorphic_on_delete(on_delete)
+          type_name = "#{name}_type"
+          push_column(type_name, :string, null, nil, 0)
+          push_column(column_name, :integer, null, nil, 0)
+          index_name = Cybertrain::Schema::Index.polymorphic_name(@table.name, name.to_s)
+          @table.add_index(Index.new(@table.name, [type_name, column_name], false, index_name)) if index
+          return nil
+        end
         push_column(column_name, :integer, null, nil, 0)
         @table.add_index(Index.new(@table.name, [column_name], false)) if index
         if foreign_key

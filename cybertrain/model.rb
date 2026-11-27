@@ -271,16 +271,12 @@ module Cybertrain
     #   has_many :drafts, class_name: "Post", foreign_key: :author_id
     #   has_many :tags, through: :taggings
     #   has_many :labels, through: :taggings, source: :tag
+    #   has_many :comments, as: :commentable
     # @param name [Symbol] the reader's name
     # @param dependent [Symbol, nil] `:destroy`, `:delete_all` or `:nullify`
     # @param class_name [String, Symbol, nil] the children's model
     # @param foreign_key [Symbol, String, nil] the children's key column
-    # @param through [Symbol, String, nil] the association to go through
-    # @param source [Symbol, String, nil] the association of the middle
-    #   model to read (inferred: the singular or the plural of `name`)
-    # @return [nil]
-    # @api public
-    def self.has_many(name, dependent: nil, class_name: nil, foreign_key: nil, through: nil, source: nil) = nil
+    def self.has_many(name, dependent: nil, class_name: nil, foreign_key: nil, through: nil, source: nil, as: nil) = nil
 
     # Declares that each record has at most one child: `has_one :profile`
     # reads `Profile.find_by(user_id: id)` (nil when there is none). Read as
@@ -295,9 +291,11 @@ module Cybertrain
     #   `Profile`)
     # @param foreign_key [Symbol, String, nil] the child's key column
     #   (inferred `<singular of this table>_id`)
+    # @param as [Symbol, nil] the child's polymorphic {.belongs_to}, as
+    #   {.has_many}'s
     # @return [nil]
     # @api public
-    def self.has_one(name, dependent: nil, class_name: nil, foreign_key: nil) = nil
+    def self.has_one(name, dependent: nil, class_name: nil, foreign_key: nil, as: nil) = nil
 
     # Declares the parent a record points to: `belongs_to :author` reads
     # `Author.find_by(id: author_id)` and keeps it until `author_id`
@@ -314,9 +312,22 @@ module Cybertrain
     # transaction), and a move to another parent counted on both sides; the
     # update and both counts run in one transaction. The column must exist;
     # the parent's own {#save} leaves it alone (its copy may be stale).
+    #
+    # `polymorphic: true` points to a record of one of several models: the
+    # table has `<name>_type`, which holds the parent's class name as Rails
+    # stores it ("Post"), and `<name>_id` (`t.references :commentable,
+    # polymorphic: true`). The parents are the models that declare
+    # `has_many` or `has_one ..., as: :<name>` for this one; the reader
+    # answers one of them (narrow it with `case record when Post`), or nil,
+    # and raises ArgumentError for a type that is none of them. The writer
+    # `record.<name> = parent` (also `new(<name>: parent)`) sets both
+    # columns. Without `optional: true`, both columns are validated. No
+    # `class_name:`, `foreign_key:` or `counter_cache:` with it
+    # (docs/design.md D94).
     # @example
     #   belongs_to :post, counter_cache: true
     #   belongs_to :author, class_name: "User", optional: true
+    #   belongs_to :commentable, polymorphic: true
     # @param name [Symbol] the reader's name
     # @param class_name [String, Symbol, nil] the parent's model (inferred
     #   from the name)
@@ -324,9 +335,11 @@ module Cybertrain
     #   (inferred `<name>_id`)
     # @param optional [Boolean] skip the foreign key validation
     # @param counter_cache [Boolean] count the children on the parent
+    # @param polymorphic [Boolean] the parent's model is in `<name>_type`
     # @return [nil]
     # @api public
-    def self.belongs_to(name, class_name: nil, foreign_key: nil, optional: false, counter_cache: false) = nil
+    def self.belongs_to(name, class_name: nil, foreign_key: nil, optional: false, counter_cache: false,
+                        polymorphic: false) = nil
 
     # The validation a declared {.belongs_to} adds to its generated class:
     # "can't be blank" on the foreign key while it is nil, blank or 0 (the

@@ -20,6 +20,7 @@ module Cybertrain
         return "    #{n}_loaded = false\n    #{n}_record = nil\n" if plan.kind == :has_one
 
         src = +"    #{n}_loaded = false\n    #{n}_loaded_key = 0\n    #{n}_record = nil\n"
+        src << "    #{n}_loaded_type = \"\"\n" if plan.polymorphic?
         src << "    #{ivar_name(plan.foreign_key)}_was = #{plan.fk_null ? "nil" : "0"}\n" if plan.counter_cache
         src
       end
@@ -31,9 +32,12 @@ module Cybertrain
       # belongs_to: the parent, cached with the foreign key it was read
       # for, so a reassigned key never answers the old parent; a nil key
       # answers nil. has_one: the preload cache when includes filled it,
-      # else a query.
+      # else a query. A polymorphic belongs_to: polymorphic_reader, then
+      # its writer.
       def self.association_reader(plan)
         n = plan.name
+        return polymorphic_reader(plan) + "\n" + polymorphic_writer(plan) if plan.polymorphic?
+
         if plan.kind == :has_many
           rel = plan.through? ? through_relation(plan) : children_relation(plan)
           return "  def #{n}\n    rel = #{rel}\n    return rel if @#{n}_preloaded.nil?\n\n" \
@@ -41,7 +45,7 @@ module Cybertrain
         end
         if plan.kind == :has_one
           return "  def #{n}\n    return @#{n}_record if @#{n}_loaded\n\n" \
-                 "    #{plan.model}.find_by(#{plan.foreign_key}: @id)\n  end\n"
+                 "    #{plan.model}.find_by(#{type_condition(plan)}#{plan.foreign_key}: @id)\n  end\n"
         end
 
         key = ivar_name(plan.foreign_key)
@@ -64,9 +68,15 @@ module Cybertrain
       # calls on each record to fill the reader's cache (a `!` name, so no
       # column reader can be spelled like it): has_many the children's
       # Array, belongs_to the parent (or nil) with the key it was read for,
-      # has_one the child (or nil).
+      # has_one the child (or nil); a polymorphic belongs_to the parent with
+      # the type and the key it was read for.
       def self.association_preload_setter(plan)
         n = plan.name
+        if plan.polymorphic?
+          return "  def #{n}_preload!(found)\n    @#{n}_record = found\n    @#{n}_loaded = true\n" \
+                 "    @#{n}_loaded_type = Cybertrain::Cast.str(#{ivar_name(plan.type_column)})\n" \
+                 "    @#{n}_loaded_key = #{key_expr(plan, ivar_name(plan.foreign_key))}\n    nil\n  end\n"
+        end
         if plan.kind == :has_many
           return "  def #{n}_preload!(records)\n    @#{n}_preloaded = records\n    nil\n  end\n"
         end
@@ -135,6 +145,8 @@ module Cybertrain
           src << "    when :#{plan.name}\n"
           if plan.through?
             src << preload_through(plan)
+          elsif plan.polymorphic?
+            src << preload_polymorphic_parents(plan)
           else
             src << (plan.kind == :belongs_to ? preload_parents(plan) : preload_children(plan))
           end
@@ -168,7 +180,8 @@ module Cybertrain
         src << "      end\n"
         src << "      start = 0\n"
         src << "      while start < ids.size\n"
-        src << "        found = #{plan.model}Relation.new(\"#{plan.target_table}\").where(#{plan.foreign_key}: ids[start, step])" \
+        src << "        found = #{plan.model}Relation.new(\"#{plan.target_table}\")" \
+               ".where(#{type_condition(plan)}#{plan.foreign_key}: ids[start, step])" \
                ".order(id: :asc).to_a\n"
         src << "        j = 0\n"
         src << "        while j < found.size\n"
@@ -361,7 +374,168 @@ module Cybertrain
 
       # The `<Model>Relation` over the children of a has_many / has_one.
       def self.children_relation(plan)
-        "#{plan.model}Relation.new(\"#{plan.target_table}\").where(#{plan.foreign_key}: @id)"
+        "#{plan.model}Relation.new(\"#{plan.target_table}\").where(#{type_condition(plan)}#{plan.foreign_key}: @id)"
+      end
+
+      # `commentable_type: "Post", ` for a has_many / has_one with `as:`
+      # (D94), the condition on the children's type column that goes
+      # before the key's; "" otherwise.
+      def self.type_condition(plan)
+        return "" if plan.type_value == ""
+
+        "#{plan.type_column}: \"#{plan.type_value}\", "
+      end
+
+      # The opening lines of a polymorphic belongs_to's reader: nil without
+      # a type or a key, then the locals `type` and `key` (`key` an
+      # Integer, as key_expr makes it).
+      def self.polymorphic_locals(plan, indent, type_expr, key_expr_text)
+        guard = "#{type_expr}.nil?"
+        guard += " || #{key_expr_text}.nil?" if plan.fk_null
+        src = +"#{indent}return nil if #{guard}\n"
+        src << "#{indent}type = Cybertrain::Cast.str(#{type_expr})\n"
+        src << "#{indent}key = #{key_expr(plan, key_expr_text)}\n"
+        src
+      end
+
+      # A polymorphic belongs_to's reader (D94): the type column names the
+      # parent's model, one of the plan's targets, read by id and cached
+      # with the type and the key it was read for. Its return type is the
+      # union of the targets (Spinel boxes it; spikes/phase6/polymorphic_reader.rb),
+      # so a caller narrows with `case record when Post`. An empty type
+      # answers nil; a type that is no target raises ArgumentError.
+      def self.polymorphic_reader(plan)
+        n = plan.name
+        type_iv = ivar_name(plan.type_column)
+        src = +"  def #{n}\n"
+        src << polymorphic_locals(plan, "    ", type_iv, ivar_name(plan.foreign_key))
+        src << "    return nil if type == \"\"\n"
+        src << "    return @#{n}_record if @#{n}_loaded && @#{n}_loaded_key == key && @#{n}_loaded_type == type\n"
+        src << "\n"
+        src << "    unless #{plan.targets.map { |t| "type == \"#{t}\"" }.join(" || ")}\n"
+        src << "      message = \"#{plan.type_column} \#{type.inspect} is not #{target_list(plan, "or")} " \
+               "(the models that declare as: :#{n})\"\n"
+        src << "      raise ArgumentError, message\n"
+        src << "    end\n"
+        src << "    @#{n}_record =\n"
+        src << "      case type\n"
+        plan.targets.each { |t| src << "      when \"#{t}\" then #{t}.find_by(id: key)\n" }
+        src << "      end\n"
+        src << "    @#{n}_loaded = true\n"
+        src << "    @#{n}_loaded_key = key\n"
+        src << "    @#{n}_loaded_type = type\n"
+        src << "    @#{n}_record\n"
+        src << "  end\n"
+        src
+      end
+
+      # "Post, Photo or Video"
+      def self.target_list(plan, word)
+        list = plan.targets
+        return list[0] if list.size == 1
+
+        list[0, list.size - 1].join(", ") + " #{word} " + list[list.size - 1]
+      end
+
+      # A polymorphic belongs_to's writer (D94): `comment.commentable = post`
+      # stores the record's class name and id (Rails' `commentable_type`
+      # and `commentable_id`) and caches the record; nil clears both. A
+      # record of no target raises ArgumentError. An unsaved record stores
+      # id 0 (save the parent first: there is no autosave).
+      def self.polymorphic_writer(plan)
+        n = plan.name
+        type_iv = ivar_name(plan.type_column)
+        key_iv = ivar_name(plan.foreign_key)
+        src = +"  def #{n}=(record)\n"
+        src << "    case record\n"
+        src << "    when nil\n"
+        src << "      #{type_iv} = #{plan.type_null ? "nil" : "\"\""}\n"
+        src << "      #{key_iv} = #{plan.fk_null ? "nil" : "0"}\n"
+        plan.targets.each do |t|
+          src << "    when #{t}\n"
+          src << "      #{type_iv} = \"#{t}\"\n"
+          src << "      #{key_iv} = record.id\n"
+        end
+        src << "    else\n"
+        src << "      message = \"#{n}= takes #{target_list(plan, "or")} (or nil)\"\n"
+        src << "      raise ArgumentError, message\n"
+        src << "    end\n"
+        src << "    @#{n}_record = record\n"
+        src << "    @#{n}_loaded = true\n"
+        src << "    @#{n}_loaded_type = Cybertrain::Cast.str(#{type_iv})\n"
+        src << "    @#{n}_loaded_key = Cybertrain::Cast.int(#{key_iv})\n"
+        src << "    nil\n"
+        src << "  end\n"
+        src
+      end
+
+      # The `when` body for a polymorphic belongs_to: the records' distinct
+      # keys per type, one query per target type (chunked as
+      # preload_parents), and each record given its parent or nil; a record
+      # whose type is no target is left unloaded, so its reader raises.
+      def self.preload_polymorphic_parents(plan)
+        n = plan.name
+        fk = reader_name(plan.foreign_key)
+        tc = reader_name(plan.type_column)
+        src = +""
+        plan.targets.each_with_index do |t, k|
+          src << "      ids_#{n}_#{k} = Array.new(0) { 0 }\n"
+          src << "      seen_#{n}_#{k} = { 0 => true }\n"
+          src << "      seen_#{n}_#{k}.delete(0)\n"
+          src << "      index_#{n}_#{k} = { 0 => #{t}.new }\n"
+          src << "      index_#{n}_#{k}.delete(0)\n"
+        end
+        src << "      i = 0\n"
+        src << "      while i < records.size\n"
+        src << polymorphic_preload_locals(plan, fk, tc)
+        src << "        case poly_type\n"
+        plan.targets.each_with_index do |t, k|
+          src << "        when \"#{t}\"\n"
+          src << "          unless seen_#{n}_#{k}.key?(key)\n"
+          src << "            seen_#{n}_#{k}[key] = true\n"
+          src << "            ids_#{n}_#{k} << key\n"
+          src << "          end\n"
+        end
+        src << "        end\n"
+        src << "        i += 1\n"
+        src << "      end\n"
+        plan.targets.each_with_index do |t, k|
+          src << "      start = 0\n"
+          src << "      while start < ids_#{n}_#{k}.size\n"
+          src << "        found_#{n}_#{k} = #{t}Relation.new(\"#{plan.target_tables[k]}\")" \
+                 ".where(id: ids_#{n}_#{k}[start, step]).to_a\n"
+          src << "        j = 0\n"
+          src << "        while j < found_#{n}_#{k}.size\n"
+          src << "          index_#{n}_#{k}[found_#{n}_#{k}[j].id] = found_#{n}_#{k}[j]\n"
+          src << "          j += 1\n"
+          src << "        end\n"
+          src << "        start += step\n"
+          src << "      end\n"
+        end
+        src << "      i = 0\n"
+        src << "      while i < records.size\n"
+        src << polymorphic_preload_locals(plan, fk, tc)
+        src << "        case poly_type\n"
+        src << "        when \"\" then records[i].#{n}_preload!(nil)\n"
+        plan.targets.each_with_index do |t, k|
+          src << "        when \"#{t}\" then records[i].#{n}_preload!(index_#{n}_#{k}[key])\n"
+        end
+        src << "        end\n"
+        src << "        i += 1\n"
+        src << "      end\n"
+        src
+      end
+
+      # Inside preload_polymorphic_parents' loops: `poly_type` (a String,
+      # "" for a nil type or key) and `key` of records[i].
+      def self.polymorphic_preload_locals(plan, fk, tc)
+        src = +"        raw_type = records[i].#{tc}\n"
+        src << "        raw_key = records[i].#{fk}\n"
+        guard = "raw_type.nil?"
+        guard += " || raw_key.nil?" if plan.fk_null
+        src << "        poly_type = #{guard} ? \"\" : Cybertrain::Cast.str(raw_type)\n"
+        src << "        key = #{guard} ? 0 : #{key_expr(plan, "raw_key")}\n"
+        src
       end
 
       # `destroy_dependents`, which Model#destroy runs inside its
@@ -375,7 +549,9 @@ module Cybertrain
           case plan.dependent
           when :destroy then body << "    #{children_relation(plan)}.destroy_all\n"
           when :delete_all then body << "    #{children_relation(plan)}.delete_all\n"
-          when :nullify then body << "    #{children_relation(plan)}.update_all(#{plan.foreign_key}: nil)\n"
+          when :nullify
+            type_nil = plan.type_value == "" ? "" : ", #{plan.type_column}: nil"
+            body << "    #{children_relation(plan)}.update_all(#{plan.foreign_key}: nil#{type_nil})\n"
           end
         end
         return "" if body == ""
@@ -413,6 +589,8 @@ module Cybertrain
           next unless plan.declared && plan.kind == :belongs_to && !plan.optional
 
           src << "  validates_foreign_key :#{plan.foreign_key}\n"
+          # A polymorphic one's type is blank while it is nil or "" (D94).
+          src << "  validates_foreign_key :#{plan.type_column}\n" if plan.polymorphic?
         end
         unless plans.select { |plan| plan.counter_cache }.empty?
           src << "  after_create { |record| record.counter_cache_created }\n"

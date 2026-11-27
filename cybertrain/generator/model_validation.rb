@@ -16,9 +16,19 @@ module Cybertrain
     # :nullify), belongs_to's `optional` and `counter_cache` (with the
     # parent's `counter_column`), whether app/models `declared` it, and the
     # comment lines written above the reader.
+    #
+    # The polymorphic fields (docs/design.md D94), set by `polymorphic!`:
+    # `type_column` is the `<name>_type` column ("" for an ordinary
+    # association) and `type_null` whether it is nullable. A polymorphic
+    # belongs_to (`polymorphic?`) has `model` and `target_table` "" and
+    # reads one of `targets` (the models declaring `has_many/has_one ...,
+    # as: :<name>` towards it, with their `target_tables`); a has_many or
+    # has_one with `as:` matches its children by `type_value`, this model's
+    # class name, as well as by the key.
     class AssociationPlan
       attr_reader :kind, :name, :model, :target_table, :foreign_key, :fk_null, :fk_integer, :dependent, :optional,
-                  :counter_cache, :counter_column, :declared, :notes
+                  :counter_cache, :counter_column, :declared, :notes, :type_column, :type_null, :type_value, :targets,
+                  :target_tables
 
       def initialize(kind, name, model, target_table, foreign_key, fk_null, fk_integer, dependent, optional,
                      counter_cache, counter_column, declared, notes)
@@ -35,7 +45,28 @@ module Cybertrain
         @counter_column = counter_column
         @declared = declared
         @notes = notes
+        @type_column = ""
+        @type_null = false
+        @type_value = ""
+        @targets = Array.new(0) { "" }
+        @target_tables = Array.new(0) { "" }
         @through_path = ThroughPath.none
+      end
+
+      # Makes this a polymorphic association (D94): a belongs_to with its
+      # `targets`, or a has_many / has_one with `as:` (`type_value` set).
+      def polymorphic!(type_column, type_null, type_value, targets, target_tables)
+        @type_column = type_column
+        @type_null = type_null
+        @type_value = type_value
+        @targets = targets
+        @target_tables = target_tables
+        nil
+      end
+
+      # A `belongs_to ..., polymorphic: true`.
+      def polymorphic?
+        @kind == :belongs_to && @type_column != ""
       end
 
       # The path of a `has_many ..., through:` (docs/design.md D93); its
@@ -673,6 +704,12 @@ module Cybertrain
         raise ModelScan::Error, at + "through: :#{a.through_name} is not an association of this model" if at_via < 0
 
         via = plans[at_via]
+        # A polymorphic pair (D94) needs its type column in the subquery
+        # and a source_type: to name the target; neither is there.
+        if via.type_column != ""
+          raise ModelScan::Error, at + "through: :#{a.through_name} is a polymorphic association (D94); a through " \
+                                       "over one is not supported"
+        end
         middle = table_for_model(definition, via.model)
         raise ModelScan::Error, at + "through: :#{a.through_name} reads #{via.model}, which is not a model" if middle.nil?
 
@@ -701,6 +738,10 @@ module Cybertrain
         end
 
         source = middle_plans[at_source]
+        if source.type_column != ""
+          raise ModelScan::Error, at + "the source #{via.model}##{source.name} is a polymorphic association (D94); a " \
+                                       "through over one is not supported"
+        end
         path = ThroughPath.new(via.name, source.name, via.model, middle.name)
         if via.kind == :belongs_to
           path.set_owner_key(via.foreign_key, via.fk_null, via.fk_integer)
@@ -763,6 +804,7 @@ module Cybertrain
       # -> `<singular of this table>_id` (on the children's table).
       def self.declared_key(a, table)
         return a.foreign_key if a.foreign_key != ""
+        return a.as_name + "_id" if a.as_name != ""
 
         a.kind == :belongs_to ? a.name + "_id" : Inflector.singularize(table.name) + "_id"
       end
@@ -785,6 +827,8 @@ module Cybertrain
       # (owned?), `dependent: :nullify` names a NOT NULL key, or
       # `counter_cache` names a missing counter column.
       def self.declared_plan(table, definition, infos, a, taken, assoc_names)
+        return polymorphic_plan(table, definition, infos, a, taken, assoc_names) if a.polymorphic
+
         at = "#{a.file}:#{a.line}: #{a.kind} :#{a.name}: "
         cls = declared_class(a)
         target = table_for_model(definition, cls)
@@ -793,7 +837,10 @@ module Cybertrain
         fk = declared_key(a, table)
         owner = a.kind == :belongs_to ? table : target
         column = owner.column(fk)
-        raise ModelScan::Error, at + "no column #{owner.name}.#{fk} for its foreign key; set foreign_key:" if column.nil?
+        if column.nil?
+          fix = a.as_name == "" ? "set foreign_key:" : "t.references :#{a.as_name}, polymorphic: true creates it"
+          raise ModelScan::Error, at + "no column #{owner.name}.#{fk} for its foreign key; #{fix}"
+        end
 
         if owned?(a.name, taken, assoc_names)
           raise ModelScan::Error, at + "the reader #{a.name} is taken (a column, another association, a " \
@@ -814,8 +861,74 @@ module Cybertrain
         end
         notes = Array.new(0) { "" }
         notes << ModelNaming.shadow_note("#{a.kind} reader", a.name) if Ident.shadowing_column?(a.name)
-        AssociationPlan.new(a.kind, a.name, cls, target.name, fk, column.null, column.type == :integer, a.dependent,
-                            a.optional, a.counter_cache, counter, true, notes)
+        plan = AssociationPlan.new(a.kind, a.name, cls, target.name, fk, column.null, column.type == :integer, a.dependent,
+                                   a.optional, a.counter_cache, counter, true, notes)
+        return plan if a.as_name == ""
+
+        # `as: :commentable`: the children's commentable_type holds this
+        # model's class name (D94).
+        type_column = polymorphic_type_column(at, target, a.as_name)
+        if a.dependent == :nullify && type_column.null == false
+          raise ModelScan::Error, at + "dependent: :nullify needs #{target.name}.#{type_column.name} to be nullable"
+        end
+        plan.polymorphic!(type_column.name, type_column.null, ModelNaming.model_class_name(table.name),
+                          Array.new(0) { "" }, Array.new(0) { "" })
+        plan
+      end
+
+      # `table`'s `<name>_type` column, a string or text; raises
+      # ModelScan::Error (prefixed with `at`) otherwise.
+      def self.polymorphic_type_column(at, table, name)
+        column = table.column(name + "_type")
+        if column.nil? || (column.type != :string && column.type != :text)
+          raise ModelScan::Error, at + "no string column #{table.name}.#{name}_type for the class name " \
+                                       "(t.references :#{name}, polymorphic: true creates it)"
+        end
+        column
+      end
+
+      # A declared `belongs_to :x, polymorphic: true` (D94): the columns
+      # x_type and x_id on `table`, and the parent models every scanned
+      # model file names with `has_many` / `has_one ..., as: :x` towards
+      # this model, in scan order. The reader can answer only those (its
+      # `case` over the type column is what Spinel types it by), so a
+      # declaration that no model answers stops the generator.
+      def self.polymorphic_plan(table, definition, infos, a, taken, assoc_names)
+        at = "#{a.file}:#{a.line}: belongs_to :#{a.name}: "
+        id_column = table.column(a.name + "_id")
+        raise ModelScan::Error, at + "no column #{table.name}.#{a.name}_id for its key " \
+                                     "(t.references :#{a.name}, polymorphic: true creates it)" if id_column.nil?
+
+        type_column = polymorphic_type_column(at, table, a.name)
+        if owned?(a.name, taken, assoc_names)
+          raise ModelScan::Error, at + "the reader #{a.name} is taken (a column, another association, a " \
+                                       "Cybertrain::Model method or a Ruby keyword); rename the association"
+        end
+        model = ModelNaming.model_class_name(table.name)
+        targets = Array.new(0) { "" }
+        target_tables = Array.new(0) { "" }
+        infos.each do |info|
+          parent = table_for_model(definition, info.class_name)
+          next if parent.nil?
+
+          info.associations.each do |h|
+            next unless h.kind != :belongs_to && h.as_name == a.name && declared_class(h) == model
+            next if targets.include?(info.class_name)
+
+            targets << info.class_name
+            target_tables << parent.name
+          end
+        end
+        if targets.empty?
+          raise ModelScan::Error, at + "no model declares has_many or has_one ..., as: :#{a.name} for #{model}; " \
+                                       "the reader answers the models that do"
+        end
+        notes = Array.new(0) { "" }
+        notes << ModelNaming.shadow_note("belongs_to reader", a.name) if Ident.shadowing_column?(a.name)
+        plan = AssociationPlan.new(:belongs_to, a.name, "", "", id_column.name, id_column.null,
+                                   id_column.type == :integer, :none, a.optional, false, "", true, notes)
+        plan.polymorphic!(type_column.name, type_column.null, "", targets, target_tables)
+        plan
       end
 
       # The ivars an association keeps its cache in (`includes` fills
@@ -829,6 +942,7 @@ module Cybertrain
         return [n + "_loaded", n + "_record"] if plan.kind == :has_one
 
         list = [n + "_loaded", n + "_loaded_key", n + "_record"]
+        list << n + "_loaded_type" if plan.polymorphic?
         if plan.counter_cache
           list << ModelNaming.ivar_name(plan.foreign_key) + "_was"
           list << "@counter_cache_found"

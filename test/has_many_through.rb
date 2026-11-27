@@ -234,9 +234,62 @@ test "through: takes no dependent:, class_name: or foreign_key:, and source: nee
                "from source:)", scan_error("has_many :tags, through: :taggings, dependent: :destroy")
   assert_equal "app/models/post.rb:2: has_many :tags: class_name: does not go with through: (the key and class come " \
                "from source:)", scan_error("has_many :tags, class_name: \"Tag\", through: :taggings")
+  assert_equal "app/models/post.rb:2: has_many :tags: as: does not go with through: (the key and class come " \
+               "from source:)", scan_error("has_many :tags, through: :taggings, as: :taggable")
   assert_equal "app/models/post.rb:2: has_many :tags: source: needs through:", scan_error("has_many :tags, source: :tag")
   assert_equal "app/models/post.rb:2: has_many :tags: through: takes an association name (got \"a b\")",
                scan_error("has_many :tags, through: \"a b\"")
+end
+
+# A schema with a polymorphic pair (D94), for the throughs refused over
+# one. Defined last: Schema.define makes it the current schema.
+def poly_error(sources)
+  definition = Cybertrain::Schema.define(version: "1") do |s|
+    s.create_table "authors" do |t|
+      t.string "name", null: false
+    end
+    s.create_table "comments" do |t|
+      t.text "body", null: false
+      t.references :commentable, polymorphic: true
+    end
+    s.create_table "flags" do |t|
+      t.references :comment
+    end
+    s.create_table "posts" do |t|
+      t.string "title", null: false
+      t.references :author
+    end
+  end
+  infos = Array.new(0) { Cybertrain::Gen::ModelInfo.empty("", "", Array.new(0) { "" }) }
+  sources.each do |file, source|
+    scanned = Cybertrain::Gen::ModelScan.scan_source(file, source)
+    infos << scanned unless scanned.nil?
+  end
+  assert_raises("ModelScan::Error") { Cybertrain::Gen::ModelsEmitter.outputs(definition, infos) }
+end
+
+test "a through over a polymorphic association, as its via or its source, fails with the file and line" do
+  comment = "class Comment\n  belongs_to :commentable, polymorphic: true\nend\n"
+  post = "class Post\n  has_many :comments, as: :commentable\nend\n"
+  assert_equal "app/models/comment.rb:3: has_many :others: through: :commentable is a polymorphic association " \
+               "(D94); a through over one is not supported",
+               poly_error({ "app/models/post.rb" => post,
+                            "app/models/comment.rb" => comment.sub("end\n", "  has_many :others, through: :commentable, " \
+                                                                                "source: :comments\nend\n") })
+  assert_equal "app/models/post.rb:3: has_many :bodies: through: :comments is a polymorphic association (D94); a " \
+               "through over one is not supported",
+               poly_error({ "app/models/comment.rb" => comment,
+                            "app/models/post.rb" => post.sub("end\n", "  has_many :bodies, through: :comments, " \
+                                                                      "source: :flags\nend\n") })
+  assert_equal "app/models/flag.rb:3: has_many :targets: the source Comment#commentable is a polymorphic " \
+               "association (D94); a through over one is not supported",
+               poly_error({ "app/models/comment.rb" => comment, "app/models/post.rb" => post,
+                            "app/models/flag.rb" => "class Flag\n  belongs_to :comment\n  has_many :targets, " \
+                                                    "through: :comment, source: :commentable\nend\n" })
+  assert_equal "app/models/author.rb:2: has_many :comments: the source Post#comments is a polymorphic association " \
+               "(D94); a through over one is not supported",
+               poly_error({ "app/models/comment.rb" => comment, "app/models/post.rb" => post,
+                            "app/models/author.rb" => "class Author\n  has_many :comments, through: :posts\nend\n" })
 end
 
 Cybertrain::Test.run!

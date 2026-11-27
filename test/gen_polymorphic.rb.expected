@@ -1,0 +1,13 @@
+ok   t.references polymorphic: true adds the type and id columns and Rails' index, no foreign key
+ok   t.references polymorphic: true takes null: and index:, and refuses on_delete:
+ok   add_reference and remove_reference with polymorphic: true record the columns and the index
+ok   the scan reads polymorphic: and as:
+ok   the scan refuses the options a polymorphic pair does not take
+ok   a polymorphic belongs_to reads, writes and preloads the models that declare as:
+ok   an optional polymorphic belongs_to validates nothing
+ok   has_many and has_one with as: match the children by type and key
+ok   a polymorphic belongs_to that no model answers stops the generator
+ok   the polymorphic columns must exist
+ok   dependent: :nullify with as: needs a nullable type column
+ok   a polymorphic belongs_to on nullable columns answers nil for a nil type or key
+12 tests, 64 assertions, 0 failures
