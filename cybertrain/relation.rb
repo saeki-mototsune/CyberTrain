@@ -692,9 +692,12 @@ module Cybertrain
               # Over the DISTINCT rows, not `SELECT DISTINCT 1` (one row); with
               # `*` every row is distinct, so this equals the plain count.
               inner = select_sql("*", "", @limit, @offset)
-              "SELECT COUNT(*) AS n FROM (#{inner})"
+              sub = Cybertrain::DB::Dialect.relation_subquery_alias
+              "SELECT COUNT(*) AS n FROM (#{inner})#{sub}"
             elsif windowed?
-              "SELECT COUNT(*) AS n FROM (#{select_sql("1", "", @limit, @offset)})"
+              inner = select_sql("1", "", @limit, @offset)
+              sub = Cybertrain::DB::Dialect.relation_subquery_alias
+              "SELECT COUNT(*) AS n FROM (#{inner})#{sub}"
             else
               select_sql("COUNT(*) AS n", "", -1, 0)
             end
@@ -875,7 +878,8 @@ module Cybertrain
       drop_preloaded
       quoted = Relation.checked_column("where_like", column)
       check_not_encrypted("where_like", Key.string_of(column))
-      @wheres << "#{quoted} LIKE ? ESCAPE '\\'"
+      escape = Cybertrain::DB::Dialect.relation_like_escape
+      @wheres << "#{quoted} LIKE ?#{escape}"
       escaped = Cast.like_escape(text)
       pattern = "%#{escaped}%"
       @binds << pattern
@@ -1063,7 +1067,8 @@ module Cybertrain
       if windowed?
         id = Relation.quote_ident("id")
         window = select_sql(id, order_or_id, @limit, @offset)
-        return " WHERE #{id} IN (#{window})"
+        ids = Cybertrain::DB::Dialect.relation_window_ids(id, window)
+        return " WHERE #{id} IN (#{ids})"
       end
       where = condition_sql
       where == "" ? "" : " WHERE #{where}"
@@ -1091,7 +1096,8 @@ module Cybertrain
       if limit >= 0
         sql << " LIMIT " << limit.to_s
       elsif offset > 0
-        sql << " LIMIT -1" # SQLite accepts OFFSET only after a LIMIT
+        # OFFSET is accepted only after a LIMIT (SQLite's and MySQL's).
+        sql << " LIMIT " << Cybertrain::DB::Dialect.relation_no_limit
       end
       sql << " OFFSET " << offset.to_s if offset > 0
       sql

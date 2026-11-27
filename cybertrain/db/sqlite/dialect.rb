@@ -217,6 +217,41 @@ module Cybertrain
         "TOTAL(#{arg})"
       end
 
+      # The alias a derived table (`FROM (SELECT ...)`) takes after its
+      # parenthesis: none on SQLite. MySQL: " AS cybertrain_sub" (it
+      # requires one).
+      # @return [String]
+      def self.relation_subquery_alias
+        ""
+      end
+
+      # The ESCAPE clause of where_like's LIKE, the escape character a
+      # backslash. MySQL: " ESCAPE '\\\\'" (a backslash is doubled in its
+      # string literals).
+      # @return [String]
+      def self.relation_like_escape
+        " ESCAPE '\\'"
+      end
+
+      # The LIMIT that means none, for an OFFSET (which SQLite accepts only
+      # after a LIMIT). MySQL: "18446744073709551615".
+      # @return [String]
+      def self.relation_no_limit
+        "-1"
+      end
+
+      # What `id IN (...)` holds to name the ids of the windowed SELECT
+      # `window` (update_all / delete_all with a limit or offset): the
+      # SELECT itself. MySQL: "SELECT <id> FROM (<window>) AS
+      # cybertrain_sub" (it refuses a LIMIT in an IN subquery, and a
+      # subquery on the table the statement changes, unless derived).
+      # @param id [String]
+      # @param window [String]
+      # @return [String]
+      def self.relation_window_ids(id, window)
+        window
+      end
+
       # --- Model bulk writes --------------------------------------------------
 
       # The tail of Model.upsert / upsert_all: on a collision on
@@ -255,6 +290,28 @@ module Cybertrain
       def self.bulk_writes_returning_tail(columns)
         list = columns.join(", ")
         " RETURNING " + list
+      end
+
+      # Before a bulk INSERT whose rows are read back by their ids (only
+      # where returning? is false): nothing on SQLite, whose RETURNING
+      # answers the rows. MySQL: SELECT LAST_INSERT_ID(0), so that
+      # bulk_writes_first_insert_id answers 0 when the INSERT made no id.
+      # @param conn [Cybertrain::DB::Connection]
+      # @return [nil]
+      def self.bulk_writes_mark_insert_id(conn)
+        nil
+      end
+
+      # The id of the first row the last INSERT made, 0 when it made none
+      # (only where returning? is false). SQLite: the last rowid less the
+      # rows changed, plus one. MySQL: SELECT LAST_INSERT_ID().
+      # @param conn [Cybertrain::DB::Connection]
+      # @return [Integer]
+      def self.bulk_writes_first_insert_id(conn)
+        changed = conn.changes
+        return 0 if changed <= 0
+
+        conn.last_insert_id - changed + 1
       end
 
       # --- Cache --------------------------------------------------------------

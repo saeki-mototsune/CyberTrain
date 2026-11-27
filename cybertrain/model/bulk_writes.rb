@@ -286,6 +286,17 @@ module Cybertrain
         start += count
       end
 
+      unless Cybertrain::DB::Dialect.returning?
+        # Whether a colliding row may be left as it is: insert_all, or an
+        # upsert with nothing to set.
+        skips = on_conflict == :nothing ||
+                (on_conflict == :update &&
+                 Model.bulk_updated_columns(columns, targets, restricted, only, record_timestamps, column_types).empty?)
+        Model.bulk_write_and_select(out, table, statements, bind_sets, columns, returned, returned_types,
+                                    on_conflict, targets, skips, column_types)
+        return out
+      end
+
       Cybertrain::DB.transaction do |c|
         k = 0
         while k < statements.size
@@ -299,6 +310,161 @@ module Cybertrain
         end
       end
       out
+    end
+
+    # insert_all_into's statements where the adapter has no RETURNING
+    # (DB::Dialect.returning? false: MySQL), with `returning`'s rows read
+    # back by a SELECT after each statement, in the same transaction, in the
+    # order of the input rows and with the rows SQLite's RETURNING would
+    # answer: one per row inserted or updated, none for a skipped duplicate.
+    #
+    # - The rows supply no `id` and the table has one (AUTO_INCREMENT): the
+    #   ids one INSERT makes are consecutive in the order of its rows, from
+    #   the first (DB::Dialect.bulk_writes_first_insert_id; 0 when it made
+    #   none), so the rows it inserted are those with an id in [first,
+    #   first + rows). When every row was inserted, or when a colliding row
+    #   is left as it is (insert_all; an upsert with nothing to set), they
+    #   are the answer.
+    # - Otherwise (an upsert that updated some row; ids supplied) the rows
+    #   are looked up by their conflict key: upsert_all's unique_by, or the
+    #   supplied id. A row whose key was there before the statement and
+    #   that a collision leaves as it is answers nothing.
+    #
+    # A table without an `id` column answers only upserts (the key is
+    # unique_by); insert_all with `returning:` there raises ArgumentError
+    # before anything is written.
+    def self.bulk_write_and_select(out, table, statements, bind_sets, columns, returned, returned_types, on_conflict,
+                                   targets, skips, column_types)
+      if returned.empty?
+        Cybertrain::DB.transaction do |c|
+          statements.each_with_index { |sql, k| c.execute(sql, bind_sets[k]) }
+        end
+        return nil
+      end
+
+      caller_name = Model.bulk_method_name(on_conflict)
+      auto = column_types.key?("id") && !columns.include?("id")
+      keys = Array.new(0) { "" }
+      if on_conflict == :update
+        targets.each { |name| keys << name }
+      elsif columns.include?("id")
+        keys << "id"
+      end
+      if !auto && keys.empty?
+        message = "#{caller_name}: returning: needs an id column on this database (it has no RETURNING)"
+        raise ArgumentError, message
+      end
+
+      key_positions = Array.new(0) { 0 }
+      keys.each { |name| key_positions << columns.index(name).to_i }
+      quoted_table = Cybertrain::DB::Dialect.quote_ident(table)
+      selected = Array.new(0) { "" }
+      returned.each { |name| selected << Cybertrain::DB::Dialect.quote_ident(name) }
+      keys.each_with_index { |name, i| selected << "#{Cybertrain::DB::Dialect.quote_ident(name)} AS cybertrain_k#{i}" }
+      select_list = selected.join(", ")
+      id_column = Cybertrain::DB::Dialect.quote_ident("id")
+
+      Cybertrain::DB.transaction do |c|
+        k = 0
+        while k < statements.size
+          binds = bind_sets[k]
+          count = binds.size / columns.size
+          done = false
+          if auto
+            Cybertrain::DB::Dialect.bulk_writes_mark_insert_id(c)
+            c.execute(statements[k], binds)
+            first_id = Cybertrain::DB::Dialect.bulk_writes_first_insert_id(c)
+            window = Array.new(0) { Model.bulk_empty_row }
+            window.clear
+            if first_id > 0
+              sql = "SELECT #{select_list} FROM #{quoted_table} WHERE #{id_column} >= ? AND #{id_column} < ? " \
+                    "ORDER BY #{id_column}"
+              found = c.execute(sql, Cybertrain::Cast.binds(first_id, first_id + count))
+              found.each { |row| window << Model.bulk_returned_row(row, returned, returned_types) }
+            end
+            if window.size == count || skips || keys.empty?
+              window.each { |row| out << row }
+              done = true
+            end
+          end
+          unless done
+            # Read before the statement only where a collision leaves the
+            # row as it is (and so answers nothing for it).
+            before = Model.bulk_index_rows(Array.new(0) { Model.bulk_found_row }, keys.size)
+            before = Model.bulk_key_index(c, quoted_table, select_list, keys, key_positions, binds, columns.size) if skips && !auto
+            c.execute(statements[k], binds) unless auto
+            found = Model.bulk_key_rows(c, quoted_table, select_list, keys, key_positions, binds, columns.size)
+            after = Model.bulk_index_rows(found, keys.size)
+            r = 0
+            while r < count
+              key = Model.bulk_row_key(binds, r * columns.size, key_positions)
+              if after.key?(key) && !before.key?(key)
+                out << Model.bulk_returned_row(found[after[key]], returned, returned_types)
+              end
+              r += 1
+            end
+          end
+          k += 1
+        end
+      end
+      nil
+    end
+
+    # The rows of `quoted_table` whose key columns hold one of the
+    # statement's rows' key values (`binds`, `width` per row, the key
+    # columns at `positions`): `select_list` with each key as
+    # cybertrain_k<i>.
+    def self.bulk_key_rows(c, quoted_table, select_list, keys, positions, binds, width)
+      tuple = "(" + keys.map { |name| Cybertrain::DB::Dialect.quote_ident(name) }.join(", ") + ")"
+      marks = "(" + Array.new(keys.size) { "?" }.join(", ") + ")"
+      count = binds.size / width
+      key_binds = Cybertrain::Cast.empty_binds
+      r = 0
+      while r < count
+        positions.each { |p| key_binds << binds[r * width + p] }
+        r += 1
+      end
+      list = Array.new(count) { marks }.join(", ")
+      sql = "SELECT #{select_list} FROM #{quoted_table} WHERE #{tuple} IN (#{list})"
+      c.execute(sql, key_binds)
+    end
+
+    # bulk_key_rows, as bulk_index_rows indexes them.
+    def self.bulk_key_index(c, quoted_table, select_list, keys, positions, binds, width)
+      found = Model.bulk_key_rows(c, quoted_table, select_list, keys, positions, binds, width)
+      Model.bulk_index_rows(found, keys.size)
+    end
+
+    # An empty row as Connection#execute answers it (NOTES rule 9).
+    def self.bulk_found_row
+      row = { "" => [nil, 0, 0.0, ""][0] }
+      row.delete("")
+      row
+    end
+
+    # `found`'s rows by their key (bulk_row_key's text of cybertrain_k0,
+    # cybertrain_k1, ...) => position in `found`.
+    def self.bulk_index_rows(found, key_count)
+      index = { "" => 0 }
+      index.delete("")
+      found.each_with_index do |row, i|
+        parts = Array.new(0) { "" }
+        j = 0
+        while j < key_count
+          parts << Cybertrain::Cast.str(row["cybertrain_k#{j}"])
+          j += 1
+        end
+        index[parts.join("\u001f")] = i
+      end
+      index
+    end
+
+    # One input row's key as bulk_index_rows writes it: the bound values
+    # at `positions` from `offset`, each as its text.
+    def self.bulk_row_key(binds, offset, positions)
+      parts = Array.new(0) { "" }
+      positions.each { |p| parts << Cybertrain::Cast.str(binds[offset + p]) }
+      parts.join("\u001f")
     end
 
     # Raises ArgumentError when one of `names` is in `encrypted`
@@ -373,6 +539,16 @@ module Cybertrain
       return Cybertrain::DB::Dialect.bulk_writes_ignore_tail if on_conflict == :nothing
       return "" unless on_conflict == :update
 
+      updated = Model.bulk_updated_columns(columns, targets, restricted, only, record_timestamps, column_types)
+      quoted_targets = targets.map { |name| Cybertrain::DB::Dialect.quote_ident(name) }
+      Cybertrain::DB::Dialect.upsert_tail(quoted_targets, updated)
+    end
+
+    # The columns an upsert sets on a collision, quoted: each supplied
+    # column but `id`, `created_at` and the conflict target, narrowed to
+    # `only` when `restricted` (updated_at, filled by record_timestamps,
+    # stays).
+    def self.bulk_updated_columns(columns, targets, restricted, only, record_timestamps, column_types)
       updated = Array.new(0) { "" }
       columns.each do |name|
         next if name == "id" || name == "created_at" || targets.include?(name)
@@ -382,8 +558,7 @@ module Cybertrain
 
         updated << Cybertrain::DB::Dialect.quote_ident(name)
       end
-      quoted_targets = targets.map { |name| Cybertrain::DB::Dialect.quote_ident(name) }
-      Cybertrain::DB::Dialect.upsert_tail(quoted_targets, updated)
+      updated
     end
 
     # A RETURNING row with each named column cast by its type.

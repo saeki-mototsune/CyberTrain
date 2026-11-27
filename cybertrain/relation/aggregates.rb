@@ -397,7 +397,8 @@ module Cybertrain
               columns = "#{expr} AS v"
               inner = select_sql(columns, @order, @limit, @offset)
               call = Relation.aggregate_call(func, "v")
-              "SELECT #{call} AS n FROM (#{inner})"
+              sub = Cybertrain::DB::Dialect.relation_subquery_alias
+              "SELECT #{call} AS n FROM (#{inner})#{sub}"
             else
               arg = aggregate_arg(expr)
               call = Relation.aggregate_call(func, arg)
@@ -442,7 +443,8 @@ module Cybertrain
               inner = select_sql(columns, @order, @limit, @offset)
               arg = expr == "*" ? "*" : "v"
               call = Relation.aggregate_call(func, arg)
-              "SELECT k, #{call} AS n FROM (#{inner}) GROUP BY 1 ORDER BY 1"
+              sub = Cybertrain::DB::Dialect.relation_subquery_alias
+              "SELECT k, #{call} AS n FROM (#{inner})#{sub} GROUP BY 1 ORDER BY 1"
             else
               arg = aggregate_arg(expr)
               call = Relation.aggregate_call(func, arg)
