@@ -88,21 +88,28 @@ module Cybertrain
           "    @#{n}_loaded_key = #{stored}\n    nil\n  end\n"
       end
 
-      # The Relation's `includes(*names)`: each name checked by a
-      # `case` over the model's associations (no computed send, NOTES rule
-      # 1), an unknown one an ArgumentError; `preload` is the same. With no
-      # association every name is unknown.
+      # The Relation's `includes(*names)` (docs/design.md D47, D95): the
+      # Symbols, Arrays and Hashes walked into dotted paths
+      # (Relation.include_spec_paths), every path checked through the
+      # models' `check_include_path` case tables (no computed send, NOTES
+      # rule 1) before any is taken, so an unknown name at any depth is an
+      # ArgumentError naming it and its model and leaves the relation as it
+      # was; `preload` is the same. `include_path` takes one checked path:
+      # its first name is an add_include, a longer path is kept for the
+      # child's preload_nested. With no association every name is unknown.
       def self.emit_includes(model, plans)
         src = +"  def includes(*names)\n"
-        if plans.empty?
-          src << "    raise ArgumentError, \"unknown association \#{names[0]} for #{model}\" unless names.empty?\n"
-          src << "\n"
-        else
-          src << "    names.each do |name|\n"
-          src << "      case name\n"
-          src << "      when #{plans.map { |plan| ":" + plan.name }.join(", ")} then add_include(name)\n"
-          src << "      else raise ArgumentError, \"unknown association \#{name} for #{model}\"\n"
-          src << "      end\n"
+        src << "    paths = Cybertrain::Relation.include_spec_paths(names)\n"
+        src << "    i = 0\n"
+        src << "    while i < paths.size\n"
+        src << "      #{model}Relation.check_include_path(paths[i])\n"
+        src << "      i += 1\n"
+        src << "    end\n"
+        unless plans.empty?
+          src << "    i = 0\n"
+          src << "    while i < paths.size\n"
+          src << "      include_path(paths[i])\n"
+          src << "      i += 1\n"
           src << "    end\n"
         end
         src << "    self\n"
@@ -110,12 +117,102 @@ module Cybertrain
         src << "\n"
         src << "  def preload(*names) = includes(*names)\n"
         src << "\n"
+        src << emit_check_include_path(model, plans)
+        src << emit_include_path(plans)
+        src << emit_preload_nested(plans)
         src << "  def preloaded(records)\n"
         src << "    @preloaded = records\n"
         src << "    mark_records_preloaded\n"
         src << "    self\n"
         src << "  end\n"
         src << "\n"
+        src
+      end
+
+      # `check_include_path(path)`, a class method: the first name of a
+      # dotted path must be one of the model's associations, and the rest
+      # is checked by the associated model's own (recursively; a cycle
+      # such as comments.post.comments only follows the path given), by
+      # every target's for a polymorphic belongs_to.
+      def self.emit_check_include_path(model, plans)
+        src = +"  def self.check_include_path(path)\n"
+        unknown = "raise ArgumentError, \"unknown association \#{Cybertrain::Relation.path_head(path)} for #{model}\""
+        if plans.empty?
+          src << "    #{unknown}\n"
+        else
+          src << "    rest = Cybertrain::Relation.path_rest(path)\n"
+          src << "    case Cybertrain::Relation.path_head(path)\n"
+          plans.each do |plan|
+            # A polymorphic belongs_to (D94): the rest must be an
+            # association of every target, since each loads its own.
+            unless plan.polymorphic?
+              src << "    when \"#{plan.name}\" then #{plan.model}Relation.check_include_path(rest) unless rest == \"\"\n"
+              next
+            end
+            src << "    when \"#{plan.name}\"\n"
+            src << "      unless rest == \"\"\n"
+            plan.targets.each { |m| src << "        #{m}Relation.check_include_path(rest)\n" }
+            src << "      end\n"
+          end
+          src << "    else #{unknown}\n"
+          src << "    end\n"
+        end
+        src << "    nil\n"
+        src << "  end\n"
+        src << "\n"
+        src
+      end
+
+      # `include_path(path)`: one path check_include_path accepted.
+      def self.emit_include_path(plans)
+        return "" if plans.empty?
+
+        src = +"  def include_path(path)\n"
+        src << "    case Cybertrain::Relation.path_head(path)\n"
+        plans.each { |plan| src << "    when \"#{plan.name}\" then add_include(:#{plan.name})\n" }
+        src << "    end\n"
+        src << "    add_nested_include(path) if path.include?(\".\")\n"
+        src << "    nil\n"
+        src << "  end\n"
+        src << "\n"
+        src
+      end
+
+      # `preload_nested(records, paths)`: what a parent's
+      # preload_association calls on this model's relation with every
+      # record it loaded and the paths below it, so each takes the next
+      # level (one query per association, per chunk of ids). A model
+      # without associations is only ever a leaf: a nil stub.
+      def self.emit_preload_nested(plans)
+        return "  def preload_nested(records, paths) = nil\n\n" if plans.empty?
+
+        src = +"  def preload_nested(records, paths)\n"
+        src << "    i = 0\n"
+        src << "    while i < paths.size\n"
+        src << "      include_path(paths[i])\n"
+        src << "      i += 1\n"
+        src << "    end\n"
+        src << "    names = includes_names\n"
+        src << "    i = 0\n"
+        src << "    while i < names.size\n"
+        src << "      preload_association(names[i], records)\n"
+        src << "      i += 1\n"
+        src << "    end\n"
+        src << "    nil\n"
+        src << "  end\n"
+        src << "\n"
+        src
+      end
+
+      # The end of a `when` body of preload_association: the paths below
+      # this association, if any, handed with every record `loaded` holds
+      # to the associated model's preload_nested (the next level). An
+      # association kind that preloads gathers its records into `loaded`
+      # (typed by the associated model) and ends with this; a polymorphic
+      # belongs_to ends with one per target, each with its own records.
+      def self.preload_nested_tail(plan, model = plan.model, table = plan.target_table, loaded = "loaded")
+        src = +"      subs = nested_include_paths(\"#{plan.name}\")\n"
+        src << "      #{model}Relation.new(\"#{table}\").preload_nested(#{loaded}, subs) unless subs.empty?\n"
         src
       end
 
@@ -130,9 +227,11 @@ module Cybertrain
       # of at most Connection#variable_limit ids, its rows distributed into
       # every record's cache through `<name>_preload!` -- has_many an
       # Array per record (empty for a record with no child), belongs_to
-      # and has_one the row or nil -- so no reader queries again. No
-      # statement for no records. The Hashes are seeded with the concrete
-      # types (NOTES rule 9). "" without associations (the base stub).
+      # and has_one the row or nil -- so no reader queries again -- and
+      # every record loaded handed on with the paths below the association
+      # (nested includes, D95: preload_nested_tail). No statement for no
+      # records. The Hashes are seeded with the concrete types (NOTES rule
+      # 9). "" without associations (the base stub).
       def self.emit_preload_association(plans)
         return "" if plans.empty?
 
@@ -165,6 +264,7 @@ module Cybertrain
         many = plan.kind == :has_many
         fk = reader_name(plan.foreign_key)
         src = +"      ids = Array.new(0) { 0 }\n"
+        src << "      loaded = Array.new(0) { #{plan.model}.new }\n"
         if many
           src << "      groups = { 0 => Array.new(0) { #{plan.model}.new } }\n"
           src << "      groups.delete(0)\n"
@@ -178,29 +278,40 @@ module Cybertrain
         src << "        groups[records[i].id] = Array.new(0) { #{plan.model}.new }\n" if many
         src << "        i += 1\n"
         src << "      end\n"
+        # An `as:` child's type column is one more bind (D94): its chunks
+        # leave room for it under the variable limit.
+        chunk = type_condition(plan) == "" ? "step" : "chunk"
+        src << "      chunk = step - 1\n" unless chunk == "step"
         src << "      start = 0\n"
         src << "      while start < ids.size\n"
         src << "        found = #{plan.model}Relation.new(\"#{plan.target_table}\")" \
-               ".where(#{type_condition(plan)}#{plan.foreign_key}: ids[start, step])" \
+               ".where(#{type_condition(plan)}#{plan.foreign_key}: ids[start, #{chunk}])" \
                ".order(id: :asc).to_a\n"
         src << "        j = 0\n"
         src << "        while j < found.size\n"
         src << "          key = #{key_expr(plan, "found[j].#{fk}")}\n"
         if many
           src << "          list = groups[key]\n"
-          src << "          list << found[j] unless list.nil?\n"
+          src << "          unless list.nil?\n"
+          src << "            list << found[j]\n"
+          src << "            loaded << found[j]\n"
+          src << "          end\n"
         else
-          src << "          index[key] = found[j] unless index.key?(key)\n"
+          src << "          unless index.key?(key)\n"
+          src << "            index[key] = found[j]\n"
+          src << "            loaded << found[j]\n"
+          src << "          end\n"
         end
         src << "          j += 1\n"
         src << "        end\n"
-        src << "        start += step\n"
+        src << "        start += #{chunk}\n"
         src << "      end\n"
         src << "      i = 0\n"
         src << "      while i < records.size\n"
         src << "        records[i].#{plan.name}_preload!(#{many ? "groups" : "index"}[records[i].id])\n"
         src << "        i += 1\n"
         src << "      end\n"
+        src << preload_nested_tail(plan)
         src
       end
 
@@ -214,6 +325,7 @@ module Cybertrain
         src << "      seen.delete(0)\n"
         src << "      index = { 0 => #{plan.model}.new }\n"
         src << "      index.delete(0)\n"
+        src << "      loaded = Array.new(0) { #{plan.model}.new }\n"
         src << "      i = 0\n"
         src << "      while i < records.size\n"
         if plan.fk_null
@@ -235,6 +347,7 @@ module Cybertrain
         src << "        j = 0\n"
         src << "        while j < found.size\n"
         src << "          index[found[j].id] = found[j]\n"
+        src << "          loaded << found[j]\n"
         src << "          j += 1\n"
         src << "        end\n"
         src << "        start += step\n"
@@ -244,6 +357,7 @@ module Cybertrain
         src << "        records[i].#{plan.name}_preload!(index[#{key_expr(plan, "records[i].#{fk}")}])\n"
         src << "        i += 1\n"
         src << "      end\n"
+        src << preload_nested_tail(plan)
         src
       end
 
@@ -280,6 +394,7 @@ module Cybertrain
         by_fk = path.owner_key != ""
         owner = by_fk ? cast_key(path.owner_key_null, path.owner_key_integer, "raw") : "records[i].id"
         src = +"      keys = Array.new(0) { 0 }\n"
+        src << "      loaded = Array.new(0) { #{model}.new }\n"
         src << "      groups = { 0 => Array.new(0) { #{model}.new } }\n"
         src << "      groups.delete(0)\n"
         src << "      i = 0\n"
@@ -324,6 +439,7 @@ module Cybertrain
                ".order(id: :asc).to_a\n"
         src << "        j = 0\n"
         src << "        while j < found.size\n"
+        src << "          loaded << found[j]\n"
         src << "          raw_target = found[j].#{reader_name(path.target_link)}\n"
         body = +"owners = links[#{cast_key(path.target_link_null, path.target_link_integer, "raw_target")}]\n"
         body << "unless owners.nil?\n"
@@ -357,6 +473,7 @@ module Cybertrain
         end
         src << "        i += 1\n"
         src << "      end\n"
+        src << preload_nested_tail(plan)
         src
       end
 
@@ -473,6 +590,7 @@ module Cybertrain
       # keys per type, one query per target type (chunked as
       # preload_parents), and each record given its parent or nil; a record
       # whose type is no target is left unloaded, so its reader raises.
+      # Each target's parents go on to its own preload_nested (D95).
       def self.preload_polymorphic_parents(plan)
         n = plan.name
         fk = reader_name(plan.foreign_key)
@@ -484,6 +602,7 @@ module Cybertrain
           src << "      seen_#{n}_#{k}.delete(0)\n"
           src << "      index_#{n}_#{k} = { 0 => #{t}.new }\n"
           src << "      index_#{n}_#{k}.delete(0)\n"
+          src << "      loaded_#{n}_#{k} = Array.new(0) { #{t}.new }\n"
         end
         src << "      i = 0\n"
         src << "      while i < records.size\n"
@@ -507,6 +626,7 @@ module Cybertrain
           src << "        j = 0\n"
           src << "        while j < found_#{n}_#{k}.size\n"
           src << "          index_#{n}_#{k}[found_#{n}_#{k}[j].id] = found_#{n}_#{k}[j]\n"
+          src << "          loaded_#{n}_#{k} << found_#{n}_#{k}[j]\n"
           src << "          j += 1\n"
           src << "        end\n"
           src << "        start += step\n"
@@ -523,6 +643,9 @@ module Cybertrain
         src << "        end\n"
         src << "        i += 1\n"
         src << "      end\n"
+        plan.targets.each_with_index do |t, k|
+          src << preload_nested_tail(plan, t, plan.target_tables[k], "loaded_#{n}_#{k}")
+        end
         src
       end
 

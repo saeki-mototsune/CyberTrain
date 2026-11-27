@@ -1,5 +1,5 @@
 ---
-source_sha256: d1e39028620ef33e05a089da3b23616f1a2fd68d4886e138eb24a18c42c4b297
+source_sha256: 9448b08f2105bfebf96da9fa441104f830033615cec5905c22830b88988af371
 ---
 # Modèles et base de données
 
@@ -767,10 +767,33 @@ nil, sans autre requête. Sur un `has_many` préchargé, `to_a`, `each`,
 `first`, `last`, `size` et `empty?` répondent depuis la mémoire (les enfants
 dans l’ordre des id)&nbsp;; `count` et `exists?` interrogent toujours la
 base, et une méthode de chaînage (`where`, `order`, ...) abandonne le
-préchargement et interroge comme d’habitude. Un seul niveau
-(`includes(comments: :author)` n’existe pas), et un enfant préchargé n’a pas
-son parent renseigné (`comment.article` le lit). `eager_load` et `joins` ne
-sont pas disponibles.
+préchargement et interroge comme d’habitude. Un enfant préchargé n’a pas
+son parent renseigné (`comment.article` le lit, ou préchargez-le aussi,
+ci-dessous). `eager_load` et `joins` ne sont pas disponibles.
+
+Les associations imbriquées prennent les formes Hash et Array de Rails, à
+n’importe quelle profondeur&nbsp;:
+
+```ruby
+Article.includes(comments: :author)                        # trois requêtes
+Article.includes(comments: [:author, :likes])              # quatre
+Article.includes(:author, comments: { author: :profile })  # cinq
+Comment.preload(article: { author: :profile })             # quatre
+```
+
+Chaque niveau ajoute une requête, quel que soit le nombre d’enregistrements
+au-dessus (une par lot d’id, pour un niveau qui a plus d’id que SQLite n’en
+lie dans une instruction)&nbsp;: les commentaires de tous les articles, puis les auteurs de
+tous ces commentaires. Un niveau sans rien à charger (aucun commentaire, ou
+des parents tous nil) n’en exécute aucune. Un second `includes` sur la même
+relation s’ajoute au premier. Un nom qui n’est pas une association du modèle
+à ce niveau lève `ArgumentError` (`unknown association nope for Comment`)
+à l’appel d’`includes`, avant toute requête&nbsp;; la vérification a lieu à
+l’exécution, pas dans le générateur (`docs/design.md` D95). Sous un
+`belongs_to` polymorphe, chaque type de parent ajoute une requête, et le
+chemin doit être une association de chaque type que nomment les
+déclarations `as:`. Une [association through](#through-associations)
+s’imbrique comme les autres, à deux requêtes pour son niveau.
 
 ## Validations
 

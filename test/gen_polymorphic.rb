@@ -147,7 +147,10 @@ test "has_many and has_one with as: match the children by type and key" do
   src = emit_poly("posts", poly_infos)
   assert_includes src, "    rel = CommentRelation.new(\"comments\").where(commentable_type: \"Post\", commentable_id: @id)\n"
   assert_includes src, "    CommentRelation.new(\"comments\").where(commentable_type: \"Post\", commentable_id: @id).destroy_all\n"
-  assert_includes src, ".where(commentable_type: \"Post\", commentable_id: ids[start, step]).order(id: :asc).to_a\n"
+  # The type column is one more bind: each chunk of ids leaves room for it.
+  assert_includes src, "      chunk = step - 1\n"
+  assert_includes src, ".where(commentable_type: \"Post\", commentable_id: ids[start, chunk]).order(id: :asc).to_a\n"
+  assert_includes src, "        start += chunk\n"
   photo = emit_poly("photos", poly_infos)
   assert_includes photo, "    Comment.find_by(commentable_type: \"Photo\", commentable_id: @id)\n"
 end

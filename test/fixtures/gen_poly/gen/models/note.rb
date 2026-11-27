@@ -46,16 +46,57 @@ class NoteRelation < Cybertrain::Relation
   def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
   def includes(*names)
-    names.each do |name|
-      case name
-      when :notable then add_include(name)
-      else raise ArgumentError, "unknown association #{name} for Note"
-      end
+    paths = Cybertrain::Relation.include_spec_paths(names)
+    i = 0
+    while i < paths.size
+      NoteRelation.check_include_path(paths[i])
+      i += 1
+    end
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
     end
     self
   end
 
   def preload(*names) = includes(*names)
+
+  def self.check_include_path(path)
+    rest = Cybertrain::Relation.path_rest(path)
+    case Cybertrain::Relation.path_head(path)
+    when "notable"
+      unless rest == ""
+        PhotoRelation.check_include_path(rest)
+        PostRelation.check_include_path(rest)
+      end
+    else raise ArgumentError, "unknown association #{Cybertrain::Relation.path_head(path)} for Note"
+    end
+    nil
+  end
+
+  def include_path(path)
+    case Cybertrain::Relation.path_head(path)
+    when "notable" then add_include(:notable)
+    end
+    add_nested_include(path) if path.include?(".")
+    nil
+  end
+
+  def preload_nested(records, paths)
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
+    end
+    names = includes_names
+    i = 0
+    while i < names.size
+      preload_association(names[i], records)
+      i += 1
+    end
+    nil
+  end
 
   def preloaded(records)
     @preloaded = records
@@ -188,11 +229,13 @@ class NoteRelation < Cybertrain::Relation
       seen_notable_0.delete(0)
       index_notable_0 = { 0 => Photo.new }
       index_notable_0.delete(0)
+      loaded_notable_0 = Array.new(0) { Photo.new }
       ids_notable_1 = Array.new(0) { 0 }
       seen_notable_1 = { 0 => true }
       seen_notable_1.delete(0)
       index_notable_1 = { 0 => Post.new }
       index_notable_1.delete(0)
+      loaded_notable_1 = Array.new(0) { Post.new }
       i = 0
       while i < records.size
         raw_type = records[i].notable_type
@@ -219,6 +262,7 @@ class NoteRelation < Cybertrain::Relation
         j = 0
         while j < found_notable_0.size
           index_notable_0[found_notable_0[j].id] = found_notable_0[j]
+          loaded_notable_0 << found_notable_0[j]
           j += 1
         end
         start += step
@@ -229,6 +273,7 @@ class NoteRelation < Cybertrain::Relation
         j = 0
         while j < found_notable_1.size
           index_notable_1[found_notable_1[j].id] = found_notable_1[j]
+          loaded_notable_1 << found_notable_1[j]
           j += 1
         end
         start += step
@@ -246,6 +291,10 @@ class NoteRelation < Cybertrain::Relation
         end
         i += 1
       end
+      subs = nested_include_paths("notable")
+      PhotoRelation.new("photos").preload_nested(loaded_notable_0, subs) unless subs.empty?
+      subs = nested_include_paths("notable")
+      PostRelation.new("posts").preload_nested(loaded_notable_1, subs) unless subs.empty?
     end
     nil
   end

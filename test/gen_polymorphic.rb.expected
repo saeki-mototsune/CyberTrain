@@ -10,4 +10,4 @@ ok   a polymorphic belongs_to that no model answers stops the generator
 ok   the polymorphic columns must exist
 ok   dependent: :nullify with as: needs a nullable type column
 ok   a polymorphic belongs_to on nullable columns answers nil for a nil type or key
-12 tests, 64 assertions, 0 failures
+12 tests, 66 assertions, 0 failures

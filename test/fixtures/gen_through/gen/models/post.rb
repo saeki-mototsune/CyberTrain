@@ -45,16 +45,63 @@ class PostRelation < Cybertrain::Relation
   def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
   def includes(*names)
-    names.each do |name|
-      case name
-      when :author, :taggings, :comments, :tags, :labels, :co_posts then add_include(name)
-      else raise ArgumentError, "unknown association #{name} for Post"
-      end
+    paths = Cybertrain::Relation.include_spec_paths(names)
+    i = 0
+    while i < paths.size
+      PostRelation.check_include_path(paths[i])
+      i += 1
+    end
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
     end
     self
   end
 
   def preload(*names) = includes(*names)
+
+  def self.check_include_path(path)
+    rest = Cybertrain::Relation.path_rest(path)
+    case Cybertrain::Relation.path_head(path)
+    when "author" then AuthorRelation.check_include_path(rest) unless rest == ""
+    when "taggings" then TaggingRelation.check_include_path(rest) unless rest == ""
+    when "comments" then CommentRelation.check_include_path(rest) unless rest == ""
+    when "tags" then TagRelation.check_include_path(rest) unless rest == ""
+    when "labels" then TagRelation.check_include_path(rest) unless rest == ""
+    when "co_posts" then PostRelation.check_include_path(rest) unless rest == ""
+    else raise ArgumentError, "unknown association #{Cybertrain::Relation.path_head(path)} for Post"
+    end
+    nil
+  end
+
+  def include_path(path)
+    case Cybertrain::Relation.path_head(path)
+    when "author" then add_include(:author)
+    when "taggings" then add_include(:taggings)
+    when "comments" then add_include(:comments)
+    when "tags" then add_include(:tags)
+    when "labels" then add_include(:labels)
+    when "co_posts" then add_include(:co_posts)
+    end
+    add_nested_include(path) if path.include?(".")
+    nil
+  end
+
+  def preload_nested(records, paths)
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
+    end
+    names = includes_names
+    i = 0
+    while i < names.size
+      preload_association(names[i], records)
+      i += 1
+    end
+    nil
+  end
 
   def preloaded(records)
     @preloaded = records
@@ -187,6 +234,7 @@ class PostRelation < Cybertrain::Relation
       seen.delete(0)
       index = { 0 => Author.new }
       index.delete(0)
+      loaded = Array.new(0) { Author.new }
       i = 0
       while i < records.size
         raw = records[i].author_id
@@ -203,6 +251,7 @@ class PostRelation < Cybertrain::Relation
         j = 0
         while j < found.size
           index[found[j].id] = found[j]
+          loaded << found[j]
           j += 1
         end
         start += step
@@ -212,8 +261,11 @@ class PostRelation < Cybertrain::Relation
         records[i].author_preload!(index[Cybertrain::Cast.int(records[i].author_id)])
         i += 1
       end
+      subs = nested_include_paths("author")
+      AuthorRelation.new("authors").preload_nested(loaded, subs) unless subs.empty?
     when :taggings
       ids = Array.new(0) { 0 }
+      loaded = Array.new(0) { Tagging.new }
       groups = { 0 => Array.new(0) { Tagging.new } }
       groups.delete(0)
       i = 0
@@ -229,7 +281,10 @@ class PostRelation < Cybertrain::Relation
         while j < found.size
           key = found[j].post_id
           list = groups[key]
-          list << found[j] unless list.nil?
+          unless list.nil?
+            list << found[j]
+            loaded << found[j]
+          end
           j += 1
         end
         start += step
@@ -239,8 +294,11 @@ class PostRelation < Cybertrain::Relation
         records[i].taggings_preload!(groups[records[i].id])
         i += 1
       end
+      subs = nested_include_paths("taggings")
+      TaggingRelation.new("taggings").preload_nested(loaded, subs) unless subs.empty?
     when :comments
       ids = Array.new(0) { 0 }
+      loaded = Array.new(0) { Comment.new }
       groups = { 0 => Array.new(0) { Comment.new } }
       groups.delete(0)
       i = 0
@@ -256,7 +314,10 @@ class PostRelation < Cybertrain::Relation
         while j < found.size
           key = found[j].post_id
           list = groups[key]
-          list << found[j] unless list.nil?
+          unless list.nil?
+            list << found[j]
+            loaded << found[j]
+          end
           j += 1
         end
         start += step
@@ -266,8 +327,11 @@ class PostRelation < Cybertrain::Relation
         records[i].comments_preload!(groups[records[i].id])
         i += 1
       end
+      subs = nested_include_paths("comments")
+      CommentRelation.new("comments").preload_nested(loaded, subs) unless subs.empty?
     when :tags
       keys = Array.new(0) { 0 }
+      loaded = Array.new(0) { Tag.new }
       groups = { 0 => Array.new(0) { Tag.new } }
       groups.delete(0)
       i = 0
@@ -307,6 +371,7 @@ class PostRelation < Cybertrain::Relation
         found = TagRelation.new("tags").where(id: targets[start, step]).order(id: :asc).to_a
         j = 0
         while j < found.size
+          loaded << found[j]
           raw_target = found[j].id
           owners = links[raw_target]
           unless owners.nil?
@@ -326,8 +391,11 @@ class PostRelation < Cybertrain::Relation
         records[i].tags_preload!(groups[records[i].id])
         i += 1
       end
+      subs = nested_include_paths("tags")
+      TagRelation.new("tags").preload_nested(loaded, subs) unless subs.empty?
     when :labels
       keys = Array.new(0) { 0 }
+      loaded = Array.new(0) { Tag.new }
       groups = { 0 => Array.new(0) { Tag.new } }
       groups.delete(0)
       i = 0
@@ -367,6 +435,7 @@ class PostRelation < Cybertrain::Relation
         found = TagRelation.new("tags").where(id: targets[start, step]).order(id: :asc).to_a
         j = 0
         while j < found.size
+          loaded << found[j]
           raw_target = found[j].id
           owners = links[raw_target]
           unless owners.nil?
@@ -386,8 +455,11 @@ class PostRelation < Cybertrain::Relation
         records[i].labels_preload!(groups[records[i].id])
         i += 1
       end
+      subs = nested_include_paths("labels")
+      TagRelation.new("tags").preload_nested(loaded, subs) unless subs.empty?
     when :co_posts
       keys = Array.new(0) { 0 }
+      loaded = Array.new(0) { Post.new }
       groups = { 0 => Array.new(0) { Post.new } }
       groups.delete(0)
       i = 0
@@ -430,6 +502,7 @@ class PostRelation < Cybertrain::Relation
         found = PostRelation.new("posts").where(author_id: targets[start, step]).order(id: :asc).to_a
         j = 0
         while j < found.size
+          loaded << found[j]
           raw_target = found[j].author_id
           unless raw_target.nil?
             owners = links[Cybertrain::Cast.int(raw_target)]
@@ -456,6 +529,8 @@ class PostRelation < Cybertrain::Relation
         end
         i += 1
       end
+      subs = nested_include_paths("co_posts")
+      PostRelation.new("posts").preload_nested(loaded, subs) unless subs.empty?
     end
     nil
   end

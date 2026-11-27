@@ -7,4 +7,6 @@ ok   has_many as: reads the children of its own type only
 ok   includes preloads a polymorphic belongs_to per type, and the has_many and has_one with as:
 ok   dependent: on has_many / has_one as: touches the children of its own type only
 ok   read_association answers the polymorphic parent to templates
-9 tests, 50 assertions, 0 failures
+ok   includes nests below a polymorphic belongs_to, one statement per target type found, and below has_many as:
+ok   a path below a polymorphic belongs_to must be an association of every target
+11 tests, 61 assertions, 0 failures

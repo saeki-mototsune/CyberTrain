@@ -180,6 +180,24 @@ test "includes of each kind of path fills every record, empty where nothing matc
   assert_equal 8, statements - before
 end
 
+test "nested includes go below and through a through has_many, one level at a time (D95)" do
+  seed
+  before = statements
+  # posts, then taggings and tags, then each tag's taggings and posts.
+  posts = Post.order(id: :asc).includes(tags: :posts).to_a
+  assert_equal 5, statements - before
+  before = statements
+  assert_equal [["ruby:p1", "sql:p1,p2"], ["sql:p1,p2"], ["web:p3"]],
+               posts.map { |p| p.tags.to_a.map { |t| "#{t.name}:#{t.posts.to_a.map { |q| q.title }.join(",")}" } }
+  assert_equal 0, statements - before
+  # authors, posts, then the posts' taggings and tags.
+  authors = Author.order(id: :asc).includes(posts: :tags).to_a
+  assert_equal 4, statements - before
+  assert_equal [[["ruby", "sql"], ["sql"]], []], authors.map { |a| a.posts.to_a.map { |q| tag_names(q.tags.to_a) } }
+  assert_equal 4, statements - before
+  assert_equal "unknown association nope for Tag", assert_raises("ArgumentError") { Post.includes(tags: :nope) }
+end
+
 test "reload drops a through has_many's preload" do
   seed
   p1 = Post.order(id: :asc).includes(:tags).to_a[0]

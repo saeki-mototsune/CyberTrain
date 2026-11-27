@@ -1,5 +1,5 @@
 ---
-source_sha256: d1e39028620ef33e05a089da3b23616f1a2fd68d4886e138eb24a18c42c4b297
+source_sha256: 9448b08f2105bfebf96da9fa441104f830033615cec5905c22830b88988af371
 ---
 # 模型与数据库
 
@@ -403,7 +403,18 @@ Comment.includes(:commentable).to_a  # one query per type found
 <% end %>
 ```
 
-`includes(*names)`（以及等同的 `preload`）在加载记录时为每个关联多执行一次查询（`has_many` 或 `has_one` 为 `Comment.where(article_id: ids)`，`belongs_to` 为按 id 查父记录，[through 关联](#through-associations)为两次），所以遍历 `article.comments` 或 `comment.article` 的循环自己不执行查询。没有子记录的记录得到空列表，缺失的父记录为 nil，不再查询。在预加载过的 `has_many` 上，`to_a`、`each`、`first`、`last`、`size` 和 `empty?` 直接从内存作答（子记录按 id 排序）；`count` 和 `exists?` 仍然查询，串联方法（`where`、`order` 等）会丢弃预加载，照常查询。只支持一层（没有 `includes(comments: :author)`），预加载的子记录不会设置其父记录（`comment.article` 会去读取）。不提供 `eager_load` 和 `joins`。
+`includes(*names)`（以及等同的 `preload`）在加载记录时为每个关联多执行一次查询（`has_many` 或 `has_one` 为 `Comment.where(article_id: ids)`，`belongs_to` 为按 id 查父记录，[through 关联](#through-associations)为两次），所以遍历 `article.comments` 或 `comment.article` 的循环自己不执行查询。没有子记录的记录得到空列表，缺失的父记录为 nil，不再查询。在预加载过的 `has_many` 上，`to_a`、`each`、`first`、`last`、`size` 和 `empty?` 直接从内存作答（子记录按 id 排序）；`count` 和 `exists?` 仍然查询，串联方法（`where`、`order` 等）会丢弃预加载，照常查询。预加载的子记录不会设置其父记录（`comment.article` 会去读取，也可以像下面那样一并预加载）。不提供 `eager_load` 和 `joins`。
+
+嵌套关联采用 Rails 的 Hash 和 Array 写法，深度不限：
+
+```ruby
+Article.includes(comments: :author)                        # 三次查询
+Article.includes(comments: [:author, :likes])              # 四次
+Article.includes(:author, comments: { author: :profile })  # 五次
+Comment.preload(article: { author: :profile })             # 四次
+```
+
+每一层多一次查询，与上一层的记录数无关（若某层的 id 多于 SQLite 一条语句可绑定的数量，则每一批 id 一次）：先是所有文章的评论，再是这些评论的所有作者。没有可加载内容的层（没有评论，或父记录全为 nil）不执行查询。对同一个 relation 再次调用 `includes` 会追加到前一次之上。在该层模型中不是关联的名字，会在调用 `includes` 时、任何查询之前抛出 `ArgumentError`（`unknown association nope for Comment`）；检查发生在运行时，而不是由生成器进行（`docs/design.md` D95）。在多态 `belongs_to` 之下，每种父类型多一次查询，且路径必须是 `as:` 声明的每种类型的关联。[through 关联](#through-associations)与其他关联一样可以嵌套，该层为两次查询。
 
 ## 校验
 

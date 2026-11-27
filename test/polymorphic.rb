@@ -183,4 +183,42 @@ test "read_association answers the polymorphic parent to templates" do
   assert Comment.new.attribute_or_method?(:commentable)
 end
 
+# Nested includes through polymorphic associations (docs/design.md D95).
+def poly_statements = Cybertrain::DB.with { |c| c.statements_run }
+
+test "includes nests below a polymorphic belongs_to, one statement per target type found, and below has_many as:" do
+  reset_poly_tables
+  post = Post.create(title: "p")
+  photo = Photo.create(url: "u")
+  Comment.create(body: "a", commentable: post)
+  Comment.create(body: "b", commentable: photo)
+  Comment.create(body: "c", commentable: post)
+  before = poly_statements
+  # comments, then posts and photos, then the comments of each.
+  comments = Comment.order(id: :asc).includes(commentable: :comments).to_a
+  assert_equal 5, poly_statements - before
+  counts = comments.map do |c|
+    parent = c.commentable
+    case parent
+    when Post then "#{c.body}:post #{parent.comments.size}"
+    when Photo then "#{c.body}:photo #{parent.comments.size}"
+    else "-"
+    end
+  end
+  assert_equal ["a:post 2", "b:photo 1", "c:post 2"], counts
+  assert_equal 5, poly_statements - before
+  # has_many as: then the polymorphic belongs_to back: posts, comments, posts.
+  posts = Post.includes(comments: :commentable).to_a
+  assert_equal 8, poly_statements - before
+  assert_equal ["Post 1 p", "Post 1 p"], posts[0].comments.to_a.map { |c| described(c.commentable) }
+  assert_equal 8, poly_statements - before
+end
+
+test "a path below a polymorphic belongs_to must be an association of every target" do
+  before = poly_statements
+  assert_equal "unknown association note for Photo", assert_raises("ArgumentError") { Comment.includes(commentable: :note) }
+  assert_equal "unknown association nope for Photo", assert_raises("ArgumentError") { Note.preload(notable: :nope) }
+  assert_equal 0, poly_statements - before
+end
+
 Cybertrain::Test.run!

@@ -45,16 +45,55 @@ class PostRelation < Cybertrain::Relation
   def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
   def includes(*names)
-    names.each do |name|
-      case name
-      when :comments, :note then add_include(name)
-      else raise ArgumentError, "unknown association #{name} for Post"
-      end
+    paths = Cybertrain::Relation.include_spec_paths(names)
+    i = 0
+    while i < paths.size
+      PostRelation.check_include_path(paths[i])
+      i += 1
+    end
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
     end
     self
   end
 
   def preload(*names) = includes(*names)
+
+  def self.check_include_path(path)
+    rest = Cybertrain::Relation.path_rest(path)
+    case Cybertrain::Relation.path_head(path)
+    when "comments" then CommentRelation.check_include_path(rest) unless rest == ""
+    when "note" then NoteRelation.check_include_path(rest) unless rest == ""
+    else raise ArgumentError, "unknown association #{Cybertrain::Relation.path_head(path)} for Post"
+    end
+    nil
+  end
+
+  def include_path(path)
+    case Cybertrain::Relation.path_head(path)
+    when "comments" then add_include(:comments)
+    when "note" then add_include(:note)
+    end
+    add_nested_include(path) if path.include?(".")
+    nil
+  end
+
+  def preload_nested(records, paths)
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
+    end
+    names = includes_names
+    i = 0
+    while i < names.size
+      preload_association(names[i], records)
+      i += 1
+    end
+    nil
+  end
 
   def preloaded(records)
     @preloaded = records
@@ -183,6 +222,7 @@ class PostRelation < Cybertrain::Relation
     case name
     when :comments
       ids = Array.new(0) { 0 }
+      loaded = Array.new(0) { Comment.new }
       groups = { 0 => Array.new(0) { Comment.new } }
       groups.delete(0)
       i = 0
@@ -191,25 +231,32 @@ class PostRelation < Cybertrain::Relation
         groups[records[i].id] = Array.new(0) { Comment.new }
         i += 1
       end
+      chunk = step - 1
       start = 0
       while start < ids.size
-        found = CommentRelation.new("comments").where(commentable_type: "Post", commentable_id: ids[start, step]).order(id: :asc).to_a
+        found = CommentRelation.new("comments").where(commentable_type: "Post", commentable_id: ids[start, chunk]).order(id: :asc).to_a
         j = 0
         while j < found.size
           key = found[j].commentable_id
           list = groups[key]
-          list << found[j] unless list.nil?
+          unless list.nil?
+            list << found[j]
+            loaded << found[j]
+          end
           j += 1
         end
-        start += step
+        start += chunk
       end
       i = 0
       while i < records.size
         records[i].comments_preload!(groups[records[i].id])
         i += 1
       end
+      subs = nested_include_paths("comments")
+      CommentRelation.new("comments").preload_nested(loaded, subs) unless subs.empty?
     when :note
       ids = Array.new(0) { 0 }
+      loaded = Array.new(0) { Note.new }
       index = { 0 => Note.new }
       index.delete(0)
       i = 0
@@ -217,22 +264,28 @@ class PostRelation < Cybertrain::Relation
         ids << records[i].id
         i += 1
       end
+      chunk = step - 1
       start = 0
       while start < ids.size
-        found = NoteRelation.new("notes").where(notable_type: "Post", notable_id: ids[start, step]).order(id: :asc).to_a
+        found = NoteRelation.new("notes").where(notable_type: "Post", notable_id: ids[start, chunk]).order(id: :asc).to_a
         j = 0
         while j < found.size
           key = Cybertrain::Cast.int(found[j].notable_id)
-          index[key] = found[j] unless index.key?(key)
+          unless index.key?(key)
+            index[key] = found[j]
+            loaded << found[j]
+          end
           j += 1
         end
-        start += step
+        start += chunk
       end
       i = 0
       while i < records.size
         records[i].note_preload!(index[records[i].id])
         i += 1
       end
+      subs = nested_include_paths("note")
+      NoteRelation.new("notes").preload_nested(loaded, subs) unless subs.empty?
     end
     nil
   end

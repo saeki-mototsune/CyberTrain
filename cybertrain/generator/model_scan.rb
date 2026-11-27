@@ -191,6 +191,7 @@ module Cybertrain
         time_cells cell_rows refuse_having select_from_sql having_sql
         add_include includes_names records_preloaded? mark_records_preloaded drop_preloaded preload_association
         copy_chain_to take_chain take_having
+        add_nested_include nested_include_paths take_nested_includes include_path preload_nested
         includes preload preloaded empty?
         where not where_sql where_like where_between or order order_sql limit offset distinct none to_a each
         first last find_by find_by! find find_or_create_by find_or_initialize_by destroy_all find_each size

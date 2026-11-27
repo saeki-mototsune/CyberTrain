@@ -47,7 +47,7 @@ module Cybertrain
   # {.has_many} / {.has_one} / {.belongs_to} lines in the app/models file.
   #
   # Not available (compared with ActiveRecord): polymorphic associations,
-  # `has_many :through`, nested `includes`, `eager_load` and `joins`,
+  # `has_many :through`, `eager_load` and `joins`,
   # `select`, a one-column `pluck` (relations have `pluck_str` /
   # `pluck_int` / `pluck_float`; `pluck` takes two or more columns), a
   # polymorphic `sum` / `minimum` / `maximum` (they come typed: `sum_int`,

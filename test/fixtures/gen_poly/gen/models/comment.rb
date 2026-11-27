@@ -47,16 +47,57 @@ class CommentRelation < Cybertrain::Relation
   def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
   def includes(*names)
-    names.each do |name|
-      case name
-      when :commentable then add_include(name)
-      else raise ArgumentError, "unknown association #{name} for Comment"
-      end
+    paths = Cybertrain::Relation.include_spec_paths(names)
+    i = 0
+    while i < paths.size
+      CommentRelation.check_include_path(paths[i])
+      i += 1
+    end
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
     end
     self
   end
 
   def preload(*names) = includes(*names)
+
+  def self.check_include_path(path)
+    rest = Cybertrain::Relation.path_rest(path)
+    case Cybertrain::Relation.path_head(path)
+    when "commentable"
+      unless rest == ""
+        PhotoRelation.check_include_path(rest)
+        PostRelation.check_include_path(rest)
+      end
+    else raise ArgumentError, "unknown association #{Cybertrain::Relation.path_head(path)} for Comment"
+    end
+    nil
+  end
+
+  def include_path(path)
+    case Cybertrain::Relation.path_head(path)
+    when "commentable" then add_include(:commentable)
+    end
+    add_nested_include(path) if path.include?(".")
+    nil
+  end
+
+  def preload_nested(records, paths)
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
+    end
+    names = includes_names
+    i = 0
+    while i < names.size
+      preload_association(names[i], records)
+      i += 1
+    end
+    nil
+  end
 
   def preloaded(records)
     @preloaded = records
@@ -189,11 +230,13 @@ class CommentRelation < Cybertrain::Relation
       seen_commentable_0.delete(0)
       index_commentable_0 = { 0 => Photo.new }
       index_commentable_0.delete(0)
+      loaded_commentable_0 = Array.new(0) { Photo.new }
       ids_commentable_1 = Array.new(0) { 0 }
       seen_commentable_1 = { 0 => true }
       seen_commentable_1.delete(0)
       index_commentable_1 = { 0 => Post.new }
       index_commentable_1.delete(0)
+      loaded_commentable_1 = Array.new(0) { Post.new }
       i = 0
       while i < records.size
         raw_type = records[i].commentable_type
@@ -220,6 +263,7 @@ class CommentRelation < Cybertrain::Relation
         j = 0
         while j < found_commentable_0.size
           index_commentable_0[found_commentable_0[j].id] = found_commentable_0[j]
+          loaded_commentable_0 << found_commentable_0[j]
           j += 1
         end
         start += step
@@ -230,6 +274,7 @@ class CommentRelation < Cybertrain::Relation
         j = 0
         while j < found_commentable_1.size
           index_commentable_1[found_commentable_1[j].id] = found_commentable_1[j]
+          loaded_commentable_1 << found_commentable_1[j]
           j += 1
         end
         start += step
@@ -247,6 +292,10 @@ class CommentRelation < Cybertrain::Relation
         end
         i += 1
       end
+      subs = nested_include_paths("commentable")
+      PhotoRelation.new("photos").preload_nested(loaded_commentable_0, subs) unless subs.empty?
+      subs = nested_include_paths("commentable")
+      PostRelation.new("posts").preload_nested(loaded_commentable_1, subs) unless subs.empty?
     end
     nil
   end

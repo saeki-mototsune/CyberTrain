@@ -45,16 +45,57 @@ class CommentRelation < Cybertrain::Relation
   def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
   def includes(*names)
-    names.each do |name|
-      case name
-      when :post, :thread_comments, :writers then add_include(name)
-      else raise ArgumentError, "unknown association #{name} for Comment"
-      end
+    paths = Cybertrain::Relation.include_spec_paths(names)
+    i = 0
+    while i < paths.size
+      CommentRelation.check_include_path(paths[i])
+      i += 1
+    end
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
     end
     self
   end
 
   def preload(*names) = includes(*names)
+
+  def self.check_include_path(path)
+    rest = Cybertrain::Relation.path_rest(path)
+    case Cybertrain::Relation.path_head(path)
+    when "post" then PostRelation.check_include_path(rest) unless rest == ""
+    when "thread_comments" then CommentRelation.check_include_path(rest) unless rest == ""
+    when "writers" then AuthorRelation.check_include_path(rest) unless rest == ""
+    else raise ArgumentError, "unknown association #{Cybertrain::Relation.path_head(path)} for Comment"
+    end
+    nil
+  end
+
+  def include_path(path)
+    case Cybertrain::Relation.path_head(path)
+    when "post" then add_include(:post)
+    when "thread_comments" then add_include(:thread_comments)
+    when "writers" then add_include(:writers)
+    end
+    add_nested_include(path) if path.include?(".")
+    nil
+  end
+
+  def preload_nested(records, paths)
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
+    end
+    names = includes_names
+    i = 0
+    while i < names.size
+      preload_association(names[i], records)
+      i += 1
+    end
+    nil
+  end
 
   def preloaded(records)
     @preloaded = records
@@ -187,6 +228,7 @@ class CommentRelation < Cybertrain::Relation
       seen.delete(0)
       index = { 0 => Post.new }
       index.delete(0)
+      loaded = Array.new(0) { Post.new }
       i = 0
       while i < records.size
         key = records[i].post_id
@@ -202,6 +244,7 @@ class CommentRelation < Cybertrain::Relation
         j = 0
         while j < found.size
           index[found[j].id] = found[j]
+          loaded << found[j]
           j += 1
         end
         start += step
@@ -211,8 +254,11 @@ class CommentRelation < Cybertrain::Relation
         records[i].post_preload!(index[records[i].post_id])
         i += 1
       end
+      subs = nested_include_paths("post")
+      PostRelation.new("posts").preload_nested(loaded, subs) unless subs.empty?
     when :thread_comments
       keys = Array.new(0) { 0 }
+      loaded = Array.new(0) { Comment.new }
       groups = { 0 => Array.new(0) { Comment.new } }
       groups.delete(0)
       i = 0
@@ -253,6 +299,7 @@ class CommentRelation < Cybertrain::Relation
         found = CommentRelation.new("comments").where(post_id: targets[start, step]).order(id: :asc).to_a
         j = 0
         while j < found.size
+          loaded << found[j]
           raw_target = found[j].post_id
           owners = links[raw_target]
           unless owners.nil?
@@ -273,8 +320,11 @@ class CommentRelation < Cybertrain::Relation
         records[i].thread_comments_preload!(groups[raw])
         i += 1
       end
+      subs = nested_include_paths("thread_comments")
+      CommentRelation.new("comments").preload_nested(loaded, subs) unless subs.empty?
     when :writers
       keys = Array.new(0) { 0 }
+      loaded = Array.new(0) { Author.new }
       groups = { 0 => Array.new(0) { Author.new } }
       groups.delete(0)
       i = 0
@@ -317,6 +367,7 @@ class CommentRelation < Cybertrain::Relation
         found = AuthorRelation.new("authors").where(id: targets[start, step]).order(id: :asc).to_a
         j = 0
         while j < found.size
+          loaded << found[j]
           raw_target = found[j].id
           owners = links[raw_target]
           unless owners.nil?
@@ -337,6 +388,8 @@ class CommentRelation < Cybertrain::Relation
         records[i].writers_preload!(groups[raw])
         i += 1
       end
+      subs = nested_include_paths("writers")
+      AuthorRelation.new("authors").preload_nested(loaded, subs) unless subs.empty?
     end
     nil
   end
