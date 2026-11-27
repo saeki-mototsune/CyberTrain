@@ -2,7 +2,7 @@ require "cybertrain/cast"
 require "cybertrain/schema"
 require "cybertrain/migration"
 require "cybertrain/db/error"
-require "cybertrain/db/sqlite_ddl"
+require "cybertrain/db/ddl_text"
 
 module Cybertrain
   module DB
@@ -208,13 +208,13 @@ module Cybertrain
         # @return [String]
         def self.foreign_key_sql(column, to_table, on_delete)
           "FOREIGN KEY (#{q(column)}) REFERENCES #{q(to_table)} (#{q("id")})" +
-            Cybertrain::DB::SqliteDDL.on_delete_clause(on_delete)
+            Cybertrain::DB::DDLText.on_delete_clause(on_delete)
         end
 
         # The one ALTER TABLE a rebuild operation (op.rebuilds?) is on
         # MySQL, which changes a table in place. `definition` is the live
         # schema dumped just before (SchemaDumper): a changed column is that
-        # column with the operation applied (SqliteDDL.table_after, the same
+        # column with the operation applied (DDLText.table_after, the same
         # in-memory step SQLite rebuilds from), MODIFY'd. A removed foreign
         # key is found by its column and parent (`conn`); a removed
         # reference drops its foreign keys, every index on the column and
@@ -232,7 +232,7 @@ module Cybertrain
             message = "cannot #{op.kind} on #{table_name}: no such table"
             raise Cybertrain::DB::Error, message
           end
-          after = Cybertrain::DB::SqliteDDL.table_after(table, op)
+          after = Cybertrain::DB::DDLText.table_after(table, op)
           if op.kind == :remove_foreign_key
             names = foreign_key_names(conn, table_name, op.name, op.to_table)
             if names.empty?
@@ -260,7 +260,7 @@ module Cybertrain
         end
 
         # The names of the foreign keys from `table`.`column` (to `parent`,
-        # when it is not ""), in name order; SqliteDDL.table_after has
+        # when it is not ""), in name order; DDLText.table_after has
         # already refused a remove_foreign_key with none.
         # @return [Array<String>]
         def self.foreign_key_names(conn, table, column, parent)
