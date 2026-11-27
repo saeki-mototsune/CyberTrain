@@ -2,6 +2,7 @@ require "cybertrain/generator/source_text"
 require "cybertrain/generator/code_view"
 require "cybertrain/generator/test_scan"
 require "cybertrain/generator/models_emitter"
+require "cybertrain/generator/dialect"
 
 module Cybertrain
   module Gen
@@ -36,7 +37,7 @@ module Cybertrain
       # @param files [Array<Cybertrain::Gen::TestFile>]
       # @param data [Boolean]
       # @return [String]
-      def self.emit(root, files, data)
+      def self.emit(root, files, data, dialect = Dialect.for("sqlite"))
         problem = refusal(root, files)
         return refused_program(problem) unless problem.empty?
 
@@ -55,9 +56,9 @@ module Cybertrain
         # of jobs, mail and streams (cybertrain/test_help) need theirs, and
         # an application on cybertrain/core runs its tests unchanged
         # (docs/design.md D85).
-        out << "require \"cybertrain\"\n"
+        out << "require \"#{dialect.entry}\"\n"
         out << "require \"cybertrain/test_help\"\n"
-        out << "require \"cybertrain/test/bundle\"\n"
+        out << "require \"#{dialect.test_bundle}\"\n"
         out << "require_relative \"../config/app\"\n"
         # D19's guard before anything of the application's tests loads (a
         # support file may boot at load time).

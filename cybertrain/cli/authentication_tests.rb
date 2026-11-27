@@ -2028,10 +2028,27 @@ module Cybertrain
       end
 
       # test/controllers/accounts_controller_test.rb: the account page.
-      def self.accounts_controller_test(confirmable = false)
+      # `adapter` is "sqlite" or "mysql" (Gen::Dialect.detect): what the test
+      # checks of the foreign key the database refuses (accounts_fk_check).
+      def self.accounts_controller_test(confirmable = false, adapter = "sqlite")
         text = SourceEdit.splice(accounts_controller_test_body, "@ADDRESS_HELPERS@",
                                  SourceEdit.margin(confirmable ? accounts_test_confirm_helpers : accounts_test_address_helpers, 2))
+        text = SourceEdit.splice(text, "@FK_CHECK@", accounts_fk_check(adapter))
         SourceEdit.splice(text, "@HELPERS@", with_config_helper)
+      end
+
+      # The lines that check the refused deletion was logged for the reason
+      # the database gives. SQLite words it "FOREIGN KEY constraint failed"
+      # and the check matches that text; MySQL's message differs by version
+      # and locale, so there the check is the error class
+      # (Cybertrain::DB::ForeignKeyViolation) the same deletion raises.
+      def self.accounts_fk_check(adapter)
+        if adapter == "mysql"
+          return "      assert_includes log.string, \"account not deleted: \"\n" \
+                 "      assert_raises(Cybertrain::DB::ForeignKeyViolation) { User.find(ann.id).destroy }\n"
+        end
+
+        "      assert_includes log.string, \"account not deleted: FOREIGN KEY constraint failed\"\n"
       end
 
       def self.accounts_controller_test_body
@@ -2408,7 +2425,7 @@ module Cybertrain
                 assert signed_in?("ann@example.com")
                 assert browser_signed_in?(phone, "ann@example.com")
                 assert_includes log.string, " ERROR "
-                assert_includes log.string, "account not deleted: FOREIGN KEY constraint failed"
+                @FK_CHECK@
               ensure
                 drop_notes
               end

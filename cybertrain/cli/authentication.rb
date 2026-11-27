@@ -133,6 +133,7 @@ require "cybertrain/cli/scaffold"
 require "cybertrain/cli/build"
 require "cybertrain/cli/line_diff"
 require "cybertrain/cli/authentication_tests"
+require "cybertrain/generator/dialect"
 
 module Cybertrain
   module CLI
@@ -366,6 +367,12 @@ module Cybertrain
         bin_path = File.join(root, "bin/#{app}.rb")
         raise InvalidArgument, "#{bin_path} not found: run this inside a cybertrain app" unless File.exist?(bin_path)
         raise InvalidArgument, "#{bin_path} has no line starting with `#{MAIN_RUN_LINE}`" if SourceEdit.line_start(File.read(bin_path), MAIN_RUN_LINE) < 0
+        adapter = ""
+        begin
+          adapter = Gen::Dialect.in_source(app, File.read(bin_path))
+        rescue ArgumentError => e
+          raise InvalidArgument, e.message
+        end
 
         # Both modes declare the base_url setting in config/app.rb.
         config_path = File.join(root, "config/app.rb")
@@ -428,7 +435,7 @@ module Cybertrain
           record_file(result, root, "test/controllers/registrations_controller_test.rb", registrations_controller_test(confirmable), force)
         end
         record_file(result, root, "test/controllers/passwords_controller_test.rb", passwords_controller_test(app), force)
-        record_file(result, root, "test/controllers/accounts_controller_test.rb", accounts_controller_test(confirmable), force)
+        record_file(result, root, "test/controllers/accounts_controller_test.rb", accounts_controller_test(confirmable, adapter), force)
         record_file(result, root, "test/controllers/confirmations_controller_test.rb", confirmations_controller_test(app, invite_only), force) if confirmable
         record_file(result, root, "test/integration/remember_me_test.rb", remember_me_integration_test, force)
         record_file(result, root, "test/integration/lockout_test.rb", lockout_integration_test, force)

@@ -16,6 +16,7 @@
 require "cybertrain/generator/fixture_scan"
 require "cybertrain/generator/model_naming"
 require "cybertrain/generator/models_emitter"
+require "cybertrain/generator/dialect"
 
 module Cybertrain
   module Gen
@@ -25,7 +26,7 @@ module Cybertrain
                "# before each test, the fixtures it then inserts, and their accessors.\n".freeze
 
       # gen/test/data.rb's source for the schema's tables and the rows.
-      def self.emit(schema, rows)
+      def self.emit(schema, rows, dialect = Dialect.for("sqlite"))
         src = +HEADER
         src << "require \"cybertrain/test/test_case\"\n"
         src << "require \"cybertrain/test/database\"\n\n"
@@ -37,7 +38,7 @@ module Cybertrain
         sql = Array.new(0) { "" }
         counts = Array.new(0) { "" }
         rows.each do |r|
-          sql << TestDataEmitter.insert_sql(r)
+          sql << TestDataEmitter.insert_sql(r, dialect)
           counts << r.row_timestamps.size.to_s
         end
         src << "    FIXTURE_SQL = #{TestDataEmitter.string_array(sql, "    ")}.freeze\n"
@@ -75,9 +76,9 @@ module Cybertrain
       end
 
       # The row's INSERT statement.
-      def self.insert_sql(row)
-        columns = row.row_columns.map { |c| "\"#{c}\"" }.join(", ")
-        "INSERT INTO \"#{row.row_table}\" (#{columns}) VALUES (#{row.row_values.join(", ")})"
+      def self.insert_sql(row, dialect = Dialect.for("sqlite"))
+        columns = row.row_columns.map { |c| dialect.quote_ident(c) }.join(", ")
+        "INSERT INTO #{dialect.quote_ident(row.row_table)} (#{columns}) VALUES (#{row.row_values.join(", ")})"
       end
 
       # The tables that have an accessor (an id column and at least one

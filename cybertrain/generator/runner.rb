@@ -23,6 +23,7 @@ require "cybertrain/generator/locales_emitter"
 require "cybertrain/generator/test_scan"
 require "cybertrain/generator/tests_emitter"
 require "cybertrain/generator/test_data_emitter"
+require "cybertrain/generator/dialect"
 
 module Cybertrain
   module Gen
@@ -63,6 +64,15 @@ module Cybertrain
         refusals = ViewRequires.problems(root)
         unless refusals.empty?
           refusals.each { |line| puts line }
+          return 1
+        end
+        # The adapter the app is built with (bin/NAME.rb's first require of
+        # cybertrain): a line that names neither stops gen, nothing written.
+        dialect = Dialect.for("sqlite")
+        begin
+          dialect = Dialect.of(root)
+        rescue ArgumentError => e
+          puts e.message
           return 1
         end
         check = argv.include?("--check")
@@ -129,7 +139,7 @@ module Cybertrain
           bundle = if !test_problem.empty?
                      TestsEmitter.refused_program(test_problem)
                    elsif fixture_problem.empty?
-                     TestsEmitter.emit(root, test_files, !schema.nil?)
+                     TestsEmitter.emit(root, test_files, !schema.nil?, dialect)
                    else
                      TestsEmitter.refused_program(fixture_problem)
                    end
@@ -152,10 +162,10 @@ module Cybertrain
           validated = ModelValidation.validate_all(schema, infos, SchemaPlaces.in_app(root))
           if File.directory?("#{root}/test")
             # No rows while the fixtures are refused (gen/tests.rb aborts).
-            outputs << [TestScan::DATA_FILE, TestDataEmitter.emit(schema, fixture_rows)]
+            outputs << [TestScan::DATA_FILE, TestDataEmitter.emit(schema, fixture_rows, dialect)]
           end
           models = Array.new(0) { "" }
-          ModelsEmitter.outputs_for(validated).each do |rel, source|
+          ModelsEmitter.outputs_for(validated, dialect).each do |rel, source|
             outputs << [rel, source]
             models << rel.delete_suffix(".rb")
           end

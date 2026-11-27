@@ -1,0 +1,29 @@
+ok   for answers the spelling of each adapter
+ok   for refuses a name that is no adapter
+ok   detect reads the first require of cybertrain in bin/NAME.rb
+ok   detect takes the core entries of a cybertrain new application as the same adapters
+ok   detect stops on any other cybertrain require, or on none
+ok   a tree with no spin.toml name or no bin/NAME.rb is SQLite
+ok   a model's counter_cache SELECT quotes with the adapter's identifier quote
+ok   gen/test/data.rb's INSERTs quote with the adapter's identifier quote
+ok   gen/tests.rb requires the adapter's entry and test bundle
+wrote gen/routes.rb
+wrote gen/assets.rb
+wrote gen/locales.rb
+wrote gen/controllers.rb
+wrote gen/concerns.rb
+wrote gen/views.rb
+wrote gen/helpers.rb
+wrote gen/components.rb
+wrote gen/jobs.rb
+wrote gen/tests.rb
+wrote gen/test/data.rb
+wrote gen/models/comment.rb
+wrote gen/models/post.rb
+wrote gen/console.rb
+wrote gen/app.rb
+ok   gen on a MySQL app writes its models, fixtures and test program for MySQL
+ok   the generated account test checks the refused deletion by the adapter's own error
+bin/shop.rb: the first require must be "cybertrain" or "cybertrain/mysql"
+ok   gen stops with the message on a bad first require, writing nothing
+12 tests, 44 assertions, 0 failures

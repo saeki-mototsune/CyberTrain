@@ -27,6 +27,7 @@ COPY cybertrain/version.rb cybertrain/app_name.rb cybertrain/shell.rb cybertrain
 COPY cybertrain/test/args.rb /src/cybertrain/test/
 COPY cybertrain/cli/ /src/cybertrain/cli/
 COPY cybertrain/generator/inflector.rb /src/cybertrain/generator/
+COPY cybertrain/generator/dialect.rb /src/cybertrain/generator/
 
 # ---- build: Spinel, then `cybertrain build` -> examples/blog/dist --------
 FROM docker.io/library/ubuntu:$UBUNTU_VERSION AS build
