@@ -488,9 +488,10 @@ module Cybertrain
       # Cache.write: the row for `key` (expires_at 0: none), or with
       # `unless_exist` only when there is none or it has expired. Whether a
       # row was written.
-      # MySQL: INSERT ... ON DUPLICATE KEY UPDATE; with unless_exist, a
-      # DELETE of the expired row and a plain INSERT whose duplicate key
-      # (a live row, or a concurrent add that won) answers false.
+      # MySQL: INSERT ... ON DUPLICATE KEY UPDATE; with unless_exist, one
+      # whose assignments replace only an expired row, written or not told
+      # by a LAST_INSERT_ID marker (its changes count 1 for a new row and
+      # for a live one alike).
       # @param conn [Cybertrain::DB::Connection]
       # @return [Boolean]
       def self.cache_write(conn, key, value, expires_at, now, unless_exist)

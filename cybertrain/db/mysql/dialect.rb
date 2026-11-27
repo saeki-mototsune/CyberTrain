@@ -505,26 +505,32 @@ module Cybertrain
                         "ON DUPLICATE KEY UPDATE value = excluded.value, " \
                         "expires_at = excluded.expires_at, updated_at = excluded.updated_at"
 
-      # write(unless_exist: true), first statement: a plain INSERT (binds
-      # key, value, expires_at, now). When the key has a row, it is a
-      # duplicate key (1062), which cache_add answers as "not inserted":
-      # a live row, an expired one, or the row of a concurrent add that
-      # inserted the key first (the INSERT waits for that one's row lock,
-      # and then finds the key taken). A duplicate key undoes only its own
-      # statement; an open transaction stays open.
-      CACHE_ADD_SQL = "INSERT INTO cybertrain_cache (`key`, value, expires_at, updated_at) " \
-                      "VALUES (?, ?, NULLIF(?, 0), ?)"
+      # The test of CACHE_ADD_SQL's assignments: the row found has expired
+      # (binds now). Each reads the old expires_at, so expires_at is
+      # assigned last.
+      CACHE_EXPIRED = "(cybertrain_cache.expires_at IS NOT NULL AND cybertrain_cache.expires_at < ?)"
 
-      # write(unless_exist: true), second statement, after a duplicate key:
-      # the row replaced only while it has expired (binds value,
-      # expires_at, now, key, now). The session counts matched rows
-      # (CLIENT_FOUND_ROWS), and only an expired row matches: 1 when it was
-      # replaced, 0 for a live one. This order, INSERT first, takes no gap
-      # lock for a missing key (a DELETE of the expired row first would: two
-      # adds of a missing key inside transactions would each hold one, and
-      # each INSERT wait for the other's).
-      CACHE_REPLACE_EXPIRED_SQL = "UPDATE cybertrain_cache SET value = ?, expires_at = NULLIF(?, 0), updated_at = ? " \
-                                  "WHERE `key` = ? AND expires_at IS NOT NULL AND expires_at < ?"
+      # write(unless_exist: true): one INSERT ... ON DUPLICATE KEY UPDATE
+      # whose assignments keep a live row as it is and replace an expired
+      # one (binds key, value, expires_at, now; then now for each of the
+      # four tests). Its answer is a marker passed through LAST_INSERT_ID,
+      # since `changes` (CLIENT_FOUND_ROWS) counts 1 both for a new row and
+      # for a live row left alone: the new row's updated_at evaluates
+      # LAST_INSERT_ID(1), and an existing row's evaluates LAST_INSERT_ID(1)
+      # when it is replaced, LAST_INSERT_ID(2) when it is kept, after the
+      # VALUES row's (the statement's insert id is the last one). A
+      # duplicate key in an upsert is locked exclusively at once, so two
+      # adds of one key, even inside transactions, queue on that lock: the
+      # second reads the row as the first committed it. (A plain INSERT
+      # whose 1062 was then followed by an UPDATE of the expired row took a
+      # shared lock first and upgraded it: two such adds deadlocked.)
+      CACHE_ADD_SQL = "INSERT INTO cybertrain_cache (`key`, value, expires_at, updated_at) " \
+                      "VALUES (?, ?, NULLIF(?, 0), CAST(? AS SIGNED) + 0 * LAST_INSERT_ID(1)) AS excluded " \
+                      "ON DUPLICATE KEY UPDATE " \
+                      "value = IF(#{CACHE_EXPIRED}, excluded.value, cybertrain_cache.value), " \
+                      "updated_at = IF(#{CACHE_EXPIRED}, excluded.updated_at, cybertrain_cache.updated_at) " \
+                      "+ 0 * LAST_INSERT_ID(IF(#{CACHE_EXPIRED}, 1, 2)), " \
+                      "expires_at = IF(#{CACHE_EXPIRED}, excluded.expires_at, cybertrain_cache.expires_at)"
 
       # A value read as an Integer as SQLite's CAST(value AS INTEGER) reads
       # it: its leading digits (after spaces, with a sign), 0 when it has
@@ -579,21 +585,8 @@ module Cybertrain
           return true
         end
 
-        return true if Dialect.cache_add(conn, Cybertrain::Cast.binds(key, value, expires_at, now))
-
-        conn.execute(CACHE_REPLACE_EXPIRED_SQL, Cybertrain::Cast.binds(value, expires_at, now, key, now))
-        conn.changes > 0
-      end
-
-      # cache_write's INSERT of a key that must be new (CACHE_ADD_SQL): false
-      # when the key has a row.
-      # @param conn [Cybertrain::DB::Connection]
-      # @return [Boolean]
-      def self.cache_add(conn, binds)
-        conn.execute(CACHE_ADD_SQL, binds)
-        true
-      rescue Cybertrain::DB::UniqueViolation
-        false
+        conn.execute(CACHE_ADD_SQL, Cybertrain::Cast.binds(key, value, expires_at, now, now, now, now, now))
+        conn.last_insert_id == 1
       end
 
       # Cache.increment: the counter for `key` after adding `by`, as the
@@ -637,7 +630,7 @@ module Cybertrain
       # counts 1 for a new row and 1 for a row another holder keeps (found,
       # set to its own values), and 2 for a renewal or a takeover, but 1
       # again for a renewal that changes nothing (test/mysql/lease.rb
-      # shows the four counts). The read is a locking one (FOR SHARE), on
+      # shows the five counts). The read is a locking one (FOR SHARE), on
       # the row the upsert has just locked: it reads the row as committed
       # or as this upsert wrote it, never an older snapshot of the caller's
       # transaction (in which another holder's takeover would not show).

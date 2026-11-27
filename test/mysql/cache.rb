@@ -426,6 +426,53 @@ test "the loser of two concurrent adds of one key answers false" do
   second.close
 end
 
+# What each of two transactional adds of one expired key answered, or the
+# class of what it raised (a constant: NOTES rule 64).
+EXPIRED_ADDS = Array.new(0) { "" }
+
+# One add of the expired key "lease-like", inside a transaction held open
+# for a moment after it, as a caller's would be.
+def add_in_transaction(conn, value)
+  conn.begin!
+  answered = DB::Dialect.cache_write(conn, "lease-like", value, 0, 9000, true)
+  sleep 0.2
+  conn.commit!
+  EXPIRED_ADDS << (answered ? "true" : "false")
+  nil
+rescue Cybertrain::DB::Error => e
+  EXPIRED_ADDS << e.class.name
+  conn.rollback!
+  nil
+end
+
+# Two adds of one expired key, each in its own transaction on its own
+# connection, at once: one replaces the row, the other waits for its lock
+# and then finds it live. Neither may be a deadlock (an add that took a
+# shared lock on the row and then upgraded it, as a plain INSERT's
+# duplicate key followed by an UPDATE does, deadlocked here).
+test "two transactional adds of one expired key: one answers true, the other false, no deadlock" do
+  fresh_db
+  Cache.install!
+  assert DB.with { |c| DB::Dialect.cache_write(c, "lease-like", "old", 8010, 8000, false) }
+  first = DB::Connection.new(URL)
+  second = DB::Connection.new(URL)
+  a = Thread.new { add_in_transaction(first, "first") }
+  b = Thread.new { add_in_transaction(second, "second") }
+  a.join
+  b.join
+  assert_equal ["false", "true"], EXPIRED_ADDS.sort
+  travel_to(Time.at(9000))
+  value = Cache.read("lease-like")
+  assert value == "first" || value == "second", "the row is #{value.inspect}"
+  # A live row inside a transaction: false, and the row as it was.
+  first.begin!
+  refute DB::Dialect.cache_write(first, "lease-like", "third", 0, 9000, true)
+  first.commit!
+  assert_equal value, Cache.read("lease-like")
+  first.close
+  second.close
+end
+
 test "a counter goes below zero and back, and by: 0 answers it unchanged" do
   fresh_db
   travel_to(Time.at(8000))

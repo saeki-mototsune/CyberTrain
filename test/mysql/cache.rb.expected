@@ -10,5 +10,6 @@ ok   cache_prune_interval: 300, CYBERTRAIN_CACHE_PRUNE_INTERVAL, at least 1
 ok   cache_write_rolls_back
 ok   increment_is_atomic
 ok   the loser of two concurrent adds of one key answers false
+ok   two transactional adds of one expired key: one answers true, the other false, no deadlock
 ok   a counter goes below zero and back, and by: 0 answers it unchanged
-13 tests, 135 assertions, 0 failures
+14 tests, 140 assertions, 0 failures
