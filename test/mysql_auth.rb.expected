@@ -4,6 +4,8 @@ ok   Url.parse takes a bracketed IPv6 host
 ok   a password may hold an unescaped @, / or ?
 ok   each malformed URL is an ArgumentError that names the fault
 ok   no URL error message holds the password
+ok   a Url's to_s and inspect never hold the password
+ok   a NUL in the user, the password or the database is refused
 ok   ssl_mode=disabled is accepted for local and private addresses
 ok   ssl_mode=disabled is refused for any other host
 ok   the recorded handshake parses
@@ -22,4 +24,4 @@ ok   an auth switch to an unknown plugin, or a second switch, is a DB::Error
 ok   an ERR during authentication is a DB::Error with the server's message and no password
 ok   an unexpected packet during authentication is a DB::Error
 ok   the TlsUpgrade base refuses
-24 tests, 209 assertions, 0 failures
+26 tests, 223 assertions, 0 failures

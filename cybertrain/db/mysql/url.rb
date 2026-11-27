@@ -3,9 +3,9 @@
 #   mysql://USER[:PASSWORD]@HOST[:PORT][/DATABASE][?NAME=VALUE&...]
 #
 # HOST is a name, a dotted IPv4 address or a bracketed IPv6 address
-# ([::1]). USER and PASSWORD are percent-decoded (%40 is "@"); `+` is a
-# plus. The userinfo ends at the LAST "@", so a password may hold an
-# unescaped "@", "/" or "?". The parameters are ssl_mode ("verify", the
+# ([::1]). USER, PASSWORD and DATABASE are percent-decoded (%40 is "@";
+# `+` is a plus), and none may hold a NUL (%00). The userinfo ends at the
+# LAST "@", so a password may hold an unescaped "@", "/" or "?". The parameters are ssl_mode ("verify", the
 # default, or "disabled") and connect_timeout, read_timeout, write_timeout
 # (whole seconds, defaults 5 / 30 / 30); any other name is refused, so a
 # misspelt one is not silently ignored.
@@ -17,7 +17,8 @@
 # the text of the URL; no name is looked up.
 #
 # Every fault is an ArgumentError whose message names the part at fault and
-# never repeats the URL, so the password cannot reach a log through it.
+# never repeats the URL, so the password cannot reach a log through it; a
+# Url's own `to_s` and `inspect` leave the password out too.
 #
 # Byte scans over a `to_s` local (spikes/NOTES.md rules 27, 62); decoded
 # bytes are written with setbyte into a buffer of the final size (rule 60).
@@ -32,14 +33,19 @@ module Cybertrain
         PARAMETERS = "ssl_mode, connect_timeout, read_timeout, write_timeout"
         MAX_TIMEOUT = 86_400
 
-        attr_reader :host, :port, :user, :password, :database, :ssl_mode,
+        # `url_host`, `url_user`, `url_password`, not `host`, `user`,
+        # `password`: a program that links MySQL links models too, and a
+        # model's `user` (an association, Session#user in examples/blog) or
+        # `password` / `host` column answers another type under the same
+        # name (spikes/NOTES.md rules 10, 34).
+        attr_reader :url_host, :port, :url_user, :url_password, :database, :ssl_mode,
                     :connect_timeout, :read_timeout, :write_timeout
 
         def initialize(host, port, user, password, database, ssl_mode, connect_timeout, read_timeout, write_timeout)
-          @host = host
+          @url_host = host
           @port = port
-          @user = user
-          @password = password
+          @url_user = user
+          @url_password = password
           @database = database
           @ssl_mode = ssl_mode
           @connect_timeout = connect_timeout
@@ -49,9 +55,22 @@ module Cybertrain
 
         # "host:port", "[::1]:3306" for an IPv6 address: what messages name.
         def server_label
-          return "[#{@host}]:#{@port}" if @host.include?(":")
+          return "[#{@url_host}]:#{@port}" if @url_host.include?(":")
 
-          "#{@host}:#{@port}"
+          "#{@url_host}:#{@port}"
+        end
+
+        # The URL without its password, "mysql://app@db.internal:3306/shop":
+        # what `p url`, a log line or an exception that interpolates the
+        # object shows. Neither form ever holds the password.
+        # @return [String]
+        def to_s
+          "mysql://#{@url_user}@#{server_label}/#{@database}"
+        end
+
+        # @return [String]
+        def inspect
+          "#<Cybertrain::DB::MySQL::Url #{to_s} ssl_mode=#{@ssl_mode}>"
         end
 
         # @param text [String]
@@ -74,6 +93,10 @@ module Cybertrain
           user = Url.percent_decode(user_part)
           password = Url.percent_decode(password_part)
           Url.refuse("no user name") if user.empty?
+          # A NUL ends the name in HandshakeResponse41 (NUL-terminated), so
+          # the server would read another user or database than the URL's.
+          Url.refuse("the user name cannot contain a NUL byte (%00)") if Url.find_byte(user, 0, 0) >= 0
+          Url.refuse("the password cannot contain a NUL byte (%00)") if Url.find_byte(password, 0, 0) >= 0
 
           query_at = Url.find_byte(after, 63, 0)
           before_query = query_at < 0 ? after : after.byteslice(0, query_at)
@@ -81,7 +104,9 @@ module Cybertrain
           slash = Url.find_byte(before_query, 47, 0)
           authority = slash < 0 ? before_query : before_query.byteslice(0, slash)
           database = slash < 0 ? "" : before_query.byteslice(slash + 1, before_query.bytesize - slash - 1)
+          database = Url.percent_decode(database)
           Url.refuse("the database name cannot contain '/'") if Url.find_byte(database, 47, 0) >= 0
+          Url.refuse("the database name cannot contain a NUL byte (%00)") if Url.find_byte(database, 0, 0) >= 0
 
           host_and_port = Url.split_authority(authority)
           host = host_and_port[0]
@@ -221,7 +246,7 @@ module Cybertrain
           while i < size
             if s.getbyte(i) == 37
               if i + 2 >= size || Url.hex_value(s.getbyte(i + 1)) < 0 || Url.hex_value(s.getbyte(i + 2)) < 0
-                Url.refuse("malformed percent-escape in the user name or password")
+                Url.refuse("malformed percent-escape in the user name, password or database name")
               end
               i += 3
             else

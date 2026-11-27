@@ -21,4 +21,4 @@ ok   close_statement sends COM_STMT_CLOSE and forgets the statement
 ok   ping answers true for OK and false when the connection is gone; quit sends COM_QUIT
 ok   a BIGINT UNSIGNED past 2**63 - 1 is refused once the result is read, in both protocols
 ok   zero dates decode as zeros in both protocols
-23 tests, 412 assertions, 0 failures
+23 tests, 414 assertions, 0 failures

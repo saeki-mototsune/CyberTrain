@@ -242,15 +242,8 @@ module Cybertrain
           s = payload.to_s
           raise Cybertrain::DB::Error, "MySQL: the server sent a short error packet" if s.bytesize < 3
 
-          code = Wire.read_int_le(s, 1, 2)
-          state = "HY000"
-          start = 3
-          if s.bytesize >= 9 && s.getbyte(3) == 35 # "#"
-            state = s.byteslice(4, 5)
-            start = 9
-          end
-          text = Decode.utf8(s.byteslice(start, s.bytesize - start))
-          message = "#{text} (MySQL #{code}, #{state})"
+          code = Decode.error_code(s)
+          message = Decode.server_error_text(s)
           raise Cybertrain::DB::UniqueViolation, message if code == 1062
           raise Cybertrain::DB::ForeignKeyViolation, message if FOREIGN_KEY_CODES.include?(code)
           raise Cybertrain::DB::Deadlock, message if code == 1213
@@ -258,6 +251,30 @@ module Cybertrain
           raise Cybertrain::DB::ConnectionLost, message if CONNECTION_LOST_CODES.include?(code)
 
           raise Cybertrain::DB::Error, message
+        end
+
+        # An ERR packet's code (0 for a packet too short to hold one).
+        def self.error_code(payload)
+          s = payload.to_s
+          return 0 if s.bytesize < 3
+
+          Wire.read_int_le(s, 1, 2)
+        end
+
+        # An ERR packet's message as {raise_server_error} raises it: the
+        # server's text, then "(MySQL CODE, SQLSTATE)".
+        def self.server_error_text(payload)
+          s = payload.to_s
+          return "MySQL: the server sent a short error packet" if s.bytesize < 3
+
+          state = "HY000"
+          start = 3
+          if s.bytesize >= 9 && s.getbyte(3) == 35 # "#"
+            state = s.byteslice(4, 5)
+            start = 9
+          end
+          text = Decode.utf8(s.byteslice(start, s.bytesize - start))
+          "#{text} (MySQL #{Decode.error_code(s)}, #{state})"
         end
 
         # A copy of `bytes` marked UTF-8 (a socket's bytes are binary, and

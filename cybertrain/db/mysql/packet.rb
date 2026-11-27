@@ -11,6 +11,7 @@
 require "cybertrain/net/socket"
 require "cybertrain/db/error"
 require "cybertrain/db/mysql/wire"
+require "cybertrain/db/mysql/result"
 
 module Cybertrain
   module DB
@@ -25,13 +26,33 @@ module Cybertrain
 
         # @param stream [Cybertrain::Net::Stream]
         # @param per_wait [Numeric] longest one wait may take, seconds
-        # @param deadline [Numeric] longest one packet's read or write may take
+        # @param deadline [Numeric] longest one frame's read or write may take
         def initialize(stream, per_wait = 30, deadline = 120)
           @stream = stream
-          @per_wait = per_wait
+          @read_wait = per_wait
+          @write_wait = per_wait
           @deadline = deadline
           @seq = 0
-          @reader = Cybertrain::Net::Reader.new(stream, packet_timer)
+          @reader = Cybertrain::Net::Reader.new(stream, frame_timer(per_wait))
+        end
+
+        # The waits from here on: `read_wait` for each wait of a read,
+        # `write_wait` for each wait of a write, `deadline` for one frame
+        # (at most 16 MB). Each frame starts a fresh Timer, so a long
+        # result whose bytes keep coming is never cut off by one deadline
+        # over the whole exchange: what bounds a stalled server is the
+        # per-wait timeout. The connection sets them from the URL once
+        # authenticated (connect_timeout bounds the handshake).
+        def use_timeouts(read_wait, write_wait, deadline)
+          @read_wait = read_wait
+          @write_wait = write_wait
+          @deadline = deadline
+          nil
+        end
+
+        # The stream the packets go over (TCP, or TLS after the switch).
+        def packet_stream
+          @stream
         end
 
         # Starts the next command at sequence 0.
@@ -56,7 +77,6 @@ module Cybertrain
         # The next payload, split packets joined.
         # @return [String] binary
         def read_packet
-          @reader.reader_timer = packet_timer
           first = read_frame
           return first if first.bytesize < MAX_PAYLOAD
 
@@ -75,33 +95,45 @@ module Cybertrain
         def write_packet(payload)
           data = Wire.bytes(payload)
           total = data.bytesize
-          timer = packet_timer
           pos = 0
           while true
             size = total - pos
             size = MAX_PAYLOAD if size > MAX_PAYLOAD
-            write_frame(data, pos, size, timer)
+            write_frame(data, pos, size, frame_timer(@write_wait))
             pos += size
             break if size < MAX_PAYLOAD
           end
           nil
         end
 
-        def packet_timer
-          Cybertrain::Net::Timer.new(@stream.stream_label, @per_wait, @deadline)
+        def frame_timer(per_wait)
+          Cybertrain::Net::Timer.new(@stream.stream_label, per_wait, @deadline)
         end
 
         # One packet's payload, its sequence number checked.
         def read_frame
+          @reader.reader_timer = frame_timer(@read_wait)
           head = read_bytes(4)
           size = Wire.read_int_le(head, 0, 3)
           got = head.getbyte(3)
-          if got != @seq
-            raise Cybertrain::DB::ConnectionLost, "#{@stream.stream_label}: MySQL packet out of sequence (expected #{@seq}, got #{got})"
-          end
+          out_of_sequence(size, got) if got != @seq
 
           @seq = (@seq + 1) & 0xFF
           read_bytes(size)
+        end
+
+        # A frame whose sequence number is not the one expected. The server
+        # sends an ERR unprompted, with sequence 0, before it closes a
+        # session (4031, disconnected for inactivity); the next command
+        # reads it where its answer (sequence 1) should be. Its message is
+        # the one raised, so the cause is not lost. Anything else is the
+        # stream out of step.
+        def out_of_sequence(size, got)
+          if got == 0 && size >= 3 && size < 0x10000
+            payload = read_bytes(size)
+            raise Cybertrain::DB::ConnectionLost, Decode.server_error_text(payload) if payload.getbyte(0) == 0xFF
+          end
+          raise Cybertrain::DB::ConnectionLost, "#{@stream.stream_label}: MySQL packet out of sequence (expected #{@seq}, got #{got})"
         end
 
         # `count` bytes of the stream. The begin/rescue is here, away from a

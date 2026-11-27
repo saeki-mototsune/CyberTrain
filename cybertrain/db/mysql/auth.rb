@@ -172,9 +172,9 @@ module Cybertrain
 
         def self.handshake_response(flags, url, plugin, scramble)
           out = Auth.response_head(flags)
-          out << Wire.bytes(url.user)
+          out << Wire.bytes(url.url_user)
           out << "\0"
-          out << Wire.lenenc_str(Auth.scrambled(plugin, url.password, scramble))
+          out << Wire.lenenc_str(Auth.scrambled(plugin, url.url_password, scramble))
           unless url.database.empty?
             out << Wire.bytes(url.database)
             out << "\0"
@@ -219,13 +219,13 @@ module Cybertrain
 
               data = packet.byteslice(got[1], packet.bytesize - got[1])
               data = data.byteslice(0, data.bytesize - 1) if data.bytesize > 0 && data.getbyte(data.bytesize - 1) == 0
-              conn.write_packet(Auth.scrambled(plugin, url.password, data))
+              conn.write_packet(Auth.scrambled(plugin, url.url_password, data))
             elsif kind == 0x01 && plugin == CACHING_SHA2 && packet.bytesize == 2 && packet.getbyte(1) == 0x03
               nil # fast authentication succeeded; the OK follows
             elsif kind == 0x01 && plugin == CACHING_SHA2 && packet.bytesize == 2 && packet.getbyte(1) == 0x04
               raise Cybertrain::DB::Error, "caching_sha2_password full authentication needs TLS (ssl_mode=verify)" unless secure
 
-              clear = Wire.bytes(url.password)
+              clear = Wire.bytes(url.url_password)
               clear << Wire.zeros(1)
               conn.write_packet(clear)
             else

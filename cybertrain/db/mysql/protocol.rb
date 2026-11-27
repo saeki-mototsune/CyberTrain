@@ -30,6 +30,7 @@ module Cybertrain
         COM_STMT_PREPARE = 0x16
         COM_STMT_EXECUTE = 0x17
         COM_STMT_CLOSE = 0x19
+        SERVER_STATUS_IN_TRANS = 0x0001
         SERVER_MORE_RESULTS_EXISTS = 0x0008
 
         # Parameter types of COM_STMT_EXECUTE, each sent with a second byte
@@ -44,10 +45,42 @@ module Cybertrain
         def initialize(io)
           @io = io
           @more_results = false
+          # The status flags of the last OK packet (or result set end):
+          # SERVER_STATUS_IN_TRANS says a transaction is open.
+          @status_flags = 0
+          # True from a command's first byte until its whole answer has
+          # been read (an ERR is a whole answer): a failure while it is
+          # true leaves the stream part way through an answer.
+          @pending = false
           # statement id => parameter count, for the statements prepared
           # and not closed (NOTES rule 9: seeded).
           @param_counts = { 0 => 0 }
           @param_counts.delete(0)
+        end
+
+        # Whether the last command's answer is still being read: true when
+        # a command failed part way through its answer (a packet that does
+        # not decode, a timeout, a lost stream), after which the stream is
+        # out of step and only good for closing. False after an ERR packet,
+        # which ends its answer.
+        # @return [Boolean]
+        def exchange_pending?
+          @pending
+        end
+
+        # The code of the last ERR packet the server sent (0 before any):
+        # Connection runs a statement the server cannot prepare (1295,
+        # ER_UNSUPPORTED_PS: BEGIN, LOCK TABLES) with COM_QUERY instead.
+        # @return [Integer]
+        def last_error_code
+          @error_code
+        end
+
+        # Whether the server said, in the last status flags it sent, that a
+        # transaction is open on this session.
+        # @return [Boolean]
+        def server_in_transaction?
+          (@status_flags & SERVER_STATUS_IN_TRANS) != 0
         end
 
         # Runs `sql` with COM_QUERY.
@@ -55,7 +88,9 @@ module Cybertrain
         # @raise [Cybertrain::DB::Error] the first ERR, mapped (result.rb)
         def query(sql)
           start_command(COM_QUERY, sql.to_s)
-          read_results(false)
+          result = read_results(false)
+          @pending = false
+          result
         end
 
         # Prepares `sql` with COM_STMT_PREPARE.
@@ -65,7 +100,7 @@ module Cybertrain
           packet = @io.read_packet
           raise Cybertrain::DB::Error, "MySQL: the server sent an empty packet to COM_STMT_PREPARE" if packet.empty?
 
-          Decode.raise_server_error(packet) if packet.getbyte(0) == 0xFF
+          server_error(packet) if packet.getbyte(0) == 0xFF
           raise Cybertrain::DB::Error, "MySQL: unexpected answer to COM_STMT_PREPARE" if packet.getbyte(0) != 0 || packet.bytesize < 12
 
           id = Wire.read_int_le(packet, 1, 4)
@@ -78,6 +113,7 @@ module Cybertrain
             @io.read_packet
             skip += 1
           end
+          @pending = false
           @param_counts[id] = params
           id
         end
@@ -111,7 +147,9 @@ module Cybertrain
           body << Wire.int_le(1, 4)
           body << Protocol.bind_block(binds) if count > 0
           start_command(COM_STMT_EXECUTE, body)
-          read_results(true)
+          result = read_results(true)
+          @pending = false
+          result
         end
 
         # The NULL bitmap, new-params-bound, the types and the values.
@@ -158,19 +196,24 @@ module Cybertrain
         # @return [nil]
         def close_statement(id)
           start_command(COM_STMT_CLOSE, Wire.int_le(id, 4))
+          @pending = false
           @param_counts.delete(id)
           nil
         end
 
-        # COM_PING: true when the server answers OK, false when the
-        # connection is lost or the server does not answer in time.
+        # COM_PING: true when the server answers OK (whose status flags
+        # are kept, see {#server_in_transaction?}), false for anything
+        # else: an ERR, a lost connection, no answer in time. Never raises.
         # @return [Boolean]
         def ping
           start_command(COM_PING, "")
           packet = @io.read_packet
-          Decode.raise_server_error(packet) if !packet.empty? && packet.getbyte(0) == 0xFF
-          !packet.empty? && packet.getbyte(0) == 0
-        rescue Cybertrain::DB::ConnectionLost, Cybertrain::Net::TimeoutError
+          @pending = false
+          return false if packet.empty? || packet.getbyte(0) != 0
+
+          @status_flags = Decode.ok_fields(packet)[2]
+          true
+        rescue Cybertrain::DB::Error, Cybertrain::Net::Error
           false
         end
 
@@ -181,11 +224,12 @@ module Cybertrain
         def quit
           start_command(COM_QUIT, "")
           nil
-        rescue Cybertrain::DB::ConnectionLost, Cybertrain::Net::TimeoutError
+        rescue Cybertrain::DB::Error, Cybertrain::Net::Error
           nil
         end
 
         def start_command(command, body)
+          @pending = true
           @io.reset_sequence
           payload = Wire.int_le(command, 1)
           payload << Wire.bytes(body)
@@ -200,6 +244,7 @@ module Cybertrain
           result = read_result(binary, overflow)
           result = read_result(binary, overflow) while @more_results
           unless overflow.empty?
+            @pending = false
             raise Cybertrain::DB::Error, "MySQL: column #{overflow} holds a BIGINT UNSIGNED value past 2**63 - 1, which an Integer cannot hold"
           end
 
@@ -217,10 +262,11 @@ module Cybertrain
           first = packet.getbyte(0)
           if first == 0x00
             ok = Decode.ok_fields(packet)
+            @status_flags = ok[2]
             @more_results = (ok[2] & SERVER_MORE_RESULTS_EXISTS) != 0
             return Result.from_ok(ok[0], ok[1])
           end
-          Decode.raise_server_error(packet) if first == 0xFF
+          server_error(packet) if first == 0xFF
           raise Cybertrain::DB::Error, "MySQL: the server asked for LOCAL INFILE, which is not supported" if first == 0xFB
 
           count = Wire.read_lenenc_int(packet, 0)[0]
@@ -232,10 +278,11 @@ module Cybertrain
           while true
             row = @io.read_packet
             if Decode.end_of_rows?(row)
-              @more_results = (Decode.ok_fields(row)[2] & SERVER_MORE_RESULTS_EXISTS) != 0
+              @status_flags = Decode.ok_fields(row)[2]
+              @more_results = (@status_flags & SERVER_MORE_RESULTS_EXISTS) != 0
               break
             end
-            Decode.raise_server_error(row) if !row.empty? && row.getbyte(0) == 0xFF
+            server_error(row) if !row.empty? && row.getbyte(0) == 0xFF
             if binary
               rows << Decode.binary_row(row, columns, overflow)
             else
@@ -243,6 +290,14 @@ module Cybertrain
             end
           end
           Result.from_rows(columns, rows)
+        end
+
+        # Raises the ERR packet's error: the answer ends with it, so the
+        # stream is in step for the next command.
+        def server_error(packet)
+          @pending = false
+          @error_code = Decode.error_code(packet)
+          Decode.raise_server_error(packet)
         end
       end
     end

@@ -143,10 +143,10 @@ end
 
 test "Url.parse reads every part and decodes the user and password" do
   url = Url.parse("mysql://app%2Dx:p%40ss%3Aw0rd%2F@db.internal:3307/shop?ssl_mode=verify&connect_timeout=7&read_timeout=40&write_timeout=50")
-  assert_equal "db.internal", url.host
+  assert_equal "db.internal", url.url_host
   assert_equal 3307, url.port
-  assert_equal "app-x", url.user
-  assert_equal "p@ss:w0rd/", url.password
+  assert_equal "app-x", url.url_user
+  assert_equal "p@ss:w0rd/", url.url_password
   assert_equal "shop", url.database
   assert_equal "verify", url.ssl_mode
   assert_equal 7, url.connect_timeout
@@ -157,8 +157,8 @@ end
 
 test "Url.parse defaults" do
   url = Url.parse("mysql://root@db.internal")
-  assert_equal "root", url.user
-  assert_equal "", url.password
+  assert_equal "root", url.url_user
+  assert_equal "", url.url_password
   assert_equal 3306, url.port
   assert_equal "", url.database
   assert_equal "verify", url.ssl_mode
@@ -170,7 +170,7 @@ end
 
 test "Url.parse takes a bracketed IPv6 host" do
   url = Url.parse("mysql://u:pw@[::1]:3310/app?ssl_mode=disabled")
-  assert_equal "::1", url.host
+  assert_equal "::1", url.url_host
   assert_equal 3310, url.port
   assert_equal "disabled", url.ssl_mode
   assert_equal "[::1]:3310", url.server_label
@@ -178,8 +178,8 @@ end
 
 test "a password may hold an unescaped @, / or ?" do
   url = Url.parse("mysql://u:a@b/c?d@10.0.0.5/app?ssl_mode=disabled")
-  assert_equal "a@b/c?d", url.password
-  assert_equal "10.0.0.5", url.host
+  assert_equal "a@b/c?d", url.url_password
+  assert_equal "10.0.0.5", url.url_host
   assert_equal "app", url.database
 end
 
@@ -196,8 +196,8 @@ test "each malformed URL is an ArgumentError that names the fault" do
   assert_equal "MySQL URL: '[' without ']' in the host", url_error("mysql://u:hunter2@[::1/db")
   assert_equal "MySQL URL: '[x]' is not an IPv6 address", url_error("mysql://u:hunter2@[x]/db")
   assert_equal "MySQL URL: unexpected text after the IPv6 address", url_error("mysql://u:hunter2@[::1]x/db")
-  assert_equal "MySQL URL: malformed percent-escape in the user name or password", url_error("mysql://u:hunter2%zz@h/db")
-  assert_equal "MySQL URL: malformed percent-escape in the user name or password", url_error("mysql://u:hunter2%2@h/db")
+  assert_equal "MySQL URL: malformed percent-escape in the user name, password or database name", url_error("mysql://u:hunter2%zz@h/db")
+  assert_equal "MySQL URL: malformed percent-escape in the user name, password or database name", url_error("mysql://u:hunter2%2@h/db")
   assert_equal "MySQL URL: the database name cannot contain '/'", url_error("mysql://u:hunter2@h/a/b")
   assert_equal "MySQL URL: unknown ssl_mode 'prefer' (use verify or disabled)", url_error("mysql://u:hunter2@h/db?ssl_mode=prefer")
   assert_equal "MySQL URL: unknown parameter 'foo' (known: ssl_mode, connect_timeout, read_timeout, write_timeout)", url_error("mysql://u:hunter2@h/db?foo=1")
@@ -221,6 +221,23 @@ test "no URL error message holds the password" do
     assert_equal false, message.include?("hunter2")
     assert_equal true, message.start_with?("MySQL URL: ")
   end
+end
+
+test "a Url's to_s and inspect never hold the password" do
+  url = Url.parse("mysql://app:hunter2@db.internal:3307/shop?ssl_mode=verify")
+  assert_equal "mysql://app@db.internal:3307/shop", url.to_s
+  assert_equal "#<Cybertrain::DB::MySQL::Url mysql://app@db.internal:3307/shop ssl_mode=verify>", url.inspect
+  assert_equal "mysql://u@[::1]:3306/", Url.parse("mysql://u:hunter2@[::1]?ssl_mode=disabled").to_s
+  assert_equal false, "#{url}".include?("hunter2")
+  assert_equal false, url.inspect.include?("hunter2")
+end
+
+test "a NUL in the user, the password or the database is refused" do
+  assert_equal "MySQL URL: the user name cannot contain a NUL byte (%00)", url_error("mysql://ro%00ot:hunter2@h/db")
+  assert_equal "MySQL URL: the password cannot contain a NUL byte (%00)", url_error("mysql://u:hun%00ter2@h/db")
+  assert_equal "MySQL URL: the database name cannot contain a NUL byte (%00)", url_error("mysql://u:hunter2@h/d%00b")
+  assert_equal "MySQL URL: the database name cannot contain '/'", url_error("mysql://u:hunter2@h/a%2Fb")
+  assert_equal "my db", Url.parse("mysql://u:hunter2@h/my%20db").database
 end
 
 test "ssl_mode=disabled is accepted for local and private addresses" do

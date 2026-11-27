@@ -964,9 +964,14 @@ end
 
 test "a lost connection is ConnectionLost" do
   # 4031 arrives unprompted with sequence 0, so the next command reads it
-  # out of sequence; framed as an answer it maps by its code.
-  assert_equal "Cybertrain::DB::ConnectionLost: fake:3306: MySQL packet out of sequence (expected 1, got 0)",
+  # out of sequence, and its message is what is raised; framed as an
+  # answer it maps by its code. A frame out of sequence that is not an
+  # ERR is the stream out of step.
+  assert_equal "Cybertrain::DB::ConnectionLost: The client was disconnected by the server because of inactivity. See " \
+               "wait_timeout and interactive_timeout for configuring this behavior. (MySQL 4031, HY000)",
                query_failure(stream_of(ERR_4031_RESP), "SELECT 1")
+  assert_equal "Cybertrain::DB::ConnectionLost: fake:3306: MySQL packet out of sequence (expected 1, got 0)",
+               query_failure(ScriptStream.new(frame(0, unhex("0000000200"))), "SELECT 1")
   payload = unhex(ERR_4031_RESP).byteslice(4, unhex(ERR_4031_RESP).bytesize - 4)
   assert_equal "Cybertrain::DB::ConnectionLost: The client was disconnected by the server because of inactivity. See " \
                "wait_timeout and interactive_timeout for configuring this behavior. (MySQL 4031, HY000)",
@@ -1020,6 +1025,8 @@ test "ping answers true for OK and false when the connection is gone; quit sends
   assert_equal true, proto.ping
   assert_equal PING_REQ, hex(stream.script_sent)
   assert_equal false, protocol_for(ScriptStream.new("")).ping
+  # An ERR answer is false too, not an exception.
+  assert_equal false, protocol_for(ScriptStream.new(frame(1, err_packet(1105, "HY000", "Unknown error")))).ping
   quitting = ScriptStream.new("")
   assert_nil protocol_for(quitting).quit
   assert_equal QUIT_REQ, hex(quitting.script_sent)
