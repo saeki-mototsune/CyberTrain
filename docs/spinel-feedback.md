@@ -297,7 +297,7 @@ the cell names another build.
 | AT | bug | 112 | open (status 112) |  |
 | AU | bug | 52 | open (status 52) |  |
 | AV | bug | 17 | open (status 17): a class used above its definition runs compiled where CRuby raises NameError (rechecks/differing/class_before_definition.rb). A constant assigned with `=` and read before its assignment raises NameError as under CRuby (rechecks/constant_order.rb matches on the pin). Nothing in the framework is written around it: the rule's advice is to keep an order CRuby accepts |  |
-| AW | bug | 27 | open (status 27) for an append of socket bytes to a UTF-8 String that holds non-ASCII, which appends where CRuby raises; passes on the pin for `IO#gets` on a socket, which answers a byte String as CRuby does (Linux, 2026-11-21), and `readpartial`, `read(n)` and `read_nonblock` match on the pin (rechecks/socket_shapes.rb). Closed once both lines of rechecks/differing/socket_bytes.rb, `gets` and `append`, print CRuby's result on the pin. Framing by byte is no workaround to remove: it is right under both runtimes and stays in rule 27 as advice after AW is closed |  |
+| AW | bug | 27 | closed | 2026-11-27, by the change that set this row: 2026.11.27.7037 (matz/spinel#12629); never had a workaround. Both lines of rechecks/differing/socket_bytes.rb print CRuby's result on it, `gets: ASCII-8BIT 13 13` and `append: Encoding::CompatibilityError`, and rechecks/socket_shapes.rb still matches ("2026.11.27.7037" in the list of builds). Framing by byte stays in rule 27 as advice |
 | AX | bug |  | open ("Status by rule", row AX): `JSON.parse` does not count an innermost empty Array or Object against the nesting limit, so 101 nested Arrays with nothing inside parse where CRuby raises JSON::NestingError, and one level deeper with `max_nesting:` too (rechecks/differing/json_parse_nesting.rb). Documents that hold a value raise at the depth and with the class and message CRuby gives. No workaround and no rule: nothing in the framework depends on where the limit falls |  |
 | AY | bug | 124 | open (status 124): a rescuing method given, as blocks, a method that only raises and the call of a lambda that ends in it does not compile, "incompatible types when assigning to type 'sp_RbVal' from type 'const char *'" at the method's `yield` (rechecks/differing/raising_helper_beside_lambda.rb; 2026.11.04.7026 the same). Workaround kept: `Console.unknown_model` and `unknown_record` (cybertrain/console.rb) name a typed value after their `raise`. Closed once that program prints CRuby's line on the pin and test/console.rb's case "an unknown model or record raises through a rescuing caller" passes compiled with the two values removed |  |
 | BA | bug |  | open ("Status by rule", row BA): `Thread.new` passes the program's file name to `sp_Thread_spawn_fiber_at` as a bare C literal, which that function roots as a String, so a collection inside the thread record's allocation reads the byte in front of the literal (`sp_mark_string`'s `s[-1]`). Seen only under AddressSanitizer (rechecks/2026.11.15.7033/ba_thread_birth_file.rb, with `SPINEL_GC_THRESHOLD_KB=1`); a plain build reads a byte it then ignores. No workaround and no rule: nothing in the framework can avoid it short of not calling `Thread.new` |  |
@@ -4858,7 +4858,10 @@ their `bytesize`, as under CRuby, on both builds
   2026.11.15.7033; the `append` line does not.
 - Asked of Spinel: raise Encoding::CompatibilityError for the append, as
   CRuby does.
-- Not reported upstream.
+- Sent from this project and merged as matz/spinel#12629 (2026-11-26),
+  in 2026.11.27.7037: `<<`, `concat` and `+` of Strings in incompatible
+  encodings raise Encoding::CompatibilityError. Closed on 2026-11-27
+  ("Item register").
 
 ### AX. `JSON.parse` does not count an innermost empty Array or Object against the nesting limit
 
