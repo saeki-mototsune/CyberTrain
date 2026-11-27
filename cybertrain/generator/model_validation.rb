@@ -50,6 +50,7 @@ module Cybertrain
         @type_value = ""
         @targets = Array.new(0) { "" }
         @target_tables = Array.new(0) { "" }
+        @through_path = ThroughPath.none
       end
 
       # Makes this a polymorphic association (D94): a belongs_to with its
@@ -66,6 +67,89 @@ module Cybertrain
       # A `belongs_to ..., polymorphic: true`.
       def polymorphic?
         @kind == :belongs_to && @type_column != ""
+      end
+
+      # The path of a `has_many ..., through:` (docs/design.md D93); its
+      # `active` is false for every other association.
+      def through_path = @through_path
+
+      def through? = @through_path.active
+
+      def set_through_path(path)
+        @through_path = path
+        nil
+      end
+    end
+
+    # How a `has_many :x, through: :via` reaches its records (docs/design.md
+    # D93): the owner's key (`owner_key`, "" for its id: `via` is a has_many
+    # or has_one; else the foreign key a belongs_to `via` reads), matched
+    # against `middle_key` on `middle_table` (the via's foreign key, or "id"),
+    # whose `middle_link` column (the source belongs_to's foreign key, or
+    # "id") is matched against `target_link` on the target table ("id", or
+    # the source has_many's foreign key). Each column comes with whether it
+    # is nullable and an integer, for the casts the preload writes.
+    class ThroughPath
+      attr_reader :active, :via, :source_assoc, :middle_model, :middle_table, :owner_key, :owner_key_null,
+                  :owner_key_integer, :middle_key, :middle_key_null, :middle_key_integer, :middle_link,
+                  :middle_link_null, :middle_link_integer, :target_link, :target_link_null, :target_link_integer
+
+      def initialize(via, source_assoc, middle_model, middle_table)
+        @active = via != ""
+        @via = via
+        @source_assoc = source_assoc
+        @middle_model = middle_model
+        @middle_table = middle_table
+        @owner_key = ""
+        @owner_key_null = false
+        @owner_key_integer = true
+        @middle_key = "id"
+        @middle_key_null = false
+        @middle_key_integer = true
+        @middle_link = "id"
+        @middle_link_null = false
+        @middle_link_integer = true
+        @target_link = "id"
+        @target_link_null = false
+        @target_link_integer = true
+      end
+
+      def self.none = ThroughPath.new("", "", "", "")
+
+      # A belongs_to via: the owner's foreign key, matched against the
+      # middle's id.
+      def set_owner_key(column, null, integer)
+        @owner_key = column
+        @owner_key_null = null
+        @owner_key_integer = integer
+        nil
+      end
+
+      # A has_many / has_one via: the middle's foreign key, matched against
+      # the owner's id.
+      def set_middle_key(column, null, integer)
+        @middle_key = column
+        @middle_key_null = null
+        @middle_key_integer = integer
+        nil
+      end
+
+      # A belongs_to source: the middle's foreign key, matched against the
+      # target's id.
+      def set_middle_link(column, null, integer)
+        @middle_link = column
+        @middle_link_null = null
+        @middle_link_integer = integer
+        nil
+      end
+
+      # A has_many / has_one source: the target's foreign key, matched
+      # against the middle's id.
+      def set_target_link(column, null, integer)
+        @target_link = column
+        @target_link_null = null
+        @target_link_integer = integer
+        nil
       end
     end
 
@@ -510,10 +594,30 @@ module Cybertrain
       # file carries a note. A declared name is the developer's choice, so an
       # owned one is an error (declared_plan).
       def self.association_plans(table, definition, infos, places)
+        plans_of(table, definition, infos, places, true)
+      end
+
+      # association_plans, with the `through:` declarations resolved last
+      # (they read the plans of this model and of the middle one) when
+      # `resolve_through`; without it (the middle model's plans, read for
+      # a source) they are left out, their names still reserved so the
+      # other names come out the same.
+      def self.plans_of(table, definition, infos, places, resolve_through)
         taken = owned_names(table)
         assoc_names = Array.new(0) { "" }
         plans = no_plans
+        throughs = Array.new(0) { AssociationInfo.new("", :has_many, "", "", "", :none, false, false, 0) }
         associations_for(ModelNaming.model_class_name(table.name), infos).each do |a|
+          if a.through_name != ""
+            if owned?(a.name, taken, assoc_names)
+              raise ModelScan::Error, "#{a.file}:#{a.line}: has_many :#{a.name}: the reader #{a.name} is taken (a " \
+                                      "column, another association, a Cybertrain::Model method or a Ruby keyword); " \
+                                      "rename the association and set source:"
+            end
+            assoc_names << a.name
+            throughs << a
+            next
+          end
           plan = declared_plan(table, definition, infos, a, taken, assoc_names)
           assoc_names << plan.name
           plans << plan
@@ -569,7 +673,93 @@ module Cybertrain
                                          true, :none, true, false, "", false, notes)
           end
         end
+        return plans unless resolve_through
+
+        direct = plans.size
+        throughs.each { |a| plans << through_plan(definition, infos, places, a, plans, direct, throughs) }
         plans
+      end
+
+      # A `has_many :x, through: :via, source: :y` (docs/design.md D93),
+      # resolved against this model's first `direct` plans (`via`) and the
+      # middle model's (the source: `source:`, else the singular or the
+      # plural of `x`). One level: neither may be a through itself. The plan
+      # is a has_many over the source's model, with no foreign key of its
+      # own (declared_key? never matches it); its path says how to read it.
+      def self.through_plan(definition, infos, places, a, plans, direct, throughs)
+        at = "#{a.file}:#{a.line}: has_many :#{a.name}: "
+        throughs.each do |t|
+          next unless t.name == a.through_name
+
+          raise ModelScan::Error, at + "through: :#{a.through_name} is itself a through association; only one level is " \
+                                       "supported"
+        end
+        # Index sentinels, not a nil local (NOTES rule 11).
+        at_via = -1
+        i = 0
+        while i < direct
+          at_via = i if at_via < 0 && plans[i].name == a.through_name
+          i += 1
+        end
+        raise ModelScan::Error, at + "through: :#{a.through_name} is not an association of this model" if at_via < 0
+
+        via = plans[at_via]
+        # A polymorphic pair (D94) needs its type column in the subquery
+        # and a source_type: to name the target; neither is there.
+        if via.type_column != ""
+          raise ModelScan::Error, at + "through: :#{a.through_name} is a polymorphic association (D94); a through " \
+                                       "over one is not supported"
+        end
+        middle = table_for_model(definition, via.model)
+        raise ModelScan::Error, at + "through: :#{a.through_name} reads #{via.model}, which is not a model" if middle.nil?
+
+        candidates = Array.new(0) { "" }
+        if a.source_name != ""
+          candidates << a.source_name
+        else
+          candidates << Inflector.singularize(a.name)
+          candidates << a.name unless candidates.include?(a.name)
+        end
+        associations_for(via.model, infos).each do |m|
+          next unless m.through_name != "" && candidates.include?(m.name)
+
+          raise ModelScan::Error, at + "the source #{via.model}##{m.name} is itself a through association; only one " \
+                                       "level is supported"
+        end
+        middle_plans = plans_of(middle, definition, infos, places, false)
+        at_source = -1
+        i = 0
+        while i < middle_plans.size
+          at_source = i if at_source < 0 && candidates.include?(middle_plans[i].name)
+          i += 1
+        end
+        if at_source < 0
+          raise ModelScan::Error, at + "#{via.model} has no association #{candidates.join(" or ")} to read; set source:"
+        end
+
+        source = middle_plans[at_source]
+        if source.type_column != ""
+          raise ModelScan::Error, at + "the source #{via.model}##{source.name} is a polymorphic association (D94); a " \
+                                       "through over one is not supported"
+        end
+        path = ThroughPath.new(via.name, source.name, via.model, middle.name)
+        if via.kind == :belongs_to
+          path.set_owner_key(via.foreign_key, via.fk_null, via.fk_integer)
+        else
+          path.set_middle_key(via.foreign_key, via.fk_null, via.fk_integer)
+        end
+        if source.kind == :belongs_to
+          path.set_middle_link(source.foreign_key, source.fk_null, source.fk_integer)
+        else
+          path.set_target_link(source.foreign_key, source.fk_null, source.fk_integer)
+        end
+        notes = Array.new(0) { "" }
+        notes << "# has_many :#{a.name}, through: :#{via.name}, source: :#{source.name} (#{via.model}##{source.name})"
+        notes << ModelNaming.shadow_note("has_many reader", a.name) if Ident.shadowing_column?(a.name)
+        plan = AssociationPlan.new(:has_many, a.name, source.model, source.target_table, "", false, true, :none, true,
+                                   false, "", true, notes)
+        plan.set_through_path(path)
+        plan
       end
 
       # Whether a declared association already covers the foreign key `col`:
@@ -625,7 +815,7 @@ module Cybertrain
       # (posts.comments_count).
       def self.counter_column(child, fk, parent, infos)
         associations_for(ModelNaming.model_class_name(parent.name), infos).each do |h|
-          next unless h.kind == :has_many && declared_class(h) == ModelNaming.model_class_name(child.name)
+          next unless h.kind == :has_many && h.through_name == "" && declared_class(h) == ModelNaming.model_class_name(child.name)
           return h.name + "_count" if declared_key(h, parent) == fk
         end
         child.name + "_count"

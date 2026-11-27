@@ -99,13 +99,15 @@ module Cybertrain
     # and `foreign_key` are "" when the line does not give them (the emitter
     # infers them); `dependent` is :destroy, :delete_all, :nullify or :none;
     # `optional` and `counter_cache` are belongs_to's (false elsewhere);
-    # `file` and `line` place the error messages. `polymorphic` is a
+    # `through_name` and `source_name` are a has_many's `through:` and
+    # `source:` ("" without them; docs/design.md D93), set after `new` by
+    # set_through. `polymorphic` is a
     # belongs_to's `polymorphic: true`, `as_name` a has_many's or has_one's
     # `as:` ("" without it): docs/design.md D94, set by `polymorphic!`
     # after construction.
     class AssociationInfo
       attr_reader :file, :kind, :name, :class_name, :foreign_key, :dependent, :optional, :counter_cache, :line,
-                  :polymorphic, :as_name
+                  :polymorphic, :as_name, :through_name, :source_name
 
       def initialize(file, kind, name, class_name, foreign_key, dependent, optional, counter_cache, line)
         @file = file
@@ -117,8 +119,16 @@ module Cybertrain
         @optional = optional
         @counter_cache = counter_cache
         @line = line
+        @through_name = ""
+        @source_name = ""
         @polymorphic = false
         @as_name = ""
+      end
+
+      def set_through(through_name, source_name)
+        @through_name = through_name
+        @source_name = source_name
+        nil
       end
 
       # The polymorphic options of the line (D94).
@@ -811,6 +821,8 @@ module Cybertrain
       def self.association_options(kind)
         return ["class_name", "foreign_key", "optional", "counter_cache", "polymorphic"] if kind == "belongs_to"
 
+        return ["dependent", "class_name", "foreign_key", "through", "source", "as"] if kind == "has_many"
+
         ["dependent", "class_name", "foreign_key", "as"]
       end
 
@@ -835,6 +847,8 @@ module Cybertrain
         dependent = :none
         optional = false
         counter_cache = false
+        through_name = ""
+        source_name = ""
         polymorphic = false
         as_name = ""
         seen = Array.new(0) { "" }
@@ -885,6 +899,13 @@ module Cybertrain
             end
 
             class_name = text
+          elsif key == "through" || key == "source"
+            unless (value.start_with?(":") || quoted_literal?(value)) && Ident.column?(text)
+              raise Error, what + "#{key}: takes an association name (got #{value})"
+            end
+
+            through_name = text if key == "through"
+            source_name = text if key == "source"
           else
             unless (value.start_with?(":") || quoted_literal?(value)) && Ident.column?(text)
               raise Error, what + "foreign_key: takes a column name (got #{value})"
@@ -898,6 +919,14 @@ module Cybertrain
 
           where = a.file == file ? "on line #{a.line}" : "at #{a.file}:#{a.line}"
           raise Error, what + "an association named #{name} is already declared #{where}"
+        end
+        raise Error, what + "source: needs through:" if source_name != "" && through_name == ""
+        if through_name != ""
+          # A through association reads its key and class from the
+          # associations it goes through (docs/design.md D93).
+          ["dependent", "class_name", "foreign_key", "as"].each do |o|
+            raise Error, what + "#{o}: does not go with through: (the key and class come from source:)" if seen.include?(o)
+          end
         end
         # A polymorphic pair always uses `<name>_type` and `<name>_id`
         # (what `t.references :name, polymorphic: true` creates), and its
@@ -913,6 +942,7 @@ module Cybertrain
         info = AssociationInfo.new(file, kind.to_sym, name, class_name, foreign_key, dependent, optional, counter_cache,
                                    lineno)
         info.polymorphic!(polymorphic, as_name)
+        info.set_through(through_name, source_name)
         info
       end
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 08d070e92fd6f019d089468eeb60a770e10307e8cf1ad7c2753aaa91b634f501
+source_sha256: 9448b08f2105bfebf96da9fa441104f830033615cec5905c22830b88988af371
 ---
 # モデルとデータベース
 
@@ -321,7 +321,22 @@ end
 - `belongs_to` は親を読み、外部キーが変わるか `reload` するまで覚えています。
 - `optional: true` のない宣言した `belongs_to` は、キーが nil、空、0 の間レコードを無効にするので（`article_id` に「can't be blank」。生成される `validates_foreign_key :article_id`）、データベースが行を拒む前に `save` が false を返します。外部キーだけから来る関連付けはバリデーションを足しません。
 - オプションはリテラルです：`class_name:`（String か Symbol）、`foreign_key:`、`dependent:`（`has_many` と `has_one`）、`optional:` と `counter_cache:`（`belongs_to`）。どのマクロもクラスの直下で一行に単独で書き、末尾にコメントを付けません。存在しないモデル、カラム、オプションはファイルと行を示してジェネレーターを止めます。
-- ないもの：`has_many :through`、`has_many` のスコープのラムダ（返されたリレーションにつなげてください）、`inverse_of`、`dependent: :restrict_with_error`。
+- ないもの：`has_many` のスコープのラムダ（返されたリレーションにつなげてください）、`inverse_of`、`dependent: :restrict_with_error`。
+
+### through の関連付け
+
+```ruby
+# app/models/post.rb
+class Post
+  has_many :taggings
+  has_many :tags, through: :taggings                 # Tagging ごとの tag
+  has_many :labels, through: :taggings, source: :tag
+  belongs_to :author
+  has_many :co_posts, through: :author, source: :posts
+end
+```
+
+`through:` は同じモデルの別の関連付け（宣言したものでも外部キーから来たものでもよい `has_many`、`has_one`、`belongs_to`）を名指し、リーダーはそのモデルの関連付けがたどり着くレコードを返します。その関連付けは `source:` で名指し、なければリーダーの名前の単数形か複数形です（Tagging の `tag` か `tags`）。リーダーはサブクエリを持つ、ターゲットの上の一つのリレーションです（`tags.id IN (SELECT tag_id FROM taggings WHERE post_id = ?)`）。そのためほかのリレーションと同じようにつなげられ（`@post.tags.where(name: "ruby").order(:name)`、`.count`）、二つの tagging が同じタグにたどり着いても、各タグを一度だけ返します。結合する Rails なら繰り返します。`includes(:tags)` は中間の行を、続いてターゲットを読み込み、クエリは二回増えます。一段だけです：経由する関連付けもその source も through であってはいけません。`dependent:`、`class_name:`、`foreign_key:` は取らず（キーとクラスは二つの関連付けから来ます）、読み取り専用です：`@post.tags << tag` はないので、中間のレコードを作り（`Tagging.create(post_id: @post.id, tag_id: tag.id)`）、外すときはそれを destroy してください。`has_one :through` はありません。
 
 ### `dependent:` か `on_delete:` か
 
@@ -388,7 +403,7 @@ Comment.includes(:commentable).to_a  # one query per type found
 <% end %>
 ```
 
-`includes(*names)`（と同じものの `preload`）は、レコードを読み込むときに関連付けごとにクエリを一回足します（`has_many` と `has_one` なら `Comment.where(article_id: ids)`、`belongs_to` なら id で親を）。そのため `article.comments` や `comment.article` を回すループは、自分ではクエリを実行しません。子のないレコードは空の一覧を、親のないレコードは nil を受け取り、それ以上のクエリはありません。先読みした `has_many` では、`to_a`、`each`、`first`、`last`、`size`、`empty?` がメモリから答え（子は id の順）、`count` と `exists?` はクエリを実行し、つなぐメソッド（`where`、`order` など）は先読みを捨てて普通にクエリします。先読みした子には親が設定されません（`comment.article` は読みに行きます。下のように一緒に先読みもできます）。`eager_load` と `joins` はありません。
+`includes(*names)`（と同じものの `preload`）は、レコードを読み込むときに関連付けごとにクエリを一回足します（`has_many` と `has_one` なら `Comment.where(article_id: ids)`、`belongs_to` なら id で親を、[through の関連付け](#through-associations)なら二回）。そのため `article.comments` や `comment.article` を回すループは、自分ではクエリを実行しません。子のないレコードは空の一覧を、親のないレコードは nil を受け取り、それ以上のクエリはありません。先読みした `has_many` では、`to_a`、`each`、`first`、`last`、`size`、`empty?` がメモリから答え（子は id の順）、`count` と `exists?` はクエリを実行し、つなぐメソッド（`where`、`order` など）は先読みを捨てて普通にクエリします。先読みした子には親が設定されません（`comment.article` は読みに行きます。下のように一緒に先読みもできます）。`eager_load` と `joins` はありません。
 
 ネストした関連付けは Rails の Hash と Array の形で、何段でも書けます：
 
@@ -399,7 +414,7 @@ Article.includes(:author, comments: { author: :profile })  # 五回
 Comment.preload(article: { author: :profile })             # 四回
 ```
 
-段ごとに、その上のレコードの数によらずクエリが一回増えます（SQLite が一つの文に束縛できる数より id が多い段では、id のかたまりごとに一回）。すべての記事のコメント、次にそのコメントすべての著者、という具合です。読み込むものがない段（コメントがない、親がすべて nil）はクエリを実行しません。同じリレーションへの二度目の `includes` は一度目に足されます。その段のモデルの関連付けでない名前は、`includes` を呼んだときに、どのクエリよりも前に `ArgumentError`（`unknown association nope for Comment`）になります。検査は実行時で、ジェネレーターは行いません（`docs/design.md` D95）。ポリモーフィックな `belongs_to` の下では親の型ごとにクエリが一回増え、その下の名前は `as:` で宣言したすべての型の関連付けでなければなりません。
+段ごとに、その上のレコードの数によらずクエリが一回増えます（SQLite が一つの文に束縛できる数より id が多い段では、id のかたまりごとに一回）。すべての記事のコメント、次にそのコメントすべての著者、という具合です。読み込むものがない段（コメントがない、親がすべて nil）はクエリを実行しません。同じリレーションへの二度目の `includes` は一度目に足されます。その段のモデルの関連付けでない名前は、`includes` を呼んだときに、どのクエリよりも前に `ArgumentError`（`unknown association nope for Comment`）になります。検査は実行時で、ジェネレーターは行いません（`docs/design.md` D95）。ポリモーフィックな `belongs_to` の下では親の型ごとにクエリが一回増え、その下の名前は `as:` で宣言したすべての型の関連付けでなければなりません。[through の関連付け](#through-associations)もほかと同じようにネストでき、その段はクエリ二回です。
 
 ## バリデーション
 
