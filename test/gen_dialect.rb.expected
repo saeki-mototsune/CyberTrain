@@ -28,4 +28,21 @@ ok   gen on a MySQL app writes its models, fixtures and test program for MySQL
 ok   the generated account test checks the refused deletion by the adapter's own error
 bin/shop.rb: the first require must be "cybertrain" or "cybertrain/mysql"
 ok   gen stops with the message on a bad first require, writing nothing
-14 tests, 52 assertions, 0 failures
+ok   partial_index_lines finds the add_index calls with a where:, across lines
+db/migrate/20270101000000_add_index.rb:4: partial indexes (where:) are not supported on MySQL
+wrote gen/routes.rb
+wrote gen/assets.rb
+wrote gen/locales.rb
+wrote gen/controllers.rb
+wrote gen/concerns.rb
+wrote gen/views.rb
+wrote gen/helpers.rb
+wrote gen/components.rb
+wrote gen/jobs.rb
+wrote gen/migrations.rb
+wrote gen/models/comment.rb
+wrote gen/models/post.rb
+wrote gen/console.rb
+wrote gen/app.rb
+ok   gen on a MySQL app stops at a partial index, writing nothing; on SQLite it goes on
+16 tests, 59 assertions, 0 failures

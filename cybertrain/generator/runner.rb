@@ -75,6 +75,15 @@ module Cybertrain
           puts e.message
           return 1
         end
+        # MySQL has no partial index: an add_index with where: stops gen,
+        # nothing written, before `db migrate` would run it.
+        if dialect.mysql?
+          partial = Runner.partial_index_refusals(root)
+          unless partial.empty?
+            partial.each { |line| puts line }
+            return 1
+          end
+        end
         check = argv.include?("--check")
         embed = argv.include?("--embed-views")
         jobs_page = Cybertrain::Routes.jobs_page_spec
@@ -183,6 +192,23 @@ module Cybertrain
           stale += sync_file(root, "gen/app.rb", Manifest.emit_with_models(root, models), check)
         end
         stale > 0 ? 1 : 0
+      end
+
+      # "<path>:<line>: partial indexes (where:) are not supported on
+      # MySQL" for each add_index with a where: in db/migrate/*.rb and
+      # db/schema.rb (paths relative to `root`).
+      def self.partial_index_refusals(root)
+        paths = Array.new(0) { "" }
+        SourceText.ruby_files("#{root}/db/migrate").each { |path| paths << path }
+        paths << "#{root}/db/schema.rb" if File.file?("#{root}/db/schema.rb")
+        refusals = Array.new(0) { "" }
+        paths.each do |path|
+          rel = path.delete_prefix("#{root}/")
+          Dialect.partial_index_lines(File.read(path)).each do |line|
+            refusals << "#{rel}:#{line}: #{Dialect::PARTIAL_INDEX}"
+          end
+        end
+        refusals
       end
 
       # A gen/concerns file whose concern is gone, and the directories

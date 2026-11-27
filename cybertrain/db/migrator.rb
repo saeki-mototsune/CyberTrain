@@ -15,7 +15,11 @@ module Cybertrain
       def initialize(connection)
         @connection = connection
         @quiet = false
-        @connection.exec_script("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY)")
+        # The statement a version without a transaction is at, and how
+        # many it has (run_version_in_steps).
+        @statement_at = 0
+        @statement_total = 0
+        @connection.exec_script(Dialect.migrator_schema_migrations_sql)
       end
 
       # Stops the progress lines (`== <version> <Class>: migrating`,
@@ -47,7 +51,9 @@ module Cybertrain
 
       # Runs every pending migration's forward operations (recorded by
       # `up`) inside one transaction per migration, then records its
-      # version. Returns the number of migrations applied.
+      # version (where DDL does not roll back, MySQL, statement after
+      # statement: run_version_in_steps). Returns the number of migrations
+      # applied.
       def migrate(migrations)
         count = 0
         pending(migrations).each do |entry|
@@ -177,12 +183,113 @@ module Cybertrain
       # names) non-empty, DB::Dialect.migrator_foreign_key_check runs before
       # the commit and a violation raises, which rolls the version back. Called from a
       # method body so the transaction (a yielding method with rescue) is
-      # never inside a nested block (spikes/NOTES.md rule 45).
+      # never inside a nested block (spikes/NOTES.md rule 45). Where DDL
+      # does not roll back (DB::Dialect.transactional_ddl? false: MySQL,
+      # whose every DDL statement commits), there is no transaction to run
+      # it in: run_version_in_steps.
       def run_version(version, ops, forward, sql, rebuilt)
+        unless Dialect.transactional_ddl?
+          run_version_in_steps(version, ops, forward, sql, rebuilt)
+          return nil
+        end
         @connection.transaction do
           run_operations(ops, forward)
           check_foreign_keys(rebuilt) if rebuilt != ""
           @connection.execute(sql, [version])
+        end
+        nil
+      end
+
+      # A version where DDL commits as it runs (MySQL): its statements run
+      # one by one, counted, and `sql` (the schema_migrations INSERT or
+      # DELETE) only after the last. When one fails, those before it stay
+      # applied, and the error says so (DB::Error "migration <version>
+      # failed at statement <n> of <m>; statements 1..<n-1> were applied
+      # and cannot be rolled back (MySQL DDL commits implicitly):
+      # <message>"); the version is not recorded. Every statement is
+      # counted before the first runs, so an operation the DDL refuses (a
+      # partial index) raises before anything is applied.
+      def run_version_in_steps(version, ops, forward, sql, rebuilt)
+        @statement_total = statement_count(ops)
+        @statement_at = 0
+        run_steps(version, ops, forward)
+        check_foreign_keys(rebuilt) if rebuilt != ""
+        @connection.execute(sql, [version])
+        nil
+      end
+
+      # run_operations_in_steps, with a failure reported as
+      # run_version_in_steps says. A non-yielding method holding the rescue
+      # (spikes/NOTES.md rules 32/45).
+      def run_steps(version, ops, forward)
+        run_operations_in_steps(ops, forward)
+        nil
+      rescue StandardError => e
+        at = @statement_at
+        total = @statement_total
+        # A local first (spikes/NOTES.md rule 58).
+        message = "migration #{version} failed at statement #{at} of #{total}; statements 1..#{at - 1} " \
+                  "were applied and cannot be rolled back (MySQL DDL commits implicitly): #{e.message}"
+        raise Error, message
+      end
+
+      # How many statements run_operations_in_steps runs for `ops`.
+      def statement_count(ops)
+        count = 0
+        ops.each do |op|
+          if op.kind == :execute || op.kind == :reversible_up
+            count += 1
+          elsif op.kind == :reversible_down
+            nil
+          elsif op.rebuilds?
+            count += backfills?(op) ? 2 : 1
+          elsif op.kind == :remove_index
+            count += 1
+          else
+            count += Dialect.ddl_statements(op).size
+          end
+        end
+        count
+      end
+
+      # Whether a rebuild operation first writes a default into the NULL
+      # cells (change_column_null to NOT NULL with a default).
+      def backfills?(op)
+        op.kind == :change_column_null && !op.null && op.exec_sql != ""
+      end
+
+      # run_operations for a version without a transaction: each statement
+      # counted in @statement_at before it runs. An :add_reference and its
+      # :add_foreign_key run as their own statements (MySQL adds a foreign
+      # key to an existing table); a rebuild operation is
+      # DB::Dialect.migrator_rebuild's one statement, after its backfill;
+      # a :remove_index drops the index run_operations would.
+      def run_operations_in_steps(ops, forward)
+        ops.each do |op|
+          if op.kind == :execute || op.kind == :reversible_up
+            @statement_at += 1
+            run_data_statement(op)
+          elsif op.kind == :reversible_down
+            nil
+          elsif op.rebuilds?
+            if backfills?(op)
+              @statement_at += 1
+              @connection.execute(op.exec_sql, op.exec_binds)
+            end
+            @statement_at += 1
+            run_rebuild(op)
+          elsif op.kind == :remove_index
+            @statement_at += 1
+            name = index_to_remove(op, forward)
+            named = Cybertrain::Migration::Operation.new(:remove_index, op.table_text, name, :string, true, nil, 0, "",
+                                                         op.columns, false, "")
+            Dialect.ddl_statements(named).each { |stmt| @connection.exec_script(stmt) }
+          else
+            Dialect.ddl_statements(op).each do |stmt|
+              @statement_at += 1
+              @connection.exec_script(stmt)
+            end
+          end
         end
         nil
       end

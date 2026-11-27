@@ -4,8 +4,12 @@ require "cybertrain/cast"
 
 module Cybertrain
   module DB
-    # Cybertrain::DB::SchemaDumper -- introspects a live SQLite database back
-    # into a Cybertrain::Schema::Definition, the reverse of SqliteDDL.
+    # Cybertrain::DB::SchemaDumper -- introspects a live database back into
+    # a Cybertrain::Schema::Definition, the reverse of SqliteDDL. Everything
+    # is read through DB::Dialect's schema readers: on SQLite its PRAGMAs,
+    # on MySQL information_schema answered in the same shape, the types and
+    # defaults as SQLite declares them (DB::MySQL::SchemaReader), so the
+    # same migrations dump the same db/schema.rb on both.
     #
     # SqliteDDL declares one SQL type name per schema type (VARCHAR, TEXT,
     # INTEGER, BIGINT, REAL, DECIMAL, BOOLEAN, DATETIME, DATE, BLOB, JSON) and

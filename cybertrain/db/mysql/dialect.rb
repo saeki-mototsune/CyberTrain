@@ -215,19 +215,22 @@ module Cybertrain
         false
       end
 
-      # The statements a migration operation runs. MySQL's DDL generator
-      # (cybertrain/db/mysql/ddl.rb) comes with the Migrator on MySQL
-      # (the plan's Task 10); until then the operation is refused.
+      # The statements a migration operation that does not read the live
+      # schema runs (MySQL::DDL.statements): every kind but the rebuild
+      # ones (migrator_rebuild). A partial index raises DB::Error
+      # "partial indexes (where:) are not supported on MySQL".
       # @param op [Cybertrain::Migration::Operation]
       # @return [Array<String>]
       def self.ddl_statements(op)
-        # Typed as the Array it will answer (a method that only raises
-        # has no return type for its callers to iterate).
-        statements = Array.new(0) { "" }
-        message = "#{op.kind}: migrations on MySQL are not available yet (cybertrain/db/mysql/ddl.rb)"
-        raise Cybertrain::DB::Error, message if statements.empty?
+        Cybertrain::DB::MySQL::DDL.statements(op)
+      end
 
-        statements
+      # The CREATE TABLE of the Migrator's schema_migrations, when there
+      # is none (a VARCHAR key: MySQL keys no TEXT without a prefix length).
+      # @return [String]
+      def self.migrator_schema_migrations_sql
+        "CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(255) NOT NULL PRIMARY KEY)" +
+          Cybertrain::DB::MySQL::DDL::TABLE_OPTIONS
       end
 
       # The current time as Integer epoch microseconds (UTC), in SQL: the
@@ -532,20 +535,15 @@ module Cybertrain
       # --- Schema reading (SchemaDumper, Migrator) --------------------------------
 
       # The table's columns, one row each in declaration order, with the
-      # keys "name", "type" (column_type, as MySQL spells it: "varchar(255)",
-      # "bigint"), "notnull" (0/1), "dflt_value" (the default or nil) and
-      # "pk" (0, or the column's place in the primary key).
+      # keys "name", "type" (as SqliteDDL would declare it: "VARCHAR",
+      # "INTEGER", "BOOLEAN", ...; MySQL::SchemaReader), "notnull" (0/1),
+      # "dflt_value" (the default's SQL text, as SQLite reports it, or nil)
+      # and "pk" (0, or the column's place in the primary key).
       # @param conn [Cybertrain::DB::Connection]
       # @param table [String]
       # @return [Array<Hash{String => Object}>]
       def self.schema_columns(conn, table)
-        conn.execute("SELECT c.column_name AS name, c.column_type AS type, " \
-                     "IF(c.is_nullable = 'NO', 1, 0) AS notnull, c.column_default AS dflt_value, " \
-                     "COALESCE((SELECT k.ordinal_position FROM information_schema.key_column_usage k " \
-                     "WHERE k.table_schema = c.table_schema AND k.table_name = c.table_name " \
-                     "AND k.column_name = c.column_name AND k.constraint_name = 'PRIMARY'), 0) AS pk " \
-                     "FROM information_schema.columns c WHERE c.table_schema = DATABASE() AND c.table_name = ? " \
-                     "ORDER BY c.ordinal_position", [table])
+        Cybertrain::DB::MySQL::SchemaReader.column_rows(conn, table)
       end
 
       # The table's indexes but the primary key, one row each with "name"
@@ -559,14 +557,17 @@ module Cybertrain
                      "AND index_name <> 'PRIMARY' GROUP BY index_name ORDER BY index_name", [table])
       end
 
-      # The CREATE INDEX text of `table`'s index `index`: "" on MySQL, which
-      # keeps no such text (information_schema.statistics has the parts).
+      # The CREATE INDEX text of `table`'s index `index` when it has an
+      # expression among its key parts, "" for an index of columns only
+      # (MySQL keeps no CREATE INDEX text:
+      # MySQL::SchemaReader.expression_index_sql writes one from
+      # information_schema.statistics).
       # @param conn [Cybertrain::DB::Connection]
       # @param table [String]
       # @param index [String]
       # @return [String]
       def self.schema_index_sql(conn, table, index)
-        ""
+        Cybertrain::DB::MySQL::SchemaReader.expression_index_sql(conn, table, index)
       end
 
       # The column names of `table`'s index `index`, in key order.
@@ -625,15 +626,17 @@ module Cybertrain
       end
 
       # Runs one operation SQLite rebuilds its table for (op.rebuilds?):
-      # MySQL changes the table in place, so it is the operation's own
-      # statements (ddl_statements: ALTER TABLE ... MODIFY); `definition` is
-      # not read.
+      # MySQL changes the table in place, with the one ALTER TABLE
+      # MySQL::DDL.rebuild_sql writes from `definition` (the live schema
+      # dumped just now). A change_column_null's backfill is not run here:
+      # the Migrator runs it first, as a statement of its own (SQLite's
+      # rebuild runs it).
       # @param conn [Cybertrain::DB::Connection]
       # @param op [Cybertrain::Migration::Operation]
       # @param definition [Cybertrain::Schema::Definition]
       # @return [nil]
       def self.migrator_rebuild(conn, op, definition)
-        Dialect.ddl_statements(op).each { |sql| conn.exec_script(sql) }
+        conn.exec_script(Cybertrain::DB::MySQL::DDL.rebuild_sql(conn, op, definition))
         nil
       end
     end

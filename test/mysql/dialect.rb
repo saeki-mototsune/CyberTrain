@@ -167,16 +167,14 @@ test "foreign_key_violation describes the first dangling row, and the migrator's
   conn.close
 end
 
-test "transactional_ddl? is false; ddl_statements and migrator_rebuild wait for MySQL's DDL" do
+test "transactional_ddl? is false; ddl_statements is MySQL's DDL; schema_migrations has a VARCHAR key" do
   assert_equal false, Dialect.transactional_ddl?
   migration = AddViews.new
   migration.change
   ops = migration.operations
-  message = assert_raises("DB::Error") { Dialect.ddl_statements(ops[0]) }
-  assert_includes message, "add_column: migrations on MySQL are not available yet"
-  conn = blog_db
-  assert_raises("DB::Error") { Dialect.migrator_rebuild(conn, ops[0], Cybertrain::Schema::Definition.new("1")) }
-  conn.close
+  assert_equal ["ALTER TABLE `posts` ADD COLUMN `score` INT NOT NULL DEFAULT 0"], Dialect.ddl_statements(ops[0])
+  assert_equal "CREATE TABLE IF NOT EXISTS schema_migrations (version VARCHAR(255) NOT NULL PRIMARY KEY) " \
+               "ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin", Dialect.migrator_schema_migrations_sql
 end
 
 test "now_epoch_usec_sql reads the clock in UTC epoch microseconds" do
@@ -207,7 +205,7 @@ test "the schema readers answer name/type/notnull/dflt_value/pk, indexes and for
   conn = blog_db
   columns = Dialect.schema_columns(conn, "posts")
   assert_equal ["id", "title", "views"], columns.map { |r| r["name"].to_s }
-  assert_equal "varchar(255)", columns[1]["type"].to_s
+  assert_equal ["BIGINT", "VARCHAR", "INTEGER"], columns.map { |r| r["type"].to_s }
   assert_equal 1, Cybertrain::Cast.int(columns[1]["notnull"])
   assert_equal 0, Cybertrain::Cast.int(columns[2]["notnull"])
   assert_equal "0", Cybertrain::Cast.str_or_nil(columns[2]["dflt_value"]).to_s

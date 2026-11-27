@@ -200,6 +200,13 @@ module Cybertrain
         Cybertrain::DB::SqliteDDL.statements(op)
       end
 
+      # The CREATE TABLE of the Migrator's schema_migrations, when there
+      # is none. MySQL: a VARCHAR(255) key and the table options.
+      # @return [String]
+      def self.migrator_schema_migrations_sql
+        "CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY)"
+      end
+
       # The current time as Integer epoch microseconds (UTC), in SQL.
       # MySQL: CAST(UNIX_TIMESTAMP(NOW(6)) * 1000000 AS SIGNED).
       # @return [String]
@@ -484,9 +491,8 @@ module Cybertrain
       # The table's columns, one row each in declaration order, with the
       # keys "name", "type" (as declared), "notnull" (0/1), "dflt_value"
       # (the default's SQL text or nil) and "pk" (0, or the column's place in
-      # the primary key). MySQL: information_schema.columns as column_name
-      # AS name, column_type AS type, is_nullable = 'NO' AS notnull,
-      # column_default AS dflt_value, (column_key = 'PRI') AS pk.
+      # the primary key). MySQL: information_schema.columns, with the type
+      # and the default as SQLite's would read (MySQL::SchemaReader).
       # @param conn [Cybertrain::DB::Connection]
       # @param table [String]
       # @return [Array<Hash{String => Object}>]
@@ -508,9 +514,8 @@ module Cybertrain
       # The CREATE INDEX text of `table`'s index `index`, "" when there is
       # none (an automatic index). SQLite's index names are unique in the
       # schema, so `table` is not read. MySQL (names unique per table only):
-      # "" (information_schema.statistics WHERE table_schema = DATABASE()
-      # AND table_name = ? AND index_name = ? carries the expression; a
-      # later task reads it there).
+      # one written from information_schema.statistics for an index with an
+      # expression, else "".
       # @param conn [Cybertrain::DB::Connection]
       # @param table [String]
       # @param index [String]
@@ -585,8 +590,8 @@ module Cybertrain
       # change_column_null to NOT NULL with a default first backfills the
       # NULL cells. Foreign key enforcement is already off (the migrator's
       # apply_version).
-      # MySQL: the operation's ALTER TABLE ... MODIFY (ddl_statements(op));
-      # no rebuild.
+      # MySQL: the operation's one ALTER TABLE (MySQL::DDL.rebuild_sql),
+      # no rebuild; the Migrator runs the backfill before it.
       # @param conn [Cybertrain::DB::Connection]
       # @param op [Cybertrain::Migration::Operation]
       # @param definition [Cybertrain::Schema::Definition]

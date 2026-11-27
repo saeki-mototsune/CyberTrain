@@ -1,0 +1,131 @@
+== 20260925174942 CreateArticles: migrating
+done
+== 20260925174943 CreateComments: migrating
+done
+== 20261112102827 CreateUsers: migrating
+done
+== 20261112102828 CreateSessions: migrating
+done
+== 20261112174320 AddCoverToArticles: migrating
+done
+ok   examples/blog/db/migrate applied on MySQL dumps examples/blog/db/schema.rb
+ok   the CREATE TABLE has the BIGINT id, BIGINT references and the table options
+== 20260925174942 CreateArticles: migrating
+done
+== 20260925174943 CreateComments: migrating
+done
+== 20261112102827 CreateUsers: migrating
+done
+== 20261112102828 CreateSessions: migrating
+done
+== 20261112174320 AddCoverToArticles: migrating
+done
+  up 20260925174942 CreateArticles
+  up 20260925174943 CreateComments
+  up 20261112102827 CreateUsers
+  up 20261112102828 CreateSessions
+  up 20261112174320 AddCoverToArticles
+== 20261112174320 AddCoverToArticles: reverting
+done
+== 20261112102828 CreateSessions: reverting
+done
+  up 20260925174942 CreateArticles
+  up 20260925174943 CreateComments
+  up 20261112102827 CreateUsers
+  down 20261112102828 CreateSessions
+  down 20261112174320 AddCoverToArticles
+== 20261112102828 CreateSessions: migrating
+done
+== 20261112174320 AddCoverToArticles: migrating
+done
+  up 20260925174942 CreateArticles
+  up 20260925174943 CreateComments
+  up 20261112102827 CreateUsers
+  up 20261112102828 CreateSessions
+  up 20261112174320 AddCoverToArticles
+ok   rollback and status, step by step
+ok   a version failing at its second statement says what was applied and is not recorded
+Cybertrain::Schema.define(version: "20270201000100") do |s|
+  s.create_table "mig_items" do |t|
+    t.string "title", null: false, limit: 80
+    t.text "content"
+    t.decimal "price", precision: 10, scale: 2
+    t.date "due_on"
+    t.json "meta"
+    t.binary "data"
+    t.bigint "views", null: false, default: "0"
+    t.string "state", null: false, default: "'draft'"
+    t.string "subtitle"
+  end
+
+  s.add_index "mig_items", ["state", "due_on"], name: "index_mig_items_on_state_and_due_on"
+  s.add_index "mig_items", ["title"], unique: true, name: "index_mig_items_on_title"
+
+end
+ok   add, remove and rename a column; unique and multi-column indexes; a partial index is refused
+Cybertrain::Schema.define(version: "20270201000300") do |s|
+  s.create_table "mig_items" do |t|
+    t.string "title", null: false
+  end
+
+  s.add_index "mig_items", "(lower(`title`)), `id`", name: "index_mig_items_on_lower_title"
+
+end
+ok   an expression index dumps with MySQL's text of its expression
+Cybertrain::Schema.define(version: "20270301000200") do |s|
+  s.create_table "mig_children" do |t|
+    t.integer "mig_parent_id", null: false
+    t.string "label"
+    t.integer "owner_id"
+  end
+
+  s.create_table "mig_parents" do |t|
+    t.string "name", null: false
+  end
+
+  s.add_index "mig_children", ["mig_parent_id"], name: "index_mig_children_on_mig_parent_id"
+  s.add_index "mig_children", ["owner_id"], name: "index_mig_children_on_owner_id"
+
+  s.add_foreign_key "mig_children", "mig_parents", column: "mig_parent_id", on_delete: :cascade
+  s.add_foreign_key "mig_children", "mig_parents", column: "owner_id", on_delete: :nullify
+end
+ok   foreign keys: ON DELETE CASCADE in create_table, SET NULL added to a table, both dumped
+Cybertrain::Schema.define(version: "20270401000200") do |s|
+  s.create_table "mig_children" do |t|
+    t.integer "mig_parent_id"
+    t.string "label", null: false, default: "'unnamed'", limit: 40
+  end
+
+  s.create_table "mig_parents" do |t|
+    t.string "name", null: false
+  end
+
+  s.add_index "mig_children", ["mig_parent_id"], name: "index_mig_children_on_mig_parent_id"
+
+end
+Cybertrain::Schema.define(version: "20270401000100") do |s|
+  s.create_table "mig_children" do |t|
+    t.integer "mig_parent_id", null: false
+    t.string "label"
+  end
+
+  s.create_table "mig_parents" do |t|
+    t.string "name", null: false
+  end
+
+  s.add_index "mig_children", ["mig_parent_id"], name: "index_mig_children_on_mig_parent_id"
+
+  s.add_foreign_key "mig_children", "mig_parents", column: "mig_parent_id", on_delete: :cascade
+end
+Cybertrain::Schema.define(version: "20270401000100") do |s|
+  s.create_table "mig_children" do |t|
+    t.string "label"
+    t.integer "mig_parent_id"
+  end
+
+  s.add_index "mig_children", ["mig_parent_id"], name: "index_mig_children_on_mig_parent_id"
+
+  s.add_foreign_key "mig_children", "mig_parents", column: "mig_parent_id", on_delete: :cascade
+end
+ok   the operations SQLite rebuilds a table for are one ALTER TABLE each on MySQL
+8 tests, 48 assertions, 0 failures

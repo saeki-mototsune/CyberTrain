@@ -190,4 +190,28 @@ test "gen stops with the message on a bad first require, writing nothing" do
   refute File.exist?("#{root}/gen")
 end
 
+PARTIAL_MIGRATION = "class AddIndex < Cybertrain::Migration::Base\n  def change\n" \
+                    "    add_index \"posts\", [\"title\"] # where: is not here\n" \
+                    "    add_index \"posts\", [\"slug\"],\n              unique: true, where: \"slug IS NOT NULL\"\n" \
+                    "    add_index(\"posts\", [\"state\"], where: \"\")\n  end\nend\n"
+
+test "partial_index_lines finds the add_index calls with a where:, across lines" do
+  assert_equal [4], Cybertrain::Gen::Dialect.partial_index_lines(PARTIAL_MIGRATION)
+  assert_equal [2], Cybertrain::Gen::Dialect.partial_index_lines("x = 1\n  s.add_index \"t\", [\"a\"], name: \"i\", where: \"a > 0\"\n")
+  assert_equal Array.new(0) { 0 }, Cybertrain::Gen::Dialect.partial_index_lines("add_index \"t\", [\"a\"], name: \"somewhere: x\"\n")
+end
+
+test "gen on a MySQL app stops at a partial index, writing nothing; on SQLite it goes on" do
+  root = app_with_bin("require \"cybertrain/mysql\"\n")
+  FileTree.make_dirs("#{root}/db/migrate")
+  File.write("#{root}/db/migrate/20270101000000_add_index.rb", PARTIAL_MIGRATION)
+  assert_equal 1, Cybertrain::Gen::Runner.run(root, [])
+  refute File.exist?("#{root}/gen")
+  sqlite = app_with_bin("require \"cybertrain\"\n")
+  FileTree.make_dirs("#{sqlite}/db/migrate")
+  File.write("#{sqlite}/db/migrate/20270101000000_add_index.rb", PARTIAL_MIGRATION)
+  assert_equal 0, Cybertrain::Gen::Runner.run(sqlite, [])
+  assert File.exist?("#{sqlite}/gen/migrations.rb")
+end
+
 Cybertrain::Test.run!
