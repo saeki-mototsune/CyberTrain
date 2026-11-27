@@ -294,8 +294,8 @@ the cell names another build.
 | AQ | bug | 116 | open (status 116) |  |
 | AR | bug | 122 | open (status 122) |  |
 | AS | bug | 123 | open, not reduced (status 123); upstream 2026.10.25 the same, seen there with cybertrain/http/query and cybertrain/config required together. Not worked around: cybertrain/context.rb, not cybertrain/params.rb, registers ParameterMissing with ClientError, so the programs that load Config without the rest do not load Query |  |
-| AT | bug | 112 | open (status 112) |  |
-| AU | bug | 52 | open (status 52) |  |
+| AT | bug | 112 | closed | 2026-11-27, by the change that set this row: 2026.11.27.7037 (matz/spinel#12626). spikes/phase5/flock_fstat.rb prints CRuby's lines on it, "a.stat names the old file" included ("2026.11.27.7037" in the list of builds). `CLI::BuildLock#same_file?` (cybertrain/cli/build_lock.rb) takes `f.stat` under both runtimes, with no `IO.for_fd`; test/cli_build.rb's cases "a taker that opened the file before its holder released it ends up on the path's file" and "releasing the build lock leaves a lock another taker holds at the path" pass compiled |
+| AU | bug | 52 | closed | 2026-11-27, by the change that set this row: 2026.11.27.7037 (matz/spinel#12625); never had a workaround. rechecks/differing/invalid_utf8.rb's `strip` line raises Encoding::CompatibilityError on it as under CRuby, and its `byteindex` lines and rechecks/invalid_utf8_shapes.rb match too ("2026.11.27.7037" in the list of builds). Rule 52 stays for AD |
 | AV | bug | 17 | closed | 2026-11-27, by the change that set this row: 2026.11.27.7037 (matz/spinel#12630); never had a workaround. rechecks/differing/class_before_definition.rb prints `NameError: uninitialized constant Later` on it as under CRuby, and rechecks/constant_order.rb still matches ("2026.11.27.7037" in the list of builds). Rule 17's advice, an order CRuby accepts, is how the framework is written anyway |
 | AW | bug | 27 | open (status 27) for an append of socket bytes to a UTF-8 String that holds non-ASCII, which appends where CRuby raises; passes on the pin for `IO#gets` on a socket, which answers a byte String as CRuby does (Linux, 2026-11-21), and `readpartial`, `read(n)` and `read_nonblock` match on the pin (rechecks/socket_shapes.rb). Closed once both lines of rechecks/differing/socket_bytes.rb, `gets` and `append`, print CRuby's result on the pin. Framing by byte is no workaround to remove: it is right under both runtimes and stays in rule 27 as advice after AW is closed |  |
 | AX | bug |  | open ("Status by rule", row AX): `JSON.parse` does not count an innermost empty Array or Object against the nesting limit, so 101 nested Arrays with nothing inside parse where CRuby raises JSON::NestingError, and one level deeper with `max_nesting:` too (rechecks/differing/json_parse_nesting.rb). Documents that hold a value raise at the depth and with the class and message CRuby gives. No workaround and no rule: nothing in the framework depends on where the limit falls |  |
@@ -4729,8 +4729,10 @@ answers as under CRuby.
   File's own descriptor.
 - Asked of Spinel: `File#stat` on an open File as fstat(2) of its
   descriptor.
-- Not reported upstream. The `IO.for_fd` difference has no program of its
-  own.
+- Sent from this project and merged as matz/spinel#12626 (2026-11-26),
+  in 2026.11.27.7037, with `File#size`, `#chmod`, `#chown` and the
+  other descriptor-based File methods. Closed on 2026-11-27 ("Item
+  register").
 
 ### AU. `String#strip` on a String with an invalid byte returns it
 
@@ -4757,7 +4759,9 @@ CRuby, and `index` with a String needle raises on neither runtime
 - Today: nothing depends on it. Request text is validated once with
   `valid_encoding?` (`Query.utf8!`, rule 52) before anything strips it.
 - Asked of Spinel: raise as CRuby does. Low in harm, as AD is.
-- Not reported upstream.
+- Sent from this project and merged as matz/spinel#12625 (2026-11-26),
+  in 2026.11.27.7037, with `lstrip` and `rstrip`. Closed on 2026-11-27
+  ("Item register").
 
 ### AV. A class used above its definition runs, where CRuby raises NameError
 
