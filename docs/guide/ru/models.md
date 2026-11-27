@@ -1,5 +1,5 @@
 ---
-source_sha256: 707578e0592cebb2076d5b5ae9b67e5be62e3771a2cd00e5e559d163ef0e3af8
+source_sha256: a124e853bd3be8e13b82dab615713ac22123527ed9a608b02da732bd2dbd51b1
 ---
 # Модели и база данных
 
@@ -591,9 +591,40 @@ end
   (`belongs_to`). Каждый макрос стоит один на своей строке, на уровне класса,
   без комментария в конце; несуществующая модель, столбец или опция
   останавливает генератор с указанием файла и строки.
-- Недоступно: `has_many :through`, полиморфные ассоциации, лямбда-скоуп у
-  `has_many` (продолжайте цепочку на возвращённом relation), `inverse_of`,
+- Недоступно: полиморфные ассоциации, лямбда-скоуп у `has_many`
+  (продолжайте цепочку на возвращённом relation), `inverse_of`,
   `dependent: :restrict_with_error`.
+
+### Ассоциации through
+
+```ruby
+# app/models/post.rb
+class Post
+  has_many :taggings
+  has_many :tags, through: :taggings                 # tag каждого Tagging
+  has_many :labels, through: :taggings, source: :tag
+  belongs_to :author
+  has_many :co_posts, through: :author, source: :posts
+end
+```
+
+`through:` называет другую ассоциацию той же модели (`has_many`, `has_one`
+или `belongs_to`, объявленную или взятую из внешнего ключа), и читатель
+отвечает записями, к которым ведёт ассоциация той модели: её называет
+`source:`, иначе это единственное или множественное число имени читателя
+(`tag` или `tags` у Tagging). Читатель — один relation над целевой
+таблицей с подзапросом (`tags.id IN (SELECT tag_id FROM taggings WHERE
+post_id = ?)`), так что он продолжает цепочку, как любой другой
+(`@post.tags.where(name: "ruby").order(:name)`, `.count`), и отвечает
+каждым тегом один раз, даже когда к нему ведут два tagging; Rails, который
+делает JOIN, повторил бы его. `includes(:tags)` загружает промежуточные
+строки, а затем целевые записи: ещё два запроса. Только один уровень: ни
+ассоциация, через которую идёт путь, ни её source не могут быть through.
+Опций `dependent:`, `class_name:` и `foreign_key:` нет (ключ и класс берутся
+из двух ассоциаций), и она только читает: `@post.tags << tag` нет, поэтому
+создайте промежуточную запись, `Tagging.create(post_id: @post.id,
+tag_id: tag.id)`, а чтобы убрать — удалите её. `has_one :through`
+недоступен.
 
 ### `dependent:` или `on_delete:`
 
@@ -633,7 +664,8 @@ end
 
 `includes(*names)` (и `preload`, то же самое) выполняет ещё один запрос на
 ассоциацию при загрузке записей (`Comment.where(article_id: ids)` для
-`has_many` или `has_one`, родителей по id для `belongs_to`), так что цикл по
+`has_many` или `has_one`, родителей по id для `belongs_to`; два для
+[ассоциации through](#through-associations)), так что цикл по
 `article.comments` или `comment.article` своих запросов не выполняет. Запись
 без детей получает пустой список, а отсутствующий родитель — nil, без
 дальнейших запросов. У предзагруженного `has_many` `to_a`, `each`, `first`,

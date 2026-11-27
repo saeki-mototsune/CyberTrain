@@ -1,0 +1,15 @@
+ok   the checked-in gen/models files match the emitter (fixture stale otherwise)
+ok   scan_source reads through: and source:
+ok   the reader is one Relation over the target with a subquery through the middle table
+ok   a through has_many chains: where, order, count, exists?, first, pluck
+ok   a target reached through two middle rows comes once
+ok   the other way round: Tag#posts through the foreign-key-derived taggings
+ok   a has_many via with a has_many source: Author#comments through posts
+ok   a belongs_to via: Comment#thread_comments and #writers through its post
+ok   a nullable belongs_to via answers nothing for a nil key
+ok   includes of a through has_many is three statements; the readers then run none
+ok   includes of each kind of path fills every record, empty where nothing matches
+ok   reload drops a through has_many's preload
+ok   a through: or source: the generator cannot follow fails with the file and line
+ok   through: takes no dependent:, class_name: or foreign_key:, and source: needs through:
+14 tests, 66 assertions, 0 failures

@@ -2837,10 +2837,10 @@ test "an association line that is not one line of literal options raises with th
 end
 
 test "an unknown option, a wrong value or a repeated association raises with the file and line" do
-  assert_equal "app/models/post.rb:3: has_many :comments: unknown option through: (has_many takes dependent:, " \
-               "class_name:, foreign_key:)", association_error("has_many :comments, through: :posts")
+  assert_equal "app/models/post.rb:3: has_one :cover: unknown option through: (has_one takes dependent:, " \
+               "class_name:, foreign_key:)", association_error("has_one :cover, through: :posts")
   assert_equal "app/models/post.rb:3: has_many :comments: unknown option counter_cache: (has_many takes " \
-               "dependent:, class_name:, foreign_key:)", association_error("has_many :comments, counter_cache: true")
+               "dependent:, class_name:, foreign_key:, through:, source:)", association_error("has_many :comments, counter_cache: true")
   assert_equal "app/models/post.rb:3: has_one :cover: unknown option optional: (has_one takes dependent:, " \
                "class_name:, foreign_key:)", association_error("has_one :cover, optional: true")
   assert_equal "app/models/post.rb:3: belongs_to :blog: unknown option dependent: (belongs_to takes class_name:, " \

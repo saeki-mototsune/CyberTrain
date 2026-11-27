@@ -254,18 +254,33 @@ module Cybertrain
     # by {#destroy} before its DELETE in the same transaction. Without
     # `dependent:` the database's foreign key decides (`on_delete:` in the
     # schema). A model, column or option that does not exist stops the
-    # generator with the file and line. No `:through`, scope lambda,
-    # `inverse_of` or `counter_cache:` (that goes on the {.belongs_to}).
+    # generator with the file and line.
+    #
+    # `through:` names another association of this model (a has_many,
+    # has_one or belongs_to) and reads the records an association of that
+    # model leads to: `has_many :tags, through: :taggings` reads each
+    # Tagging's `tag` (or `tags`; `source:` names it otherwise) as one
+    # Relation over Tag, with a subquery, so each tag comes once and it
+    # chains like any other. It takes no `dependent:`, `class_name:` or
+    # `foreign_key:`, goes one level deep (neither association may be a
+    # through), and is read-only: create the middle record to add one
+    # (docs/design.md D93). No scope lambda, `inverse_of` or
+    # `counter_cache:` (that goes on the {.belongs_to}).
     # @example
     #   has_many :comments, dependent: :destroy
     #   has_many :drafts, class_name: "Post", foreign_key: :author_id
+    #   has_many :tags, through: :taggings
+    #   has_many :labels, through: :taggings, source: :tag
     # @param name [Symbol] the reader's name
     # @param dependent [Symbol, nil] `:destroy`, `:delete_all` or `:nullify`
     # @param class_name [String, Symbol, nil] the children's model
     # @param foreign_key [Symbol, String, nil] the children's key column
+    # @param through [Symbol, String, nil] the association to go through
+    # @param source [Symbol, String, nil] the association of the middle
+    #   model to read (inferred: the singular or the plural of `name`)
     # @return [nil]
     # @api public
-    def self.has_many(name, dependent: nil, class_name: nil, foreign_key: nil) = nil
+    def self.has_many(name, dependent: nil, class_name: nil, foreign_key: nil, through: nil, source: nil) = nil
 
     # Declares that each record has at most one child: `has_one :profile`
     # reads `Profile.find_by(user_id: id)` (nil when there is none). Read as

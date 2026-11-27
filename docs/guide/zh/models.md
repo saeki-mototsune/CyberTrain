@@ -1,5 +1,5 @@
 ---
-source_sha256: 707578e0592cebb2076d5b5ae9b67e5be62e3771a2cd00e5e559d163ef0e3af8
+source_sha256: a124e853bd3be8e13b82dab615713ac22123527ed9a608b02da732bd2dbd51b1
 ---
 # 模型与数据库
 
@@ -321,7 +321,22 @@ end
 - `belongs_to` 读取父记录并记住它，直到外键改变或 `reload`。
 - 没有 `optional: true` 的已声明 `belongs_to`，在其键为 nil、空白或 0 时让记录无效（`article_id` 上的 “can't be blank”，即生成的 `validates_foreign_key :article_id`），所以 `save` 会在数据库拒绝该行之前返回 false。仅来自外键的关联不添加校验。
 - 选项都是字面量：`class_name:`（String 或 Symbol）、`foreign_key:`、`dependent:`（`has_many` 和 `has_one`）、`optional:` 和 `counter_cache:`（`belongs_to`）。每个宏独占一行，写在类层级，行尾不带注释；不存在的模型、列或选项会让生成器停下，并给出文件和行号。
-- 不提供：`has_many :through`、多态关联、`has_many` 上的 scope lambda（请在它返回的 relation 上串联）、`inverse_of`、`dependent: :restrict_with_error`。
+- 不提供：多态关联、`has_many` 上的 scope lambda（请在它返回的 relation 上串联）、`inverse_of`、`dependent: :restrict_with_error`。
+
+### through 关联
+
+```ruby
+# app/models/post.rb
+class Post
+  has_many :taggings
+  has_many :tags, through: :taggings                 # 每个 Tagging 的 tag
+  has_many :labels, through: :taggings, source: :tag
+  belongs_to :author
+  has_many :co_posts, through: :author, source: :posts
+end
+```
+
+`through:` 指定同一模型的另一个关联（`has_many`、`has_one` 或 `belongs_to`，声明的或来自外键的均可），读取器返回该模型的某个关联所指向的记录：由 `source:` 指定，否则取读取器名字的单数或复数（Tagging 上的 `tag` 或 `tags`）。读取器是目标上的一个带子查询的 relation（`tags.id IN (SELECT tag_id FROM taggings WHERE post_id = ?)`），所以它像其他 relation 一样可以串联（`@post.tags.where(name: "ruby").order(:name)`、`.count`），即使两个 tagging 指向同一个标签，每个标签也只返回一次；使用连接的 Rails 会重复它。`includes(:tags)` 先加载中间行，再加载目标，多两次查询。只支持一层：经由的关联及其 source 都不能是 through。它不接受 `dependent:`、`class_name:` 或 `foreign_key:`（键和类来自这两个关联），并且只读：没有 `@post.tags << tag`，请创建中间记录（`Tagging.create(post_id: @post.id, tag_id: tag.id)`），要移除时销毁它。不提供 `has_one :through`。
 
 ### `dependent:` 还是 `on_delete:`
 
@@ -343,7 +358,7 @@ end
 <% end %>
 ```
 
-`includes(*names)`（以及等同的 `preload`）在加载记录时为每个关联多执行一次查询（`has_many` 或 `has_one` 为 `Comment.where(article_id: ids)`，`belongs_to` 为按 id 查父记录），所以遍历 `article.comments` 或 `comment.article` 的循环自己不执行查询。没有子记录的记录得到空列表，缺失的父记录为 nil，不再查询。在预加载过的 `has_many` 上，`to_a`、`each`、`first`、`last`、`size` 和 `empty?` 直接从内存作答（子记录按 id 排序）；`count` 和 `exists?` 仍然查询，串联方法（`where`、`order` 等）会丢弃预加载，照常查询。只支持一层（没有 `includes(comments: :author)`），预加载的子记录不会设置其父记录（`comment.article` 会去读取）。不提供 `eager_load` 和 `joins`。
+`includes(*names)`（以及等同的 `preload`）在加载记录时为每个关联多执行一次查询（`has_many` 或 `has_one` 为 `Comment.where(article_id: ids)`，`belongs_to` 为按 id 查父记录，[through 关联](#through-associations)为两次），所以遍历 `article.comments` 或 `comment.article` 的循环自己不执行查询。没有子记录的记录得到空列表，缺失的父记录为 nil，不再查询。在预加载过的 `has_many` 上，`to_a`、`each`、`first`、`last`、`size` 和 `empty?` 直接从内存作答（子记录按 id 排序）；`count` 和 `exists?` 仍然查询，串联方法（`where`、`order` 等）会丢弃预加载，照常查询。只支持一层（没有 `includes(comments: :author)`），预加载的子记录不会设置其父记录（`comment.article` 会去读取）。不提供 `eager_load` 和 `joins`。
 
 ## 校验
 
