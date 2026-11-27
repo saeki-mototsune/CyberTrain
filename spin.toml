@@ -1,7 +1,7 @@
 # cybertrain: a Rails-like web application framework for the Spinel AOT compiler.
 [package]
 name = "cybertrain"
-version = "0.4.2"
+version = "0.4.3"
 
 [dependencies]
 # The HTTP layer (docs/design.md D91). spin.lock pins the commit the tag names.

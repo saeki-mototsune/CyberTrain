@@ -139,6 +139,19 @@ These builds are covered, and the source of one more was read:
   "Status by rule", "On 2026.11.15.7033". Apart from the three places
   named above, the sections below were not brought up to it, whatever
   their date.
+- **2026.11.27.7037** (13405b63f), the fork's release tag carrying
+  matz/spinel master up to #12699, which CyberTrain 0.4.3 pins
+  (saeki-mototsune/cybertrain#273). 2026.11.23.7035 (86421ea5a), pinned
+  by 0.4.2, was not recorded here. 2026.11.27.7037 carries the fixes for
+  AU (#12625), AT (#12626), AY (#12628), AW (#12629) and AV (#12630),
+  merged on 2026-11-26. On 2026-11-27, on macOS arm64 (Apple clang 21.0.0,
+  `-O 0`) beside CRuby 4.0.7, the build from this tag's tree printed
+  CRuby's output for spikes/phase5/flock_fstat.rb and
+  rechecks/differing/invalid_utf8.rb, class_before_definition.rb,
+  socket_bytes.rb and raising_helper_beside_lambda.rb, and for
+  rechecks/invalid_utf8_shapes.rb, constant_order.rb and socket_shapes.rb.
+  The pull requests that close those five items record it in their rows.
+  "Status by rule" was not brought up to it.
 
 2026.11.04.7026, the pin at the time, was used once more on 2026-11-13,
 for the inventory below: forty small programs built with it on Linux x86_64
@@ -617,12 +630,7 @@ not by design. Costs are in 2; what is by design is in 1.4.
 | AQ | Four threads writing one StringIO with no lock crash the program (phase 5b) | 17 lines | No |
 | AR | A regex literal holding a require-shaped text is read as a require | 2 lines | No |
 | AS | `ENV[name]` with a key held in a variable answers the key | Not reduced (spikes/rechecks/differing/env_nonliteral_key.rb, against two framework files) | No |
-| AT | `File#stat` on an open File stats its path, not the descriptor | spikes/phase5/flock_fstat.rb | No |
-| AU | `String#strip` on a String with an invalid byte returns it where CRuby raises | 5 lines | No |
-| AV | A class used above its definition runs, where CRuby raises NameError (rule 17; added 2026-11-21 as "Rule 17", lettered the same day; listed under 1.4 until then) | 2 lines; spikes/rechecks/differing/class_before_definition.rb ("Status by rule", row 17 of both tables) | No |
-| AW | `IO#gets` on a socket answers a UTF-8 character String, and socket bytes append to a UTF-8 String that holds non-ASCII where CRuby raises (rule 27; added 2026-11-21 as "Rule 27", lettered the same day; listed under 1.4 until then). On 2026.11.15.7033 `gets` answers as CRuby does and the append still differs | spikes/rechecks/differing/socket_bytes.rb ("Status by rule", row 27 of both tables) | No |
 | AX | `JSON.parse` lets an empty Array or Object sit one level past the nesting limit, where CRuby raises JSON::NestingError (added 2026-11-21) | spikes/rechecks/differing/json_parse_nesting.rb ("Status by rule", row AX of both tables) | No |
-| AY | A rescuing method given, as blocks, a method that only raises and the call of a lambda that ends in it does not compile (rule 124; found 2026-11-21 under rule 79, given its own item the same day) | 23 lines; spikes/rechecks/differing/raising_helper_beside_lambda.rb ("Status by rule", row 124 of both tables) | No |
 | BA | A collection inside `Thread.new` reads the byte in front of the C literal holding the program's file name (found under AddressSanitizer on 2026-11-23; harmless in a plain build as far as seen) | 10 lines; spikes/rechecks/2026.11.15.7033/ba_thread_birth_file.rb ("Status by rule", row BA) | No |
 | V | `strftime` with a built pattern returns the pattern | Not reduced | No |
 | W | An ivar String passed to a stored lambda is refused | Not reduced | No |
@@ -645,6 +653,10 @@ rows of 1.2 a small program of the shape passes on the pin, so the bug is
 either gone or needs more of a program than the probe has. The rows of
 1.3 were not tried on the pin at all, and nothing is known about them
 there. None is asked of Spinel until a program shows it on the pin.
+
+**Fixed in 2026.11.27.7037**, the pin from 0.4.3: AU (#12625), AT
+(#12626), AY (#12628), AW (#12629) and AV (#12630). Each is closed by a
+pull request of its own ("Item register").
 
 **Fixed in the pin.** 2, 3, 4, A, C and its refusal, F, G, H, I, the
 untyped `OpenSSL::Digest#to_s`, the linear `String#to_sym`, the two
