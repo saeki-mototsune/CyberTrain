@@ -39,7 +39,8 @@ module Cybertrain
         return polymorphic_reader(plan) + "\n" + polymorphic_writer(plan) if plan.polymorphic?
 
         if plan.kind == :has_many
-          return "  def #{n}\n    rel = #{children_relation(plan)}\n    return rel if @#{n}_preloaded.nil?\n\n" \
+          rel = plan.through? ? through_relation(plan) : children_relation(plan)
+          return "  def #{n}\n    rel = #{rel}\n    return rel if @#{n}_preloaded.nil?\n\n" \
                  "    rel.preloaded(@#{n}_preloaded)\n  end\n"
         end
         if plan.kind == :has_one
@@ -142,7 +143,9 @@ module Cybertrain
         src << "    case name\n"
         plans.each do |plan|
           src << "    when :#{plan.name}\n"
-          if plan.polymorphic?
+          if plan.through?
+            src << preload_through(plan)
+          elsif plan.polymorphic?
             src << preload_polymorphic_parents(plan)
           else
             src << (plan.kind == :belongs_to ? preload_parents(plan) : preload_children(plan))
@@ -241,6 +244,131 @@ module Cybertrain
         src << "        records[i].#{plan.name}_preload!(index[#{key_expr(plan, "records[i].#{fk}")}])\n"
         src << "        i += 1\n"
         src << "      end\n"
+        src
+      end
+
+      # `expr`, a key read from a column, as the Integer it is matched by.
+      def self.cast_key(null, integer, expr)
+        null || !integer ? "Cybertrain::Cast.int(#{expr})" : expr
+      end
+
+      # The `<Model>Relation` of a `has_many ..., through:` (docs/design.md
+      # D93): the target rows whose link column is IN the middle rows'
+      # link column for this record's key, one subquery, so it chains
+      # (where, order, count, includes) like any Relation and answers each
+      # target once. The record's key is its id, or for a belongs_to via
+      # its foreign key (nil matches no row).
+      def self.through_relation(plan)
+        path = plan.through_path
+        owner = path.owner_key == "" ? "@id" : ivar_name(path.owner_key)
+        sql = "`#{plan.target_table}`.`#{path.target_link}` IN (SELECT `#{path.middle_link}` FROM " \
+              "`#{path.middle_table}` WHERE `#{path.middle_key}` = ?)"
+        "#{plan.model}Relation.new(\"#{plan.target_table}\").where_sql(\"#{sql}\", [#{owner}])"
+      end
+
+      # The `when` body for a has_many through: the records' distinct keys
+      # (their ids, or a belongs_to via's non-nil foreign keys), the middle
+      # rows `where(middle_key: keys)` giving, per link value, the owners
+      # that reach it, then the targets `where(target_link: links)` in id
+      # order appended to each of their owners' Arrays (so every target
+      # once per owner, as the reader answers). A record without a key gets
+      # an empty Array. Two queries per chunk of at most variable_limit
+      # values; past one chunk of links the order is by id within each.
+      def self.preload_through(plan)
+        path = plan.through_path
+        model = plan.model
+        by_fk = path.owner_key != ""
+        owner = by_fk ? cast_key(path.owner_key_null, path.owner_key_integer, "raw") : "records[i].id"
+        src = +"      keys = Array.new(0) { 0 }\n"
+        src << "      groups = { 0 => Array.new(0) { #{model}.new } }\n"
+        src << "      groups.delete(0)\n"
+        src << "      i = 0\n"
+        src << "      while i < records.size\n"
+        src << "        raw = records[i].#{reader_name(path.owner_key)}\n" if by_fk
+        body = +"key = #{owner}\n"
+        body << "unless groups.key?(key)\n"
+        body << "  groups[key] = Array.new(0) { #{model}.new }\n"
+        body << "  keys << key\n"
+        body << "end\n"
+        src << unless_nil("raw", by_fk && path.owner_key_null, body, 8)
+        src << "        i += 1\n"
+        src << "      end\n"
+        src << "      links = { 0 => Array.new(0) { 0 } }\n"
+        src << "      links.delete(0)\n"
+        src << "      targets = Array.new(0) { 0 }\n"
+        src << "      start = 0\n"
+        src << "      while start < keys.size\n"
+        src << "        middles = #{path.middle_model}Relation.new(\"#{path.middle_table}\")" \
+               ".where(#{path.middle_key}: keys[start, step]).to_a\n"
+        src << "        j = 0\n"
+        src << "        while j < middles.size\n"
+        src << "          raw_link = middles[j].#{reader_name(path.middle_link)}\n"
+        body = +"link = #{cast_key(path.middle_link_null, path.middle_link_integer, "raw_link")}\n"
+        body << "owner = #{cast_key(path.middle_key_null, path.middle_key_integer, "middles[j].#{reader_name(path.middle_key)}")}\n"
+        body << "unless links.key?(link)\n"
+        body << "  links[link] = Array.new(0) { 0 }\n"
+        body << "  targets << link\n"
+        body << "end\n"
+        body << "owners = links[link]\n"
+        body << "unless owners.nil?\n"
+        body << "  owners << owner unless owners.include?(owner)\n"
+        body << "end\n"
+        src << unless_nil("raw_link", path.middle_link_null, body, 10)
+        src << "          j += 1\n"
+        src << "        end\n"
+        src << "        start += step\n"
+        src << "      end\n"
+        src << "      start = 0\n"
+        src << "      while start < targets.size\n"
+        src << "        found = #{model}Relation.new(\"#{plan.target_table}\").where(#{path.target_link}: targets[start, step])" \
+               ".order(id: :asc).to_a\n"
+        src << "        j = 0\n"
+        src << "        while j < found.size\n"
+        src << "          raw_target = found[j].#{reader_name(path.target_link)}\n"
+        body = +"owners = links[#{cast_key(path.target_link_null, path.target_link_integer, "raw_target")}]\n"
+        body << "unless owners.nil?\n"
+        body << "  k = 0\n"
+        body << "  while k < owners.size\n"
+        body << "    list = groups[owners[k]]\n"
+        body << "    list << found[j] unless list.nil?\n"
+        body << "    k += 1\n"
+        body << "  end\n"
+        body << "end\n"
+        src << unless_nil("raw_target", path.target_link_null, body, 10)
+        src << "          j += 1\n"
+        src << "        end\n"
+        src << "        start += step\n"
+        src << "      end\n"
+        src << "      i = 0\n"
+        src << "      while i < records.size\n"
+        if by_fk
+          src << "        raw = records[i].#{reader_name(path.owner_key)}\n"
+          if path.owner_key_null
+            src << "        if raw.nil?\n"
+            src << "          records[i].#{plan.name}_preload!(Array.new(0) { #{model}.new })\n"
+            src << "        else\n"
+            src << "          records[i].#{plan.name}_preload!(groups[#{owner}])\n"
+            src << "        end\n"
+          else
+            src << "        records[i].#{plan.name}_preload!(groups[#{owner}])\n"
+          end
+        else
+          src << "        records[i].#{plan.name}_preload!(groups[records[i].id])\n"
+        end
+        src << "        i += 1\n"
+        src << "      end\n"
+        src
+      end
+
+      # `body` (lines without indent) indented by `by` spaces, inside
+      # `unless <var>.nil?` when `guard` (a nullable column's value).
+      def self.unless_nil(var, guard, body, by)
+        pad = " " * by
+        inner = guard ? pad + "  " : pad
+        src = +""
+        src << pad + "unless #{var}.nil?\n" if guard
+        body.each_line { |line| src << inner + line }
+        src << pad + "end\n" if guard
         src
       end
 

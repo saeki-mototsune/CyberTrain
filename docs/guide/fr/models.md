@@ -1,5 +1,5 @@
 ---
-source_sha256: df4dee4a12640c32870be2679ce94a3333a122d8a2a0553b426b983a1887eb68
+source_sha256: d1e39028620ef33e05a089da3b23616f1a2fd68d4886e138eb24a18c42c4b297
 ---
 # Modèles et base de données
 
@@ -615,8 +615,40 @@ end
   sa ligne, au niveau de la classe, sans commentaire à la fin&nbsp;; un
   modèle, une colonne ou une option qui n’existe pas arrête le générateur
   avec le fichier et la ligne.
-- Non disponibles&nbsp;: `has_many :through`, une lambda de scope sur
-  `has_many` (enchaînez sur la relation qu’il renvoie), `inverse_of`, `dependent: :restrict_with_error`.
+- Non disponibles&nbsp;: une lambda de
+  scope sur `has_many` (enchaînez sur la relation qu’il renvoie),
+  `inverse_of`, `dependent: :restrict_with_error`.
+
+### Associations through
+
+```ruby
+# app/models/post.rb
+class Post
+  has_many :taggings
+  has_many :tags, through: :taggings                 # le tag de chaque Tagging
+  has_many :labels, through: :taggings, source: :tag
+  belongs_to :author
+  has_many :co_posts, through: :author, source: :posts
+end
+```
+
+`through:` nomme une autre association du même modèle (un `has_many`, un
+`has_one` ou un `belongs_to`, déclaré ou issu d’une clé étrangère), et le
+lecteur répond par les enregistrements auxquels mène une association de ce
+modèle&nbsp;: `source:` la nomme, sinon c’est le singulier ou le pluriel du
+nom du lecteur (`tag` ou `tags` sur Tagging). Le lecteur est une seule
+relation sur la cible, avec une sous-requête (`tags.id IN (SELECT tag_id
+FROM taggings WHERE post_id = ?)`), si bien qu’il s’enchaîne comme les
+autres (`@post.tags.where(name: "ruby").order(:name)`, `.count`) et répond
+par chaque tag une seule fois, même quand deux taggings y mènent&nbsp;;
+Rails, qui fait une jointure, le répéterait. `includes(:tags)` charge les
+lignes intermédiaires puis les cibles, deux requêtes de plus. Un seul
+niveau&nbsp;: ni l’association traversée ni sa source ne peuvent être un
+through. Elle ne prend ni `dependent:`, ni `class_name:`, ni `foreign_key:`
+(la clé et la classe viennent des deux associations), et elle ne fait que
+lire&nbsp;: `@post.tags << tag` n’existe pas, créez donc l’enregistrement
+intermédiaire, `Tagging.create(post_id: @post.id, tag_id: tag.id)`, et
+détruisez-le pour en retirer un. `has_one :through` n’est pas disponible.
 
 ### `dependent:` ou `on_delete:`
 
@@ -727,7 +759,8 @@ Comment.includes(:commentable).to_a  # one query per type found
 `includes(*names)` (et `preload`, identique) exécute une requête de plus par
 association au chargement des enregistrements
 (`Comment.where(article_id: ids)` pour un `has_many` ou un `has_one`, les
-parents par id pour un `belongs_to`), si bien qu’une boucle sur
+parents par id pour un `belongs_to`, deux pour une
+[association through](#through-associations)), si bien qu’une boucle sur
 `article.comments` ou `comment.article` n’exécute aucune requête à elle. Un
 enregistrement sans enfant reçoit une liste vide et un parent manquant vaut
 nil, sans autre requête. Sur un `has_many` préchargé, `to_a`, `each`,

@@ -566,9 +566,39 @@ end
   (`belongs_to`). Each macro is alone on its line, at class level, with no
   trailing comment; a model, column or option that does not exist stops the
   generator with the file and line.
-- Not available: `has_many :through`, a scope lambda on `has_many` (chain
-  on the relation it returns), `inverse_of`,
+- Not available: a scope lambda on `has_many`
+  (chain on the relation it returns), `inverse_of`,
   `dependent: :restrict_with_error`.
+
+### Through associations
+
+```ruby
+# app/models/post.rb
+class Post
+  has_many :taggings
+  has_many :tags, through: :taggings                 # each Tagging's tag
+  has_many :labels, through: :taggings, source: :tag
+  belongs_to :author
+  has_many :co_posts, through: :author, source: :posts
+end
+```
+
+`through:` names another association of the same model (a `has_many`,
+`has_one` or `belongs_to`, declared or from a foreign key), and the reader
+answers the records an association of that model leads to: `source:` names
+it, else the singular or the plural of the reader's name (`tag` or `tags`
+on Tagging). The reader is one relation over the target with a subquery
+(`tags.id IN (SELECT tag_id FROM taggings WHERE post_id = ?)`), so it
+chains like any other (`@post.tags.where(name: "ruby").order(:name)`,
+`.count`) and answers each tag once, even when two taggings lead to it;
+Rails, which joins, would repeat it. `includes(:tags)` loads the middle
+rows and then the targets, two more queries. Only one level: neither the
+association it goes through nor its source may be a through. It takes no
+`dependent:`, `class_name:` or `foreign_key:` (the key and the class come
+from the two associations), and it reads only: `@post.tags << tag` is not
+there, so create the middle record, `Tagging.create(post_id: @post.id,
+tag_id: tag.id)`, and destroy it to take one away. `has_one :through` is
+not available.
 
 ### `dependent:` or `on_delete:`
 
@@ -674,7 +704,8 @@ Comment.includes(:commentable).to_a  # one query per type found
 
 `includes(*names)` (and `preload`, the same) runs one more query per
 association when the records load (`Comment.where(article_id: ids)` for a
-`has_many` or `has_one`, the parents by id for a `belongs_to`), so a loop
+`has_many` or `has_one`, the parents by id for a `belongs_to`; two for a
+[through association](#through-associations)), so a loop
 over `article.comments` or `comment.article` runs no query of its own. A
 record with no children gets an empty list and a missing parent is nil, with
 no further query. On a preloaded `has_many`, `to_a`, `each`, `first`, `last`,

@@ -1,5 +1,5 @@
 ---
-source_sha256: df4dee4a12640c32870be2679ce94a3333a122d8a2a0553b426b983a1887eb68
+source_sha256: d1e39028620ef33e05a089da3b23616f1a2fd68d4886e138eb24a18c42c4b297
 ---
 # モデルとデータベース
 
@@ -321,7 +321,22 @@ end
 - `belongs_to` は親を読み、外部キーが変わるか `reload` するまで覚えています。
 - `optional: true` のない宣言した `belongs_to` は、キーが nil、空、0 の間レコードを無効にするので（`article_id` に「can't be blank」。生成される `validates_foreign_key :article_id`）、データベースが行を拒む前に `save` が false を返します。外部キーだけから来る関連付けはバリデーションを足しません。
 - オプションはリテラルです：`class_name:`（String か Symbol）、`foreign_key:`、`dependent:`（`has_many` と `has_one`）、`optional:` と `counter_cache:`（`belongs_to`）。どのマクロもクラスの直下で一行に単独で書き、末尾にコメントを付けません。存在しないモデル、カラム、オプションはファイルと行を示してジェネレーターを止めます。
-- ないもの：`has_many :through`、`has_many` のスコープのラムダ（返されたリレーションにつなげてください）、`inverse_of`、`dependent: :restrict_with_error`。
+- ないもの：`has_many` のスコープのラムダ（返されたリレーションにつなげてください）、`inverse_of`、`dependent: :restrict_with_error`。
+
+### through の関連付け
+
+```ruby
+# app/models/post.rb
+class Post
+  has_many :taggings
+  has_many :tags, through: :taggings                 # Tagging ごとの tag
+  has_many :labels, through: :taggings, source: :tag
+  belongs_to :author
+  has_many :co_posts, through: :author, source: :posts
+end
+```
+
+`through:` は同じモデルの別の関連付け（宣言したものでも外部キーから来たものでもよい `has_many`、`has_one`、`belongs_to`）を名指し、リーダーはそのモデルの関連付けがたどり着くレコードを返します。その関連付けは `source:` で名指し、なければリーダーの名前の単数形か複数形です（Tagging の `tag` か `tags`）。リーダーはサブクエリを持つ、ターゲットの上の一つのリレーションです（`tags.id IN (SELECT tag_id FROM taggings WHERE post_id = ?)`）。そのためほかのリレーションと同じようにつなげられ（`@post.tags.where(name: "ruby").order(:name)`、`.count`）、二つの tagging が同じタグにたどり着いても、各タグを一度だけ返します。結合する Rails なら繰り返します。`includes(:tags)` は中間の行を、続いてターゲットを読み込み、クエリは二回増えます。一段だけです：経由する関連付けもその source も through であってはいけません。`dependent:`、`class_name:`、`foreign_key:` は取らず（キーとクラスは二つの関連付けから来ます）、読み取り専用です：`@post.tags << tag` はないので、中間のレコードを作り（`Tagging.create(post_id: @post.id, tag_id: tag.id)`）、外すときはそれを destroy してください。`has_one :through` はありません。
 
 ### `dependent:` か `on_delete:` か
 
@@ -388,7 +403,7 @@ Comment.includes(:commentable).to_a  # one query per type found
 <% end %>
 ```
 
-`includes(*names)`（と同じものの `preload`）は、レコードを読み込むときに関連付けごとにクエリを一回足します（`has_many` と `has_one` なら `Comment.where(article_id: ids)`、`belongs_to` なら id で親を）。そのため `article.comments` や `comment.article` を回すループは、自分ではクエリを実行しません。子のないレコードは空の一覧を、親のないレコードは nil を受け取り、それ以上のクエリはありません。先読みした `has_many` では、`to_a`、`each`、`first`、`last`、`size`、`empty?` がメモリから答え（子は id の順）、`count` と `exists?` はクエリを実行し、つなぐメソッド（`where`、`order` など）は先読みを捨てて普通にクエリします。一段だけで（`includes(comments: :author)` はありません）、先読みした子には親が設定されません（`comment.article` は読みに行きます）。`eager_load` と `joins` はありません。
+`includes(*names)`（と同じものの `preload`）は、レコードを読み込むときに関連付けごとにクエリを一回足します（`has_many` と `has_one` なら `Comment.where(article_id: ids)`、`belongs_to` なら id で親を、[through の関連付け](#through-associations)なら二回）。そのため `article.comments` や `comment.article` を回すループは、自分ではクエリを実行しません。子のないレコードは空の一覧を、親のないレコードは nil を受け取り、それ以上のクエリはありません。先読みした `has_many` では、`to_a`、`each`、`first`、`last`、`size`、`empty?` がメモリから答え（子は id の順）、`count` と `exists?` はクエリを実行し、つなぐメソッド（`where`、`order` など）は先読みを捨てて普通にクエリします。一段だけで（`includes(comments: :author)` はありません）、先読みした子には親が設定されません（`comment.article` は読みに行きます）。`eager_load` と `joins` はありません。
 
 ## バリデーション
 
