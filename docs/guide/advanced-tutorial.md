@@ -879,8 +879,7 @@ a clean stop and the database kept on its volume, and loads
 - A misspelled attribute in a view raises (`undefined method 'titel' for
   Article`); a column that holds `nil` renders empty.
 - Associations come from foreign keys or one-line declarations; no
-  `has_many :through`, nested `includes`, enums, STI or polymorphic
-  associations.
+  `has_many :through`, enums, STI or polymorphic associations.
 - No `constraints` or `mount`; JSON is answered with `render json:` (there
   are no JSON templates).
 - Only the first string field gets a default presence validation in a

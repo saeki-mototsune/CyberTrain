@@ -50,16 +50,53 @@ class CommentRelation < Cybertrain::Relation
   def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
   def includes(*names)
-    names.each do |name|
-      case name
-      when :post then add_include(name)
-      else raise ArgumentError, "unknown association #{name} for Comment"
-      end
+    paths = Cybertrain::Relation.include_spec_paths(names)
+    i = 0
+    while i < paths.size
+      CommentRelation.check_include_path(paths[i])
+      i += 1
+    end
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
     end
     self
   end
 
   def preload(*names) = includes(*names)
+
+  def self.check_include_path(path)
+    rest = Cybertrain::Relation.path_rest(path)
+    case Cybertrain::Relation.path_head(path)
+    when "post" then PostRelation.check_include_path(rest) unless rest == ""
+    else raise ArgumentError, "unknown association #{Cybertrain::Relation.path_head(path)} for Comment"
+    end
+    nil
+  end
+
+  def include_path(path)
+    case Cybertrain::Relation.path_head(path)
+    when "post" then add_include(:post)
+    end
+    add_nested_include(path) if path.include?(".")
+    nil
+  end
+
+  def preload_nested(records, paths)
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
+    end
+    names = includes_names
+    i = 0
+    while i < names.size
+      preload_association(names[i], records)
+      i += 1
+    end
+    nil
+  end
 
   def preloaded(records)
     @preloaded = records
@@ -192,6 +229,7 @@ class CommentRelation < Cybertrain::Relation
       seen.delete(0)
       index = { 0 => Post.new }
       index.delete(0)
+      loaded = Array.new(0) { Post.new }
       i = 0
       while i < records.size
         key = records[i].post_id
@@ -207,6 +245,7 @@ class CommentRelation < Cybertrain::Relation
         j = 0
         while j < found.size
           index[found[j].id] = found[j]
+          loaded << found[j]
           j += 1
         end
         start += step
@@ -216,6 +255,8 @@ class CommentRelation < Cybertrain::Relation
         records[i].post_preload!(index[records[i].post_id])
         i += 1
       end
+      subs = nested_include_paths("post")
+      PostRelation.new("posts").preload_nested(loaded, subs) unless subs.empty?
     end
     nil
   end

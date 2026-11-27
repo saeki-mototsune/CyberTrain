@@ -101,16 +101,53 @@ EXPECTED_POST = HEADER + <<~'RUBY'
       def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
       def includes(*names)
-        names.each do |name|
-          case name
-          when :comments then add_include(name)
-          else raise ArgumentError, "unknown association #{name} for Post"
-          end
+        paths = Cybertrain::Relation.include_spec_paths(names)
+        i = 0
+        while i < paths.size
+          PostRelation.check_include_path(paths[i])
+          i += 1
+        end
+        i = 0
+        while i < paths.size
+          include_path(paths[i])
+          i += 1
         end
         self
       end
 
       def preload(*names) = includes(*names)
+
+      def self.check_include_path(path)
+        rest = Cybertrain::Relation.path_rest(path)
+        case Cybertrain::Relation.path_head(path)
+        when "comments" then CommentRelation.check_include_path(rest) unless rest == ""
+        else raise ArgumentError, "unknown association #{Cybertrain::Relation.path_head(path)} for Post"
+        end
+        nil
+      end
+
+      def include_path(path)
+        case Cybertrain::Relation.path_head(path)
+        when "comments" then add_include(:comments)
+        end
+        add_nested_include(path) if path.include?(".")
+        nil
+      end
+
+      def preload_nested(records, paths)
+        i = 0
+        while i < paths.size
+          include_path(paths[i])
+          i += 1
+        end
+        names = includes_names
+        i = 0
+        while i < names.size
+          preload_association(names[i], records)
+          i += 1
+        end
+        nil
+      end
 
       def preloaded(records)
         @preloaded = records
@@ -239,6 +276,7 @@ EXPECTED_POST = HEADER + <<~'RUBY'
         case name
         when :comments
           ids = Array.new(0) { 0 }
+          loaded = Array.new(0) { Comment.new }
           groups = { 0 => Array.new(0) { Comment.new } }
           groups.delete(0)
           i = 0
@@ -254,7 +292,10 @@ EXPECTED_POST = HEADER + <<~'RUBY'
             while j < found.size
               key = found[j].post_id
               list = groups[key]
-              list << found[j] unless list.nil?
+              unless list.nil?
+                list << found[j]
+                loaded << found[j]
+              end
               j += 1
             end
             start += step
@@ -264,6 +305,8 @@ EXPECTED_POST = HEADER + <<~'RUBY'
             records[i].comments_preload!(groups[records[i].id])
             i += 1
           end
+          subs = nested_include_paths("comments")
+          CommentRelation.new("comments").preload_nested(loaded, subs) unless subs.empty?
         end
         nil
       end
@@ -548,16 +591,53 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
       def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
       def includes(*names)
-        names.each do |name|
-          case name
-          when :post then add_include(name)
-          else raise ArgumentError, "unknown association #{name} for Comment"
-          end
+        paths = Cybertrain::Relation.include_spec_paths(names)
+        i = 0
+        while i < paths.size
+          CommentRelation.check_include_path(paths[i])
+          i += 1
+        end
+        i = 0
+        while i < paths.size
+          include_path(paths[i])
+          i += 1
         end
         self
       end
 
       def preload(*names) = includes(*names)
+
+      def self.check_include_path(path)
+        rest = Cybertrain::Relation.path_rest(path)
+        case Cybertrain::Relation.path_head(path)
+        when "post" then PostRelation.check_include_path(rest) unless rest == ""
+        else raise ArgumentError, "unknown association #{Cybertrain::Relation.path_head(path)} for Comment"
+        end
+        nil
+      end
+
+      def include_path(path)
+        case Cybertrain::Relation.path_head(path)
+        when "post" then add_include(:post)
+        end
+        add_nested_include(path) if path.include?(".")
+        nil
+      end
+
+      def preload_nested(records, paths)
+        i = 0
+        while i < paths.size
+          include_path(paths[i])
+          i += 1
+        end
+        names = includes_names
+        i = 0
+        while i < names.size
+          preload_association(names[i], records)
+          i += 1
+        end
+        nil
+      end
 
       def preloaded(records)
         @preloaded = records
@@ -690,6 +770,7 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
           seen.delete(0)
           index = { 0 => Post.new }
           index.delete(0)
+          loaded = Array.new(0) { Post.new }
           i = 0
           while i < records.size
             key = records[i].post_id
@@ -705,6 +786,7 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
             j = 0
             while j < found.size
               index[found[j].id] = found[j]
+              loaded << found[j]
               j += 1
             end
             start += step
@@ -714,6 +796,8 @@ EXPECTED_COMMENT = HEADER + <<~'RUBY'
             records[i].post_preload!(index[records[i].post_id])
             i += 1
           end
+          subs = nested_include_paths("post")
+          PostRelation.new("posts").preload_nested(loaded, subs) unless subs.empty?
         end
         nil
       end
@@ -1005,12 +1089,23 @@ EXPECTED_FLAG = HEADER + <<~'RUBY'
       def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
       def includes(*names)
-        raise ArgumentError, "unknown association #{names[0]} for Flag" unless names.empty?
-
+        paths = Cybertrain::Relation.include_spec_paths(names)
+        i = 0
+        while i < paths.size
+          FlagRelation.check_include_path(paths[i])
+          i += 1
+        end
         self
       end
 
       def preload(*names) = includes(*names)
+
+      def self.check_include_path(path)
+        raise ArgumentError, "unknown association #{Cybertrain::Relation.path_head(path)} for Flag"
+        nil
+      end
+
+      def preload_nested(records, paths) = nil
 
       def preloaded(records)
         @preloaded = records
@@ -2944,16 +3039,55 @@ test "includes checks each name by a case over the associations; preload is the 
   user = assoc_emit("user")
   assert_includes user, indent_body(<<~'RUBY')
     def includes(*names)
-      names.each do |name|
-        case name
-        when :profile, :posts then add_include(name)
-        else raise ArgumentError, "unknown association #{name} for User"
-        end
+      paths = Cybertrain::Relation.include_spec_paths(names)
+      i = 0
+      while i < paths.size
+        UserRelation.check_include_path(paths[i])
+        i += 1
+      end
+      i = 0
+      while i < paths.size
+        include_path(paths[i])
+        i += 1
       end
       self
     end
 
     def preload(*names) = includes(*names)
+
+    def self.check_include_path(path)
+      rest = Cybertrain::Relation.path_rest(path)
+      case Cybertrain::Relation.path_head(path)
+      when "profile" then ProfileRelation.check_include_path(rest) unless rest == ""
+      when "posts" then PostRelation.check_include_path(rest) unless rest == ""
+      else raise ArgumentError, "unknown association #{Cybertrain::Relation.path_head(path)} for User"
+      end
+      nil
+    end
+
+    def include_path(path)
+      case Cybertrain::Relation.path_head(path)
+      when "profile" then add_include(:profile)
+      when "posts" then add_include(:posts)
+      end
+      add_nested_include(path) if path.include?(".")
+      nil
+    end
+
+    def preload_nested(records, paths)
+      i = 0
+      while i < paths.size
+        include_path(paths[i])
+        i += 1
+      end
+      names = includes_names
+      i = 0
+      while i < names.size
+        preload_association(names[i], records)
+        i += 1
+      end
+      nil
+    end
 
     def preloaded(records)
       @preloaded = records
@@ -2963,10 +3097,18 @@ test "includes checks each name by a case over the associations; preload is the 
   RUBY
   assert_lines(user, ["def self.includes(...) = all.includes(...)", "def self.preload(...) = all.preload(...)",
                       "@preloaded = Array.new(0) { User.new }"])
-  # No association: every name is unknown, and to_a preloads nothing.
+  # No association: every name is unknown, at any depth, and to_a
+  # preloads nothing; a parent's nested preload reaches the nil stub.
   flag = emit_for("flags")
-  assert_includes flag, "  def includes(*names)\n    raise ArgumentError, \"unknown association \#{names[0]} for Flag\" " \
-                        "unless names.empty?\n\n    self\n  end\n"
+  assert_includes flag, indent_body(<<~'RUBY')
+    def self.check_include_path(path)
+      raise ArgumentError, "unknown association #{Cybertrain::Relation.path_head(path)} for Flag"
+      nil
+    end
+
+    def preload_nested(records, paths) = nil
+  RUBY
+  refute_line(flag, "def include_path(path)")
   refute_line(flag, "def preload_association(name, records)")
   refute_line(flag, "names = includes_names")
 end
@@ -3033,6 +3175,7 @@ test "a has_many reader is created preloaded from its cache; includes fills the 
   assert_includes user, indent_body(indent_body(<<~'RUBY'))
       when :posts
         ids = Array.new(0) { 0 }
+        loaded = Array.new(0) { Post.new }
         groups = { 0 => Array.new(0) { Post.new } }
         groups.delete(0)
         i = 0
@@ -3048,7 +3191,10 @@ test "a has_many reader is created preloaded from its cache; includes fills the 
           while j < found.size
             key = Cybertrain::Cast.int(found[j].user_id)
             list = groups[key]
-            list << found[j] unless list.nil?
+            unless list.nil?
+              list << found[j]
+              loaded << found[j]
+            end
             j += 1
           end
           start += step
@@ -3058,6 +3204,8 @@ test "a has_many reader is created preloaded from its cache; includes fills the 
           records[i].posts_preload!(groups[records[i].id])
           i += 1
         end
+        subs = nested_include_paths("posts")
+        PostRelation.new("posts").preload_nested(loaded, subs) unless subs.empty?
   RUBY
   assert_lines(user, ["return nil if records.empty?", "step = Cybertrain::DB.with { |c| c.variable_limit }"])
 end
@@ -3068,8 +3216,13 @@ test "includes of a has_one indexes the lowest-id child per key; every record ge
     "when :profile",
     "index = { 0 => Profile.new }",
     'found = ProfileRelation.new("profiles").where(user_id: ids[start, step]).order(id: :asc).to_a',
-    "index[key] = found[j] unless index.key?(key)",
-    "records[i].profile_preload!(index[records[i].id])"
+    "loaded = Array.new(0) { Profile.new }",
+    "unless index.key?(key)",
+    "index[key] = found[j]",
+    "loaded << found[j]",
+    "records[i].profile_preload!(index[records[i].id])",
+    'subs = nested_include_paths("profile")',
+    'ProfileRelation.new("profiles").preload_nested(loaded, subs) unless subs.empty?'
   ])
   assert_includes user, indent_body(<<~'RUBY')
     def profile_preload!(found)
@@ -3089,6 +3242,7 @@ test "includes of a belongs_to queries the distinct non-nil keys; a missing pare
         seen.delete(0)
         index = { 0 => User.new }
         index.delete(0)
+        loaded = Array.new(0) { User.new }
         i = 0
         while i < records.size
           raw = records[i].user_id
@@ -3105,6 +3259,7 @@ test "includes of a belongs_to queries the distinct non-nil keys; a missing pare
           j = 0
           while j < found.size
             index[found[j].id] = found[j]
+            loaded << found[j]
             j += 1
           end
           start += step

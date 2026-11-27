@@ -1,5 +1,5 @@
 ---
-source_sha256: 5d24dbdc8e00a61e292b5bf9047d5b659fa65689048f6d643e2264065be1b3d4
+source_sha256: 66999cb2e64c8060c3a4cd7100fab0efa7c77701391e63b73ae9b4f068b1db93
 title: "Tutoriel avancé&nbsp;: pousser le blog plus loin"
 description: "Poursuivez le blog du Getting Started avec CyberTrain&nbsp;: un composant et un helper, des commentaires en direct avec Turbo Streams, un job d’arrière-plan, JSON, la connexion, une image de couverture envoyée et un build pour le déploiement avec cybertrain build."
 og_title: "Tutoriel avancé&nbsp;: pousser plus loin le blog CyberTrain"
@@ -907,8 +907,8 @@ et charge `config/deploy.yml` avec Kamal.
   (`undefined method 'titel' for Article`)&nbsp;; une colonne qui contient
   `nil` s’affiche vide.
 - Les associations viennent des clés étrangères ou de déclarations d’une
-  ligne&nbsp;; pas de `has_many :through`, d’`includes` imbriqué, d’enums, de
-  STI ni d’associations polymorphes.
+  ligne&nbsp;; pas de `has_many :through`, d’enums, de STI ni
+  d’associations polymorphes.
 - Pas de `constraints` ni de `mount`&nbsp;; on répond en JSON avec
   `render json:` (il n’y a pas de templates JSON).
 - Dans un modèle généré par scaffold, seul le premier champ string reçoit une

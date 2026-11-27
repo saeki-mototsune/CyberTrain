@@ -46,16 +46,53 @@ class UserRelation < Cybertrain::Relation
   def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
   def includes(*names)
-    names.each do |name|
-      case name
-      when :articles then add_include(name)
-      else raise ArgumentError, "unknown association #{name} for User"
-      end
+    paths = Cybertrain::Relation.include_spec_paths(names)
+    i = 0
+    while i < paths.size
+      UserRelation.check_include_path(paths[i])
+      i += 1
+    end
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
     end
     self
   end
 
   def preload(*names) = includes(*names)
+
+  def self.check_include_path(path)
+    rest = Cybertrain::Relation.path_rest(path)
+    case Cybertrain::Relation.path_head(path)
+    when "articles" then ArticleRelation.check_include_path(rest) unless rest == ""
+    else raise ArgumentError, "unknown association #{Cybertrain::Relation.path_head(path)} for User"
+    end
+    nil
+  end
+
+  def include_path(path)
+    case Cybertrain::Relation.path_head(path)
+    when "articles" then add_include(:articles)
+    end
+    add_nested_include(path) if path.include?(".")
+    nil
+  end
+
+  def preload_nested(records, paths)
+    i = 0
+    while i < paths.size
+      include_path(paths[i])
+      i += 1
+    end
+    names = includes_names
+    i = 0
+    while i < names.size
+      preload_association(names[i], records)
+      i += 1
+    end
+    nil
+  end
 
   def preloaded(records)
     @preloaded = records
@@ -184,6 +221,7 @@ class UserRelation < Cybertrain::Relation
     case name
     when :articles
       ids = Array.new(0) { 0 }
+      loaded = Array.new(0) { Article.new }
       groups = { 0 => Array.new(0) { Article.new } }
       groups.delete(0)
       i = 0
@@ -199,7 +237,10 @@ class UserRelation < Cybertrain::Relation
         while j < found.size
           key = found[j].author_id
           list = groups[key]
-          list << found[j] unless list.nil?
+          unless list.nil?
+            list << found[j]
+            loaded << found[j]
+          end
           j += 1
         end
         start += step
@@ -209,6 +250,8 @@ class UserRelation < Cybertrain::Relation
         records[i].articles_preload!(groups[records[i].id])
         i += 1
       end
+      subs = nested_include_paths("articles")
+      ArticleRelation.new("articles").preload_nested(loaded, subs) unless subs.empty?
     end
     nil
   end

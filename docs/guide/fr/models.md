@@ -1,5 +1,5 @@
 ---
-source_sha256: 707578e0592cebb2076d5b5ae9b67e5be62e3771a2cd00e5e559d163ef0e3af8
+source_sha256: 1ae6a8585e44b62a63cb86782693659f094d5714b80f72ac21e89959ace03adc
 ---
 # Modèles et base de données
 
@@ -665,10 +665,28 @@ nil, sans autre requête. Sur un `has_many` préchargé, `to_a`, `each`,
 `first`, `last`, `size` et `empty?` répondent depuis la mémoire (les enfants
 dans l’ordre des id)&nbsp;; `count` et `exists?` interrogent toujours la
 base, et une méthode de chaînage (`where`, `order`, ...) abandonne le
-préchargement et interroge comme d’habitude. Un seul niveau
-(`includes(comments: :author)` n’existe pas), et un enfant préchargé n’a pas
-son parent renseigné (`comment.article` le lit). `eager_load` et `joins` ne
-sont pas disponibles.
+préchargement et interroge comme d’habitude. Un enfant préchargé n’a pas
+son parent renseigné (`comment.article` le lit, ou préchargez-le aussi,
+ci-dessous). `eager_load` et `joins` ne sont pas disponibles.
+
+Les associations imbriquées prennent les formes Hash et Array de Rails, à
+n’importe quelle profondeur&nbsp;:
+
+```ruby
+Article.includes(comments: :author)                        # trois requêtes
+Article.includes(comments: [:author, :likes])              # quatre
+Article.includes(:author, comments: { author: :profile })  # cinq
+Comment.preload(article: { author: :profile })             # quatre
+```
+
+Chaque niveau ajoute une requête, quel que soit le nombre d’enregistrements
+au-dessus&nbsp;: les commentaires de tous les articles, puis les auteurs de
+tous ces commentaires. Un niveau sans rien à charger (aucun commentaire, ou
+des parents tous nil) n’en exécute aucune. Un second `includes` sur la même
+relation s’ajoute au premier. Un nom qui n’est pas une association du modèle
+à ce niveau lève `ArgumentError` (`unknown association nope for Comment`)
+à l’appel d’`includes`, avant toute requête&nbsp;; la vérification a lieu à
+l’exécution, pas dans le générateur (`docs/design.md` D95).
 
 ## Validations
 

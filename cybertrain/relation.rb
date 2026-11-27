@@ -64,6 +64,9 @@ module Cybertrain
       # record readers (true from `preloaded` until the next chain method).
       @includes = Array.new(0) { :x }
       @records_preloaded = false
+      # Nested includes (docs/design.md D95): every path below the first
+      # level, dotted ("comments.author"), handed on to the child's relation.
+      @include_paths = Array.new(0) { "" }
     end
 
     # Table and column names are backtick-quoted in every generated fragment
@@ -501,6 +504,104 @@ module Cybertrain
       nil
     end
 
+    # --- nested includes (docs/design.md D95) -------------------------------
+    # `includes(:a, b: { c: :d }, e: [:f, :g])` is walked into dotted paths
+    # ("a", "b", "b.c", "b.c.d", "e", "e.f", "e.g"), which the generated
+    # subclass checks against its `check_include_path` case tables (no
+    # computed send, NOTES rule 1) before taking any. A first-level name is
+    # an add_include; a longer path is kept here, and the subclass's
+    # preload_association hands its tail (nested_include_paths) to the
+    # child relation's `preload_nested` with every child it loaded, so each
+    # level is one more query (per chunk of ids), whatever the depth.
+
+    # The dotted paths of an includes argument list, each once, in the
+    # order given. Raises ArgumentError for anything but a Symbol, a
+    # String, an Array or a Hash of those.
+    # @return [Array<String>]
+    def self.include_spec_paths(specs)
+      out = Array.new(0) { "" }
+      i = 0
+      while i < specs.size
+        Relation.walk_include_spec(specs[i], "", out)
+        i += 1
+      end
+      out
+    end
+
+    def self.walk_include_spec(spec, prefix, out)
+      case spec
+      when Symbol then Relation.add_spec_path(out, prefix + spec.to_s)
+      when String then Relation.add_spec_path(out, prefix + spec)
+      when Array
+        i = 0
+        while i < spec.size
+          Relation.walk_include_spec(spec[i], prefix, out)
+          i += 1
+        end
+      when Hash
+        spec.each do |key, value|
+          name = prefix + key.to_s
+          Relation.add_spec_path(out, name)
+          Relation.walk_include_spec(value, name + ".", out)
+        end
+      else raise ArgumentError, "includes takes association names, Arrays and Hashes of them"
+      end
+      nil
+    end
+
+    def self.add_spec_path(out, path)
+      out << path unless out.include?(path)
+      nil
+    end
+
+    # "comments" of "comments.author.profile".
+    def self.path_head(path)
+      dot = path.index(".")
+      return path if dot.nil?
+
+      path[0, dot]
+    end
+
+    # "author.profile" of "comments.author.profile"; "" for one name.
+    def self.path_rest(path)
+      dot = path.index(".")
+      return "" if dot.nil?
+
+      path[dot + 1, path.size - dot - 1]
+    end
+
+    # Keeps a path below the first level (once); a chain method.
+    def add_nested_include(path)
+      drop_preloaded
+      @include_paths << path unless @include_paths.include?(path)
+      nil
+    end
+
+    # The paths below association `name`, with "name." taken off:
+    # ["author", "likes"] of "comments" for comments: [:author, :likes].
+    # @return [Array<String>]
+    def nested_include_paths(name)
+      out = Array.new(0) { "" }
+      prefix = name + "."
+      i = 0
+      while i < @include_paths.size
+        path = @include_paths[i]
+        out << path[prefix.size, path.size - prefix.size] if path.start_with?(prefix)
+        i += 1
+      end
+      out
+    end
+
+    def take_nested_includes(paths)
+      @include_paths.clear
+      i = 0
+      while i < paths.size
+        @include_paths << paths[i]
+        i += 1
+      end
+      nil
+    end
+
     # --- copying (issue #188, design D72) -----------------------------------
     # The generated subclass's `dup` builds a relation of its own class
     # (so the copy's `first` / `to_a` stay typed by the model: rule 5) and
@@ -508,10 +609,11 @@ module Cybertrain
 
     # Gives `target` this relation's whole chain state: where terms and
     # binds, order, limit, offset, distinct, none, having and its binds,
-    # and the included association names.
+    # and the included association names and nested paths.
     def copy_chain_to(target)
       target.take_chain(@wheres, @binds, @order, @limit, @offset, @distinct, @none)
       target.take_having(@having, @having_binds, @includes)
+      target.take_nested_includes(@include_paths)
       nil
     end
 

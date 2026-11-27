@@ -612,9 +612,27 @@ record with no children gets an empty list and a missing parent is nil, with
 no further query. On a preloaded `has_many`, `to_a`, `each`, `first`, `last`,
 `size` and `empty?` answer from memory (the children in id order); `count`
 and `exists?` still query, and a chain method (`where`, `order`, ...) drops
-the preload and queries as usual. One level only (`includes(comments:
-:author)` is not there), and a preloaded child does not have its parent set
-(`comment.article` reads it). `eager_load` and `joins` are not available.
+the preload and queries as usual. A preloaded child does not have its
+parent set (`comment.article` reads it, or preload it too, below).
+`eager_load` and `joins` are not available.
+
+Nested associations take Rails' Hash and Array forms, to any depth:
+
+```ruby
+Article.includes(comments: :author)                        # three queries
+Article.includes(comments: [:author, :likes])              # four
+Article.includes(:author, comments: { author: :profile })  # five
+Comment.preload(article: { author: :profile })             # four
+```
+
+Each level is one more query, whatever the number of records above it: the
+comments of every article, then the authors of every one of those comments.
+A level with nothing to load (no comments, or only nil parents) runs none.
+A second `includes` on the same relation adds to the first. A name that is
+not an association of the model at that level raises `ArgumentError`
+(`unknown association nope for Comment`) when `includes` is called, before
+any query; the check is at run time, not by the generator
+(`docs/design.md` D95).
 
 ## Validations
 

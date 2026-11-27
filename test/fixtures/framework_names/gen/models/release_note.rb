@@ -48,12 +48,23 @@ class ReleaseNoteRelation < Cybertrain::Relation
   def having_sql(s, b = []) = (set_having_sql(s, b); self)
 
   def includes(*names)
-    raise ArgumentError, "unknown association #{names[0]} for ReleaseNote" unless names.empty?
-
+    paths = Cybertrain::Relation.include_spec_paths(names)
+    i = 0
+    while i < paths.size
+      ReleaseNoteRelation.check_include_path(paths[i])
+      i += 1
+    end
     self
   end
 
   def preload(*names) = includes(*names)
+
+  def self.check_include_path(path)
+    raise ArgumentError, "unknown association #{Cybertrain::Relation.path_head(path)} for ReleaseNote"
+    nil
+  end
+
+  def preload_nested(records, paths) = nil
 
   def preloaded(records)
     @preloaded = records

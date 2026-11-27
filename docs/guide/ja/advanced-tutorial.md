@@ -1,5 +1,5 @@
 ---
-source_sha256: 5d24dbdc8e00a61e292b5bf9047d5b659fa65689048f6d643e2264065be1b3d4
+source_sha256: 66999cb2e64c8060c3a4cd7100fab0efa7c77701391e63b73ae9b4f068b1db93
 title: "発展編チュートリアル：ブログをさらに進める"
 description: "Getting Started のブログを CyberTrain でさらに進めます：コンポーネントとヘルパー、Turbo Streams によるコメントのライブ更新、バックグラウンドジョブ、JSON、サインイン、アップロードしたカバー画像、cybertrain build によるデプロイ用ビルド。"
 og_title: "発展編チュートリアル：CyberTrain のブログをさらに進める"
@@ -606,7 +606,7 @@ kamal deploy   # 以降のデプロイ
 - データベースは SQLite のみで、Spinel の FFI を経由します。
 - バックトレースはありません：エラーにはクラス、メッセージ、リクエスト行、テンプレート名と行番号が表示されます。
 - ビュー内で属性名を書き間違えると例外になります（`undefined method 'titel' for Article`）。`nil` が入っているカラムは空としてレンダリングされます。
-- 関連付けは外部キーか一行の宣言から作られます。`has_many :through`、入れ子の `includes`、enum、STI、ポリモーフィック関連付けはありません。
+- 関連付けは外部キーか一行の宣言から作られます。`has_many :through`、enum、STI、ポリモーフィック関連付けはありません。
 - `constraints` と `mount` はありません。JSON は `render json:` で返します（JSON のテンプレートはありません）。
 - スキャフォールドで生成したモデルでは、最初の string フィールドにだけデフォルトで presence バリデーションが付きます。
 - ジェネレーターは `app/controllers`、`app/models`、`app/helpers`、`app/components`、`app/jobs` に対して、パーサーではなく字句スキャン（正規表現）を使います。

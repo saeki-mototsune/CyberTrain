@@ -1,5 +1,5 @@
 ---
-source_sha256: 707578e0592cebb2076d5b5ae9b67e5be62e3771a2cd00e5e559d163ef0e3af8
+source_sha256: 1ae6a8585e44b62a63cb86782693659f094d5714b80f72ac21e89959ace03adc
 ---
 # モデルとデータベース
 
@@ -343,7 +343,18 @@ end
 <% end %>
 ```
 
-`includes(*names)`（と同じものの `preload`）は、レコードを読み込むときに関連付けごとにクエリを一回足します（`has_many` と `has_one` なら `Comment.where(article_id: ids)`、`belongs_to` なら id で親を）。そのため `article.comments` や `comment.article` を回すループは、自分ではクエリを実行しません。子のないレコードは空の一覧を、親のないレコードは nil を受け取り、それ以上のクエリはありません。先読みした `has_many` では、`to_a`、`each`、`first`、`last`、`size`、`empty?` がメモリから答え（子は id の順）、`count` と `exists?` はクエリを実行し、つなぐメソッド（`where`、`order` など）は先読みを捨てて普通にクエリします。一段だけで（`includes(comments: :author)` はありません）、先読みした子には親が設定されません（`comment.article` は読みに行きます）。`eager_load` と `joins` はありません。
+`includes(*names)`（と同じものの `preload`）は、レコードを読み込むときに関連付けごとにクエリを一回足します（`has_many` と `has_one` なら `Comment.where(article_id: ids)`、`belongs_to` なら id で親を）。そのため `article.comments` や `comment.article` を回すループは、自分ではクエリを実行しません。子のないレコードは空の一覧を、親のないレコードは nil を受け取り、それ以上のクエリはありません。先読みした `has_many` では、`to_a`、`each`、`first`、`last`、`size`、`empty?` がメモリから答え（子は id の順）、`count` と `exists?` はクエリを実行し、つなぐメソッド（`where`、`order` など）は先読みを捨てて普通にクエリします。先読みした子には親が設定されません（`comment.article` は読みに行きます。下のように一緒に先読みもできます）。`eager_load` と `joins` はありません。
+
+ネストした関連付けは Rails の Hash と Array の形で、何段でも書けます：
+
+```ruby
+Article.includes(comments: :author)                        # クエリ三回
+Article.includes(comments: [:author, :likes])              # 四回
+Article.includes(:author, comments: { author: :profile })  # 五回
+Comment.preload(article: { author: :profile })             # 四回
+```
+
+段ごとに、その上のレコードの数によらずクエリが一回増えます。すべての記事のコメント、次にそのコメントすべての著者、という具合です。読み込むものがない段（コメントがない、親がすべて nil）はクエリを実行しません。同じリレーションへの二度目の `includes` は一度目に足されます。その段のモデルの関連付けでない名前は、`includes` を呼んだときに、どのクエリよりも前に `ArgumentError`（`unknown association nope for Comment`）になります。検査は実行時で、ジェネレーターは行いません（`docs/design.md` D95）。
 
 ## バリデーション
 

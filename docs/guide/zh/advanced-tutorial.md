@@ -1,5 +1,5 @@
 ---
-source_sha256: 5d24dbdc8e00a61e292b5bf9047d5b659fa65689048f6d643e2264065be1b3d4
+source_sha256: 66999cb2e64c8060c3a4cd7100fab0efa7c77701391e63b73ae9b4f068b1db93
 title: "进阶教程：把博客继续推进"
 description: "用 CyberTrain 继续推进入门指南中的博客：组件和辅助方法、用 Turbo Streams 实时推送评论、后台作业、JSON、登录、上传的封面图片，以及用 cybertrain build 为部署而构建。"
 og_title: "进阶教程：把 CyberTrain 博客继续推进"
@@ -606,7 +606,7 @@ kamal deploy   # 之后的每次部署
 - 仅支持 SQLite，通过 Spinel 的 FFI 访问。
 - 没有回溯（backtrace）：错误只显示类、消息、请求行以及模板名/行号。
 - 视图中拼错的属性会抛出异常（`undefined method 'titel' for Article`）；值为 `nil` 的列则渲染为空。
-- 关联来自外键或一行声明；不支持 `has_many :through`、嵌套的 `includes`、枚举、STI 或多态关联。
+- 关联来自外键或一行声明；不支持 `has_many :through`、枚举、STI 或多态关联。
 - 不支持 `constraints` 或 `mount`；JSON 用 `render json:` 返回（没有 JSON 模板）。
 - 在脚手架生成的模型中，只有第一个字符串字段会获得默认的存在性验证。
 - 生成器对 `app/controllers`、`app/models`、`app/helpers`、`app/components` 和 `app/jobs` 使用词法扫描（正则表达式），而不是解析器。
