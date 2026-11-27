@@ -104,7 +104,7 @@ env:
   # workflow): the release the CLI installs and the framework is tested against.
   # The cache key (.github/actions/setup-spinel) reads the tag from the checked-out
   # cybertrain/version.rb instead, the one place the pin is defined.
-  SPINEL_TAG: "2026.11.23.7035"
+  SPINEL_TAG: "2026.11.27.7037"
 
 # Every job has a timeout-minutes, so that a hung compile or a server that
 # never answers ends the job instead of running to GitHub's limit of six
