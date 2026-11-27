@@ -38,7 +38,12 @@ cybertrain で、規模が大きくなるサービスを作れるようにする
   - `create_table`、`add_column`、`remove_column`、`rename_column`、index、外部キー、references
   - `db/schema.rb` のダンプとロード
 - `db create / drop / migrate / rollback / status / schema:load / seed` が MySQL で動く。
-- `cybertrain test` のテストごとのデータベース分離(D82 の「全行を消してフィクスチャを入れる」方式)が MySQL で動く。
+- `cybertrain test` のテストごとのデータベース分離(D82 の「全行を消してフィクスチャを入れる」方式)が MySQL で動く。消してよいかの確認(D82/D83 のガードの MySQL 版、私の判断)は次のとおり。
+  - 環境が `test` であること。
+  - データベース名が `_test` で終わること。
+  - そのデータベースに、bundle が最初に作る目印のテーブル(SQLite の `application_id` に当たるもの)があること。目印がない場合は、データベースが空のときだけ作る。テーブルが既にあって目印がない場合は拒否する。
+  - `DROP DATABASE` / `CREATE DATABASE` はしない。マネージドの MySQL では権限がないことが多いので、既存のデータベースの中身を消して、マイグレーションし直す。データベースは利用者が用意する。
+  - 接続先はアプリの `test` 環境の設定から取る(`DATABASE_URL` と同じ形)。フレームワーク自身の結合テストは `CYBERTRAIN_TEST_MYSQL_URL` を使う。
 - SQLite の挙動は1バイトも変えない。既存のスナップショット、`examples/blog/gen/`、`test/fixtures` の生成物はそのままにする。
 
 ## 非ゴール(1 の範囲では作らない)
@@ -130,7 +135,7 @@ cybertrain で、規模が大きくなるサービスを作れるようにする
 | `json` | `JSON` | String(Cast がこれまでどおり Hash にする) |
 | `binary` | `LONGBLOB` | `DB::Blob` |
 
-文字コードは `utf8mb4` にする。照合順序は、SQLite と同じく大文字小文字を区別する **`utf8mb4_bin`** を既定にする(私の判断)。理由は、uniqueness 検証や `where(email: …)` の結果を SQLite と揃えるため。
+文字コードは `utf8mb4` にする。照合順序は **`utf8mb4_0900_bin`** を既定にする(私の判断)。大文字小文字を区別し、NO PAD なので末尾の空白も区別する(`utf8mb4_bin` は PAD SPACE で `'a' = 'a '` が真になるので不採用)。理由は、uniqueness 検証や `where(email: …)` の結果を SQLite と揃えるため。その代わり `LIKE` も大文字小文字を区別する(SQLite の `LIKE` は ASCII の大文字小文字を区別しない)。この違いは compatibility.md に書く。
 
 接続時のセッション設定(私の判断):
 
@@ -141,8 +146,10 @@ cybertrain で、規模が大きくなるサービスを作れるようにする
 ## Driver(MySQL)の要件
 
 - **接続**: `Net` の TCP 接続を使い、接続時の名前解決は1回だけにする。サーバーの SSL 要求を受けて TLS に切り替える。
-  - TLS の既定は `required`。ただし接続先が `127.0.0.1` / `localhost` のときは `preferred` にする(私の判断)。
-  - `ssl_mode`(`disabled` / `preferred` / `required` / `verify_identity`)と CA ファイルを設定できるようにする。
+  - TLS は既存の `cybertrain/net/tls` をそのまま使う。証明書とホスト名は常に検証する(私の判断)。
+    - `ssl_mode` は `verify`(既定)と `disabled` の2つにする。`disabled` は、接続先が `127.0.0.1` / `localhost` / プライベートアドレスのときだけ受け付ける。
+    - MySQL 本家の `required`(暗号化するが検証しない)は作らない。暗号化だけして相手を確かめない接続は、スケールする本番では中間者攻撃に弱いため。
+    - CA は、既存の仕組みどおり `SSL_CERT_FILE` / `SSL_CERT_DIR` で渡す(RDS の CA バンドルなど)。openssl バインディングと `Net` には手を入れない。guide に手順を書く。
 - **認証**: `caching_sha2_password` の高速経路、TLS 上のフル認証、`mysql_native_password`。auth switch request にも対応する。
 - **クエリ**:
   - bind のあるものは COM_STMT_PREPARE / EXECUTE(binary protocol)で送る。prepared statement は接続ごとに SQL 文字列をキーにしてキャッシュする。上限を設け、溢れたら閉じる。
@@ -156,6 +163,7 @@ cybertrain で、規模が大きくなるサービスを作れるようにする
   - デッドロック(1213)とロック待ちタイムアウト(1205)
   - 接続断(2006 / 2013 相当、読み書きの EOF)
 - **再接続**: 接続断は `Pool` に返したときに検出して開き直す。今の `Pool#reopen` と同じ考え方。トランザクションの途中で切れた場合は、今の「transaction gone」の扱い(`refuse_if_transaction_gone`)に合わせる。
+- **エラーの型**: 今の `DB::Error` は1つのクラスなので、その下にサブクラスを足す(`DB::UniqueViolation`、`DB::ForeignKeyViolation`、`DB::Deadlock`、`DB::ConnectionLost` など。名前は builder が決める)。SQLite の Driver も同じサブクラスを投げるが、メッセージの文言は今のまま変えない。MySQL のメッセージはサーバーの文言のままにする。生成器が出すテストでメッセージを照合している箇所(`authentication_tests.rb` の `"FOREIGN KEY constraint failed"` など)は、MySQL アプリ向けにだけクラスで照合する形を出す。SQLite アプリの生成物は変えない。
 - **タイムアウト**: connect、read、write に上限を付ける。`Config` で変更できるようにする。
 - **ファイル**: `cybertrain/db/mysql/` に置き、packet、auth、protocol、connection、dialect に分ける。認証に必要な SHA1 / SHA256 は、既にリンクされている openssl パッケージから使う。
 
@@ -178,6 +186,10 @@ cybertrain で、規模が大きくなるサービスを作れるようにする
 - **プロトコルの単体テスト**: サーバーなしで動かす。記録したパケット列と、ハンドシェイク・認証・結果セット・エラーの組み立てを照合する。
 - **結合テスト**: `CYBERTRAIN_TEST_MYSQL_URL` が設定されているときだけ実際のサーバーに対して動かし、ないときはスキップして理由を出す。
   - モデル、Relation、関連、bulk_writes、マイグレーション、SchemaDumper、`Test::Database` のテストのうち、出力に SQL 文字列を含まないものは、SQLite と MySQL で同じ `.expected` になることを確認する。
+  - ただし、この設計書が意図して選んだ違いがあるテストは、MySQL 用の `.expected` を別に持つ。別にしたものと理由は、テストの横に列挙する。違いは次のとおり。
+    - JSON カラムは MySQL が正規化するので、キーの順序や空白が変わる。読み出し側で SQLite に合わせることはしない。
+    - `LIKE` が大文字小文字を区別する。
+    - エラーメッセージの文言。
 - **CI**: MySQL 8.0 のサービスコンテナを使うジョブを1つ足す。
 - **パリティ**: `examples/blog` を MySQL でビルドし、`cybertrain test` が通ること。
 - **SQLite の回帰**: 既存のゲートとスナップショットが変わらないこと。
