@@ -2181,7 +2181,10 @@ decision, and 77 explicitly retires a workaround.
      `IO.for_fd(f.fileno, autoclose: false)`, its `stat`, then its `close`
      under Spinel, and plain `f.stat` under CRuby, where closing the
      for_fd IO would close f's descriptor (`CLI::BuildLock#descriptor_id`).
-     Kept until docs/spinel-feedback.md AT is closed.
+     On 2026.11.27.7037 `File#stat` on an open File is the fstat(2) of its
+     descriptor, as under CRuby, and `CLI::BuildLock#same_file?` takes
+     `f.stat` under both runtimes; what is said above of `flock` stands.
+     Closed (docs/spinel-feedback.md AT): kept for its number.
 
 113. A rescuing yielder with one `rescue` clause around the yield,
      `value = nil; begin; value = yield; rescue JSON::NestingError,
