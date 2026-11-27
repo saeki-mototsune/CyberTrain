@@ -1,5 +1,5 @@
 ---
-source_sha256: 1ae6a8585e44b62a63cb86782693659f094d5714b80f72ac21e89959ace03adc
+source_sha256: 9227740a6323182536ac9888ad89bb2f0715934e43cbb34062e2356cddbf0e3e
 ---
 # 模型与数据库
 
@@ -354,7 +354,7 @@ Article.includes(:author, comments: { author: :profile })  # 五次
 Comment.preload(article: { author: :profile })             # 四次
 ```
 
-每一层多一次查询，与上一层的记录数无关：先是所有文章的评论，再是这些评论的所有作者。没有可加载内容的层（没有评论，或父记录全为 nil）不执行查询。对同一个 relation 再次调用 `includes` 会追加到前一次之上。在该层模型中不是关联的名字，会在调用 `includes` 时、任何查询之前抛出 `ArgumentError`（`unknown association nope for Comment`）；检查发生在运行时，而不是由生成器进行（`docs/design.md` D95）。
+每一层多一次查询，与上一层的记录数无关（若某层的 id 多于 SQLite 一条语句可绑定的数量，则每一批 id 一次）：先是所有文章的评论，再是这些评论的所有作者。没有可加载内容的层（没有评论，或父记录全为 nil）不执行查询。对同一个 relation 再次调用 `includes` 会追加到前一次之上。在该层模型中不是关联的名字，会在调用 `includes` 时、任何查询之前抛出 `ArgumentError`（`unknown association nope for Comment`）；检查发生在运行时，而不是由生成器进行（`docs/design.md` D95）。
 
 ## 校验
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 1ae6a8585e44b62a63cb86782693659f094d5714b80f72ac21e89959ace03adc
+source_sha256: 9227740a6323182536ac9888ad89bb2f0715934e43cbb34062e2356cddbf0e3e
 ---
 # Modèles et base de données
 
@@ -680,7 +680,8 @@ Comment.preload(article: { author: :profile })             # quatre
 ```
 
 Chaque niveau ajoute une requête, quel que soit le nombre d’enregistrements
-au-dessus&nbsp;: les commentaires de tous les articles, puis les auteurs de
+au-dessus (une par lot d’id, pour un niveau qui a plus d’id que SQLite n’en
+lie dans une instruction)&nbsp;: les commentaires de tous les articles, puis les auteurs de
 tous ces commentaires. Un niveau sans rien à charger (aucun commentaire, ou
 des parents tous nil) n’en exécute aucune. Un second `includes` sur la même
 relation s’ajoute au premier. Un nom qui n’est pas une association du modèle

@@ -1,5 +1,5 @@
 ---
-source_sha256: 1ae6a8585e44b62a63cb86782693659f094d5714b80f72ac21e89959ace03adc
+source_sha256: 9227740a6323182536ac9888ad89bb2f0715934e43cbb34062e2356cddbf0e3e
 ---
 # モデルとデータベース
 
@@ -354,7 +354,7 @@ Article.includes(:author, comments: { author: :profile })  # 五回
 Comment.preload(article: { author: :profile })             # 四回
 ```
 
-段ごとに、その上のレコードの数によらずクエリが一回増えます。すべての記事のコメント、次にそのコメントすべての著者、という具合です。読み込むものがない段（コメントがない、親がすべて nil）はクエリを実行しません。同じリレーションへの二度目の `includes` は一度目に足されます。その段のモデルの関連付けでない名前は、`includes` を呼んだときに、どのクエリよりも前に `ArgumentError`（`unknown association nope for Comment`）になります。検査は実行時で、ジェネレーターは行いません（`docs/design.md` D95）。
+段ごとに、その上のレコードの数によらずクエリが一回増えます（SQLite が一つの文に束縛できる数より id が多い段では、id のかたまりごとに一回）。すべての記事のコメント、次にそのコメントすべての著者、という具合です。読み込むものがない段（コメントがない、親がすべて nil）はクエリを実行しません。同じリレーションへの二度目の `includes` は一度目に足されます。その段のモデルの関連付けでない名前は、`includes` を呼んだときに、どのクエリよりも前に `ArgumentError`（`unknown association nope for Comment`）になります。検査は実行時で、ジェネレーターは行いません（`docs/design.md` D95）。
 
 ## バリデーション
 

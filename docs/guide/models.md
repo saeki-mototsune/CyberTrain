@@ -625,8 +625,10 @@ Article.includes(:author, comments: { author: :profile })  # five
 Comment.preload(article: { author: :profile })             # four
 ```
 
-Each level is one more query, whatever the number of records above it: the
-comments of every article, then the authors of every one of those comments.
+Each level is one more query, whatever the number of records above it (one
+per chunk of ids, for a level with more ids than SQLite binds in one
+statement): the comments of every article, then the authors of every one of
+those comments.
 A level with nothing to load (no comments, or only nil parents) runs none.
 A second `includes` on the same relation adds to the first. A name that is
 not an association of the model at that level raises `ArgumentError`
