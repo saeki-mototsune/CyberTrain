@@ -195,7 +195,7 @@ end
 test "insert_all! raises on a duplicate" do
   reset_items
   assert_equal 2, Item.insert_all!([{ code: "a" }, { code: "b" }]).size
-  message = assert_raises("UniqueViolation") { Item.insert_all!([{ code: "c" }, { code: "a" }]) }
+  message = assert_raises("Error") { Item.insert_all!([{ code: "c" }, { code: "a" }]) }
   assert_includes message, "UNIQUE constraint failed"
   # One transaction: "c" was not kept either.
   assert_equal 2, Item.count

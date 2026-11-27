@@ -1,4 +1,5 @@
 require "stringio"
+require "cybertrain/db"
 require "cybertrain/websocket"
 require "cybertrain/net/tls"
 require "cybertrain/test/websocket_receiver"

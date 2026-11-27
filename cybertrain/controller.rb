@@ -5,6 +5,7 @@ require "cybertrain/html"
 require "cybertrain/http/client_error"
 require "cybertrain/http/uploaded_file"
 require "cybertrain/logger"
+require "cybertrain/db/error"
 require "cybertrain/callback"
 require "cybertrain/feature"
 require "cybertrain/views"
@@ -1371,7 +1372,7 @@ module Cybertrain
     def rescue_with_handler(e)
       class_name = e.class.name
       Controller.rescues_for(self.class).each do |h|
-        next unless h.class_name == class_name
+        next unless h.class_name == class_name || (h.class_name == "Cybertrain::DB::Error" && Cybertrain::DB.error_subclass?(class_name))
 
         @rescued_exception = e
         with = h.with

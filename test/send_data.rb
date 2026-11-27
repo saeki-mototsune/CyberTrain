@@ -1,4 +1,5 @@
 require "stringio"
+require "cybertrain/db"
 require "cybertrain/test"
 require "cybertrain/test/client"
 require "cybertrain/router"

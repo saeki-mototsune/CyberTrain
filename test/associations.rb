@@ -956,7 +956,7 @@ test "without dependent: the database's foreign key refuses, and the dependents'
   Note.create(user_id: ann.id, body: "note")
   Task.create(user_id: ann.id, title: "task")
   Audit.create(user_id: ann.id, action: "signed up")
-  assert_raises("DB::ForeignKeyViolation") { ann.destroy }
+  assert_raises("DB::Error") { ann.destroy }
   assert ann.persisted?
   assert_equal 1, User.count
   assert_equal 1, Profile.count

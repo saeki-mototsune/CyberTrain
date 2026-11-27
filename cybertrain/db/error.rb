@@ -46,5 +46,20 @@ module Cybertrain
     # @api public
     class ConnectionLost < Error
     end
+
+    # The names of the subclasses of {Error} above. Code that compares a
+    # class by name (`rescue_from`, a String given to `assert_raises`) asks
+    # {.error_subclass?}, so that a handler or an expectation for
+    # Cybertrain::DB::Error covers them as the `rescue` clause does.
+    ERROR_SUBCLASSES = [
+      "Cybertrain::DB::UniqueViolation", "Cybertrain::DB::ForeignKeyViolation",
+      "Cybertrain::DB::Deadlock", "Cybertrain::DB::LockTimeout", "Cybertrain::DB::ConnectionLost"
+    ].freeze
+
+    # Whether the class named `name` is a subclass of {Error}.
+    # @api private
+    def self.error_subclass?(name)
+      ERROR_SUBCLASSES.include?(name)
+    end
   end
 end

@@ -27,7 +27,8 @@ module Cybertrain
   end
 
   # One rescue_from declaration. The exception class is kept by name and
-  # matched exactly against e.class.name.
+  # matched exactly against e.class.name (a handler for Cybertrain::DB::Error
+  # also takes its subclasses, Cybertrain::DB.error_subclass?).
   class RescueHandler
     attr_reader :class_name, :with, :block
 

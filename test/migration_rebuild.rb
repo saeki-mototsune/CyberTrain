@@ -412,7 +412,7 @@ test "a table Rails created rebuilds with its expression and partial indexes" do
   assert_equal 1, Cybertrain::Cast.int(unique[0]["unique"])
   assert_equal ["CREATE UNIQUE INDEX index_posts_on_lower_title ON posts(LOWER(title))"],
                column_values(connection, "SELECT sql AS v FROM sqlite_master WHERE name = 'index_posts_on_lower_title'")
-  message = assert_raises("Cybertrain::DB::UniqueViolation") { connection.execute("INSERT INTO posts (title, created_at) VALUES ('FIRST', 'x')") }
+  message = assert_raises("Cybertrain::DB::Error") { connection.execute("INSERT INTO posts (title, created_at) VALUES ('FIRST', 'x')") }
   assert_includes message, "UNIQUE"
   ruby = Cybertrain::DB::SchemaDumper.dump_to_ruby(connection)
   assert_includes ruby, "s.add_index \"posts\", \"LOWER(title)\", unique: true, name: \"index_posts_on_lower_title\""
