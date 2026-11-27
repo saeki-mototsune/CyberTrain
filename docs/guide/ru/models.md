@@ -1,5 +1,5 @@
 ---
-source_sha256: 707578e0592cebb2076d5b5ae9b67e5be62e3771a2cd00e5e559d163ef0e3af8
+source_sha256: df4dee4a12640c32870be2679ce94a3333a122d8a2a0553b426b983a1887eb68
 ---
 # Модели и база данных
 
@@ -591,7 +591,7 @@ end
   (`belongs_to`). Каждый макрос стоит один на своей строке, на уровне класса,
   без комментария в конце; несуществующая модель, столбец или опция
   останавливает генератор с указанием файла и строки.
-- Недоступно: `has_many :through`, полиморфные ассоциации, лямбда-скоуп у
+- Недоступно: `has_many :through`, лямбда-скоуп у
   `has_many` (продолжайте цепочку на возвращённом relation), `inverse_of`,
   `dependent: :restrict_with_error`.
 
@@ -618,6 +618,75 @@ end
 своего UPDATE, поскольку его копия может устареть. Родитель, уничтожаемый с
 `dependent: :destroy`, перед исчезновением уменьшает себя по разу на каждого
 ребёнка, что безвредно.
+
+### Полиморфные ассоциации
+
+Полиморфный `belongs_to` указывает на запись одной из нескольких моделей:
+
+```ruby
+# a migration's change (db/schema.rb spells it the same way)
+create_table "comments" do |t|
+  t.text "body", null: false
+  t.references :commentable, polymorphic: true
+  t.timestamps
+end
+
+# app/models/comment.rb
+class Comment
+  belongs_to :commentable, polymorphic: true
+end
+
+# app/models/post.rb
+class Post
+  has_many :comments, as: :commentable, dependent: :destroy
+end
+
+# app/models/photo.rb
+class Photo
+  has_one :comment, as: :commentable
+end
+```
+
+```ruby
+comment = Comment.create(body: "Nice", commentable: post)
+comment.commentable_type             # => "Post"
+case comment.commentable
+when Post then comment.commentable.title
+when Photo then comment.commentable.url
+end
+Comment.includes(:commentable).to_a  # one query per type found
+```
+
+- `t.references :commentable, polymorphic: true` (и `add_reference ...,
+  polymorphic: true` в миграции) добавляет строковый `commentable_type`,
+  затем `commentable_id`, оба NOT NULL, если не указано `null: true`, и один
+  индекс по обоим с именем `index_comments_on_commentable`: те же столбцы и
+  индекс, что создаёт Rails, так что база, созданная Rails, читается как
+  есть. Внешнего ключа нет (`on_delete:` отклоняется);
+  `remove_reference ..., polymorphic: true` удаляет индекс и оба столбца.
+- Столбец типа хранит имя класса родителя, как его хранит Rails (`"Post"`).
+  Писатель `comment.commentable = post` (и `Comment.new(commentable: post)`)
+  заполняет оба столбца, а nil очищает их. Сначала сохраните родителя: у
+  несохранённого id равен 0.
+- Читатель возвращает запись одной из моделей, объявивших для Comment
+  `has_many` или `has_one ..., as: :commentable`, или nil, пока тип пуст или
+  строки нет, и поднимает `ArgumentError` для любого другого типа. Под
+  Spinel тип читателя — объединение этих моделей, поэтому только их он и
+  может вернуть, а полиморфный `belongs_to`, которому не отвечает ни одна
+  модель, останавливает генератор. Метод, который есть у каждой из них
+  (`id` или общий столбец), можно вызвать на значении сразу; для остального
+  сузьте его через `case`.
+- Без `optional: true` проверяются оба столбца ("can't be blank" на
+  `commentable_type` и `commentable_id`).
+- `has_many` и `has_one` с `as:` читают детей, чей тип — имя этой модели, а
+  ключ — id этой записи; `dependent:` действует только на них (`:nullify`
+  ставит NULL в оба столбца, так что оба должны допускать NULL). `includes`
+  предзагружает любую сторону.
+- Недоступно: `class_name:`, `foreign_key:`, `foreign_type:` или
+  `counter_cache:` вместе с `polymorphic: true`, `foreign_key:` вместе с
+  `as:`, имена классов с пространством имён в столбце типа (`Admin::Post`)
+  и метка родителя в фикстуре (`commentable: one (Post)`; заполните два
+  столбца).
 
 ### Предзагрузка через `includes`
 

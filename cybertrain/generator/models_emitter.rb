@@ -581,6 +581,9 @@ module Cybertrain
         src << "  def write_attribute(name, value)\n"
         src << "    case name\n"
         table.columns.each { |c| src << "    when #{attribute_keys(c.name)} then #{ivar_name(c.name)} = Cybertrain::Cast.#{writer_cast_for(c)}(value)\n" }
+        # `Comment.new(commentable: post)`: a polymorphic belongs_to's
+        # writer (docs/design.md D94).
+        plans.each { |plan| src << "    when :#{plan.name} then self.#{plan.name} = value\n" if plan.polymorphic? }
         src << "    end\n"
         src << "    nil\n"
         src << "  end\n"

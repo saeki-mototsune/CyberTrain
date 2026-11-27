@@ -73,3 +73,4 @@ not evidence for a Spinel item stays while the file named cites it.
 | `phase5/assert_select_args.rb` | not a Spinel item | | nothing in the repository cites it; to delete |
 | `phase6/feature_registry.rb`, `phase6/feature_registry_ba.rb`, `phase6/feature_registry/` | rule 111 (a record: a form that works) | 111 | while NOTES.md rule 111 and cybertrain/feature.rb cite it |
 | `phase6/feature_registry_rule88.rb`, `phase6/rule88_order.rb` | Z | 88, 111 | Z is closed |
+| `phase6/polymorphic_reader.rb` | not a Spinel item: the polymorphic belongs_to reader and writer of docs/design.md D94 (a record: a form that works) | | while docs/design.md D94 and generator/association_emitter.rb cite it |

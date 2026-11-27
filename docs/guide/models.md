@@ -566,8 +566,8 @@ end
   (`belongs_to`). Each macro is alone on its line, at class level, with no
   trailing comment; a model, column or option that does not exist stops the
   generator with the file and line.
-- Not available: `has_many :through`, polymorphic associations, a scope
-  lambda on `has_many` (chain on the relation it returns), `inverse_of`,
+- Not available: `has_many :through`, a scope lambda on `has_many` (chain
+  on the relation it returns), `inverse_of`,
   `dependent: :restrict_with_error`.
 
 ### `dependent:` or `on_delete:`
@@ -591,6 +591,74 @@ change in the child's own transaction. The column must exist (an integer
 with `default: "0"`). The parent's own `save` leaves it out of its UPDATE,
 since its copy may be stale. A parent destroyed with `dependent: :destroy`
 decrements itself once per child before it goes, which is harmless.
+
+### Polymorphic associations
+
+A polymorphic `belongs_to` points to a record of one of several models:
+
+```ruby
+# a migration's change (db/schema.rb spells it the same way)
+create_table "comments" do |t|
+  t.text "body", null: false
+  t.references :commentable, polymorphic: true
+  t.timestamps
+end
+
+# app/models/comment.rb
+class Comment
+  belongs_to :commentable, polymorphic: true
+end
+
+# app/models/post.rb
+class Post
+  has_many :comments, as: :commentable, dependent: :destroy
+end
+
+# app/models/photo.rb
+class Photo
+  has_one :comment, as: :commentable
+end
+```
+
+```ruby
+comment = Comment.create(body: "Nice", commentable: post)
+comment.commentable_type             # => "Post"
+case comment.commentable
+when Post then comment.commentable.title
+when Photo then comment.commentable.url
+end
+Comment.includes(:commentable).to_a  # one query per type found
+```
+
+- `t.references :commentable, polymorphic: true` (and `add_reference ...,
+  polymorphic: true` in a migration) adds `commentable_type`, a string, then
+  `commentable_id`, NOT NULL unless `null: true`, and one index on both
+  named `index_comments_on_commentable`: the columns and the index Rails
+  creates, so a database Rails made reads as it is. There is no foreign key
+  (`on_delete:` is refused); `remove_reference ..., polymorphic: true` drops
+  the index and both columns.
+- The type column holds the parent's class name, as Rails stores it
+  (`"Post"`). The writer `comment.commentable = post` (and
+  `Comment.new(commentable: post)`) sets both columns and nil clears them.
+  Save the parent first: an unsaved one has the id 0.
+- The reader answers a record of one of the models that declare `has_many`
+  or `has_one ..., as: :commentable` for Comment, or nil while the type is
+  empty or the row is gone, and raises `ArgumentError` for any other type.
+  Under Spinel the reader's type is the union of those models, so they are
+  the only ones it can answer, and a polymorphic `belongs_to` that no model
+  answers stops the generator. A method every one of them has (`id`, or a
+  column they share) can be called on the value directly; narrow it with
+  `case` for the rest.
+- Without `optional: true`, both columns are validated ("can't be blank"
+  on `commentable_type` and `commentable_id`).
+- `has_many` and `has_one` with `as:` read the children whose type is this
+  model's name and whose key is this record's id; `dependent:` works on
+  those alone (`:nullify` sets both columns to NULL, so both must be
+  nullable). `includes` preloads either side.
+- Not available: `class_name:`, `foreign_key:`, `foreign_type:` or
+  `counter_cache:` with `polymorphic: true`, `foreign_key:` with `as:`,
+  namespaced class names in the type column (`Admin::Post`), and a fixture
+  label for the parent (`commentable: one (Post)`; set the two columns).
 
 ### Preloading with `includes`
 

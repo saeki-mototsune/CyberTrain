@@ -464,12 +464,24 @@ module Cybertrain
       # @param foreign_key [Boolean]
       # @param on_delete [Symbol] `:no_action`, `:cascade`, `:nullify` (needs
       #   `null: true`) or `:restrict`, as {Schema::TableDef#references}
+      # @param polymorphic [Boolean] `<name>_type` and `<name>_id` with the
+      #   index `index_<table>_on_<name>` on both and no foreign key, as
+      #   {Schema::TableDef#references} (pass `null: true` here too)
       # @return [nil]
       # @api public
-      def add_reference(table, name, null: false, foreign_key: true, on_delete: :no_action)
+      def add_reference(table, name, null: false, foreign_key: true, on_delete: :no_action, polymorphic: false)
         Cybertrain::Schema::ForeignKey.check_on_delete(on_delete)
         Cybertrain::Schema::ForeignKey.check_nullify(on_delete, null)
         column_name = "#{name}_id"
+        if polymorphic
+          Cybertrain::Schema::ForeignKey.check_polymorphic_on_delete(on_delete)
+          type_name = "#{name}_type"
+          index_name = Cybertrain::Schema::Index.polymorphic_name(table.to_s, name.to_s)
+          @operations << Operation.for_add_column(table.to_s, type_name, :string, null, nil, 0)
+          @operations << Operation.for_add_column(table.to_s, column_name, :integer, null, nil, 0)
+          @operations << Operation.for_add_index(table.to_s, [type_name, column_name], false, index_name)
+          return nil
+        end
         @operations << Operation.for_add_reference(table.to_s, column_name, null, on_delete)
         if foreign_key
           to_table = Cybertrain::Inflector.pluralize(name.to_s)
@@ -604,11 +616,22 @@ module Cybertrain
       # the table). Not reversible inside `change`.
       # @param table [String, Symbol]
       # @param name [Symbol, String] the singular (`:author`)
+      # @param polymorphic [Boolean] drop the index on `<name>_type` and
+      #   `<name>_id`, then both columns (`ALTER TABLE ... DROP COLUMN`, no
+      #   rebuild)
       # @return [nil]
       # @raise [Cybertrain::DB::Error] when migrating, if the table has something a
       #   rebuild would drop (see the class notes); the version rolls back
       # @api public
-      def remove_reference(table, name)
+      def remove_reference(table, name, polymorphic: false)
+        if polymorphic
+          type_name = "#{name}_type"
+          column_name = "#{name}_id"
+          @operations << Operation.for_remove_index(table.to_s, [type_name, column_name])
+          @operations << Operation.for_remove_column(table.to_s, type_name)
+          @operations << Operation.for_remove_column(table.to_s, column_name)
+          return nil
+        end
         @operations << Operation.for_remove_reference(table.to_s, "#{name}_id")
         nil
       end

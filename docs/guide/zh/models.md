@@ -1,5 +1,5 @@
 ---
-source_sha256: 707578e0592cebb2076d5b5ae9b67e5be62e3771a2cd00e5e559d163ef0e3af8
+source_sha256: df4dee4a12640c32870be2679ce94a3333a122d8a2a0553b426b983a1887eb68
 ---
 # 模型与数据库
 
@@ -321,7 +321,7 @@ end
 - `belongs_to` 读取父记录并记住它，直到外键改变或 `reload`。
 - 没有 `optional: true` 的已声明 `belongs_to`，在其键为 nil、空白或 0 时让记录无效（`article_id` 上的 “can't be blank”，即生成的 `validates_foreign_key :article_id`），所以 `save` 会在数据库拒绝该行之前返回 false。仅来自外键的关联不添加校验。
 - 选项都是字面量：`class_name:`（String 或 Symbol）、`foreign_key:`、`dependent:`（`has_many` 和 `has_one`）、`optional:` 和 `counter_cache:`（`belongs_to`）。每个宏独占一行，写在类层级，行尾不带注释；不存在的模型、列或选项会让生成器停下，并给出文件和行号。
-- 不提供：`has_many :through`、多态关联、`has_many` 上的 scope lambda（请在它返回的 relation 上串联）、`inverse_of`、`dependent: :restrict_with_error`。
+- 不提供：`has_many :through`、`has_many` 上的 scope lambda（请在它返回的 relation 上串联）、`inverse_of`、`dependent: :restrict_with_error`。
 
 ### `dependent:` 还是 `on_delete:`
 
@@ -330,6 +330,51 @@ end
 ### 计数器缓存
 
 `belongs_to :post, counter_cache: true` 让 `posts.comments_count`（或 `<has_many 的名字>_count`）保持同步：创建子记录后 +1，销毁后 -1，子记录换到另一个父记录时两边都更新，每次变化都在子记录自己的事务中。该列必须存在（`default: "0"` 的整数）。父记录自己的 `save` 不会把它放进 UPDATE，因为它的副本可能已过时。以 `dependent: :destroy` 销毁的父记录在消失前会按子记录数给自己减一次，这没有害处。
+
+### 多态关联
+
+多态的 `belongs_to` 指向几个模型之一的记录：
+
+```ruby
+# a migration's change (db/schema.rb spells it the same way)
+create_table "comments" do |t|
+  t.text "body", null: false
+  t.references :commentable, polymorphic: true
+  t.timestamps
+end
+
+# app/models/comment.rb
+class Comment
+  belongs_to :commentable, polymorphic: true
+end
+
+# app/models/post.rb
+class Post
+  has_many :comments, as: :commentable, dependent: :destroy
+end
+
+# app/models/photo.rb
+class Photo
+  has_one :comment, as: :commentable
+end
+```
+
+```ruby
+comment = Comment.create(body: "Nice", commentable: post)
+comment.commentable_type             # => "Post"
+case comment.commentable
+when Post then comment.commentable.title
+when Photo then comment.commentable.url
+end
+Comment.includes(:commentable).to_a  # one query per type found
+```
+
+- `t.references :commentable, polymorphic: true`（迁移中是 `add_reference ..., polymorphic: true`）添加字符串列 `commentable_type`，然后是 `commentable_id`（除非 `null: true`，都是 NOT NULL），并在两列上建一个名为 `index_comments_on_commentable` 的索引：与 Rails 建的列和索引相同，所以 Rails 建的数据库可以原样读取。没有外键（`on_delete:` 会被拒绝）；`remove_reference ..., polymorphic: true` 删除该索引和两列。
+- 类型列保存父记录的类名，与 Rails 的存法相同（`"Post"`）。写方法 `comment.commentable = post`（以及 `Comment.new(commentable: post)`）设置两列，nil 清空两列。请先保存父记录：未保存的父记录 id 为 0。
+- 读方法返回为 Comment 声明了 `has_many` 或 `has_one ..., as: :commentable` 的模型之一的记录；类型为空或行已不存在时返回 nil；其他类型则抛出 `ArgumentError`。在 Spinel 下读方法的类型是这些模型的并集，所以它只能返回它们，没有任何模型回应的多态 `belongs_to` 会让生成器停止。每个模型都有的方法（`id`，或共有的列）可以直接在值上调用；其余的请用 `case` 收窄。
+- 没有 `optional: true` 时校验两列（`commentable_type` 和 `commentable_id` 上的 "can't be blank"）。
+- 带 `as:` 的 `has_many` 和 `has_one` 读取类型为本模型名、键为本记录 id 的子记录；`dependent:` 只作用于它们（`:nullify` 把两列都设为 NULL，所以两列都必须可为空）。`includes` 可以预加载任一侧。
+- 不提供：与 `polymorphic: true` 一起的 `class_name:`、`foreign_key:`、`foreign_type:` 或 `counter_cache:`，与 `as:` 一起的 `foreign_key:`，类型列中带命名空间的类名（`Admin::Post`），以及夹具中父记录的标签（`commentable: one (Post)`；请设置两列）。
 
 ### 用 `includes` 预加载
 
