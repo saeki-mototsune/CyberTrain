@@ -1,11 +1,13 @@
 require "cybertrain/test"
 require "cybertrain/db/base"
 require "cybertrain/db/mysql"
+require_relative "support/tables"
 require "cybertrain/model"
 
 # test/bulk_writes.rb on MySQL, against the server CYBERTRAIN_TEST_MYSQL_URL
 # names (script/test-mysql runs this program): the same models, the same
-# tests and the same snapshot (test/bulk_writes.rb.expected, copied), so
+# tests and the same snapshot (test/bulk_writes.rb.expected's ok lines,
+# copied, then MySQL's own three and one summary line), so
 # insert_all, insert_all! and upsert_all, `returning:` included, answer on
 # MySQL what they answer on SQLite. MySQL has no RETURNING
 # (DB::Dialect.returning? is false): the rows are read back in the
@@ -27,7 +29,8 @@ require "cybertrain/model"
 #   "exception: JSON normalisation" or "exception: error-message wording".
 #   They change assertion values only, never an output line.
 #
-# The original's description, for the operations this repeats:
+# MySQL's own tests come last (returning: where the ids are not one new
+# run). The original's description, for the operations this repeats:
 # insert_all, insert_all! and upsert_all (docs/design.md D46)
 # -- multi-row INSERTs, chunked by the connection's variable limit,
 # all chunks in one transaction, timestamps filled once per call, values
@@ -158,21 +161,12 @@ end
 # the schema DSL), outside any transaction (DDL commits on MySQL).
 TABLE_OPTIONS = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin"
 Cybertrain::DB.connect(URL, size: 1)
-# The test database is the suite's own (script/mysql-dev): every program
-# starts from an empty one, so that a table another program left behind
-# (one with a foreign key to a table of the same name as one here) cannot
-# get in the way. Dropped with the foreign key checks off.
-Cybertrain::DB.with do |c|
-  Cybertrain::DB::Dialect.foreign_keys_off(c)
-  Cybertrain::DB::Dialect.table_names(c).each do |name|
-    quoted = Cybertrain::DB::Dialect.quote_ident(name)
-    c.exec_script("DROP TABLE #{quoted}")
-  end
-  Cybertrain::DB::Dialect.foreign_keys_on(c)
-end
+# This program's own tables are dropped first, by name, with any table of
+# the other test/mysql programs that references one of them
+# (test/mysql/support/tables.rb).
+Cybertrain::DB.with { |c| MySQLTestTables.drop(c, ["items", "secrets"]) }
 Cybertrain::DB.with do |c|
   c.exec_script(
-    "DROP TABLE IF EXISTS items; DROP TABLE IF EXISTS secrets;" \
     "CREATE TABLE items (id BIGINT AUTO_INCREMENT PRIMARY KEY, code VARCHAR(255) UNIQUE, " \
     "qty BIGINT NOT NULL DEFAULT 0, body MEDIUMTEXT, price DECIMAL(10,2), meta JSON, `on` DATE, " \
     "`at` DATETIME(6), ok TINYINT(1), data LONGBLOB, created_at DATETIME(6), updated_at DATETIME(6))" \
@@ -548,6 +542,55 @@ test "false is no columns; any other value for returning:, unique_by: or update_
   assert_equal "upsert_all: update_only: takes an Array of column names, e.g. update_only: [:name]",
                assert_raises("ArgumentError") { Item.upsert_all([{ code: "b" }], unique_by: [:code], update_only: true) }
   assert_equal 1, Item.count
+end
+
+# ---- MySQL's own ----------------------------------------------------------
+
+# MySQL has no RETURNING: these pin that the rows read back are the rows
+# the call wrote, in input order, never a neighbour, where the ids are not
+# one new run (Model.bulk_write_and_select).
+test "returning: an upsert that updates a row answers that row and the new one, never a neighbour" do
+  reset_items
+  Item.insert_all([{ code: "a" }, { code: "b" }])
+  rows = Item.upsert_all([{ code: "a", qty: 5 }, { code: "n", qty: 0 }], unique_by: [:code], returning: [:id, :code])
+  assert_equal ["a", "n"], rows.map { |r| r["code"] }
+  assert_equal 1, rows[0]["id"]
+  assert_equal Item.where(code: "n").pick(:id, :code)[0], rows[1]["id"]
+  assert_equal "5", stored("qty", "a")
+  # Input order, with the updated row last.
+  rows = Item.upsert_all([{ code: "m", qty: 1 }, { code: "b", qty: 2 }], unique_by: [:code], returning: [:code, :qty])
+  assert_equal ["m", "b"], rows.map { |r| r["code"] }
+  assert_equal [1, 2], rows.map { |r| r["qty"] }
+end
+
+test "returning: insert_all with a leading duplicate answers only the rows it inserted" do
+  reset_items
+  Item.insert_all([{ code: "a" }, { code: "b" }])
+  rows = Item.insert_all([{ code: "a" }, { code: "c" }, { code: "b" }, { code: "d" }], returning: [:id, :code])
+  assert_equal ["c", "d"], rows.map { |r| r["code"] }
+  assert_equal Item.where(code: "c").pick(:id, :code)[0], rows[0]["id"]
+  assert_equal Item.where(code: "d").pick(:id, :code)[0], rows[1]["id"]
+  # Every row a duplicate: none.
+  assert_equal 0, Item.insert_all([{ code: "a" }, { code: "b" }], returning: [:id]).size
+  # Supplied ids: a taken id answers nothing, a new one its row.
+  rows = Item.insert_all([{ id: 1, code: "x" }, { id: 90, code: "y" }], returning: [:id, :code])
+  assert_equal [90], rows.map { |r| r["id"] }
+  assert_equal 5, Item.count
+end
+
+test "returning: insert_all whose rows supply no unique index whole is refused, and writes nothing" do
+  reset_items
+  message = assert_raises("DB::Error") { Item.insert_all([{ qty: 1 }], returning: [:id]) }
+  assert_includes message, "needs the rows to supply every column of a unique index of items"
+  assert_equal 0, Item.count
+  # Without returning: it writes.
+  assert_equal 0, Item.insert_all([{ qty: 1 }], returning: []).size
+  assert_equal 1, Item.count
+  # insert_all! (a duplicate raises, so every row is new) reads the new
+  # run of ids back.
+  rows = Item.insert_all!([{ code: "p" }, { code: "q" }], returning: [:id, :code])
+  assert_equal ["p", "q"], rows.map { |r| r["code"] }
+  assert_equal rows[0]["id"] + 1, rows[1]["id"]
 end
 
 Cybertrain::Test.run!

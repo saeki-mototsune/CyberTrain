@@ -1,6 +1,7 @@
 require "cybertrain/test"
 require "cybertrain/db/base"
 require "cybertrain/db/mysql"
+require_relative "support/tables"
 require "cybertrain/model"
 require "cybertrain/params"
 
@@ -1800,24 +1801,14 @@ end
 TABLE_OPTIONS = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin"
 ID = "id BIGINT AUTO_INCREMENT PRIMARY KEY"
 Cybertrain::DB.connect(URL, size: 1)
-# The test database is the suite's own (script/mysql-dev): every program
-# starts from an empty one, so that a table another program left behind
-# (one with a foreign key to a table of the same name as one here) cannot
-# get in the way. Dropped with the foreign key checks off.
-Cybertrain::DB.with do |c|
-  Cybertrain::DB::Dialect.foreign_keys_off(c)
-  Cybertrain::DB::Dialect.table_names(c).each do |name|
-    quoted = Cybertrain::DB::Dialect.quote_ident(name)
-    c.exec_script("DROP TABLE #{quoted}")
-  end
-  Cybertrain::DB::Dialect.foreign_keys_on(c)
-end
+# This program's own tables are dropped first, by name, with any table of
+# the other test/mysql programs that references one of them
+# (test/mysql/support/tables.rb).
+OWN_TABLES = ["comments", "profiles", "notes", "tasks", "audits", "posts", "users", "flags", "things", "images",
+              "members"]
+Cybertrain::DB.with { |c| MySQLTestTables.drop(c, OWN_TABLES) }
 Cybertrain::DB.with do |c|
   c.exec_script(
-    "DROP TABLE IF EXISTS comments; DROP TABLE IF EXISTS profiles; DROP TABLE IF EXISTS notes; " \
-    "DROP TABLE IF EXISTS tasks; DROP TABLE IF EXISTS audits; DROP TABLE IF EXISTS posts; " \
-    "DROP TABLE IF EXISTS users; DROP TABLE IF EXISTS flags; DROP TABLE IF EXISTS things; " \
-    "DROP TABLE IF EXISTS images; DROP TABLE IF EXISTS members;" \
     "CREATE TABLE posts (#{ID}, title VARCHAR(255) NOT NULL, body MEDIUMTEXT, " \
     "created_at DATETIME(6), updated_at DATETIME(6))#{TABLE_OPTIONS};" \
     "CREATE TABLE comments (#{ID}, post_id BIGINT NOT NULL, author VARCHAR(255), body MEDIUMTEXT NOT NULL, " \

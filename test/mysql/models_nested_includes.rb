@@ -1,6 +1,7 @@
 require "cybertrain/test"
 require "cybertrain/db/base"
 require "cybertrain/db/mysql"
+require_relative "support/tables"
 require "cybertrain/model"
 require "cybertrain/schema"
 require "cybertrain/generator/model_scan"
@@ -49,25 +50,16 @@ end
 # test/support/schema_tables.rb), outside any transaction.
 TABLE_OPTIONS = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin"
 CREATE_TABLES_SQL =
-  "DROP TABLE IF EXISTS likes; DROP TABLE IF EXISTS comments; DROP TABLE IF EXISTS articles; DROP TABLE IF EXISTS profiles; DROP TABLE IF EXISTS authors;" \
   "CREATE TABLE authors (id BIGINT AUTO_INCREMENT PRIMARY KEY, name VARCHAR(255) NOT NULL)#{TABLE_OPTIONS};" \
   "CREATE TABLE articles (id BIGINT AUTO_INCREMENT PRIMARY KEY, author_id BIGINT NOT NULL, title VARCHAR(255) NOT NULL, FOREIGN KEY (author_id) REFERENCES authors(id))#{TABLE_OPTIONS};" \
   "CREATE TABLE comments (id BIGINT AUTO_INCREMENT PRIMARY KEY, article_id BIGINT NOT NULL, author_id BIGINT, body VARCHAR(255) NOT NULL, FOREIGN KEY (article_id) REFERENCES articles(id), FOREIGN KEY (author_id) REFERENCES authors(id))#{TABLE_OPTIONS};" \
   "CREATE TABLE likes (id BIGINT AUTO_INCREMENT PRIMARY KEY, comment_id BIGINT NOT NULL, who VARCHAR(255) NOT NULL, FOREIGN KEY (comment_id) REFERENCES comments(id))#{TABLE_OPTIONS};" \
   "CREATE TABLE profiles (id BIGINT AUTO_INCREMENT PRIMARY KEY, author_id BIGINT NOT NULL, bio VARCHAR(255) NOT NULL, FOREIGN KEY (author_id) REFERENCES authors(id))#{TABLE_OPTIONS};"
 Cybertrain::DB.connect(URL, size: 1)
-# The test database is the suite's own (script/mysql-dev): every program
-# starts from an empty one, so that a table another program left behind
-# (one with a foreign key to a table of the same name as one here) cannot
-# get in the way. Dropped with the foreign key checks off.
-Cybertrain::DB.with do |c|
-  Cybertrain::DB::Dialect.foreign_keys_off(c)
-  Cybertrain::DB::Dialect.table_names(c).each do |name|
-    quoted = Cybertrain::DB::Dialect.quote_ident(name)
-    c.exec_script("DROP TABLE #{quoted}")
-  end
-  Cybertrain::DB::Dialect.foreign_keys_on(c)
-end
+# This program's own tables are dropped first, by name, with any table of
+# the other test/mysql programs that references one of them
+# (test/mysql/support/tables.rb).
+Cybertrain::DB.with { |c| MySQLTestTables.drop(c, ["likes", "comments", "articles", "profiles", "authors"]) }
 Cybertrain::DB.with { |c| c.exec_script(CREATE_TABLES_SQL) }
 
 def statements = Cybertrain::DB.with { |c| c.statements_run }

@@ -317,18 +317,24 @@ module Cybertrain
     # back by a SELECT after each statement, in the same transaction, in the
     # order of the input rows and with the rows SQLite's RETURNING would
     # answer: one per row inserted or updated, none for a skipped duplicate.
+    # Never a row this call did not write.
     #
-    # - The rows supply no `id` and the table has one (AUTO_INCREMENT): the
-    #   ids one INSERT makes are consecutive in the order of its rows, from
-    #   the first (DB::Dialect.bulk_writes_first_insert_id; 0 when it made
-    #   none), so the rows it inserted are those with an id in [first,
-    #   first + rows). When every row was inserted, or when a colliding row
-    #   is left as it is (insert_all; an upsert with nothing to set), they
-    #   are the answer.
-    # - Otherwise (an upsert that updated some row; ids supplied) the rows
-    #   are looked up by their conflict key: upsert_all's unique_by, or the
-    #   supplied id. A row whose key was there before the statement and
-    #   that a collision leaves as it is answers nothing.
+    # - The id window, only where every row is new: the rows supply no
+    #   `id`, the table has one (AUTO_INCREMENT), and no row can collide
+    #   (insert_all!, which raises on a duplicate; insert_all on a table
+    #   with no unique index but its primary key). The ids one INSERT makes
+    #   are consecutive in row order, from the first
+    #   (DB::Dialect.bulk_writes_first_insert_id), so the rows are those with
+    #   an id in [first, first + rows); the affected-row count must equal
+    #   the rows, or DB::Error.
+    # - Otherwise the rows are looked up by their key: upsert_all's
+    #   unique_by; the supplied id; or, for insert_all on a table with a
+    #   unique index, the first unique index whose columns the rows supply
+    #   (Model.bulk_unique_key; DB::Error when the table has unique indexes
+    #   and the rows supply none of them whole). Where a collision leaves
+    #   the row as it is (insert_all, an upsert with nothing to set), a key
+    #   that was there before the statement answers nothing; a row skipped
+    #   on another unique index has no row under its key.
     #
     # A table without an `id` column answers only upserts (the key is
     # unique_by); insert_all with `returning:` there raises ArgumentError
@@ -344,55 +350,55 @@ module Cybertrain
 
       caller_name = Model.bulk_method_name(on_conflict)
       auto = column_types.key?("id") && !columns.include?("id")
-      keys = Array.new(0) { "" }
-      if on_conflict == :update
-        targets.each { |name| keys << name }
-      elsif columns.include?("id")
-        keys << "id"
-      end
-      if !auto && keys.empty?
+      supplied_id = columns.include?("id")
+      if on_conflict != :update && !auto && !supplied_id
         message = "#{caller_name}: returning: needs an id column on this database (it has no RETURNING)"
         raise ArgumentError, message
       end
 
-      key_positions = Array.new(0) { 0 }
-      keys.each { |name| key_positions << columns.index(name).to_i }
       quoted_table = Cybertrain::DB::Dialect.quote_ident(table)
-      selected = Array.new(0) { "" }
-      returned.each { |name| selected << Cybertrain::DB::Dialect.quote_ident(name) }
-      keys.each_with_index { |name, i| selected << "#{Cybertrain::DB::Dialect.quote_ident(name)} AS cybertrain_k#{i}" }
-      select_list = selected.join(", ")
       id_column = Cybertrain::DB::Dialect.quote_ident("id")
 
       Cybertrain::DB.transaction do |c|
+        keys = Array.new(0) { "" }
+        if on_conflict == :update
+          targets.each { |name| keys << name }
+        elsif supplied_id
+          keys << "id"
+        elsif on_conflict == :nothing
+          Model.bulk_unique_key(c, caller_name, table, columns).each { |name| keys << name }
+        end
+        key_positions = Array.new(0) { 0 }
+        keys.each { |name| key_positions << columns.index(name).to_i }
+        selected = Array.new(0) { "" }
+        returned.each { |name| selected << Cybertrain::DB::Dialect.quote_ident(name) }
+        keys.each_with_index { |name, i| selected << "#{Cybertrain::DB::Dialect.quote_ident(name)} AS cybertrain_k#{i}" }
+        select_list = selected.join(", ")
+
         k = 0
         while k < statements.size
           binds = bind_sets[k]
           count = binds.size / columns.size
-          done = false
-          if auto
+          if keys.empty?
+            # Every row is new (see above): the id window.
             Cybertrain::DB::Dialect.bulk_writes_mark_insert_id(c)
             c.execute(statements[k], binds)
             first_id = Cybertrain::DB::Dialect.bulk_writes_first_insert_id(c)
-            window = Array.new(0) { Model.bulk_empty_row }
-            window.clear
-            if first_id > 0
-              sql = "SELECT #{select_list} FROM #{quoted_table} WHERE #{id_column} >= ? AND #{id_column} < ? " \
-                    "ORDER BY #{id_column}"
-              found = c.execute(sql, Cybertrain::Cast.binds(first_id, first_id + count))
-              found.each { |row| window << Model.bulk_returned_row(row, returned, returned_types) }
+            if first_id <= 0 || c.changes != count
+              message = "#{caller_name}: returning: the INSERT wrote #{c.changes} of #{count} rows; " \
+                        "their ids cannot be read back"
+              raise Cybertrain::DB::Error, message
             end
-            if window.size == count || skips || keys.empty?
-              window.each { |row| out << row }
-              done = true
-            end
-          end
-          unless done
+            sql = "SELECT #{select_list} FROM #{quoted_table} WHERE #{id_column} >= ? AND #{id_column} < ? " \
+                  "ORDER BY #{id_column}"
+            found = c.execute(sql, Cybertrain::Cast.binds(first_id, first_id + count))
+            found.each { |row| out << Model.bulk_returned_row(row, returned, returned_types) }
+          else
             # Read before the statement only where a collision leaves the
             # row as it is (and so answers nothing for it).
             before = Model.bulk_index_rows(Array.new(0) { Model.bulk_found_row }, keys.size)
-            before = Model.bulk_key_index(c, quoted_table, select_list, keys, key_positions, binds, columns.size) if skips && !auto
-            c.execute(statements[k], binds) unless auto
+            before = Model.bulk_key_index(c, quoted_table, select_list, keys, key_positions, binds, columns.size) if skips
+            c.execute(statements[k], binds)
             found = Model.bulk_key_rows(c, quoted_table, select_list, keys, key_positions, binds, columns.size)
             after = Model.bulk_index_rows(found, keys.size)
             r = 0
@@ -408,6 +414,34 @@ module Cybertrain
         end
       end
       nil
+    end
+
+    # The key insert_all's `returning:` reads its rows back by, for rows
+    # that supply no id (bulk_write_and_select): the columns of the
+    # table's first unique index (by name, the primary key aside) that the
+    # rows supply whole; [] when the table has no such index, so that no
+    # row can collide. DB::Error when it has unique indexes and the rows
+    # supply none whole: a skipped duplicate could not be told apart.
+    def self.bulk_unique_key(c, caller_name, table, columns)
+      covered = Array.new(0) { "" }
+      unique = false
+      Cybertrain::DB::Dialect.schema_index_rows(c, table).each do |r|
+        next unless Cybertrain::Cast.int(r["unique"]) == 1
+
+        unique = true
+        next unless covered.empty?
+
+        names = Cybertrain::DB::Dialect.schema_index_columns(c, table, Cybertrain::Cast.str(r["name"]))
+        whole = !names.empty?
+        names.each { |name| whole = false unless columns.include?(name) }
+        names.each { |name| covered << name } if whole
+      end
+      if unique && covered.empty?
+        message = "#{caller_name}: returning: on this database (it has no RETURNING) needs the rows to supply " \
+                  "every column of a unique index of #{table}, so that a skipped duplicate is told apart"
+        raise Cybertrain::DB::Error, message
+      end
+      covered
     end
 
     # The rows of `quoted_table` whose key columns hold one of the

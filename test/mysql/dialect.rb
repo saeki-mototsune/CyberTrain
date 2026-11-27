@@ -1,6 +1,7 @@
 require "cybertrain/cast"
 require "cybertrain/db/base"
 require "cybertrain/db/mysql"
+require_relative "support/tables"
 require "cybertrain/config"
 require "cybertrain/migration"
 require "cybertrain/relation"
@@ -12,8 +13,8 @@ require "cybertrain/test"
 # against real tables. The methods whose callers come with later tasks (the
 # schema readers and the migrator's, Test::Database's, the services'
 # statements) are checked here directly. The tables are hand-written MySQL
-# DDL (the plan's Task 10 generates DDL); every table of the test database
-# is dropped first.
+# DDL (the plan's Task 10 generates DDL); the program's own tables are
+# dropped first, by name.
 
 DB = Cybertrain::DB
 Dialect = Cybertrain::DB::Dialect
@@ -24,18 +25,17 @@ if URL.empty?
   exit 2
 end
 
+OWN_TABLES = ["posts", "comments", "cybertrain_jobs", "a`b", "stats", "cybertrain_cache", "cybertrain_leases",
+              "cybertrain_schedules", "cybertrain_feeds"]
 TABLE_OPTIONS = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin"
 
-# Every table of the test database dropped, then the blog's: posts,
-# comments (a foreign key and its index) and a framework table.
+# This program's own tables dropped (by name, with the other programs'
+# tables that reference them: test/mysql/support/tables.rb), then the
+# blog's: posts, comments (a foreign key and its index) and a framework
+# table.
 def blog_db
   conn = DB::Connection.new(URL)
-  Dialect.foreign_keys_off(conn)
-  Dialect.table_names(conn).each do |name|
-    quoted = Dialect.quote_ident(name)
-    conn.exec_script("DROP TABLE #{quoted}")
-  end
-  Dialect.foreign_keys_on(conn)
+  MySQLTestTables.drop(conn, OWN_TABLES)
   conn.exec_script(
     "CREATE TABLE posts (id BIGINT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(255) NOT NULL, views INT DEFAULT 0)" \
     "#{TABLE_OPTIONS}; " \
@@ -110,7 +110,11 @@ end
 
 test "table_names lists the tables of the connected database" do
   conn = blog_db
-  assert_equal ["comments", "cybertrain_jobs", "posts"], Dialect.table_names(conn)
+  # Other tables of the database (other programs', or the database's own)
+  # may be listed too; this program's are, and the ones it dropped are not.
+  names = Dialect.table_names(conn)
+  assert_equal ["comments", "cybertrain_jobs", "posts"], names.select { |n| OWN_TABLES.include?(n) }
+  assert_equal names.sort, names
   assert_equal true, Dialect.table_exists?(conn, "posts")
   assert_equal false, Dialect.table_exists?(conn, "missing")
   assert_equal ["id", "title", "views"], Dialect.column_names(conn, "posts")

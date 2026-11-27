@@ -14,4 +14,4 @@ ok   the schema readers answer name/type/notnull/dflt_value/pk, indexes and fore
 ok   Test::Database's clear empties a table; the mark is nothing on MySQL
 ok   the timetable and feed statements: a row never moves backwards, a missing one is added once
 ok   the cache and lease writes answer whether a row changed
-16 tests, 99 assertions, 0 failures
+16 tests, 100 assertions, 0 failures

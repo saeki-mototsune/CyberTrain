@@ -1,6 +1,7 @@
 require "cybertrain/test"
 require "cybertrain/db/base"
 require "cybertrain/db/mysql"
+require_relative "support/tables"
 require "cybertrain/model"
 require "cybertrain/schema"
 require "cybertrain/encryptor"
@@ -58,7 +59,6 @@ end
 # index on posts.title for upsert_all's conflict target.
 TABLE_OPTIONS = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin"
 CREATE_TABLES_SQL =
-  "DROP TABLE IF EXISTS comments; DROP TABLE IF EXISTS posts;" \
   "CREATE TABLE posts (id BIGINT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(255) NOT NULL, body MEDIUMTEXT, " \
   "views INT NOT NULL DEFAULT 0, price DECIMAL(10,2), comments_count INT NOT NULL DEFAULT 0, meta JSON, " \
   "published_on DATE, secret_note MEDIUMTEXT, thumbnail LONGBLOB, hidden INT NOT NULL DEFAULT 0, " \
@@ -73,18 +73,10 @@ CREATE_TABLES_SQL =
 # test/decimal_contract.rb's key (test/includes.rb sets none).
 Cybertrain.config.encryption_key = "8f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
 Cybertrain::DB.connect(URL, size: 1)
-# The test database is the suite's own (script/mysql-dev): every program
-# starts from an empty one, so that a table another program left behind
-# (one with a foreign key to a table of the same name as one here) cannot
-# get in the way. Dropped with the foreign key checks off.
-Cybertrain::DB.with do |c|
-  Cybertrain::DB::Dialect.foreign_keys_off(c)
-  Cybertrain::DB::Dialect.table_names(c).each do |name|
-    quoted = Cybertrain::DB::Dialect.quote_ident(name)
-    c.exec_script("DROP TABLE #{quoted}")
-  end
-  Cybertrain::DB::Dialect.foreign_keys_on(c)
-end
+# This program's own tables are dropped first, by name, with any table of
+# the other test/mysql programs that references one of them
+# (test/mysql/support/tables.rb).
+Cybertrain::DB.with { |c| MySQLTestTables.drop(c, ["comments", "posts"]) }
 Cybertrain::DB.with { |c| c.exec_script(CREATE_TABLES_SQL) }
 
 def statements = Cybertrain::DB.with { |c| c.statements_run }

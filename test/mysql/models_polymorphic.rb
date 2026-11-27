@@ -1,6 +1,7 @@
 require "cybertrain/test"
 require "cybertrain/db/base"
 require "cybertrain/db/mysql"
+require_relative "support/tables"
 require "cybertrain/model"
 require "cybertrain/schema"
 require "cybertrain/generator/model_scan"
@@ -49,24 +50,15 @@ end
 # test/support/schema_tables.rb), outside any transaction.
 TABLE_OPTIONS = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin"
 CREATE_TABLES_SQL =
-  "DROP TABLE IF EXISTS comments; DROP TABLE IF EXISTS notes; DROP TABLE IF EXISTS photos; DROP TABLE IF EXISTS posts;" \
   "CREATE TABLE comments (id BIGINT AUTO_INCREMENT PRIMARY KEY, body MEDIUMTEXT NOT NULL, commentable_type VARCHAR(255) NOT NULL, commentable_id BIGINT NOT NULL, created_at DATETIME(6) NOT NULL, updated_at DATETIME(6) NOT NULL)#{TABLE_OPTIONS};" \
   "CREATE TABLE notes (id BIGINT AUTO_INCREMENT PRIMARY KEY, body MEDIUMTEXT, notable_type VARCHAR(255), notable_id BIGINT)#{TABLE_OPTIONS};" \
   "CREATE TABLE photos (id BIGINT AUTO_INCREMENT PRIMARY KEY, url VARCHAR(255) NOT NULL)#{TABLE_OPTIONS};" \
   "CREATE TABLE posts (id BIGINT AUTO_INCREMENT PRIMARY KEY, title VARCHAR(255) NOT NULL)#{TABLE_OPTIONS};"
 Cybertrain::DB.connect(URL, size: 1)
-# The test database is the suite's own (script/mysql-dev): every program
-# starts from an empty one, so that a table another program left behind
-# (one with a foreign key to a table of the same name as one here) cannot
-# get in the way. Dropped with the foreign key checks off.
-Cybertrain::DB.with do |c|
-  Cybertrain::DB::Dialect.foreign_keys_off(c)
-  Cybertrain::DB::Dialect.table_names(c).each do |name|
-    quoted = Cybertrain::DB::Dialect.quote_ident(name)
-    c.exec_script("DROP TABLE #{quoted}")
-  end
-  Cybertrain::DB::Dialect.foreign_keys_on(c)
-end
+# This program's own tables are dropped first, by name, with any table of
+# the other test/mysql programs that references one of them
+# (test/mysql/support/tables.rb).
+Cybertrain::DB.with { |c| MySQLTestTables.drop(c, ["comments", "notes", "photos", "posts"]) }
 Cybertrain::DB.with { |c| c.exec_script(CREATE_TABLES_SQL) }
 
 def reset_poly_tables
