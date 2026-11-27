@@ -237,8 +237,8 @@ DB::Dialect.migrator_rebuild(conn, op, definition) # => nil テーブルを作�
     - lenenc の NULL(0xFB)には `read_lenenc_str_or_nil` を使う。
   - `MySQL::PacketIO.new(stream)`:
     - `stream` は `Net` の TCP または TLS ストリーム。
-    - `read -> String`(ペイロード)。`0xFFFFFF` ごとに分割されたものは結合して返す。
-    - `write(payload)`。`0xFFFFFF` ごとに分割し、ちょうど `0xFFFFFF` で終わる場合は空のパケットを1つ足す。
+    - `read_packet -> String`(ペイロード)。`0xFFFFFF` ごとに分割されたものは結合して返す。
+    - `write_packet(payload)`。`0xFFFFFF` ごとに分割し、ちょうど `0xFFFFFF` で終わる場合は空のパケットを1つ足す。
     - `reset_sequence`
     - シーケンス番号が合わなければ `DB::ConnectionLost` を投げる。
     - 待ちはすべて `Net` の上限付きの待ちで行う。
