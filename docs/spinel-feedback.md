@@ -167,10 +167,11 @@ These builds are covered, and the source of one more was read:
   matz/spinel#12657 (merged 2026-11-27, by another contributor), which
   2026.11.15.7033 does not; see AB. Nothing else was run on it.
 - **matz/spinel master 6f27d4e99** (2026-11-27 16:47 +0900), built on
-  macOS arm64 on 2026-11-27 to run the programs of AO and AR, and nothing
-  else: both print CRuby's result on it (see AO and AR, and the AR
-  section for the run on 2026.11.23.7035 beside it). CyberTrain was not
-  built with it.
+  macOS arm64 on 2026-11-27 to run the programs of AO, AR and AX, and
+  nothing else: AO's and AR's print CRuby's result on it (see AO and AR,
+  and the AR section for the run on 2026.11.23.7035 beside it), and AX's
+  prints what CRuby 4.0.7 with its default json prints (see AX, "What AX
+  turned out to be"). CyberTrain was not built with it.
 
 2026.11.04.7026, the pin at the time, was used once more on 2026-11-13,
 for the inventory below: forty small programs built with it on Linux x86_64
@@ -323,7 +324,7 @@ request this project sent and matz/spinel merged (brought up to date on
 | AU | bug | 52 | closed | 2026-11-27, by the change that set this row: 2026.11.27.7037 (matz/spinel#12625); never had a workaround. rechecks/differing/invalid_utf8.rb's `strip` line raises Encoding::CompatibilityError on it as under CRuby, and its `byteindex` lines and rechecks/invalid_utf8_shapes.rb match too ("2026.11.27.7037" in the list of builds). Rule 52 stays for AD |
 | AV | bug | 17 | closed | 2026-11-27, by the change that set this row: 2026.11.27.7037 (matz/spinel#12630); never had a workaround. rechecks/differing/class_before_definition.rb prints `NameError: uninitialized constant Later` on it as under CRuby, and rechecks/constant_order.rb still matches ("2026.11.27.7037" in the list of builds). Rule 17's advice, an order CRuby accepts, is how the framework is written anyway |
 | AW | bug | 27 | closed | 2026-11-27, by the change that set this row: 2026.11.27.7037 (matz/spinel#12629); never had a workaround. Both lines of rechecks/differing/socket_bytes.rb print CRuby's result on it, `gets: ASCII-8BIT 13 13` and `append: Encoding::CompatibilityError`, and rechecks/socket_shapes.rb still matches ("2026.11.27.7037" in the list of builds). Framing by byte stays in rule 27 as advice |
-| AX | bug |  | open ("Status by rule", row AX): `JSON.parse` does not count an innermost empty Array or Object against the nesting limit, so 101 nested Arrays with nothing inside parse where CRuby raises JSON::NestingError, and one level deeper with `max_nesting:` too (rechecks/differing/json_parse_nesting.rb). Documents that hold a value raise at the depth and with the class and message CRuby gives. No workaround and no rule: nothing in the framework depends on where the limit falls |  |
+| AX | bug |  | closed | 2026-11-27, by the change that set this row: withdrawn as not a Spinel behaviour, a difference between json gem releases (see AX, "What AX turned out to be"). On matz/spinel master 6f27d4e99 (macOS arm64) every nesting line of rechecks/differing/json_parse_nesting.rb prints what CRuby 4.0.7 with json 2.18.0, its default gem, prints; the report had compared with CRuby 3.3.6 and json 2.7. Never had a workaround and has no rule |
 | AY | bug | 124 | closed | 2026-11-27, by the change that set this row: 2026.11.27.7037 (matz/spinel#12628). rechecks/differing/raising_helper_beside_lambda.rb builds and prints CRuby's line on it ("2026.11.27.7037" in the list of builds). The typed values after the `raise` are gone from `Console.unknown_model` and `unknown_record` (cybertrain/console.rb), and test/console.rb's case "an unknown model or record raises through a rescuing caller" passes compiled without them |
 | BA | bug |  | open ("Status by rule", row BA): `Thread.new` passes the program's file name to `sp_Thread_spawn_fiber_at` as a bare C literal, which that function roots as a String, so a collection inside the thread record's allocation reads the byte in front of the literal (`sp_mark_string`'s `s[-1]`). Seen only under AddressSanitizer (rechecks/2026.11.15.7033/ba_thread_birth_file.rb, with `SPINEL_GC_THRESHOLD_KB=1`); a plain build reads a byte it then ignores. No workaround and no rule: nothing in the framework can avoid it short of not calling `Thread.new` |  |
 | rule 1 | constraint | 1 | settled (1.4: no run-time code); the probes of a computed `send` and of reflection with a non-literal name match on the pin (rechecks/dispatch_shapes.rb) |  |
@@ -655,7 +656,6 @@ not by design. Costs are in 2; what is by design is in 1.4.
 | AQ | Four threads writing one StringIO with no lock crash the program (phase 5b) | 17 lines | No |
 | AR | A regex literal holding a require-shaped text is read as a require | 2 lines | No; fixed upstream by a9c356b7f and 1151b431d, in 2026.11.27.7037 (see AR) |
 | AS | `ENV[name]` with a key held in a variable answers the key | Not reduced (spikes/rechecks/differing/env_nonliteral_key.rb, against two framework files) | No |
-| AX | `JSON.parse` lets an empty Array or Object sit one level past the nesting limit, where CRuby raises JSON::NestingError (added 2026-11-21) | spikes/rechecks/differing/json_parse_nesting.rb ("Status by rule", row AX of both tables) | No |
 | BA | A collection inside `Thread.new` reads the byte in front of the C literal holding the program's file name (found under AddressSanitizer on 2026-11-23; harmless in a plain build as far as seen) | 10 lines; spikes/rechecks/2026.11.15.7033/ba_thread_birth_file.rb ("Status by rule", row BA) | No |
 | V | `strftime` with a built pattern returns the pattern | Not reduced | Sent (a shape): #11784, merged 2026-11-14 |
 | W | An ivar String passed to a stored lambda is refused | Not reduced | Sent (two shapes): #11801 and #11860, merged 2026-11-14 and 2026-11-15 |
@@ -693,6 +693,9 @@ block that never runs") and everything in 1.4.
 
 **Withdrawn.** J (2026-11-23): not a Spinel bug. Its report came from how
 the AddressSanitizer binary was built (see J, "What J turned out to be").
+AX (2026-11-27): not a Spinel bug. Its report compared with CRuby 3.3.6's
+json, and Spinel answers as Ruby 4.0's json does (see AX, "What AX turned
+out to be").
 
 ## What is asked of Spinel now
 
@@ -5100,6 +5103,24 @@ by rule", row AX of both tables, has every line).
 - Asked of Spinel: count a container against the limit when it opens, as
   CRuby does, so that `[` times 101 raises. Low in harm.
 - Not reported upstream.
+
+#### What AX turned out to be (2026-11-27)
+
+Not a Spinel behaviour: json releases differ on an empty innermost
+container, and Spinel answers as the json of the reference Ruby, 4.0,
+does. Run on 2026-11-27 on matz/spinel master 6f27d4e99 (macOS arm64):
+for 101 and 102 nested empty Arrays, for Arrays around `1` and around
+`{}`, and under `max_nesting: 10` for 11 and 12 empty Arrays, Spinel's
+output is the same as CRuby 4.0.7's with json 2.18.0 (Ruby 4.0's default
+gem) and with json 3.1.0; json 2.21.2 and 3.0.2 agree with them. The
+report above compared with CRuby 3.3.6, whose json 2.7 counted a
+container as soon as it opened. packages/json/sp_json.c's `jp_array` and
+`jp_object` return on `[]` and `{}` before `jp_check_nesting` on purpose,
+as json 2.18 and later do, and the package's test
+packages/json/test/json_parse_nesting.rb says that json releases differ
+on an empty innermost container. Nothing is asked. The item is closed as
+withdrawn ("Item register"); it never had a workaround or a rule.
+rechecks/differing/json_parse_nesting.rb is kept for now.
 
 ### AY. A raising method and a raising lambda's call, as blocks of one rescuing method, do not compile
 
