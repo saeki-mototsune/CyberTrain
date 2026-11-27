@@ -441,8 +441,8 @@ end
 
 # The raising helpers and the default builders as the blocks of one
 # rescuing method, each call's value appended. unknown_model and
-# unknown_record are typed as what the real builders return, so every
-# block here has a builder's type or only raises (NOTES rule 124).
+# unknown_record only raise, beside lambdas that answer a builder's value
+# (docs/spinel-feedback.md AY).
 test "an unknown model or record raises through a rescuing caller, which answers with the message" do
   out = Array.new(0) { "" }
   out << message_raised { Cybertrain::Console.unknown_model("Nope") }
