@@ -110,8 +110,8 @@ at [.githooks/](.githooks/), after which:
   `examples/blog/Dockerfile` copy each of those files into their `cli-src`
   stage (the blog runs `cybertrain setup` on that stage alone), the Playground image and
   Blog image workflows run for a pull request that changes one of them or a
-  pin, every `test/*.rb` and `test/cruby/*.rb` has its `.expected` snapshot
-  and every snapshot its test, and the generator run under CRuby leaves
+  pin, every `test/*.rb`, `test/cruby/*.rb` and `test/mysql/*.rb` has its
+  `.expected` snapshot and every snapshot its test, and the generator run under CRuby leaves
   `examples/blog/gen/` unchanged. Four more checks run when their files
   are in the commit: the deployment tutorial's translations
   (`check-docs-i18n`), the guides' translations (`check-guide-i18n`),
@@ -184,6 +184,41 @@ differs:
 ```sh
 diff build/test/router.out test/router.rb.expected
 ```
+
+### The MySQL tests
+
+The MySQL adapter's unit tests (`test/mysql_*.rb`) need no server and run
+with the rest of `spin test`. Its integration tests, `test/mysql/*.rb`, run
+against a real MySQL 8.0 server, which
+[script/mysql-dev](script/mysql-dev) starts in Docker (the pinned
+`mysql:8.0.46` image, as the container `cybertrain-mysql`, on port 33306,
+with the server's time zone at +09:00 on purpose: datetimes must stay UTC
+on a server whose zone is not). It prints the URL the tests read:
+
+```sh
+export "$(script/mysql-dev)"         # starts or reuses the server; sets CYBERTRAIN_TEST_MYSQL_URL
+script/test-mysql                    # every test/mysql/*.rb
+script/test-mysql test/mysql/connection.rb
+script/test-mysql --regen test/mysql/connection.rb   # rewrites its snapshot from the binary
+script/mysql-dev stop                # removes the container
+```
+
+`spin test` takes no file outside `test/`, so
+[script/test-mysql](script/test-mysql) compiles each program itself
+(`spinel $(spin flags) FILE -o build/test-mysql/NAME`), runs it and
+compares its output with `test/mysql/NAME.rb.expected`, printing what
+`spin test` prints; without `CYBERTRAIN_TEST_MYSQL_URL` it exits 2. It runs
+every program with `SPINEL_WORKERS=1` (the runtime's default, made
+explicit), which `test/mysql/connection.rb`'s
+`slow_query_does_not_block_worker` relies on: a query waiting on the server
+must leave the one OS worker to the other green threads; the program sets
+it again itself, before its first thread starts (spikes/NOTES.md rule 22).
+The tests create and drop their own tables (`ct_*`) in the database the URL
+names and never create or drop a database. CI's `mysql-tests` job runs
+`script/test-mysql` against a service container of the same image.
+
+If the Docker daemon is not running (a fresh cloud container), start it
+first (`sudo dockerd &`) and stop it when you are done.
 
 ### After a merge
 
@@ -304,6 +339,9 @@ run the one you changed. Each line they print carries the seconds elapsed
 (`+Ns`), so a log shows which phase took the time. What the scripts share
 (progress lines, failures, the CLI, the server) is in `script/e2e.d/`,
 which they source.
+
+Its `mysql-tests` job runs the MySQL integration tests (`script/test-mysql`,
+[above](#the-mysql-tests)) against a MySQL server in a service container.
 
 CI also builds the API reference with YARD (any warning fails it:
 `script/api-docs`, the `api-docs` job). A change to nothing but

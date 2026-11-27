@@ -20,7 +20,8 @@
 #   true   .github/workflows/ci.yml, script/test-shard, script/ci-changes,
 #          script/auth-e2e, script/test-command-e2e, script/generators-e2e,
 #          script/e2e-legs, script/e2e.d/**, script/spinel_http_path.rb
-#          (test/gen_jobs.rb and auth-e2e run it)
+#          (test/gen_jobs.rb and auth-e2e run it), script/test-mysql (the
+#          mysql-tests job runs it)
 #   false  what on.paths leaves out: site/**, **.md, script/**, .githooks/**,
 #          .github/workflows/** (in a change that started the workflow
 #          through another file)
@@ -179,7 +180,7 @@ decide() {
       "") ;;
       docs/api/* | script/api-docs | .yardopts) ;;
       .github/workflows/ci.yml | script/test-shard | script/ci-changes | script/auth-e2e | script/test-command-e2e | script/generators-e2e | \
-        script/e2e-legs | script/e2e.d/* | script/spinel_http_path.rb) framework=true ;;
+        script/e2e-legs | script/e2e.d/* | script/spinel_http_path.rb | script/test-mysql) framework=true ;;
       site/* | *.md | script/* | .githooks/* | .github/workflows/*) ;;
       *) framework=true ;;
     esac
@@ -240,6 +241,7 @@ if [ "${1:-}" = "--self-test" ]; then
   expect true .github/actions/setup-spinel/action.yml
   expect true .github/workflows/ci.yml
   expect true script/test-shard
+  expect true script/test-mysql
   expect true script/ci-changes
   expect true script/auth-e2e
   expect true script/test-command-e2e

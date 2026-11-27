@@ -1,0 +1,115 @@
+#!/bin/sh
+# Run the MySQL adapter's integration tests, test/mysql/*.rb, against the
+# server CYBERTRAIN_TEST_MYSQL_URL names (script/mysql-dev starts one in
+# Docker and prints the URL). `spin test` and script/test-shard glob
+# test/*.rb only and never see these, and `spin test` takes no file outside
+# test/, so each one is compiled here with the flags `spin flags` prints:
+#
+#   spinel $(spin flags) test/mysql/<name>.rb -o build/test-mysql/<name>
+#
+# then run, and its stdout and stderr, together, are compared with
+# test/mysql/<name>.rb.expected, as `spin test` compares a compiled test;
+# what is printed has spin test's form (`ok   <name>.rb`, or `FAIL
+# <name>.rb` with `--- expected` and `--- actual`, then `N/M passed`). The
+# output is left in build/test-mysql/<name>.out. The compiler's own output is
+# printed as it comes: a compile prints nothing else, so a warning shows.
+#
+# Every program runs with SPINEL_WORKERS=1, the runtime's default made
+# explicit: connection.rb's slow_query_does_not_block_worker checks that a
+# SELECT SLEEP(1) on one green thread leaves another thread of the same OS
+# worker running, which a second worker would hide. A test that needs other
+# settings sets them itself.
+#
+# usage: script/test-mysql [file...]           run these files (default: all of test/mysql/*.rb)
+#        script/test-mysql --regen [file...]   rewrite their snapshots from the compiled binaries
+#
+# Exit status 2 when the URL is not set or an argument is bad; 1 when any
+# file fails or differs.
+set -u
+
+regen=false
+if [ "${1:-}" = "--regen" ]; then
+  regen=true
+  shift
+fi
+
+if [ -z "${CYBERTRAIN_TEST_MYSQL_URL:-}" ]; then
+  echo "CYBERTRAIN_TEST_MYSQL_URL is not set (script/mysql-dev starts a server)" >&2
+  exit 2
+fi
+
+cd "$(dirname "$0")/.." || exit 2
+
+if [ "$#" -eq 0 ]; then
+  set -- $(printf '%s\n' test/mysql/*.rb | LC_ALL=C sort)
+fi
+
+flags=$(spin flags) || exit 2
+mkdir -p build/test-mysql || exit 2
+
+passed=0
+total=0
+status=0
+for file in "$@"; do
+  case "$file" in
+    test/mysql/*.rb) ;;
+    *)
+      echo "test-mysql: $file is not a test/mysql/*.rb" >&2
+      exit 2
+      ;;
+  esac
+  if [ ! -f "$file" ]; then
+    echo "test-mysql: $file does not exist" >&2
+    exit 2
+  fi
+  name=$(basename "$file" .rb)
+  bin="build/test-mysql/$name"
+  out="build/test-mysql/$name.out"
+  snapshot="$file.expected"
+  total=$((total + 1))
+  rm -f "$bin"
+  # $flags unquoted: it is several words (-I paths without spaces).
+  # shellcheck disable=SC2086
+  if ! spinel $flags "$file" -o "$bin"; then
+    echo "FAIL $name.rb (did not compile)"
+    status=1
+    continue
+  fi
+  SPINEL_WORKERS=1 "./$bin" > "$out" 2>&1
+  rc=$?
+  if [ "$regen" = true ]; then
+    # A failing run is never kept as its own expectation.
+    if [ "$rc" -ne 0 ]; then
+      echo "test-mysql: $bin failed (exit $rc); kept the previous $snapshot" >&2
+      grep -v '^ok   ' "$out" >&2
+      status=1
+      continue
+    fi
+    cp "$out" "$snapshot"
+    echo "test-mysql: wrote $snapshot"
+    passed=$((passed + 1))
+    continue
+  fi
+  if [ -f "$snapshot" ] && [ "$rc" -eq 0 ] && cmp -s "$snapshot" "$out"; then
+    echo "ok   $name.rb"
+    passed=$((passed + 1))
+  else
+    if [ "$rc" -ne 0 ]; then
+      echo "FAIL $name.rb (exit $rc)"
+    else
+      echo "FAIL $name.rb"
+    fi
+    echo "--- expected"
+    if [ -f "$snapshot" ]; then
+      cat "$snapshot"
+    else
+      echo "(no $snapshot: script/test-mysql --regen $file)"
+    fi
+    echo "--- actual"
+    cat "$out"
+    status=1
+  fi
+done
+
+echo "$passed/$total passed"
+exit "$status"
