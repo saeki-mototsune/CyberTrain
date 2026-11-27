@@ -54,11 +54,16 @@ module Cybertrain
           @name == "mysql" ? "cybertrain/test/bundle_mysql" : "cybertrain/test/bundle"
         end
 
-        # `ident` quoted as an SQL identifier: "x" for SQLite, `x` for MySQL.
+        # `ident` quoted as an SQL identifier: "x" for SQLite, `x` for MySQL,
+        # the quote character doubled where the name holds one.
         # @param ident [String]
         # @return [String]
         def quote_ident(ident)
-          @name == "mysql" ? "`#{ident}`" : "\"#{ident}\""
+          if @name == "mysql"
+            "`" + ident.gsub("`", "``") + "`"
+          else
+            "\"" + ident.gsub("\"", "\"\"") + "\""
+          end
         end
 
         def mysql?

@@ -12,6 +12,10 @@ require "cybertrain/cli"
 # only generated text here (the driver is not built yet). Text only:
 # CRuby-portable.
 require_relative "support/file_tree"
+require_relative "../examples/blog/db/schema"
+
+BLOG = "examples/blog"
+BLOG_SCHEMA = Cybertrain::Schema.current
 
 TEMP_ROOTS = Array.new(0) { "" }
 at_exit { TEMP_ROOTS.each { |root| FileTree.remove(root) if File.directory?(root) } }
@@ -46,6 +50,20 @@ test "for answers the spelling of each adapter" do
   assert_equal "cybertrain/mysql", mysql.entry
   assert_equal "cybertrain/test/bundle_mysql", mysql.test_bundle
   assert_equal "`posts`", mysql.quote_ident("posts")
+end
+
+test "quote_ident doubles the quote character it quotes with" do
+  assert_equal "\"a\"\"b\"", Cybertrain::Gen::Dialect.for("sqlite").quote_ident("a\"b")
+  assert_equal "\"a`b\"", Cybertrain::Gen::Dialect.for("sqlite").quote_ident("a`b")
+  assert_equal "`a``b`", Cybertrain::Gen::Dialect.for("mysql").quote_ident("a`b")
+  assert_equal "`a\"b`", Cybertrain::Gen::Dialect.for("mysql").quote_ident("a\"b")
+end
+
+test "SQLite models are what examples/blog/gen holds, byte for byte" do
+  infos = Cybertrain::Gen::ModelScan.scan_dir("#{BLOG}/app/models")
+  outputs = Cybertrain::Gen::ModelsEmitter.outputs(BLOG_SCHEMA, infos, Cybertrain::Gen::Dialect.for("sqlite"))
+  assert !outputs.empty?
+  outputs.each { |rel, source| assert_equal File.read("#{BLOG}/#{rel}"), source }
 end
 
 test "for refuses a name that is no adapter" do
@@ -103,8 +121,6 @@ end
 test "a model's counter_cache SELECT quotes with the adapter's identifier quote" do
   sqlite = Cybertrain::Gen::ModelsEmitter.outputs(counter_schema, counter_infos)["gen/models/comment.rb"]
   assert_includes sqlite, "c.execute(\"SELECT \\\"post_id\\\" FROM \\\"comments\\\" WHERE \\\"id\\\" = ?\", [id])"
-  same = Cybertrain::Gen::ModelsEmitter.outputs(counter_schema, counter_infos, Cybertrain::Gen::Dialect.for("sqlite"))["gen/models/comment.rb"]
-  assert_equal sqlite, same
   mysql = Cybertrain::Gen::ModelsEmitter.outputs(counter_schema, counter_infos, Cybertrain::Gen::Dialect.for("mysql"))["gen/models/comment.rb"]
   assert_includes mysql, "c.execute(\"SELECT `post_id` FROM `comments` WHERE `id` = ?\", [id])"
   assert_nil mysql.index("\\\"post_id\\\"")

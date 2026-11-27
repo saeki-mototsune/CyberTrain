@@ -1,4 +1,6 @@
 ok   for answers the spelling of each adapter
+ok   quote_ident doubles the quote character it quotes with
+ok   SQLite models are what examples/blog/gen holds, byte for byte
 ok   for refuses a name that is no adapter
 ok   detect reads the first require of cybertrain in bin/NAME.rb
 ok   detect takes the core entries of a cybertrain new application as the same adapters
@@ -26,4 +28,4 @@ ok   gen on a MySQL app writes its models, fixtures and test program for MySQL
 ok   the generated account test checks the refused deletion by the adapter's own error
 bin/shop.rb: the first require must be "cybertrain" or "cybertrain/mysql"
 ok   gen stops with the message on a bad first require, writing nothing
-12 tests, 44 assertions, 0 failures
+14 tests, 52 assertions, 0 failures
