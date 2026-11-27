@@ -321,6 +321,141 @@ module Cybertrain
         conn.last_insert_id - changed + 1
       end
 
+      # --- The framework's own tables -------------------------------------------
+
+      # Creates a framework table (Job::Store, Cache, Lease, Stream,
+      # Scheduler::Timetable, WebSocket::FeedTable call it from install!)
+      # with `script`, its `<service>_table_sql`: CREATE ... IF NOT EXISTS
+      # statements, run as they are. SQLite's DDL is transactional, so inside
+      # a caller's transaction the table comes and goes with it. MySQL: the
+      # script runs only when `table` is missing, and never inside a
+      # transaction, which its DDL would commit.
+      # @param conn [Cybertrain::DB::Connection]
+      # @param table [String]
+      # @param script [String]
+      # @return [nil]
+      def self.framework_table_install(conn, table, script)
+        conn.exec_script(script)
+        nil
+      end
+
+      # Job::Store's table, with its first index. The columns an older
+      # release's table lacks are added by Job::Store (ALTER_COLUMNS), and
+      # the key index after them (job_key_index). MySQL: the same columns
+      # (VARCHAR where a column is in an index or the key, MEDIUMTEXT for
+      # the payload and the error, BIGINT times), both indexes in the
+      # CREATE TABLE.
+      # @return [String]
+      def self.job_table_sql
+        "CREATE TABLE IF NOT EXISTS cybertrain_jobs (" \
+          "id INTEGER PRIMARY KEY AUTOINCREMENT, " \
+          "kind TEXT NOT NULL, " \
+          "payload TEXT NOT NULL DEFAULT '', " \
+          "run_at INTEGER NOT NULL, " \
+          "attempts INTEGER NOT NULL DEFAULT 0, " \
+          "last_error TEXT NOT NULL DEFAULT '', " \
+          "state TEXT NOT NULL DEFAULT 'queued', " \
+          "created_at INTEGER NOT NULL, " \
+          "updated_at INTEGER NOT NULL, " \
+          "claimed_by TEXT, " \
+          "heartbeat_at INTEGER, " \
+          "concurrency_key TEXT NOT NULL DEFAULT '', " \
+          "request_id TEXT NOT NULL DEFAULT ''); " \
+          "CREATE INDEX IF NOT EXISTS index_cybertrain_jobs_on_state_and_run_at " \
+          "ON cybertrain_jobs (state, run_at);"
+      end
+
+      # Job::Store.install!, after the missing columns are added: the index
+      # the claim's per-key count and the backfill read. MySQL: nothing (the
+      # CREATE TABLE has it, and no MySQL table predates the column).
+      # @param conn [Cybertrain::DB::Connection]
+      # @return [nil]
+      def self.job_key_index(conn)
+        conn.execute("CREATE INDEX IF NOT EXISTS cybertrain_jobs_state_kind_key " \
+                     "ON cybertrain_jobs (state, kind, concurrency_key)")
+        nil
+      end
+
+      # What ends Job::Store's claim SELECT (the row a claim takes). "": the
+      # claim's BEGIN IMMEDIATE already holds the database's write lock.
+      # MySQL: " FOR UPDATE", so the row read is locked, and read as
+      # committed, until the claim commits.
+      # @return [String]
+      def self.job_claim_lock
+        ""
+      end
+
+      # Run first in a claim's transaction when concurrency limits apply,
+      # before the running rows are counted. Nothing: BEGIN IMMEDIATE
+      # serialises the claims. MySQL: a locking read of the oldest due row,
+      # which every limited claim reads first, so that one claim waits for
+      # another's COMMIT before it counts.
+      # @param conn [Cybertrain::DB::Connection]
+      # @param now [Integer] epoch seconds
+      # @return [nil]
+      def self.job_claim_serialize(conn, now)
+        nil
+      end
+
+      # Cache's table. MySQL: the key a VARCHAR(255) (MySQL keys no TEXT
+      # without a prefix length), the value MEDIUMTEXT, the times BIGINT.
+      # @return [String]
+      def self.cache_table_sql
+        "CREATE TABLE IF NOT EXISTS cybertrain_cache (" \
+          "key TEXT PRIMARY KEY, " \
+          "value TEXT NOT NULL, " \
+          "expires_at INTEGER, " \
+          "updated_at INTEGER NOT NULL);"
+      end
+
+      # Lease's table. MySQL: VARCHAR(255) name and holder, BIGINT times.
+      # @return [String]
+      def self.lease_table_sql
+        "CREATE TABLE IF NOT EXISTS cybertrain_leases (" \
+          "name TEXT PRIMARY KEY, " \
+          "holder TEXT NOT NULL, " \
+          "expires_at INTEGER NOT NULL);"
+      end
+
+      # Stream's table and its (stream, id) index. MySQL: a BIGINT
+      # AUTO_INCREMENT id, a VARCHAR(255) stream (names are at most 200
+      # bytes), a MEDIUMTEXT payload, the index in the CREATE TABLE.
+      # @return [String]
+      def self.stream_table_sql
+        "CREATE TABLE IF NOT EXISTS cybertrain_messages (" \
+          "id INTEGER PRIMARY KEY AUTOINCREMENT, " \
+          "stream TEXT NOT NULL, " \
+          "payload TEXT NOT NULL, " \
+          "created_at INTEGER NOT NULL); " \
+          "CREATE INDEX IF NOT EXISTS index_cybertrain_messages_on_stream_and_id " \
+          "ON cybertrain_messages (stream, id);"
+      end
+
+      # Scheduler::Timetable's table. MySQL: a VARCHAR(255) name, BIGINT
+      # times.
+      # @return [String]
+      def self.timetable_table_sql
+        "CREATE TABLE IF NOT EXISTS cybertrain_schedules (" \
+          "name TEXT PRIMARY KEY, " \
+          "last_run_at INTEGER, " \
+          "next_run_at INTEGER NOT NULL, " \
+          "updated_at INTEGER NOT NULL);"
+      end
+
+      # WebSocket::FeedTable's table. MySQL: VARCHAR(255) name and process,
+      # INT counters, BIGINT times.
+      # @return [String]
+      def self.feed_table_table_sql
+        "CREATE TABLE IF NOT EXISTS cybertrain_feeds (" \
+          "name TEXT PRIMARY KEY, " \
+          "process TEXT, " \
+          "connected INTEGER, " \
+          "started_at INTEGER NOT NULL, " \
+          "last_activity_at INTEGER, " \
+          "restarts INTEGER, " \
+          "updated_at INTEGER NOT NULL);"
+      end
+
       # --- Cache --------------------------------------------------------------
 
       # An expires_at of 0 is stored as NULL (never expires).
@@ -353,10 +488,9 @@ module Cybertrain
       # Cache.write: the row for `key` (expires_at 0: none), or with
       # `unless_exist` only when there is none or it has expired. Whether a
       # row was written.
-      # MySQL: INSERT ... ON DUPLICATE KEY UPDATE value = VALUES(value), ...
-      # (unless_exist: each column IF(expires_at IS NOT NULL AND expires_at <
-      # ?, VALUES(c), c), expires_at last); written when the affected-row
-      # count is 1 or 2 (CLIENT_FOUND_ROWS off, so 0 for a live row).
+      # MySQL: INSERT ... ON DUPLICATE KEY UPDATE; with unless_exist, a
+      # DELETE of the expired row and a plain INSERT whose duplicate key
+      # (a live row, or a concurrent add that won) answers false.
       # @param conn [Cybertrain::DB::Connection]
       # @return [Boolean]
       def self.cache_write(conn, key, value, expires_at, now, unless_exist)
@@ -370,9 +504,9 @@ module Cybertrain
       # Cache.increment: the counter for `key` after adding `by` (a missing or
       # expired row starts at `by`; expires_at 0: keep the row's expiry, or
       # none). 0 when no row came back.
-      # MySQL: INSERT ... ON DUPLICATE KEY UPDATE with the same CASEs on
-      # VALUES(), then SELECT CAST(value AS SIGNED) AS n FROM cybertrain_cache
-      # WHERE `key` = ? in the same transaction.
+      # MySQL: INSERT ... ON DUPLICATE KEY UPDATE value = LAST_INSERT_ID(value
+      # + ?) with the same CASEs, the counter read from the statement's
+      # insert id (no RETURNING, no second statement).
       # @param conn [Cybertrain::DB::Connection]
       # @return [Integer]
       def self.cache_increment(conn, key, by, expires_at, now)
@@ -406,11 +540,10 @@ module Cybertrain
 
       # Lease.acquire: whether `holder` now has the lease `name` until
       # `expires_at`.
-      # MySQL: INSERT ... ON DUPLICATE KEY UPDATE expires_at = IF(holder =
-      # VALUES(holder) OR expires_at < ?, VALUES(expires_at), expires_at),
-      # holder = IF(<same test on the old expires_at>, ...), then SELECT holder
-      # FROM cybertrain_leases WHERE name = ? (a renewal of an unchanged row
-      # affects 0 rows).
+      # MySQL: INSERT ... ON DUPLICATE KEY UPDATE holder = IF(<ours or
+      # expired>, ...), expires_at = IF(<ours now>, ...), then the holder
+      # read back (its changes count cannot tell a new row from one another
+      # holder keeps).
       # @param conn [Cybertrain::DB::Connection]
       # @return [Boolean]
       def self.lease_acquire(conn, name, holder, expires_at, now)

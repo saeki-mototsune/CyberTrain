@@ -1,15 +1,17 @@
 # Required by cybertrain/job.rb, after the registry it reads.
 module Cybertrain
   module Job
-    # The queue's rows: every SQL statement on `cybertrain_jobs` is here,
-    # and nothing else is. A method is one storage operation (create the
+    # The queue's rows: every SQL statement on `cybertrain_jobs` is here
+    # (or, where the adapters differ, in DB::Dialect's job_* methods), and
+    # nothing else is. A method is one storage operation (create the
     # table, insert a row, claim the oldest due row, write a claimed
     # attempt's outcome, touch heartbeats, requeue stale rows, count,
     # prune), atomic where the queue's guarantees need it: the claim is one
-    # BEGIN IMMEDIATE transaction and the outcome write is one UPDATE
-    # fenced by the claim. It starts no thread, sleeps nowhere, calls no
-    # handler and does not know whether a pool runs: {Job::Executor} and
-    # {Job::Worker} call it, and it reads the registry ({Job::HANDLERS},
+    # BEGIN IMMEDIATE transaction (on MySQL, BEGIN and a SELECT ... FOR
+    # UPDATE of the row: DB::Dialect.job_claim_lock) and the outcome write
+    # is one UPDATE fenced by the claim. It starts no thread, sleeps
+    # nowhere, calls no handler and does not know whether a pool runs:
+    # {Job::Executor} and {Job::Worker} call it, and it reads the registry ({Job::HANDLERS},
     # through Job's lookups) only for what a statement depends on, the
     # concurrency limits and keys. A claim carries its caller's ticket,
     # which the store hands back to {Job.claim_open?} once it holds the
@@ -33,22 +35,9 @@ module Cybertrain
       # job's log lines carry it. A table made before these columns
       # existed gets them from install! (ALTER_COLUMNS), last, so an upgraded
       # table lists the same columns in the same order as a new one.
-      TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_jobs (" \
-                  "id INTEGER PRIMARY KEY AUTOINCREMENT, " \
-                  "kind TEXT NOT NULL, " \
-                  "payload TEXT NOT NULL DEFAULT '', " \
-                  "run_at INTEGER NOT NULL, " \
-                  "attempts INTEGER NOT NULL DEFAULT 0, " \
-                  "last_error TEXT NOT NULL DEFAULT '', " \
-                  "state TEXT NOT NULL DEFAULT 'queued', " \
-                  "created_at INTEGER NOT NULL, " \
-                  "updated_at INTEGER NOT NULL, " \
-                  "claimed_by TEXT, " \
-                  "heartbeat_at INTEGER, " \
-                  "concurrency_key TEXT NOT NULL DEFAULT '', " \
-                  "request_id TEXT NOT NULL DEFAULT ''); " \
-                  "CREATE INDEX IF NOT EXISTS index_cybertrain_jobs_on_state_and_run_at " \
-                  "ON cybertrain_jobs (state, run_at);"
+      # The CREATE TABLE and its (state, run_at) index are the adapter's
+      # (DB::Dialect.job_table_sql), run by
+      # DB::Dialect.framework_table_install.
 
       # The columns added after the table's first release, each with the
       # ALTER TABLE that adds it to an older table.
@@ -58,11 +47,6 @@ module Cybertrain
         ["concurrency_key", "ALTER TABLE cybertrain_jobs ADD COLUMN concurrency_key TEXT NOT NULL DEFAULT ''"],
         ["request_id", "ALTER TABLE cybertrain_jobs ADD COLUMN request_id TEXT NOT NULL DEFAULT ''"]
       ].freeze
-
-      # The index the claim's per-key count and the backfill read, created
-      # once concurrency_key exists (after the ALTERs, for an older table).
-      KEY_INDEX_SQL = "CREATE INDEX IF NOT EXISTS cybertrain_jobs_state_kind_key " \
-                      "ON cybertrain_jobs (state, kind, concurrency_key)"
 
       # Job.backfill_keys reads and keys this many rows at a time.
       BACKFILL_BATCH = 1000
@@ -153,9 +137,11 @@ module Cybertrain
       # {Job.install!}: creates the table and its indexes if they are
       # missing, and adds the columns an earlier release's table lacks.
       def self.install!
-        DB.with { |c| c.exec_script(TABLE_SQL) }
+        DB.with { |c| DB::Dialect.framework_table_install(c, TABLE, DB::Dialect.job_table_sql) }
         add_missing_columns
-        DB.with { |c| c.execute(KEY_INDEX_SQL) }
+        # The index the claim's per-key count and the backfill read, once
+        # concurrency_key exists (after the ALTERs, for an older table).
+        DB.with { |c| DB::Dialect.job_key_index(c) }
         # Only a CREATE outside a transaction is remembered: one inside a
         # transaction that rolls back is gone again
         # ({DB.outside_transaction?}).
@@ -428,6 +414,9 @@ module Cybertrain
         DB.transaction(immediate: true) do |c|
           # The lock is held from here: the caller's last word on the claim.
           if Job.claim_open?(ticket)
+            # (MySQL takes row locks, not one write lock: the adapter makes
+            # a limited claim wait for another's COMMIT before it counts.)
+            DB::Dialect.job_claim_serialize(c, now) if limited
             pairs = Array.new(0) { "" }
             excluded = limited ? kinds_at_limit(c, pairs) : Array.new(0) { "" }
             # The SELECT leaves out the `excluded` kinds (one bound `?`
@@ -444,6 +433,7 @@ module Cybertrain
               j += 2
             end
             sql << " ORDER BY run_at, id LIMIT 1"
+            sql << DB::Dialect.job_claim_lock
             run = take_first(c, c.execute(sql, binds), label, now)
           end
         end
@@ -471,6 +461,7 @@ module Cybertrain
             binds << kind
           end
           sql << " ORDER BY id LIMIT 1"
+          sql << DB::Dialect.job_claim_lock
           run = take_first(c, c.execute(sql, binds), label, now)
         end
         run

@@ -18,14 +18,9 @@ module Cybertrain
     # {StatusWriter} this file registers. Times are epoch seconds.
     # @api public
     module FeedTable
-      TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_feeds (" \
-                  "name TEXT PRIMARY KEY, " \
-                  "process TEXT, " \
-                  "connected INTEGER, " \
-                  "started_at INTEGER NOT NULL, " \
-                  "last_activity_at INTEGER, " \
-                  "restarts INTEGER, " \
-                  "updated_at INTEGER NOT NULL);"
+      # The table is the adapter's (DB::Dialect.feed_table_table_sql), created by
+      # DB::Dialect.framework_table_install.
+      TABLE = "cybertrain_feeds"
 
       # The DB.generation the table was last ensured for; -1 for never (as
       # Scheduler::Timetable's).
@@ -36,7 +31,7 @@ module Cybertrain
       # @return [nil]
       # @api public
       def self.install!
-        DB.with { |c| c.exec_script(TABLE_SQL) }
+        DB.with { |c| DB::Dialect.framework_table_install(c, TABLE, DB::Dialect.feed_table_table_sql) }
         # A CREATE inside a transaction that rolls back is undone, so only
         # one outside a transaction is remembered (as Job.install! does).
         @installed_generation = DB.generation if DB.outside_transaction?

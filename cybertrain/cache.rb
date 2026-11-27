@@ -40,11 +40,9 @@ module Cybertrain
   # 1000 rows per write.
   # @api public
   module Cache
-    TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_cache (" \
-                "key TEXT PRIMARY KEY, " \
-                "value TEXT NOT NULL, " \
-                "expires_at INTEGER, " \
-                "updated_at INTEGER NOT NULL);"
+    # The table is the adapter's (DB::Dialect.cache_table_sql), created by
+    # DB::Dialect.framework_table_install.
+    TABLE = "cybertrain_cache"
 
     # The name of the scheduled task that prunes the table.
     PRUNE_TASK = "cybertrain cache prune"
@@ -53,13 +51,17 @@ module Cybertrain
     # writer lock is released between batches.
     PRUNE_BATCH = 1000
 
+    # The column `key` is written `` `key` ``: a reserved word in MySQL,
+    # which quotes names with backticks, and a name SQLite reads the same
+    # way (its quoting "for compatibility with MySQL").
+
     # A live row: one with no expiry, or whose expiry is now or later.
-    LIVE_SQL = "SELECT value FROM cybertrain_cache WHERE key = ? AND (expires_at IS NULL OR expires_at >= ?)"
+    LIVE_SQL = "SELECT value FROM cybertrain_cache WHERE `key` = ? AND (expires_at IS NULL OR expires_at >= ?)"
 
     # race_condition_ttl: an expired row is given `n` more seconds; of the
     # callers that see it expired, the one whose UPDATE changed it
     # recomputes.
-    EXTEND_SQL = "UPDATE cybertrain_cache SET expires_at = ? WHERE key = ? " \
+    EXTEND_SQL = "UPDATE cybertrain_cache SET expires_at = ? WHERE `key` = ? " \
                  "AND expires_at IS NOT NULL AND expires_at < ?"
 
     # The write, increment and prune statements are the adapter's
@@ -80,7 +82,7 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.install!
-      DB.with { |c| c.exec_script(TABLE_SQL) }
+      DB.with { |c| DB::Dialect.framework_table_install(c, TABLE, DB::Dialect.cache_table_sql) }
       # A CREATE inside a transaction that rolls back is undone, so only one
       # outside a transaction is remembered (as Job.install! does).
       @installed_generation = DB.generation if DB.outside_transaction?
@@ -275,7 +277,7 @@ module Cybertrain
       ensure_installed
       changed = 0
       DB.with do |c|
-        c.execute("DELETE FROM cybertrain_cache WHERE key = ?", [key])
+        c.execute("DELETE FROM cybertrain_cache WHERE `key` = ?", [key])
         changed = c.changes
       end
       changed > 0

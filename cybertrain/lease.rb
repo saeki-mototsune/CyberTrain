@@ -17,10 +17,9 @@ module Cybertrain
   # `db/schema.rb`, like `cybertrain_jobs`.
   # @api public
   module Lease
-    TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_leases (" \
-                "name TEXT PRIMARY KEY, " \
-                "holder TEXT NOT NULL, " \
-                "expires_at INTEGER NOT NULL);"
+    # The table is the adapter's (DB::Dialect.lease_table_sql), created by
+    # DB::Dialect.framework_table_install.
+    TABLE = "cybertrain_leases"
 
     # The DB.generation the table was last ensured for; -1 for never (as
     # Job's).
@@ -31,7 +30,7 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.install!
-      DB.with { |c| c.exec_script(TABLE_SQL) }
+      DB.with { |c| DB::Dialect.framework_table_install(c, TABLE, DB::Dialect.lease_table_sql) }
       # A CREATE inside a transaction that rolls back is undone, so only one
       # outside a transaction is remembered (as Job.install! does).
       @installed_generation = DB.generation if DB.outside_transaction?

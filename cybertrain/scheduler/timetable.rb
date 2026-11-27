@@ -14,11 +14,9 @@ module Cybertrain
     # are epoch seconds; `last_run_at` is NULL until the task first runs.
     # @api public
     module Timetable
-      TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_schedules (" \
-                  "name TEXT PRIMARY KEY, " \
-                  "last_run_at INTEGER, " \
-                  "next_run_at INTEGER NOT NULL, " \
-                  "updated_at INTEGER NOT NULL);"
+      # The table is the adapter's (DB::Dialect.timetable_table_sql), created by
+      # DB::Dialect.framework_table_install.
+      TABLE = "cybertrain_schedules"
 
       # The row writes are the adapter's (DB::Dialect.timetable_write_sql:
       # a last run of 0 is stored as NULL, never ran; a row is never moved
@@ -36,7 +34,7 @@ module Cybertrain
       # @return [nil]
       # @api public
       def self.install!
-        DB.with { |c| c.exec_script(TABLE_SQL) }
+        DB.with { |c| DB::Dialect.framework_table_install(c, TABLE, DB::Dialect.timetable_table_sql) }
         # A CREATE inside a transaction that rolls back is undone, so only
         # one outside a transaction is remembered (as Job.install! does).
         @installed_generation = DB.generation if DB.outside_transaction?

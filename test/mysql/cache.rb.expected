@@ -1,0 +1,14 @@
+ok   fetch computes once and serves the value until it expires
+ok   write with unless_exist answers false for a live row and true after it expired
+ok   race_condition_ttl lets one caller recompute while the other reads the stale value
+ok   fetch whose block raises writes nothing
+ok   increment creates and adds, with an expiry
+ok   fetch_hash / fetch_array / fetch_int parse what they stored and recover from a corrupt cell
+ok   prune removes only expired rows; the scheduler task is registered once
+ok   the table is created on first use and left out of the schema dump
+ok   cache_prune_interval: 300, CYBERTRAIN_CACHE_PRUNE_INTERVAL, at least 1
+ok   cache_write_rolls_back
+ok   increment_is_atomic
+ok   the loser of two concurrent adds of one key answers false
+ok   a counter goes below zero and back, and by: 0 answers it unchanged
+13 tests, 135 assertions, 0 failures

@@ -36,15 +36,10 @@ module Cybertrain
   # only on that user's pages.
   # @api public
   module Stream
+    # The table and its (stream, id) index are the adapter's
+    # (DB::Dialect.stream_table_sql), created by
+    # DB::Dialect.framework_table_install.
     TABLE = "cybertrain_messages"
-
-    TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_messages (" \
-                "id INTEGER PRIMARY KEY AUTOINCREMENT, " \
-                "stream TEXT NOT NULL, " \
-                "payload TEXT NOT NULL, " \
-                "created_at INTEGER NOT NULL); " \
-                "CREATE INDEX IF NOT EXISTS index_cybertrain_messages_on_stream_and_id " \
-                "ON cybertrain_messages (stream, id);"
 
     # A stream name is 1..MAX_NAME_BYTES bytes, with no control character
     # and no comma (the separator inside a token).
@@ -262,7 +257,7 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.install!
-      DB.with { |c| c.exec_script(TABLE_SQL) }
+      DB.with { |c| DB::Dialect.framework_table_install(c, TABLE, DB::Dialect.stream_table_sql) }
       # As Job.install!: a CREATE inside a transaction that rolls back is
       # gone again, so only one outside a transaction is remembered.
       @installed_generation = DB.generation if DB.outside_transaction?
