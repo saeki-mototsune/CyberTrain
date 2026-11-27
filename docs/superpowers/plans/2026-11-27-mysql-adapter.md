@@ -56,7 +56,9 @@ adapter はエントリファイルで決める。SQLite は `require "cybertrai
 
 | パス | 役割 |
 | --- | --- |
-| `cybertrain/db.rb` | adapter に依存しない `DB` モジュール(pool、transaction、with)。adapter を require しない |
+| `cybertrain/db/base.rb` | adapter に依存しない `DB` モジュール(pool、transaction、with)。adapter を require しない。今の `db.rb` の中身 |
+| `cybertrain/db.rb` | 互換のための SQLite エントリ: `require "cybertrain/db/base"` と `require "cybertrain/db/sqlite"`。既存のテストとアプリはこれを require したまま変わらない |
+| `cybertrain/test/bundle.rb` / `cybertrain/test/bundle/common.rb` / `cybertrain/test/bundle_mysql.rb` | テストの bundle。`bundle.rb` は `require "cybertrain"` + common(SQLite、今の生成物のまま)。`bundle_mysql.rb` は `require "cybertrain/mysql"` + common |
 | `cybertrain/db/error.rb` | `DB::Error` と、そのサブクラス `UniqueViolation`、`ForeignKeyViolation`、`Deadlock`、`LockTimeout`、`ConnectionLost` |
 | `cybertrain/db/sqlite.rb` | SQLite の adapter のエントリ。`sqlite_ffi`、`sqlite/connection`、`sqlite/dialect`、`sqlite_ddl` を require する |
 | `cybertrain/db/sqlite/connection.rb` | 今の `db/connection.rb` をそのまま移す |
@@ -68,7 +70,7 @@ adapter はエントリファイルで決める。SQLite は `require "cybertrai
 | `cybertrain/core/mysql.rb` | `require "cybertrain/db/mysql"` と `require "cybertrain/core/common"` |
 | `cybertrain/mysql.rb` | `cybertrain.rb` の MySQL 版。`core/mysql` と各サブシステムを require する |
 | `cybertrain/generator/dialect.rb` | 生成器(CRuby)側の Dialect。`SqliteGen` と `MysqlGen` |
-| `script/check-db-adapter` | adapter のファイルを require してよいのは `core.rb` と `core/mysql.rb` と adapter のテストだけ、を確かめるスクリプト。gate に入れる |
+| `script/check-db-adapter` | `cybertrain/` の中で `require "cybertrain/db"`、`"cybertrain/db/sqlite"`、`"cybertrain/db/mysql"` を書いてよいのは `core.rb`、`db.rb`、`core/mysql.rb`、`mysql.rb`、`test/bundle.rb`、`test/bundle_mysql.rb` だけ、を確かめるスクリプト。gate に入れる |
 | `script/mysql-dev` | Docker で `mysql:8.0` を起動し、`CYBERTRAIN_TEST_MYSQL_URL` を表示する |
 | `script/test-mysql` | `test/mysql/*.rb` をコンパイルして実行し、`.expected` と照合する。URL がなければ exit 2 |
 | `test/mysql/*.rb` | MySQL の結合テスト。`spin test` の対象(`test/*.rb`)には含めない |
@@ -79,9 +81,11 @@ adapter はエントリファイルで決める。SQLite は `require "cybertrai
 
 **Files:**
 - Create: `cybertrain/db/sqlite.rb`、`cybertrain/db/sqlite/connection.rb`(`git mv cybertrain/db/connection.rb`)、`cybertrain/core/common.rb`、`cybertrain/core/mysql.rb`、`cybertrain/mysql.rb`、`cybertrain/db/mysql.rb`(この時点では空の module だけ)、`script/check-db-adapter`
-- Modify: `cybertrain/db.rb`(`sqlite_ffi` と `connection` の require を外す)、`cybertrain/core.rb`、`cybertrain/db/error.rb`
+- Create: `cybertrain/db/base.rb`(今の `db.rb` の中身から `sqlite_ffi` と `connection` の require を除いたもの)、`cybertrain/test/bundle/common.rb`、`cybertrain/test/bundle_mysql.rb`
+- Modify: `cybertrain/db.rb`(base + sqlite を require するだけの互換エントリにする)、`cybertrain/core.rb`、`cybertrain/db/error.rb`
+- Modify: `cybertrain/` の中で `require "cybertrain/db"` している全ファイル(`core.rb` を除く)を `require "cybertrain/db/base"` に変える
 - Modify: サブシステムのファイル(`cybertrain/jobs.rb` など)で `require "cybertrain/core"` しているものを、`require "cybertrain/core/common"` に変える。対象は `grep -rln 'require "cybertrain/core"' cybertrain` で列挙する
-- Modify: `cybertrain/test/bundle.rb`。`require "cybertrain"` を外し、エントリは gen/tests.rb が先に require する(Task 3 で生成器を対応させる)
+- Modify: `cybertrain/test/bundle.rb`。中身を `cybertrain/test/bundle/common.rb` に移し、`bundle.rb` は `require "cybertrain"` と common の require だけにする。`bundle_mysql.rb` は `require "cybertrain/mysql"` と common(Task 7 まではコンパイルしない)
 - Modify: `script/gate`(`check-db-adapter` を追加)、`script/check-core-closure`(`core/common.rb` を閉包の根にする)
 
 **Interfaces:**
@@ -100,7 +104,7 @@ adapter はエントリファイルで決める。SQLite は `require "cybertrai
   - 外部キー違反で `DB::ForeignKeyViolation` になること。
 - [ ] **Step 2:** `spin test test/db_error_classes.rb` を実行し、FAIL することを確かめる(定数がない)。
 - [ ] **Step 3:** ファイルを分け、require を付け替え、サブクラスを足す。
-- [ ] **Step 4:** `script/check-db-adapter` を書く。`require "cybertrain/db/sqlite"` / `"cybertrain/db/mysql"` が許可した3か所以外にあれば、そのファイル名を出して exit 1 する。
+- [ ] **Step 4:** `script/check-db-adapter` を書く。ファイル構成の表に書いた許可リスト以外に該当する require があれば、そのファイル名を出して exit 1 する。
 - [ ] **Step 5:** 次を実行し、すべて PASS または差分ゼロであることを確かめる。
   - `spin test test/db_error_classes.rb`
   - `spin test test/db_sqlite.rb`
@@ -173,14 +177,14 @@ DB::Dialect.now_epoch_usec_sql        # => String  サービスが使う「今�
     - `require "cybertrain"` は sqlite、`require "cybertrain/mysql"` は mysql。
     - それ以外の行なら gen を止める。メッセージは `bin/<name>.rb: the first require must be "cybertrain" or "cybertrain/mysql"`。
   - `Generator::Dialect.for(name)` は `quote_ident(name) -> String`、`entry -> String`(`"cybertrain"` / `"cybertrain/mysql"`)、`name -> String` を持つオブジェクトを返す。
-  - gen/tests.rb の先頭行は `require "<entry>"`。
+  - gen/tests.rb は、SQLite では今のまま(`cybertrain/test/bundle` を require)。MySQL では `cybertrain/test/bundle_mysql` を require する。
   - `authentication_tests.rb` の外部キーの検査:
     - SQLite 向けは今の文言の照合のまま変えない。
     - MySQL 向けは `assert_raises(Cybertrain::DB::ForeignKeyViolation)` を出す。
 
 - [ ] **Step 1:** `test/gen_dialect.rb` を書く。一時ディレクトリにアプリを2つ作り、次を照合する。
   - SQLite の場合、models_emitter の出力が今の `"x"` クォートのままで、`examples/blog/gen` と一致すること。
-  - MySQL の場合、`` `x` `` クォートになり、gen/tests.rb の1行目が `require "cybertrain/mysql"` であること。
+  - MySQL の場合、`` `x` `` クォートになり、gen/tests.rb が `cybertrain/test/bundle_mysql` を require すること。
   - 不正な require 行で、上のメッセージを出して止まること。
 - [ ] **Step 2:** `ruby -I. test/gen_dialect.rb` を実行し、FAIL することを確かめる(生成器は CRuby で動く)。
 - [ ] **Step 3:** 実装する。
