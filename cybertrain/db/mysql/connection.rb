@@ -20,9 +20,10 @@
 #   cannot prepare (BEGIN, LOCK TABLES: error 1295) and that has no binds
 #   goes through COM_QUERY instead. #exec_script uses COM_QUERY with
 #   multi-statements.
-# - #execute_models answers a DATETIME or TIMESTAMP column as UTC epoch
-#   microseconds (Integer); #execute answers it as the text SQLite stores,
-#   "YYYY-MM-DD HH:MM:SS.ffffff".
+# - #execute_models answers a DATETIME or TIMESTAMP column as a UTC Time
+#   with its microseconds, as the SQLite Connection does (made from the
+#   value's epoch microseconds, D42); #execute answers it as the text
+#   SQLite stores, "YYYY-MM-DD HH:MM:SS.ffffff".
 # - Errors carry the server's message, code and SQLSTATE, then the
 #   statement as SQLite's do: "Duplicate entry '1' for key 'posts.PRIMARY'
 #   (MySQL 1062, 23000) (sql: INSERT ...)". A server ERR leaves the
@@ -215,10 +216,11 @@ module Cybertrain
         run_statement(sql, binds, false)
       end
 
-      # execute for the ORM: a DATETIME or TIMESTAMP column comes back as
-      # UTC epoch microseconds (Integer) instead of its text; a value that
-      # does not read as one (a zero date) stays text. Relation reads its
-      # rows through this; execute keeps returning the text.
+      # execute for the ORM: a DATETIME or TIMESTAMP column comes back as a
+      # UTC Time (with microseconds; Cast.time_or_nil takes it as is)
+      # instead of its text; a value that does not read as one (a zero
+      # date) stays text. Relation reads its rows through this; execute
+      # keeps returning the text.
       def execute_models(sql, binds = [])
         run_statement(sql, binds, true)
       end
@@ -244,7 +246,11 @@ module Cybertrain
               case value
               when String
                 us = Connection.epoch_us(value)
-                row[names[column]] = us >= 0 ? us : value
+                if us >= 0
+                  row[names[column]] = Time.at(us / 1_000_000, us % 1_000_000).utc
+                else
+                  row[names[column]] = value
+                end
               else
                 row[names[column]] = value
               end
@@ -366,7 +372,9 @@ module Cybertrain
       # error is re-raised.
       # @return [nil]
       # @raise [Cybertrain::DB::Error] when the connection is closed, when no
-      #   transaction is open, or when the COMMIT fails
+      #   transaction is open, when the server no longer has it open (rolled
+      #   back after an error, or committed by a DDL statement), or when the
+      #   COMMIT fails
       # @api public
       def commit!
         raise Error, "connection closed (commit!)" if @closed
@@ -377,6 +385,16 @@ module Cybertrain
         end
 
         @transaction_depth = 0
+        # MySQL answers a COMMIT with nothing open with OK: after a
+        # deadlock rolled the transaction back (and the block rescued it),
+        # or a DDL statement committed it, the caller would be told its
+        # writes were committed. SQLite refuses that COMMIT ("cannot commit
+        # - no transaction is active"); so is it refused here, a DB::Error
+        # with the statement, after the bookkeeping is reset.
+        if @transaction_lost || !@protocol.server_in_transaction?
+          abandon_transaction!
+          raise Error, Connection.transaction_gone_message("COMMIT")
+        end
         begin
           run_command("COMMIT", Connection.no_binds, true)
         rescue Error => e

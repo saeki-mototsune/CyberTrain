@@ -8,4 +8,4 @@ ok   slow_query_does_not_block_worker
 ok   statement_cache_evicts
 ok   a lost session is ConnectionLost, closes the connection and keeps the server's message
 ok   a refused login or an unreachable server never shows the password
-10 tests, 2154 assertions, 0 failures
+10 tests, 2164 assertions, 0 failures

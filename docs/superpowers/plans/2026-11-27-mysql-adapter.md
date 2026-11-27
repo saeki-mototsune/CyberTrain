@@ -35,7 +35,7 @@ adapter はエントリファイルで決める。SQLite は `require "cybertrai
   - `disabled` は、接続先が `127.0.0.1` / `::1` / `localhost` / RFC1918 / fc00::/7 のときだけ受け付ける。
   - CA は `SSL_CERT_FILE` / `SSL_CERT_DIR` で渡す。`Net` と openssl のバインディングには手を入れない。
 - `DROP DATABASE` / `CREATE DATABASE` を実行するのは `db create` / `db drop` だけ。テストの bundle では実行しない。
-- `Connection#execute` の戻り値の契約は `Array<Hash<String, Integer | Float | String | nil>>`。`execute_models` は datetime を UTC のエポックマイクロ秒(Integer)で返す(D42)。
+- `Connection#execute` の戻り値の契約は `Array<Hash<String, Integer | Float | String | nil>>`。`execute_models` は datetime を UTC の Time で返す。読み出し側がエポックマイクロ秒から作る(D42)。
 - Spinel の規則は `spikes/NOTES.md` に従う。新しい挙動を見つけたら、CONTRIBUTING.md の手順で記録する。
 - 決定は `docs/design.md` の D96 として最後のタスクで書く。各タスクは、決めたことをコミットメッセージに残す。
 

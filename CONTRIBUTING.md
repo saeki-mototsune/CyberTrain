@@ -191,7 +191,7 @@ The MySQL adapter's unit tests (`test/mysql_*.rb`) need no server and run
 with the rest of `spin test`. Its integration tests, `test/mysql/*.rb`, run
 against a real MySQL 8.0 server, which
 [script/mysql-dev](script/mysql-dev) starts in Docker (the pinned
-`mysql:8.0.46` image, as the container `cybertrain-mysql`, on port 33306,
+`mysql:8.0.46` image, as the container `cybertrain-mysql`, on 127.0.0.1:33306,
 with the server's time zone at +09:00 on purpose: datetimes must stay UTC
 on a server whose zone is not). It prints the URL the tests read:
 

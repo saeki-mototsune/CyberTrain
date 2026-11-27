@@ -22,10 +22,11 @@
 # caching_sha2_password's full authentication needs TLS
 # (cybertrain/db/mysql/auth.rb).
 #
-# Development only: the password below is not a secret. The port is
-# published as the plan's command has it (-p 33306:3306, every interface of
-# the host). Only the container named cybertrain-mysql is ever started,
-# stopped or removed. Running it again is harmless (idempotent).
+# Development only: the password below is not a secret, so the port is
+# published on 127.0.0.1 alone (-p 127.0.0.1:33306:3306), never on the
+# host's other interfaces. Only the container named cybertrain-mysql is
+# ever started, stopped or removed. Running it again is harmless
+# (idempotent).
 #
 # usage: script/mysql-dev [start|stop]
 set -eu
@@ -55,7 +56,7 @@ elif [ -n "$(docker ps -aq --filter "name=^${name}\$")" ]; then
   reused=true
 else
   docker run -d --name cybertrain-mysql -e MYSQL_ROOT_PASSWORD=cybertrain -e MYSQL_DATABASE=cybertrain_test \
-    -p 33306:3306 "$image" --default-time-zone=+09:00 \
+    -p 127.0.0.1:33306:3306 "$image" --default-time-zone=+09:00 \
     --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_bin >/dev/null
 fi
 

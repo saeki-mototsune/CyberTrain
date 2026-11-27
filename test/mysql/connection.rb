@@ -38,6 +38,19 @@ def url_with(params, password = "")
   "mysql://#{url.url_user}:#{secret}@#{url.url_host}:#{url.port}/#{url.database}?#{params}"
 end
 
+# A row value execute_models answered as a Time (a fixed Time otherwise,
+# which no assertion here expects).
+def time_value(value)
+  case value
+  when Time then value
+  else Time.at(0, 7).utc
+  end
+end
+
+def epoch_us_of(time)
+  time.to_i * 1_000_000 + time.usec
+end
+
 def count_rows(conn, table)
   conn.execute("SELECT COUNT(*) AS n FROM #{table}")[0]["n"]
 end
@@ -184,10 +197,17 @@ test "datetime_utc_on_non_utc_server" do
   at = Time.utc(2026, 3, 1, 12, 34, 56, 123_456)
   conn.execute("INSERT INTO ct_times VALUES (?, ?, ?)", [2, at, at])
   conn.execute("INSERT INTO ct_times VALUES (?, ?, ?)", [3, "1970-01-01 00:00:00.000001", nil])
+  # execute_models answers a UTC Time with the microseconds, as SQLite's
+  # does: the epoch it stands for is the stored UTC value.
   rows = conn.execute_models("SELECT id, at, ts FROM ct_times ORDER BY id")
-  assert_equal({ "id" => 1, "at" => 1_772_368_496_123_456, "ts" => 1_772_368_496_123_456 }, rows[0])
-  assert_equal({ "id" => 2, "at" => 1_772_368_496_123_456, "ts" => 1_772_368_496_123_456 }, rows[1])
-  assert_equal({ "id" => 3, "at" => 1, "ts" => nil }, rows[2])
+  [0, 1].each do |i|
+    assert_equal i + 1, rows[i]["id"]
+    ["at", "ts"].each do |column|
+      t = time_value(rows[i][column])
+      assert_equal [1_772_368_496_123_456, 123_456, true], [epoch_us_of(t), t.usec, t.utc?]
+    end
+  end
+  assert_equal [1, true, nil], [epoch_us_of(time_value(rows[2]["at"])), time_value(rows[2]["at"]).utc?, rows[2]["ts"]]
   # execute answers the text.
   assert_equal [{ "at" => "2026-03-01 12:34:56.123456", "ts" => "2026-03-01 12:34:56.123456" }],
                conn.execute("SELECT at, ts FROM ct_times WHERE id = ?", [2])
@@ -196,7 +216,7 @@ test "datetime_utc_on_non_utc_server" do
                conn.execute("SELECT UNIX_TIMESTAMP(ts) * 1000000 AS us FROM ct_times WHERE id = ?", [1])
   # Every connection sets the session: a second one reads the same.
   other = connect
-  assert_equal 1_772_368_496_123_456, other.execute_models("SELECT ts FROM ct_times WHERE id = 2")[0]["ts"]
+  assert_equal 1_772_368_496_123_456, epoch_us_of(time_value(other.execute_models("SELECT ts FROM ct_times WHERE id = 2")[0]["ts"]))
   other.close
   assert_equal 1_772_368_496_123_456, DB::Connection.epoch_us("2026-03-01 12:34:56.123456")
   assert_equal [0, -1, -1], [DB::Connection.epoch_us("1970-01-01 00:00:00.000000"),
@@ -257,6 +277,21 @@ test "transaction_rollback" do
   conn.close
 end
 
+# The victim's half of a deadlock, `conn` already holding row 2 in its
+# transaction: `holder` takes rows 1, 3 and 4 (more than the victim has
+# written) and waits for row 2 in a thread, and `conn` asks for row 1. The
+# holder commits. What conn's statement raised, as failure says it.
+def deadlock_victim(conn, holder)
+  holder.begin!
+  holder.execute("UPDATE ct_locks SET v = v + 1 WHERE id IN (1, 3, 4)")
+  waiting = Thread.new { holder.execute("UPDATE ct_locks SET v = v + 1 WHERE id = 2") }
+  sleep 0.3
+  got = failure(conn, "UPDATE ct_locks SET v = v + 1 WHERE id = 1")
+  waiting.join
+  holder.commit!
+  got
+end
+
 # A deadlock rolls the victim's whole transaction back: what it runs next
 # is refused, as the SQLite Connection refuses after SQLite rolled back on
 # its own, until it ends the transaction. The holder updates row 1 and
@@ -286,6 +321,23 @@ test "a deadlock leaves the transaction gone until it is ended" do
                assert_raises("Cybertrain::DB::Error") { conn.begin! }
   conn.rollback!
   assert_equal [{ "v" => 1 }, { "v" => 1 }], conn.execute("SELECT v FROM ct_locks WHERE id IN (1, 2) ORDER BY id")
+
+  # A block that rescues the deadlock and ends normally: MySQL would answer
+  # its COMMIT with OK (nothing is open), so commit! refuses it, as SQLite
+  # refuses a COMMIT with no transaction, and the connection works after.
+  victim = []
+  message = assert_raises("Cybertrain::DB::Error") do
+    conn.transaction do
+      conn.execute("UPDATE ct_locks SET v = v + 10 WHERE id = 2")
+      victim << deadlock_victim(conn, holder)
+    end
+  end
+  assert_equal true, victim[0].start_with?("Cybertrain::DB::Deadlock: ")
+  assert_equal "the enclosing transaction is no longer open (MySQL rolled it back after an error, or a statement " \
+               "committed it); the statement was not run (sql: COMMIT)", message
+  assert_equal [{ "one" => 1 }], conn.execute("SELECT 1 AS one")
+  assert_equal false, conn.in_transaction?
+  assert_equal [{ "v" => 2 }, { "v" => 2 }], conn.execute("SELECT v FROM ct_locks WHERE id IN (1, 2) ORDER BY id")
   holder.close
   conn.close
 end
