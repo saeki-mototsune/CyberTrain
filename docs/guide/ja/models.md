@@ -1,5 +1,5 @@
 ---
-source_sha256: 9227740a6323182536ac9888ad89bb2f0715934e43cbb34062e2356cddbf0e3e
+source_sha256: 08d070e92fd6f019d089468eeb60a770e10307e8cf1ad7c2753aaa91b634f501
 ---
 # モデルとデータベース
 
@@ -321,7 +321,7 @@ end
 - `belongs_to` は親を読み、外部キーが変わるか `reload` するまで覚えています。
 - `optional: true` のない宣言した `belongs_to` は、キーが nil、空、0 の間レコードを無効にするので（`article_id` に「can't be blank」。生成される `validates_foreign_key :article_id`）、データベースが行を拒む前に `save` が false を返します。外部キーだけから来る関連付けはバリデーションを足しません。
 - オプションはリテラルです：`class_name:`（String か Symbol）、`foreign_key:`、`dependent:`（`has_many` と `has_one`）、`optional:` と `counter_cache:`（`belongs_to`）。どのマクロもクラスの直下で一行に単独で書き、末尾にコメントを付けません。存在しないモデル、カラム、オプションはファイルと行を示してジェネレーターを止めます。
-- ないもの：`has_many :through`、ポリモーフィック関連付け、`has_many` のスコープのラムダ（返されたリレーションにつなげてください）、`inverse_of`、`dependent: :restrict_with_error`。
+- ないもの：`has_many :through`、`has_many` のスコープのラムダ（返されたリレーションにつなげてください）、`inverse_of`、`dependent: :restrict_with_error`。
 
 ### `dependent:` か `on_delete:` か
 
@@ -330,6 +330,51 @@ end
 ### カウンターキャッシュ
 
 `belongs_to :post, counter_cache: true` は `posts.comments_count`（または `<has_many の名前>_count`）を合わせ続けます：子が作られたら +1、destroy されたら -1、子が別の親に移ったら両側を、それぞれ子自身のトランザクションの中で更新します。カラムは存在している必要があります（`default: "0"` の整数）。親自身の `save` は、その値が古いかもしれないので、それを UPDATE に含めません。`dependent: :destroy` で destroy される親は、消える前に子の数だけ自分を減らしますが、害はありません。
+
+### ポリモーフィック関連付け
+
+ポリモーフィックな `belongs_to` は、いくつかのモデルのどれかのレコードを指します：
+
+```ruby
+# a migration's change (db/schema.rb spells it the same way)
+create_table "comments" do |t|
+  t.text "body", null: false
+  t.references :commentable, polymorphic: true
+  t.timestamps
+end
+
+# app/models/comment.rb
+class Comment
+  belongs_to :commentable, polymorphic: true
+end
+
+# app/models/post.rb
+class Post
+  has_many :comments, as: :commentable, dependent: :destroy
+end
+
+# app/models/photo.rb
+class Photo
+  has_one :comment, as: :commentable
+end
+```
+
+```ruby
+comment = Comment.create(body: "Nice", commentable: post)
+comment.commentable_type             # => "Post"
+case comment.commentable
+when Post then comment.commentable.title
+when Photo then comment.commentable.url
+end
+Comment.includes(:commentable).to_a  # one query per type found
+```
+
+- `t.references :commentable, polymorphic: true`（マイグレーションでは `add_reference ..., polymorphic: true`）は、文字列の `commentable_type`、続いて `commentable_id` を足し（`null: true` でなければ NOT NULL）、両方に `index_comments_on_commentable` という名前のインデックスを一つ作ります。Rails が作るのと同じカラムとインデックスなので、Rails が作ったデータベースはそのまま読めます。外部キーはありません（`on_delete:` は拒まれます）。`remove_reference ..., polymorphic: true` はインデックスと両方のカラムを落とします。
+- 型のカラムには、Rails が保存するのと同じく親のクラス名（`"Post"`）が入ります。ライター `comment.commentable = post`（と `Comment.new(commentable: post)`）は両方のカラムを設定し、nil は両方を消します。親は先に保存してください。保存前の親の id は 0 です。
+- リーダーは、Comment に向けて `has_many` か `has_one ..., as: :commentable` を宣言したモデルのどれかのレコードを返し、型が空か行がなければ nil を返し、それ以外の型には `ArgumentError` を上げます。Spinel のもとではリーダーの型がそれらのモデルの和なので、返せるのはそれらだけで、どのモデルも応えないポリモーフィックな `belongs_to` はジェネレーターを止めます。どのモデルにもあるメソッド（`id` や共通のカラム）は値にそのまま呼べます。それ以外は `case` で絞ってください。
+- `optional: true` がなければ両方のカラムを検証します（`commentable_type` と `commentable_id` に「can't be blank」）。
+- `as:` 付きの `has_many` と `has_one` は、型がこのモデルの名前でキーがこのレコードの id である子を読みます。`dependent:` はそれらだけに働きます（`:nullify` は両方のカラムを NULL にするので、両方とも NULL を許す必要があります）。`includes` はどちら側も先読みします。
+- ないもの：`polymorphic: true` と一緒の `class_name:`、`foreign_key:`、`foreign_type:`、`counter_cache:`、`as:` と一緒の `foreign_key:`、型のカラムの名前空間付きクラス名（`Admin::Post`）、フィクスチャでの親のラベル（`commentable: one (Post)`。二つのカラムを設定してください）。
 
 ### `includes` で先読みする
 
@@ -354,7 +399,7 @@ Article.includes(:author, comments: { author: :profile })  # 五回
 Comment.preload(article: { author: :profile })             # 四回
 ```
 
-段ごとに、その上のレコードの数によらずクエリが一回増えます（SQLite が一つの文に束縛できる数より id が多い段では、id のかたまりごとに一回）。すべての記事のコメント、次にそのコメントすべての著者、という具合です。読み込むものがない段（コメントがない、親がすべて nil）はクエリを実行しません。同じリレーションへの二度目の `includes` は一度目に足されます。その段のモデルの関連付けでない名前は、`includes` を呼んだときに、どのクエリよりも前に `ArgumentError`（`unknown association nope for Comment`）になります。検査は実行時で、ジェネレーターは行いません（`docs/design.md` D95）。
+段ごとに、その上のレコードの数によらずクエリが一回増えます（SQLite が一つの文に束縛できる数より id が多い段では、id のかたまりごとに一回）。すべての記事のコメント、次にそのコメントすべての著者、という具合です。読み込むものがない段（コメントがない、親がすべて nil）はクエリを実行しません。同じリレーションへの二度目の `includes` は一度目に足されます。その段のモデルの関連付けでない名前は、`includes` を呼んだときに、どのクエリよりも前に `ArgumentError`（`unknown association nope for Comment`）になります。検査は実行時で、ジェネレーターは行いません（`docs/design.md` D95）。ポリモーフィックな `belongs_to` の下では親の型ごとにクエリが一回増え、その下の名前は `as:` で宣言したすべての型の関連付けでなければなりません。
 
 ## バリデーション
 

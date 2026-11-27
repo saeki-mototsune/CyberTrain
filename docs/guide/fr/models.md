@@ -1,5 +1,5 @@
 ---
-source_sha256: 9227740a6323182536ac9888ad89bb2f0715934e43cbb34062e2356cddbf0e3e
+source_sha256: 08d070e92fd6f019d089468eeb60a770e10307e8cf1ad7c2753aaa91b634f501
 ---
 # Modèles et base de données
 
@@ -615,9 +615,8 @@ end
   sa ligne, au niveau de la classe, sans commentaire à la fin&nbsp;; un
   modèle, une colonne ou une option qui n’existe pas arrête le générateur
   avec le fichier et la ligne.
-- Non disponibles&nbsp;: `has_many :through`, les associations
-  polymorphes, une lambda de scope sur `has_many` (enchaînez sur la relation
-  qu’il renvoie), `inverse_of`, `dependent: :restrict_with_error`.
+- Non disponibles&nbsp;: `has_many :through`, une lambda de scope sur
+  `has_many` (enchaînez sur la relation qu’il renvoie), `inverse_of`, `dependent: :restrict_with_error`.
 
 ### `dependent:` ou `on_delete:`
 
@@ -642,6 +641,76 @@ doit exister (un entier avec `default: "0"`). Le propre `save` du parent la
 laisse hors de son UPDATE, puisque sa copie peut être périmée. Un parent
 détruit avec `dependent: :destroy` se décrémente une fois par enfant avant de
 disparaître, ce qui est sans conséquence.
+
+### Associations polymorphes
+
+Un `belongs_to` polymorphe pointe vers un enregistrement de l’un de plusieurs modèles&nbsp;:
+
+```ruby
+# a migration's change (db/schema.rb spells it the same way)
+create_table "comments" do |t|
+  t.text "body", null: false
+  t.references :commentable, polymorphic: true
+  t.timestamps
+end
+
+# app/models/comment.rb
+class Comment
+  belongs_to :commentable, polymorphic: true
+end
+
+# app/models/post.rb
+class Post
+  has_many :comments, as: :commentable, dependent: :destroy
+end
+
+# app/models/photo.rb
+class Photo
+  has_one :comment, as: :commentable
+end
+```
+
+```ruby
+comment = Comment.create(body: "Nice", commentable: post)
+comment.commentable_type             # => "Post"
+case comment.commentable
+when Post then comment.commentable.title
+when Photo then comment.commentable.url
+end
+Comment.includes(:commentable).to_a  # one query per type found
+```
+
+- `t.references :commentable, polymorphic: true` (et `add_reference ...,
+  polymorphic: true` dans une migration) ajoute `commentable_type`, une
+  chaîne, puis `commentable_id`, NOT NULL sauf avec `null: true`, et un index
+  sur les deux nommé `index_comments_on_commentable`&nbsp;: les colonnes et l’index
+  que crée Rails, si bien qu’une base créée par Rails se lit telle quelle. Il
+  n’y a pas de clé étrangère (`on_delete:` est refusé)&nbsp;;
+  `remove_reference ..., polymorphic: true` supprime l’index et les deux
+  colonnes.
+- La colonne de type contient le nom de classe du parent, comme Rails le
+  stocke (`"Post"`). L’écrivain `comment.commentable = post` (et
+  `Comment.new(commentable: post)`) remplit les deux colonnes et nil les vide.
+  Enregistrez d’abord le parent&nbsp;: un parent non enregistré a l’id 0.
+- Le lecteur répond un enregistrement de l’un des modèles qui déclarent
+  `has_many` ou `has_one ..., as: :commentable` pour Comment, ou nil tant que
+  le type est vide ou que la ligne n’existe plus, et lève `ArgumentError`
+  pour tout autre type. Sous Spinel, le type du lecteur est l’union de ces
+  modèles&nbsp;: ce sont les seuls qu’il peut répondre, et un `belongs_to`
+  polymorphe auquel aucun modèle ne répond arrête le générateur. Une méthode
+  que chacun d’eux a (`id`, ou une colonne qu’ils partagent) s’appelle
+  directement sur la valeur&nbsp;; pour le reste, restreignez-la avec `case`.
+- Sans `optional: true`, les deux colonnes sont validées («&nbsp;can’t be blank&nbsp;»
+  sur `commentable_type` et `commentable_id`).
+- `has_many` et `has_one` avec `as:` lisent les enfants dont le type est le
+  nom de ce modèle et la clé l’id de cet enregistrement&nbsp;; `dependent:` ne
+  touche qu’eux (`:nullify` met les deux colonnes à NULL, qui doivent donc
+  accepter NULL). `includes` précharge l’un ou l’autre côté.
+- Non disponible&nbsp;: `class_name:`, `foreign_key:`, `foreign_type:` ou
+  `counter_cache:` avec `polymorphic: true`, `foreign_key:` avec `as:`, les
+  noms de classe avec espace de noms dans la colonne de type (`Admin::Post`)
+  et une étiquette de fixture pour le parent (`commentable: one (Post)`&nbsp;;
+  remplissez les deux colonnes).
 
 ### Précharger avec `includes`
 
@@ -687,7 +756,10 @@ des parents tous nil) n’en exécute aucune. Un second `includes` sur la même
 relation s’ajoute au premier. Un nom qui n’est pas une association du modèle
 à ce niveau lève `ArgumentError` (`unknown association nope for Comment`)
 à l’appel d’`includes`, avant toute requête&nbsp;; la vérification a lieu à
-l’exécution, pas dans le générateur (`docs/design.md` D95).
+l’exécution, pas dans le générateur (`docs/design.md` D95). Sous un
+`belongs_to` polymorphe, chaque type de parent ajoute une requête, et le
+chemin doit être une association de chaque type que nomment les
+déclarations `as:`.
 
 ## Validations
 

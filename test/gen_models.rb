@@ -2933,15 +2933,16 @@ end
 
 test "an unknown option, a wrong value or a repeated association raises with the file and line" do
   assert_equal "app/models/post.rb:3: has_many :comments: unknown option through: (has_many takes dependent:, " \
-               "class_name:, foreign_key:)", association_error("has_many :comments, through: :posts")
+               "class_name:, foreign_key:, as:)", association_error("has_many :comments, through: :posts")
   assert_equal "app/models/post.rb:3: has_many :comments: unknown option counter_cache: (has_many takes " \
-               "dependent:, class_name:, foreign_key:)", association_error("has_many :comments, counter_cache: true")
+               "dependent:, class_name:, foreign_key:, as:)", association_error("has_many :comments, counter_cache: true")
   assert_equal "app/models/post.rb:3: has_one :cover: unknown option optional: (has_one takes dependent:, " \
-               "class_name:, foreign_key:)", association_error("has_one :cover, optional: true")
+               "class_name:, foreign_key:, as:)", association_error("has_one :cover, optional: true")
   assert_equal "app/models/post.rb:3: belongs_to :blog: unknown option dependent: (belongs_to takes class_name:, " \
-               "foreign_key:, optional:, counter_cache:)", association_error("belongs_to :blog, dependent: :destroy")
-  assert_equal "app/models/post.rb:3: belongs_to :blog: unknown option polymorphic: (belongs_to takes " \
-               "class_name:, foreign_key:, optional:, counter_cache:)", association_error("belongs_to :blog, polymorphic: true")
+               "foreign_key:, optional:, counter_cache:, polymorphic:)", association_error("belongs_to :blog, dependent: :destroy")
+  assert_equal "app/models/post.rb:3: belongs_to :blog: unknown option inverse_of: (belongs_to takes " \
+               "class_name:, foreign_key:, optional:, counter_cache:, polymorphic:)",
+               association_error("belongs_to :blog, inverse_of: :posts")
   assert_equal "app/models/post.rb:3: has_many :comments: dependent: takes :destroy, :delete_all or :nullify " \
                "(got :restrict_with_error)", association_error("has_many :comments, dependent: :restrict_with_error")
   assert_equal "app/models/post.rb:3: has_many :comments: dependent: takes :destroy, :delete_all or :nullify " \

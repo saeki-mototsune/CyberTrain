@@ -242,6 +242,10 @@ module Cybertrain
             association = FixtureScan.belongs_to_named(info, name)
             if association.nil?
               FixtureScan.refuse_fixture(path, k.entry_line, "#{table.name} has no column or belongs_to named #{name.inspect}")
+            elsif association.polymorphic
+              # docs/design.md D94: no `commentable: one (Post)` labels.
+              FixtureScan.refuse_fixture(path, k.entry_line, "#{name} is a polymorphic belongs_to: set #{name}_type " \
+                                                             "and #{name}_id instead")
             else
               target = association.foreign_key.empty? ? "#{name}_id" : association.foreign_key
               unless k.entry_null
