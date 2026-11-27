@@ -169,10 +169,13 @@ module Cybertrain
       parts = joined.split(",")
       return none if parts.size > MAX_NAMES
 
+      # The decoded bytes are ASCII-8BIT, as Base64 answers them; each name
+      # is read as the UTF-8 it was signed as (split first: a UTF-8 split
+      # raises on an invalid byte, NOTES rule 52).
       out = Array.new(0) { "" }
       i = 0
       while i < parts.size
-        name = parts[i].to_s
+        name = Query.utf8!(parts[i].to_s)
         return none unless Stream.valid_name?(name)
 
         out << name
