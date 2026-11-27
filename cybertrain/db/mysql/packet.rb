@@ -34,6 +34,38 @@ module Cybertrain
           @deadline = deadline
           @seq = 0
           @reader = Cybertrain::Net::Reader.new(stream, frame_timer(per_wait))
+          # Frames read since #mark_idle, and whether the last loss came
+          # before any of them (#lost_unanswered?).
+          @frames_read = 0
+          @lost_unanswered = false
+        end
+
+        # Starts counting the frames read from here on: the connection
+        # was idle (in the pool) until now. See #lost_unanswered?.
+        def mark_idle
+          @frames_read = 0
+          @lost_unanswered = false
+          nil
+        end
+
+        # Whether the last DB::ConnectionLost raised here came before the
+        # server answered anything since #mark_idle: the write of the
+        # command failed, or the stream ended (or reset) before one byte of
+        # an answer arrived, or the first thing read was the server's
+        # unprompted ERR (sequence 0: 4031 on wait_timeout), which it sends
+        # before it closes an idle session. Never for a timeout (the
+        # server may be running the command; Net::TimeoutError is not
+        # caught here), a frame out of sequence, or anything after the
+        # first answer byte.
+        #
+        # What it cannot tell apart: a server that read the command, ran
+        # it to the end and lost the session (crashed, or a KILL that
+        # landed after a commit) before its first answer byte. That
+        # command has run, and a retry runs it again; see Connection's
+        # #run_command for where that risk is taken.
+        # @return [Boolean]
+        def lost_unanswered?
+          @lost_unanswered
         end
 
         # The waits from here on: `read_wait` for each wait of a read,
@@ -119,6 +151,7 @@ module Cybertrain
           out_of_sequence(size, got) if got != @seq
 
           @seq = (@seq + 1) & 0xFF
+          @frames_read += 1
           read_bytes(size)
         end
 
@@ -131,7 +164,10 @@ module Cybertrain
         def out_of_sequence(size, got)
           if got == 0 && size >= 3 && size < 0x10000
             payload = read_bytes(size)
-            raise Cybertrain::DB::ConnectionLost, Decode.server_error_text(payload) if payload.getbyte(0) == 0xFF
+            if payload.getbyte(0) == 0xFF
+              @lost_unanswered = @frames_read == 0
+              raise Cybertrain::DB::ConnectionLost, Decode.server_error_text(payload)
+            end
           end
           raise Cybertrain::DB::ConnectionLost, "#{@stream.stream_label}: MySQL packet out of sequence (expected #{@seq}, got #{got})"
         end
@@ -139,9 +175,12 @@ module Cybertrain
         # `count` bytes of the stream. The begin/rescue is here, away from a
         # yielding caller (NOTES rules 32, 45); the Net classes are named in
         # full (rule 70).
+        # A loss before any frame since #mark_idle with nothing buffered
+        # (not part of a frame header) is one #lost_unanswered? reports.
         def read_bytes(count)
           @reader.read_exact(count)
         rescue Cybertrain::Net::ProtocolError, Cybertrain::Net::ConnectError
+          @lost_unanswered = @frames_read == 0 && @reader.buffered == 0
           raise Cybertrain::DB::ConnectionLost, "#{@stream.stream_label}: the connection to MySQL was lost while reading"
         end
 
@@ -162,6 +201,8 @@ module Cybertrain
         def send_bytes(bytes, timer)
           @stream.stream_write(bytes, timer)
         rescue Cybertrain::Net::ConnectError
+          # A command not written whole is never run by the server.
+          @lost_unanswered = @frames_read == 0
           raise Cybertrain::DB::ConnectionLost, "#{@stream.stream_label}: the connection to MySQL was lost while writing"
         end
       end

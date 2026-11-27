@@ -76,6 +76,18 @@ module Cybertrain
           @error_code
         end
 
+        # The connection was idle until now (PacketIO#mark_idle).
+        def mark_idle
+          @io.mark_idle
+        end
+
+        # Whether the last loss came before the server answered anything
+        # since #mark_idle (PacketIO#lost_unanswered?).
+        # @return [Boolean]
+        def lost_unanswered?
+          @io.lost_unanswered?
+        end
+
         # Whether the server said, in the last status flags it sent, that a
         # transaction is open on this session.
         # @return [Boolean]

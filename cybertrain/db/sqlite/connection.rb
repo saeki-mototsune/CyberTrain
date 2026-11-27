@@ -507,6 +507,17 @@ module Cybertrain
         @closed
       end
 
+      # The Pool hands this connection to a caller (Pool#with,
+      # Pool#checkout_transaction). Nothing to do on SQLite: the database is
+      # a file this process holds open, which no server can end while the
+      # connection sits in the pool. The MySQL Connection's lets the next
+      # statement reopen a session the server ended meanwhile.
+      # @return [nil]
+      # @api private
+      def checked_out!
+        nil
+      end
+
       # Remembered column names for one SQL text, and which of the columns
       # are declared DATETIME (1) or not (0).
       class ColumnNames

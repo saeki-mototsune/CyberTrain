@@ -31,6 +31,11 @@
 #   that does not decode, a timeout, a TLS failure, the stream ending)
 #   leaves the stream out of step: the connection closes itself and raises
 #   DB::ConnectionLost, and the Pool opens a new one on the next checkout.
+# - A session the server ended while the connection sat in the pool (KILL,
+#   wait_timeout, a failover) is found by the checkout's first statement,
+#   never by a ping beforehand (it would cost every checkout a round trip).
+#   That statement alone reopens the session and runs once more, under the
+#   conditions #run_command lists; anything else lost is ConnectionLost.
 # - Whether a transaction is open is the server's word (SERVER_STATUS_IN_TRANS
 #   in the status flags of every OK packet). The "transaction gone" rules
 #   are the SQLite Connection's (#refuse_if_transaction_gone): MySQL rolls
@@ -137,7 +142,16 @@ module Cybertrain
         @statements_run = 0
         @changes = 0
         @last_insert_id = 0
+        # True from #checked_out! until the next command: only that one
+        # may reopen the session and run again (#run_command).
+        @first_since_checkout = false
+        # Whether the command that just failed lost the session before the
+        # server answered anything (Protocol#lost_unanswered?).
+        @lost_unanswered = false
         url = Connection.parse_target(target)
+        # Kept to reopen the session (#reopen_session); its to_s and
+        # inspect leave the password out.
+        @url = url
         io = Connection.open_session(url)
         @stream = io.packet_stream
         @protocol = MySQL::Protocol.new(io)
@@ -453,6 +467,21 @@ module Cybertrain
         @closed
       end
 
+      # The Pool hands this connection to a caller (Pool#with,
+      # Pool#checkout_transaction): it was idle until now, so the session
+      # may have ended under it; the next command is the one allowed to
+      # reopen it and run again (#run_command). The SQLite Connection's is
+      # a no-op.
+      # @return [nil]
+      # @api private
+      def checked_out!
+        return nil if @closed
+
+        @first_since_checkout = true
+        @protocol.mark_idle
+        nil
+      end
+
       # epoch microseconds of "YYYY-MM-DD HH:MM:SS.ffffff" read as UTC (the
       # text result.rb decodes every DATETIME and TIMESTAMP to), or -1 for
       # text of another shape or a zero date.
@@ -532,18 +561,83 @@ module Cybertrain
 
       private
 
-      # Runs one command: a prepared statement (`script` false) or
+      # Runs one command, reopening the session and running it once more
+      # when the session turns out to have ended while the connection was
+      # idle in the pool. All of these must hold, or the loss is raised as
+      # DB::ConnectionLost and the connection stays closed (the Pool
+      # replaces it on the next checkout; Pool#reopen):
+      #
+      # * it is the first command since #checked_out! (a connection made
+      #   with Connection.new and never checked out never retries);
+      # * no transaction is open: none begun here (depth 0), none the
+      #   server reported in its last status flags, none lost
+      #   (#note_lost_transaction). Inside a transaction the server rolled
+      #   everything back with the session: running anything again would
+      #   commit a part of it, so it is ConnectionLost (DB.transaction
+      #   rolls back, and the row the block wrote is gone);
+      # * the loss is one the request cannot have run through
+      #   (PacketIO#lost_unanswered?): writing the command failed, or the
+      #   stream ended or reset, or the server's unprompted ERR (4031) was
+      #   read, before any byte of an answer since checkout. Not a timeout
+      #   (the server may still be running it), not a frame that does not
+      #   decode, not a loss after the first answer byte.
+      #
+      # The risk taken: a server that read the command, ran it (autocommit)
+      # and lost the session before sending its first answer byte (a crash,
+      # a KILL landing between its commit and its OK) is indistinguishable
+      # here from one that never read it, and a non-idempotent statement
+      # (an INSERT without a key, `UPDATE ... SET n = n + 1`) is then
+      # applied twice. The window is one statement's run on a session the
+      # pool had idle, against the far more common session ended in the
+      # pool (KILL, wait_timeout, failover), where nothing ran.
+      def run_command(sql, binds, script)
+        may_retry = @first_since_checkout && @transaction_depth == 0 && !@transaction_lost &&
+                    !@protocol.server_in_transaction?
+        @first_since_checkout = false
+        @lost_unanswered = false
+        begin
+          attempt_command(sql, binds, script)
+        rescue Cybertrain::DB::ConnectionLost => e
+          raise e unless may_retry && @lost_unanswered
+
+          reopen_session
+          attempt_command(sql, binds, script)
+        end
+      end
+
+      # A new session to the same URL in place of the lost one, set as
+      # #initialize sets it; a failure leaves the connection closed and
+      # raises (a server still unreachable is ConnectionLost).
+      def reopen_session
+        io = Connection.open_session(@url)
+        @stream = io.packet_stream
+        @protocol = MySQL::Protocol.new(io)
+        @statements = MySQL::StatementCache.new(@protocol)
+        @transaction_depth = 0
+        @transaction_lost = false
+        @closed = false
+        begin
+          exec_script(SESSION_SETTINGS)
+        rescue StandardError => e
+          close
+          raise e
+        end
+        nil
+      end
+
+      # One command: a prepared statement (`script` false) or
       # COM_QUERY (true). Keeps changes and last_insert_id from an OK
       # answer. Every error leaves with the statement appended, in its own
       # class; one that leaves the stream out of step closes the connection
       # first and is ConnectionLost (see the header). The rescue clauses
       # name each class in full (NOTES rule 70) and tell the errors apart
       # (rule 47).
-      def run_command(sql, binds, script)
+      def attempt_command(sql, binds, script)
         in_transaction = @protocol.server_in_transaction?
         begin
           result = script ? @protocol.query(sql) : prepared_result(sql, binds)
         rescue Cybertrain::DB::ConnectionLost => e
+          @lost_unanswered = @protocol.lost_unanswered?
           lose_connection
           raise ConnectionLost, Connection.with_sql(e.message, sql)
         rescue Cybertrain::Net::Error => e
