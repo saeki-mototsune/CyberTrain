@@ -958,7 +958,10 @@ decision, and 77 explicitly retires a workaround.
     next "%" from `i + 1`, not `i + 3` (the byte at i + 1 is a hex digit, an
     ASCII byte, always a boundary; i + 3 can be a stray byte in a String
     nobody validated).
-    Kept until docs/spinel-feedback.md AD and AU are closed.
+    On 2026.11.27.7037 Spinel's `strip` raises
+    `Encoding::CompatibilityError` on such a String as CRuby's does (AU,
+    closed on 2026-11-27).
+    Kept until docs/spinel-feedback.md AD is closed.
 53. An exception object built with `.new("msg")` and never raised has no
     `#message` under Spinel (`undefined method 'message' for an instance of
     <its class>`, seen on a `Cybertrain::` exception subclass in review;
