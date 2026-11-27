@@ -158,9 +158,9 @@ test "the schema readers answer SQLite's table_info, index_list, index_info and 
   assert_equal ["index_comments_on_post_id"], indexes.map { |r| r["name"].to_s }
   assert_equal 0, Cybertrain::Cast.int(indexes[0]["unique"])
   assert_equal "CREATE INDEX index_comments_on_post_id ON comments (post_id)",
-               Dialect.schema_index_sql(conn, "index_comments_on_post_id")
-  assert_equal "", Dialect.schema_index_sql(conn, "missing")
-  assert_equal ["post_id"], Dialect.schema_index_columns(conn, "index_comments_on_post_id")
+               Dialect.schema_index_sql(conn, "comments", "index_comments_on_post_id")
+  assert_equal "", Dialect.schema_index_sql(conn, "comments", "missing")
+  assert_equal ["post_id"], Dialect.schema_index_columns(conn, "comments", "index_comments_on_post_id")
   keys = Dialect.schema_foreign_key_rows(conn, "comments")
   assert_equal 1, keys.size
   assert_equal "posts", keys[0]["table"].to_s

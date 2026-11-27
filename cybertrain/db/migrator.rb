@@ -310,7 +310,7 @@ module Cybertrain
         result = Array.new(0) { "" }
         Dialect.schema_index_rows(@connection, table).each do |row|
           name = row["name"].to_s
-          cols = Dialect.schema_index_columns(@connection, name)
+          cols = Dialect.schema_index_columns(@connection, table, name)
           result << name if cols == columns
         end
         result

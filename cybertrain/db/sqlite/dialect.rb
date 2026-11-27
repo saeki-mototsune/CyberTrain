@@ -448,26 +448,33 @@ module Cybertrain
         conn.execute("PRAGMA index_list(#{table})")
       end
 
-      # The index's CREATE INDEX text, "" when there is none (an automatic
-      # index). MySQL: "" (statistics carries the expression; a later task
-      # reads it there).
+      # The CREATE INDEX text of `table`'s index `index`, "" when there is
+      # none (an automatic index). SQLite's index names are unique in the
+      # schema, so `table` is not read. MySQL (names unique per table only):
+      # "" (information_schema.statistics WHERE table_schema = DATABASE()
+      # AND table_name = ? AND index_name = ? carries the expression; a
+      # later task reads it there).
       # @param conn [Cybertrain::DB::Connection]
+      # @param table [String]
       # @param index [String]
       # @return [String]
-      def self.schema_index_sql(conn, index)
+      def self.schema_index_sql(conn, table, index)
         rows = conn.execute("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?", [index])
         return "" if rows.empty?
 
         Cybertrain::Cast.str_or_nil(rows[0]["sql"]).to_s
       end
 
-      # The index's column names, in key order.
-      # MySQL: SELECT column_name FROM information_schema.statistics WHERE ...
-      # AND index_name = ? ORDER BY seq_in_index.
+      # The column names of `table`'s index `index`, in key order (`table`
+      # not read on SQLite, whose index names are unique in the schema).
+      # MySQL: SELECT column_name FROM information_schema.statistics WHERE
+      # table_schema = DATABASE() AND table_name = ? AND index_name = ?
+      # ORDER BY seq_in_index.
       # @param conn [Cybertrain::DB::Connection]
+      # @param table [String]
       # @param index [String]
       # @return [Array<String>]
-      def self.schema_index_columns(conn, index)
+      def self.schema_index_columns(conn, table, index)
         rows = conn.execute("PRAGMA index_info(#{index})")
         ordered = rows.sort_by { |r| Cybertrain::Cast.int(r["seqno"]) }
         ordered.map { |r| r["name"].to_s }

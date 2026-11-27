@@ -267,9 +267,9 @@ module Cybertrain
           name = r["name"].to_s
           next if name.start_with?("sqlite_autoindex_")
           unique = Cybertrain::Cast.int(r["unique"]) != 0
-          parts = index_key_and_where(index_sql_text(connection, name))
+          parts = index_key_and_where(index_sql_text(connection, table_name, name))
           if parts[0] == "" || column_list?(parts[0])
-            columns = index_columns(connection, name)
+            columns = index_columns(connection, table_name, name)
             definition.add_index(table_name, columns, unique: unique, name: name, where: parts[1])
           else
             definition.add_index(table_name, parts[0], unique: unique, name: name, where: parts[1])
@@ -278,8 +278,8 @@ module Cybertrain
         nil
       end
 
-      def self.index_sql_text(connection, index_name)
-        Dialect.schema_index_sql(connection, index_name)
+      def self.index_sql_text(connection, table_name, index_name)
+        Dialect.schema_index_sql(connection, table_name, index_name)
       end
 
       # CREATE INDEX text -> [key, where]: the text between the first "("
@@ -370,8 +370,8 @@ module Cybertrain
         true
       end
 
-      def self.index_columns(connection, index_name)
-        Dialect.schema_index_columns(connection, index_name)
+      def self.index_columns(connection, table_name, index_name)
+        Dialect.schema_index_columns(connection, table_name, index_name)
       end
 
       def self.add_foreign_keys(definition, connection, table_name)
