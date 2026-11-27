@@ -65,14 +65,24 @@ def hex(s)
   out
 end
 
+# Binary-tagged, as a socket's bytes are.
 def unhex(text)
   s = text.to_s
   out = "0" * (s.bytesize / 2)
+  out.force_encoding("BINARY")
   i = 0
   while i < out.bytesize
     out.setbyte(i, s.byteslice(2 * i, 2).to_i(16))
     i += 1
   end
+  out
+end
+
+# A binary-tagged copy, as bytes read from a socket are.
+def binary(text)
+  out = String.new
+  out << text.to_s
+  out.force_encoding("BINARY")
   out
 end
 
@@ -135,8 +145,8 @@ def err_packet(code, state, message)
   out = unhex("ff")
   out << Wire.int_le(code, 2)
   out << "#"
-  out << state
-  out << message
+  out << binary(state)
+  out << binary(message)
   out
 end
 
@@ -757,6 +767,78 @@ test "COM_STMT_EXECUTE lays out the NULL bitmap, the types and each bind's value
   assert_equal [], result.result_rows
 end
 
+# Binds whose bytes mix encodings: a UTF-8 String with non-ASCII bytes, a
+# binary Blob, Floats and Integers with bytes of 0x80 and more, length
+# prefixes of 0x80 and more. Every wire buffer is binary, so none of the
+# appends raises Encoding::CompatibilityError (NOTES rule 27).
+test "binds of mixed encodings and high bytes go out byte for byte" do
+  stream = stream_of(BINDS_PREPARE_RESP + BINDS_EXECUTE_RESP)
+  proto = protocol_for(stream)
+  id = proto.prepare("INSERT INTO t_binds (i, f, s, n, b) VALUES (?, ?, ?, ?, ?)")
+  binds = [nil, 0, 0.0, "", Cybertrain::DB::Blob.new("")]
+  binds.clear
+  binds << -5
+  binds << 1.1
+  binds << 200
+  binds << "\u00e9" * 200
+  binds << Cybertrain::DB::Blob.new(binary(unhex("ff" * 300)))
+  proto.execute_statement(id, binds)
+  sent = stream.script_sent
+  start = BINDS_PREPARE_REQ.bytesize / 2
+  assert_equal "f0020000", hex(sent.byteslice(start, 4)) # 752 bytes, sequence 0
+  payload = sent.byteslice(start + 4, sent.bytesize - start - 4)
+  assert_equal "17" + "05000000" + "00" + "01000000" + "00" + "01" +
+               "0800" + "0500" + "0800" + "fd00" + "fc00" +
+               "fbffffffffffffff" + "9a9999999999f13f" + "c800000000000000" +
+               "fc9001" + ("c3a9" * 200) + "fc2c01" + ("ff" * 300), hex(payload)
+end
+
+# A prepare answer built by hand for a statement id of 200 and nine
+# parameters (the server's layout, as in the recorded BINDS_PREPARE_RESP),
+# and an OK for the execute: what is checked is what the client sends.
+def nine_param_server
+  ok = unhex("00")
+  ok << Wire.int_le(200, 4)
+  ok << Wire.int_le(0, 2)
+  ok << Wire.int_le(9, 2)
+  ok << Wire.int_le(0, 3)
+  out = frame(1, ok)
+  param = unhex("03646566" + "000000" + "013f" + "00" + "0c" + "3f00" + "00000000" + "fd" + "8000" + "00" + "0000")
+  seq = 2
+  while seq <= 10
+    out << frame(seq, param)
+    seq += 1
+  end
+  out << frame(1, unhex("00000002000000"))
+  out
+end
+
+test "nine parameters with the eighth NULL and a Float, statement id 200" do
+  stream = ScriptStream.new(nine_param_server)
+  proto = protocol_for(stream)
+  id = proto.prepare("SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?")
+  assert_equal 200, id
+  assert_equal 9, proto.param_count(id)
+  before = stream.script_sent.bytesize
+  result = proto.execute_statement(id, [1, 2, 3, 4, 5, 6, 7.5, nil, -1])
+  assert_equal 0, result.affected_rows
+  sent = stream.script_sent
+  assert_equal "17" + "c8000000" + "00" + "01000000" + "8000" + "01" +
+               ("0800" * 6) + "0500" + "0600" + "0800" +
+               "0100000000000000" + "0200000000000000" + "0300000000000000" + "0400000000000000" +
+               "0500000000000000" + "0600000000000000" + "0000000000001e40" + "ffffffffffffffff",
+               hex(sent.byteslice(before + 4, sent.bytesize - before - 4))
+  assert_equal 0, stream.script_left
+end
+
+test "PacketIO frames a payload with high bytes behind a header with high bytes" do
+  stream = ScriptStream.new("")
+  io = PacketIO.new(stream)
+  io.write_packet("\u00e9" * 100)
+  io.write_packet(binary(unhex("ff" * 200)))
+  assert_equal "c8000000" + ("c3a9" * 100) + "c8000001" + ("ff" * 200), hex(stream.script_sent)
+end
+
 test "what the bound row holds, read back" do
   result = protocol_for(stream_of(BINDS_READBACK_RESP)).query("SELECT i, f, s, n, HEX(b) FROM t_binds")
   assert_equal ["i", "f", "s", "n", "HEX(b)"], result.names
@@ -876,7 +958,7 @@ test "the codes MySQL 8 did not send map too" do
                query_failure(ScriptStream.new(frame(1, err_packet(1927, "70100", "Connection was killed"))), "x")
   no_state = unhex("ff")
   no_state << Wire.int_le(1105, 2)
-  no_state << "Unknown error"
+  no_state << binary("Unknown error")
   assert_equal "Cybertrain::DB::Error: Unknown error (MySQL 1105, HY000)", query_failure(ScriptStream.new(frame(1, no_state)), "x")
 end
 

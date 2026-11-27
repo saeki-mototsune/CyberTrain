@@ -117,14 +117,9 @@ module Cybertrain
         # The NULL bitmap, new-params-bound, the types and the values.
         def self.bind_block(binds)
           count = binds.size
-          bitmap = "0" * ((count + 7) / 8)
-          i = 0
-          while i < bitmap.bytesize
-            bitmap.setbyte(i, 0)
-            i += 1
-          end
-          types = String.new
-          values = String.new
+          bitmap = Wire.zeros((count + 7) / 8)
+          types = Wire.zeros(0)
+          values = Wire.zeros(0)
           i = 0
           while i < count
             value = binds[i]
@@ -137,7 +132,7 @@ module Cybertrain
               values << Wire.int_le(value, 8)
             when Float
               types << Wire.int_le(BIND_DOUBLE, 1)
-              values << [value].pack("E")
+              values << Wire.bytes([value].pack("E"))
             when String
               types << Wire.int_le(BIND_VAR_STRING, 1)
               values << Wire.lenenc_str(value)
@@ -150,7 +145,7 @@ module Cybertrain
             types << Wire.int_le(0, 1)
             i += 1
           end
-          out = String.new
+          out = Wire.zeros(0)
           out << bitmap
           out << Wire.int_le(1, 1)
           out << types
@@ -193,7 +188,7 @@ module Cybertrain
         def start_command(command, body)
           @io.reset_sequence
           payload = Wire.int_le(command, 1)
-          payload << body
+          payload << Wire.bytes(body)
           @io.write_packet(payload)
           nil
         end

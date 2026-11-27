@@ -73,7 +73,7 @@ module Cybertrain
 
         # Sends `payload` as one or more packets.
         def write_packet(payload)
-          data = payload.to_s
+          data = Wire.bytes(payload)
           total = data.bytesize
           timer = packet_timer
           pos = 0

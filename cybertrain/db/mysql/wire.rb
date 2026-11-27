@@ -62,7 +62,7 @@ module Cybertrain
         def self.lenenc_str(text)
           s = text.to_s
           out = Wire.lenenc_int(s.bytesize)
-          out << s
+          out << Wire.bytes(s)
           out
         end
 
@@ -93,12 +93,38 @@ module Cybertrain
         # The low `bytes` (1..8) bytes of `value`, least significant first.
         # A negative value gives its two's complement.
         def self.int_le(value, bytes)
-          out = "0" * bytes
+          out = Wire.zeros(bytes)
           i = 0
           while i < bytes
             out.setbyte(i, (value >> (8 * i)) & 0xFF)
             i += 1
           end
+          out
+        end
+
+        # `count` zero bytes, tagged binary (ASCII-8BIT). Every buffer
+        # that goes on the wire is binary: a UTF-8 String holding a byte
+        # of 0x80 or more and a binary one holding another cannot be
+        # appended to each other (Encoding::CompatibilityError, under CRuby
+        # and under Spinel since 2026.11.27.7037; NOTES rule 27).
+        def self.zeros(count)
+          out = "0" * count
+          out.force_encoding("BINARY")
+          i = 0
+          while i < count
+            out.setbyte(i, 0)
+            i += 1
+          end
+          out
+        end
+
+        # A binary-tagged copy of `text`'s bytes (a String bound or sent
+        # as it is, a Blob's bytes, a user name), for appending to a wire
+        # buffer.
+        def self.bytes(text)
+          out = String.new
+          out << text.to_s
+          out.force_encoding("BINARY")
           out
         end
 

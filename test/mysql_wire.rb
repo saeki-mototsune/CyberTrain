@@ -54,9 +54,12 @@ class WireStream < Cybertrain::Net::Stream
   end
 end
 
-# All 256 byte values, NUL and 0x80..0xFF included.
+# All 256 byte values, NUL and 0x80..0xFF included; binary-tagged, as
+# bytes from a socket are (PacketIO answers binary Strings, and `==`
+# compares the encoding too under CRuby).
 def byte_table
   out = "0" * 256
+  out.force_encoding("BINARY")
   i = 0
   while i < 256
     out.setbyte(i, i)

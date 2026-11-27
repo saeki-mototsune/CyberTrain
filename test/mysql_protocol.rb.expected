@@ -2,6 +2,9 @@ ok   a text result set decodes every column type
 ok   text values have the Ruby classes of their column types, strings UTF-8 except binary columns
 ok   a prepared statement's binary rows decode to the same values as the text protocol
 ok   COM_STMT_EXECUTE lays out the NULL bitmap, the types and each bind's value
+ok   binds of mixed encodings and high bytes go out byte for byte
+ok   nine parameters with the eighth NULL and a Float, statement id 200
+ok   PacketIO frames a payload with high bytes behind a header with high bytes
 ok   what the bound row holds, read back
 ok   binary rows of 7, 8 and 9 columns place each NULL bit after the two reserved bits
 ok   a text row of 9 columns with NULLs
@@ -18,4 +21,4 @@ ok   close_statement sends COM_STMT_CLOSE and forgets the statement
 ok   ping answers true for OK and false when the connection is gone; quit sends COM_QUIT
 ok   a BIGINT UNSIGNED past 2**63 - 1 is refused once the result is read, in both protocols
 ok   zero dates decode as zeros in both protocols
-20 tests, 404 assertions, 0 failures
+23 tests, 412 assertions, 0 failures

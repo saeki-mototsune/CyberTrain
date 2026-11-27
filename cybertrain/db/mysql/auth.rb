@@ -95,9 +95,8 @@ module Cybertrain
           return "" if pw.empty?
 
           stage1 = Digest::SHA1.digest(pw)
-          salted = String.new
-          salted << scramble.to_s
-          salted << Digest::SHA1.digest(stage1)
+          salted = Wire.bytes(scramble)
+          salted << Wire.bytes(Digest::SHA1.digest(stage1))
           Auth.xor_bytes(stage1, Digest::SHA1.digest(salted))
         end
 
@@ -108,9 +107,8 @@ module Cybertrain
           return "" if pw.empty?
 
           stage1 = Digest::SHA256.digest(pw)
-          salted = String.new
-          salted << Digest::SHA256.digest(stage1)
-          salted << scramble.to_s
+          salted = Wire.bytes(Digest::SHA256.digest(stage1))
+          salted << Wire.bytes(scramble)
           Auth.xor_bytes(stage1, Digest::SHA256.digest(salted))
         end
 
@@ -118,7 +116,7 @@ module Cybertrain
         def self.xor_bytes(left, right)
           a = left.to_s
           b = right.to_s
-          out = "0" * a.bytesize
+          out = Wire.zeros(a.bytesize)
           i = 0
           while i < a.bytesize
             out.setbyte(i, a.getbyte(i) ^ b.getbyte(i))
@@ -168,20 +166,20 @@ module Cybertrain
           out = Wire.int_le(flags, 4)
           out << Wire.int_le(MAX_PACKET, 4)
           out << Wire.int_le(CHARSET, 1)
-          out << ("\0" * 23)
+          out << Wire.zeros(23)
           out
         end
 
         def self.handshake_response(flags, url, plugin, scramble)
           out = Auth.response_head(flags)
-          out << url.user
+          out << Wire.bytes(url.user)
           out << "\0"
           out << Wire.lenenc_str(Auth.scrambled(plugin, url.password, scramble))
           unless url.database.empty?
-            out << url.database
+            out << Wire.bytes(url.database)
             out << "\0"
           end
-          out << plugin
+          out << Wire.bytes(plugin)
           out << "\0"
           out
         end
@@ -227,9 +225,8 @@ module Cybertrain
             elsif kind == 0x01 && plugin == CACHING_SHA2 && packet.bytesize == 2 && packet.getbyte(1) == 0x04
               raise Cybertrain::DB::Error, "caching_sha2_password full authentication needs TLS (ssl_mode=verify)" unless secure
 
-              clear = String.new
-              clear << url.password
-              clear << "\0"
+              clear = Wire.bytes(url.password)
+              clear << Wire.zeros(1)
               conn.write_packet(clear)
             else
               shown = "0x#{(kind + 256).to_s(16).byteslice(1, 2)}"
