@@ -278,10 +278,14 @@ module Cybertrain
         src << "        groups[records[i].id] = Array.new(0) { #{plan.model}.new }\n" if many
         src << "        i += 1\n"
         src << "      end\n"
+        # An `as:` child's type column is one more bind (D94): its chunks
+        # leave room for it under the variable limit.
+        chunk = type_condition(plan) == "" ? "step" : "chunk"
+        src << "      chunk = step - 1\n" unless chunk == "step"
         src << "      start = 0\n"
         src << "      while start < ids.size\n"
         src << "        found = #{plan.model}Relation.new(\"#{plan.target_table}\")" \
-               ".where(#{type_condition(plan)}#{plan.foreign_key}: ids[start, step])" \
+               ".where(#{type_condition(plan)}#{plan.foreign_key}: ids[start, #{chunk}])" \
                ".order(id: :asc).to_a\n"
         src << "        j = 0\n"
         src << "        while j < found.size\n"
@@ -300,7 +304,7 @@ module Cybertrain
         end
         src << "          j += 1\n"
         src << "        end\n"
-        src << "        start += step\n"
+        src << "        start += #{chunk}\n"
         src << "      end\n"
         src << "      i = 0\n"
         src << "      while i < records.size\n"

@@ -231,9 +231,10 @@ class PhotoRelation < Cybertrain::Relation
         groups[records[i].id] = Array.new(0) { Comment.new }
         i += 1
       end
+      chunk = step - 1
       start = 0
       while start < ids.size
-        found = CommentRelation.new("comments").where(commentable_type: "Photo", commentable_id: ids[start, step]).order(id: :asc).to_a
+        found = CommentRelation.new("comments").where(commentable_type: "Photo", commentable_id: ids[start, chunk]).order(id: :asc).to_a
         j = 0
         while j < found.size
           key = found[j].commentable_id
@@ -244,7 +245,7 @@ class PhotoRelation < Cybertrain::Relation
           end
           j += 1
         end
-        start += step
+        start += chunk
       end
       i = 0
       while i < records.size
@@ -264,9 +265,10 @@ class PhotoRelation < Cybertrain::Relation
         groups[records[i].id] = Array.new(0) { Note.new }
         i += 1
       end
+      chunk = step - 1
       start = 0
       while start < ids.size
-        found = NoteRelation.new("notes").where(notable_type: "Photo", notable_id: ids[start, step]).order(id: :asc).to_a
+        found = NoteRelation.new("notes").where(notable_type: "Photo", notable_id: ids[start, chunk]).order(id: :asc).to_a
         j = 0
         while j < found.size
           key = Cybertrain::Cast.int(found[j].notable_id)
@@ -277,7 +279,7 @@ class PhotoRelation < Cybertrain::Relation
           end
           j += 1
         end
-        start += step
+        start += chunk
       end
       i = 0
       while i < records.size

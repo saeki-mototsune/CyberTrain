@@ -441,7 +441,7 @@ module Cybertrain
             allowlist.
           - `decimal` columns are Floats: keep money in an integer column of
             minor units.
-          - No `has_many :through`, enums, STI or polymorphic associations.
+          - No enums or STI; a `has_many :through` is read-only.
             Associations come from foreign keys or one-line `has_many`,
             `has_one`, `belongs_to` declarations; `includes` nests
             (`includes(comments: :author)`), one query per level.
