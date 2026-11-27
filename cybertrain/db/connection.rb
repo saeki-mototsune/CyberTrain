@@ -13,13 +13,11 @@ module Cybertrain
       # Prepared statements a connection keeps (see #execute).
       MAX_CACHED_STATEMENTS = 64
 
-      # Waiting for another connection's lock in Ruby (#step_waiting,
-      # #exec_waiting): the first pause, the longest one, and when to give
-      # up (seconds). The pause starts at the 100 us the busy handler used,
-      # so a lock held for microseconds still costs microseconds, and
-      # doubles to 1 ms; the limit is the busy handler's five seconds.
-      BUSY_FIRST_PAUSE = 0.0001
-      BUSY_MAX_PAUSE = 0.001
+      # How long a statement waits for another connection's lock before it
+      # fails with "database is locked" (seconds): the busy handler's limit
+      # (SQLite3.cybertrain_sqlite_set_busy_handler). The wait is inside an
+      # offloaded call, so the worker runs other green threads, the lock
+      # holder among them, meanwhile (spikes/NOTES.md rule 80).
       BUSY_WAIT_LIMIT = 5.0
 
       # True for a path whose database lives only in its connection, so no
@@ -60,9 +58,9 @@ module Cybertrain
         # does not see.
         @transaction_lost = false
         # The busy handler's slot (SQLite3.cybertrain_sqlite_set_busy_handler):
-        # its mode and whether SQLite asked to wait. Freed by #close, after
+        # its limit and when the current wait started. Freed by #close, after
         # sqlite3_close, the last call that could reach the handler.
-        @busy = SQLite3.malloc(8)
+        @busy = SQLite3.malloc(16)
         # SQL text => its prepared statement, kept for the life of the
         # connection: an app runs the same few queries on every request, and
         # preparing one (parsing the SQL against the schema) cost more than
@@ -105,10 +103,10 @@ module Cybertrain
         # rescue, not an ensure, as everywhere in this file (NOTES rule 50);
         # `close` is the same path a user close takes.
         begin
-          # Lock waits through the busy handler's slot instead of PRAGMA
-          # busy_timeout (see SQLite3): in Ruby for a statement, in C for a
-          # script.
-          rc = SQLite3.cybertrain_sqlite_set_busy_handler(@db, @busy)
+          # Lock waits through the busy handler instead of PRAGMA
+          # busy_timeout (see SQLite3): 100 us between tries, inside the
+          # offloaded call.
+          rc = SQLite3.cybertrain_sqlite_set_busy_handler(@db, @busy, (BUSY_WAIT_LIMIT * 1000).to_i)
           raise Error, error_message("sqlite3_busy_handler") if rc != SQLite3::OK
           # WAL is meaningless for a database that lives only in this
           # connection; every spelling of that is private_database?, not just
@@ -121,9 +119,8 @@ module Cybertrain
             # at every COMMIT (FULL, SQLite's default). A crash of the
             # process loses nothing and the file stays consistent either
             # way; a power loss or an OS crash can lose the last commits
-            # before the checkpoint. A sync cost 0.3 ms or more per commit,
-            # and an FFI call holds its OS worker while it waits (NOTES rule
-            # 80): a comment POST of examples/blog (its insert, the job and
+            # before the checkpoint. A sync cost 0.3 ms or more per commit:
+            # a comment POST of examples/blog (its insert, the job and
             # the broadcast, then the job's claim and outcome) spent most
             # of its time in five of them (docs/design.md D92). Only when
             # the switch to WAL took: in a rollback journal NORMAL is less
@@ -196,10 +193,10 @@ module Cybertrain
           # Step first: a cached statement is re-prepared inside the step
           # after a schema change, and only then do its column count and
           # names (and any later row) describe the new table. Only this first
-          # step waits for a lock: a statement takes its locks before it
-          # changes or returns anything.
+          # step waits for a lock (a statement takes its locks before it
+          # changes or returns anything), so only it is offloaded.
           in_transaction = SQLite3.sqlite3_get_autocommit(@db) == 0
-          rc = step_waiting(stmt, in_transaction)
+          rc = SQLite3.cybertrain_sqlite_step_first(stmt)
           columns = SQLite3.sqlite3_column_count(stmt)
           # The names once per SQL text (and the count must still match),
           # not once per row and column.
@@ -240,10 +237,7 @@ module Cybertrain
       end
 
       # Runs a semicolon-separated script (schema DDL, PRAGMAs); no binds, no rows.
-      # A lock is waited for inside the call, holding the OS worker: a script
-      # that stopped at a lock half way could not be re-run from the top
-      # (its first statements already ran). Scripts run at boot and in
-      # migrations, not per request.
+      # A lock is waited for in the busy handler, as for #execute.
       def exec_script(sql)
         raise Error, "connection closed (sql: #{sql})" if @closed
         # A ROLLBACK of a transaction SQLite already rolled back has nothing
@@ -252,9 +246,7 @@ module Cybertrain
         return nil if refuse_if_transaction_gone(sql)
 
         forget_names
-        SQLite3.cybertrain_sqlite_busy_report(@busy, 0)
         message = run_script(sql)
-        SQLite3.cybertrain_sqlite_busy_report(@busy, 1)
         raise Error, message unless message.empty?
 
         nil
@@ -404,7 +396,7 @@ module Cybertrain
         end
         refuse_if_transaction_gone(immediate ? "BEGIN IMMEDIATE" : "BEGIN")
 
-        exec_waiting(immediate ? "BEGIN IMMEDIATE" : "BEGIN")
+        exec_one(immediate ? "BEGIN IMMEDIATE" : "BEGIN")
         @transaction_depth = 1
         nil
       end
@@ -428,7 +420,7 @@ module Cybertrain
 
         @transaction_depth = 0
         begin
-          exec_waiting("COMMIT")
+          exec_one("COMMIT")
         rescue Error => e
           abandon_transaction!
           raise e
@@ -483,9 +475,7 @@ module Cybertrain
         return :clean if @closed
         return :clean if SQLite3.sqlite3_get_autocommit(@db) != 0
 
-        SQLite3.cybertrain_sqlite_busy_report(@busy, 0)
         SQLite3.sqlite3_exec(@db, "ROLLBACK", nil, nil, nil)
-        SQLite3.cybertrain_sqlite_busy_report(@busy, 1)
         SQLite3.sqlite3_get_autocommit(@db) != 0 ? :rolled_back : :failed
       end
 
@@ -624,65 +614,14 @@ module Cybertrain
         row
       end
 
-      # sqlite3_step, waiting in Ruby while another connection holds the
-      # lock it needs: SQLITE_BUSY with the busy handler asked to wait
-      # resets the statement (its binds stay) and steps again after a
-      # green-thread `sleep`, which lets the lock holder run on this OS
-      # worker (saeki-mototsune/CyberTrain#134). A BUSY the handler was not
-      # asked about cannot clear by waiting and is returned at once, as is
-      # the last one after BUSY_WAIT_LIMIT.
-      #
-      # in_transaction: whether SQLite was inside a transaction before this
-      # statement, one opened by #begin! or by SQL (`exec_script("BEGIN")`,
-      # which leaves @transaction_depth at 0). #run_statement reads it once
-      # for this and for #note_lost_transaction.
-      def step_waiting(stmt, in_transaction)
-        rc = SQLite3.sqlite3_step(stmt)
-        return rc if rc != SQLite3::BUSY
-
-        deadline = Connection.monotonic + BUSY_WAIT_LIMIT
-        pause = BUSY_FIRST_PAUSE
-        while rc == SQLite3::BUSY && SQLite3.cybertrain_sqlite_busy_asked(@busy) == 1
-          break if Connection.monotonic >= deadline
-          # SQLite may roll an explicit transaction back on its own after
-          # SQLITE_BUSY (as #begin! notes); the statement re-run then would
-          # commit by itself, outside the transaction the caller opened.
-          # Return the BUSY instead, so the transaction fails as a whole.
-          break if in_transaction && SQLite3.sqlite3_get_autocommit(@db) != 0
-
-          SQLite3.sqlite3_reset(stmt)
-          sleep pause
-          pause = pause * 2 < BUSY_MAX_PAUSE ? pause * 2 : BUSY_MAX_PAUSE
-          rc = SQLite3.sqlite3_step(stmt)
-        end
-        rc
-      end
-
-      # One statement with no rows (BEGIN, BEGIN IMMEDIATE, COMMIT), waiting
-      # for a lock as #step_waiting does. Re-running it after SQLITE_BUSY is
-      # safe: a refused BEGIN IMMEDIATE began nothing, and a refused COMMIT
-      # leaves the transaction open for the next try (SQLite's docs).
-      def exec_waiting(sql)
+      # One statement with no rows (BEGIN, BEGIN IMMEDIATE, COMMIT): a lock is
+      # waited for in the busy handler, inside the offloaded sqlite3_exec.
+      def exec_one(sql)
         raise Error, "connection closed (sql: #{sql})" if @closed
         forget_names
         rc = SQLite3.sqlite3_exec(@db, sql, nil, nil, nil)
-        if rc == SQLite3::BUSY
-          deadline = Connection.monotonic + BUSY_WAIT_LIMIT
-          pause = BUSY_FIRST_PAUSE
-          while rc == SQLite3::BUSY && SQLite3.cybertrain_sqlite_busy_asked(@busy) == 1
-            break if Connection.monotonic >= deadline
-
-            sleep pause
-            pause = pause * 2 < BUSY_MAX_PAUSE ? pause * 2 : BUSY_MAX_PAUSE
-            rc = SQLite3.sqlite3_exec(@db, sql, nil, nil, nil)
-          end
-        end
         raise Error, error_message(sql) if rc != SQLite3::OK
         nil
-      end
-
-      def self.monotonic
-        Process.clock_gettime(Process::CLOCK_MONOTONIC)
       end
 
       # Raises instead of running sql when the application's transaction is
@@ -874,8 +813,8 @@ module Cybertrain
       # however the script got into it (`CREATE ...; BEGIN; ...`,
       # saeki-mototsune/CyberTrain#164), and a BEGIN that fails opened
       # nothing. Stops at the first failing statement, as sqlite3_exec does,
-      # and returns its message ("" when every statement ran), so that
-      # #exec_script restores the busy handler's mode before raising.
+      # and returns its message ("" when every statement ran), which
+      # #exec_script raises.
       def run_script(sql)
         n = sql.bytesize
         offset = 0
@@ -897,7 +836,7 @@ module Cybertrain
 
           statement = sql.byteslice(offset, next_offset - offset).to_s
           offset = next_offset
-          rc = SQLite3.sqlite3_step(stmt)
+          rc = SQLite3.cybertrain_sqlite_step_first(stmt)
           rc = SQLite3.sqlite3_step(stmt) while rc == SQLite3::ROW
           if rc != SQLite3::DONE
             message = error_message(sql)

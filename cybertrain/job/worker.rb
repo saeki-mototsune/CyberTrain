@@ -22,8 +22,9 @@ module Cybertrain
       WAIT_SLICE = 0.1
 
       # A job thread with a backlog goes from one job to the next claim
-      # without parking: SQLite calls, the handler's own work and the
-      # outcome write all keep the OS worker (NOTES rule 80). Unless it
+      # without parking: the handler's own work and the SQLite calls that
+      # are not offloaded (binds, row steps) keep the OS worker (NOTES rule
+      # 80; this was measured when every SQLite call kept it). Unless it
       # parks, the other green threads of that worker (the requests) wait
       # until the runtime takes the worker back: measured on one worker,
       # each request that came during a drain waited about 50 ms (the

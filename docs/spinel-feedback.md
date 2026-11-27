@@ -276,7 +276,7 @@ the cell names another build.
 | Y | bug | 82 | passes on the pin, workaround kept (status 82) |  |
 | Z | bug | 88 (111 narrows it) | passes on the pin, workaround kept (status 88) |  |
 | AA | cost |  | not re-checked on the pin (last: in the generated C of main on 2026.11.04.7026, 2026-11-13; not reduced) |  |
-| AB | bug | 80 | open (status 80: `blocking: true` and no option still hold the worker; the pin adds `offload: true`) |  |
+| AB | bug | 80 | open (status 80: `blocking: true` and no option still hold the worker; the pin adds `offload: true`, and since 2026-11-27 CyberTrain's SQLite calls that wait use it, so the busy-handler workaround is gone; `Socket.getaddrinfo` is Spinel's own and still holds the worker until matz/spinel#12712) |  |
 | AC | bug | 49 | passes on the pin, workaround kept (status 49) |  |
 | AD | bug | 52 | passes on the pin, workaround kept (status 52: `byteindex`; `strip` is AU) |  |
 | AE | bug | 47, 53, 54 | passes on the pin, workaround kept (status 54; 47 and 53 match in rechecks/exception_shapes.rb) |  |
@@ -464,7 +464,7 @@ CRuby's result; "Item register" has the state of every row.
 | L (rule 22) | An explicit `SPINEL_WORKERS=N` counts main, which a server keeps waiting | `Application.spinel_workers` hands Spinel `workers + 1` above 1 (application.rb; roles/server.rb, roles/worker.rb, roles/feeds.rb) | Documented upstream (da4485a5): how Spinel is used |
 | 5 (a) | At one worker 83% of collections are full | `SPINEL_GC_FULL_INTERVAL=8` in the Dockerfile `cybertrain new` writes (cli/templates.rb), in examples/blog/Dockerfile and in docs/deploy.md and deploy.en.md | Open; the change is described under 5, not written |
 | Rule 79 | A rescuing method's value does not compile when its block only raises | Nothing in the framework; a test gives the block a value after the `raise` | Fixed, #11137; in no fork tag |
-| AB (rule 80) | A foreign call holds its OS worker for as long as it runs, with or without `blocking: true`: fails (2026-11-13) | SQLite's busy handler reports instead of sleeping, and `Connection#step_waiting` / `#exec_waiting` retry after a green-thread `sleep` (db/sqlite_ffi.rb, db/connection.rb); the guides tell an application to run heavy SQLite work in its own binary with `system`; names are resolved once per request (net/socket.rb) | Open; not reported |
+| AB (rule 80) | A foreign call holds its OS worker for as long as it runs, with or without `blocking: true`: fails (2026-11-13) | Since 2026-11-27 none for SQLite: the calls that can wait for a lock (prepare, `sqlite3_exec`, a statement's first step) are `offload: true` and the busy handler waits in C on the pool thread (db/sqlite_ffi.rb); until then the busy handler reported instead of sleeping and `Connection#step_waiting` / `#exec_waiting` retried after a green-thread `sleep`. The guides still tell an application to run heavy SQLite work in its own binary with `system`; names are resolved once per request (net/socket.rb) | Open; not reported |
 | AC (rule 49) | `URI.decode_www_form_component` is quadratic on non-ASCII text: fails (2026-11-13) | `Query.decode` copies the text between escapes by byte and hands the library only ASCII runs of `%XX` (http/query.rb; http/request.rb for a path) | Open; not reported |
 | AD (rule 52) | `String#byteindex` accepts an offset inside a character: fails (2026-11-13) | `Query.utf8!` validates request text once, up front, and an invalid sequence is `QueryMalformed`, a 400; nothing rescues `IndexError` (http/query.rb, http/request.rb, http/cookies.rb) | Open; not reported |
 | AE (rule 54; 47, 53) | `Class#superclass` on a package's exception class is NoMethodError: fails (2026-11-13) | Client faults are listed by full name in `ClientError::CLIENT_FAULTS`, and `script/check-client-faults` keeps the list complete under CRuby in CI (http/client_error.rb) | Open; not reported. The reduced programs of 47 and 53 pass, and `Class#name` carries the namespace on the pin (46) |
@@ -584,7 +584,7 @@ re-measured for this inventory. The first rows are the larger ones.
 | --- | --- | --- | --- | --- |
 | 5 (a). The full-collection cadence falls to every cycle for a server's request garbage | 83% of collections full; fixing the interval at 8 gives 16 to 17% more requests a second (2026.10.27.7020; the same rule and the same 83% on the pin) | `SPINEL_GC_FULL_INTERVAL=8` in the deploy files; bench/run leaves it unset | Weigh what a full mark costs against the promoted garbage it frees, or make aging work with the slab | Open; not written |
 | AA. Closure cells are allocated on entry to the method that holds the block | 576 of an article page's 1,650 objects (35%), and `eval_expr`'s alone 756 of the list page's (41%); writing around three methods took the pages to 1,073 and 1,058 objects (the pin, 2026-11-05) | `while` loops on the request path. 85 methods of examples/blog's program still allocate 176 cells on entry (generated C, 2026-11-13), ten cells a page on the request path | Allocate a cell where the block is made, so a call that never reaches the block pays nothing | Open; not reduced, not reported |
-| AB. A foreign call holds its OS worker | At one worker a long SQLite call stalls every request for as long; a writer waiting in the busy handler stalled the server for 5 s (saeki-mototsune/CyberTrain#134) | The wait is done in Ruby (`step_waiting`); long work is sent to another process; `getaddrinfo` still holds the worker | Around a `blocking: true` call, hand the worker's other green threads to another OS thread | Open; not reported |
+| AB. A foreign call holds its OS worker | At one worker a long SQLite call stalls every request for as long; a writer waiting in the busy handler stalled the server for 5 s (saeki-mototsune/CyberTrain#134) | SQLite calls that wait are `offload: true` since 2026-11-27 (the Ruby wait, `step_waiting`, is gone); `getaddrinfo` still holds the worker | Around a `blocking: true` call, hand the worker's other green threads to another OS thread (matz's 94a7a8fb6 declines this and adds `offload: true` instead; Spinel's own `getaddrinfo` is offloaded by matz/spinel#12712, not merged) | Open; not reported |
 | 5 (b). At one worker the sweep is handed to a thread that shares the CPU | 5.4% fewer requests a second, 12% higher p99 (2026.10.27.7020) | Nothing (`SPINEL_GC_CONC=0` helps only on a one-CPU host) | Start no sweeper when the process may use one CPU | Fixed, #11646; in no fork tag |
 | L. `SPINEL_WORKERS=N` counts a main that only waits; a helper's spawns stay on that helper | A second worker gave 0 to 2% on the pages until the workaround, 24 to 44% with it; connections still split 15 to 3 between two helpers, which is queueing latency | `workers + 1` | Place a thread a helper spawns as main's spawns are placed | First half documented upstream; the second not looked for on master |
 | A block allocates a Proc and its cells per call; `each { return }` is a `setjmp` and a Proc | The template interpreter's loops, `run_before_callbacks` and the partial lookup had to become `while` loops (2026.09.12) | `while` on the request path | Inline the blocks of known iterators; a non-local return without `setjmp` when the block is inlined | Not re-checked on the pin |
@@ -850,7 +850,7 @@ run on master 1c0cc5e35:
 | Y | every stored lambda of the framework is made in a method, not written into a module-body ivar: `Views.default_url_resolver`, `Views.default_helpers_builder`, `Views.default_component_builder` and `Assets.empty_resolver` (spikes/NOTES.md rule 82) | **Ready to report**: the 14-line program in Y (CRuby prints `sess`; the compiled program raises NoMethodError on an Integer). No fix written. Not reported upstream yet; the same on master 1c0cc5e35 (2026-11-13) |
 | Z | no method that only stored blocks call has a stub on its base class (the generated `counter_cache_*` on `Cybertrain::Model`, a job's `run_job` on `Job::Base`), and `respond_to`, a controller's `content_security_policy` and the Turbo Stream builder run a block at once instead of storing it (spikes/NOTES.md rule 88) | **Ready to report**: the 22-line program in Z (CRuby prints `"sub"`; the compiled program `""`). No fix written. Not reported upstream yet; the same on master 1c0cc5e35 (2026-11-13) |
 | AA | the `while` loops that stand in for blocks on the request path (`Interpreter#eval_expr`, `Helpers#nested_url`), and `Response#respell_header` | Nothing yet: seen in the generated C of the framework's methods, not reduced (two standalone programs allocate nothing on entry, see AA). Not reported |
-| AB | the busy handler that reports instead of waiting, and `Connection#step_waiting` (spikes/NOTES.md rule 80); kept after a fix unless a foreign call stops holding its worker | **Ready to report**: the 22-line program in AB (`ticks=1` at one worker with `blocking: true`). First to be run on master, and docs/FFI.md read for what the option promises. Not reported |
+| AB | the busy handler that reported instead of waiting, and `Connection#step_waiting` (spikes/NOTES.md rule 80): removed on 2026-11-27, the SQLite calls that wait are `offload: true` | **Ready to report**: the 22-line program in AB (`ticks=1` at one worker with `blocking: true`). First to be run on master, and docs/FFI.md read for what the option promises. Not reported |
 | AC | `Query.decode`'s own byte loop around the library decoder (spikes/NOTES.md rule 49) | **Ready to report**: the 8-line program in AC (1 ms under CRuby; 119, 556 and 1,949 ms compiled). Not reported; not run on master |
 | AD | none (the framework validates the text first, and stays that way) | **Ready to report**: the 5-line program in AD. Low in harm. Not reported; not run on master |
 | AE | the list of client faults by name, `ClientError::CLIENT_FAULTS`, with `script/check-client-faults` (spikes/NOTES.md rules 47 and 54); it stays unless an ancestor walk works for every class | **Ready to report**: the 6-line program in AE. Not reported; not run on master |
@@ -3991,9 +3991,26 @@ runtime's, which is why the C above sleeps again on `EINTR`.)
   thread was parked on the same worker could not be released by it: 5 s
   of stall and a "database is locked". `Socket.getaddrinfo` is the same
   for a dead resolver.
-- Today: the busy handler only records that SQLite asked to wait, and
-  `Connection#step_waiting` retries after a green-thread `sleep`
-  (test/db_busy_wait.rb); heavy SQLite work is run in another process.
+- Until 2026-11-27: the busy handler only recorded that SQLite asked to
+  wait, and `Connection#step_waiting` retried after a green-thread
+  `sleep`; heavy SQLite work was run in another process.
+- Today: the pin (2026.11.27.7037) has `ffi_func ... offload: true`
+  (matz's 94a7a8fb6): the C function runs on a pool thread while the
+  caller waits as for I/O. The SQLite calls that can wait for a lock
+  (`sqlite3_prepare_v2`, `cybertrain_sqlite_prepare_at`, `sqlite3_exec`,
+  a statement's first step) are declared so, and the busy handler sleeps
+  in C on that thread for up to 5 s. With real SQLite at
+  `SPINEL_WORKERS=1`, one thread holding BEGIN IMMEDIATE for 0.2 s and a
+  second connection inserting: `blocking: true` gave SQLITE_BUSY after
+  5.26 s, `offload: true` succeeded after 0.21 s. Through the framework it
+  is not yet reliable: with the Ruby wait removed, test/db_busy_wait.rb and
+  a 50-round probe of its shape stalled for 5 s in about one round in ten,
+  each time because the lock holder's `sleep 0.3` came back only when the
+  waiter's offloaded call gave up. Not reduced: an offloaded C `nanosleep`
+  beside a sleeping green thread gave 0/40 in three shapes. `blocking: true` itself still holds
+  the worker (the program above still prints `ticks=1`; 94a7a8fb6 keeps
+  the option's meaning), and `Socket.getaddrinfo`, Spinel's own, is
+  offloaded only by matz/spinel#12712 (not merged), so AB stays open.
 - Asked of Spinel: around a `blocking: true` call, let another OS thread
   take over the worker's run queue (what Go's runtime does around a
   system call), or say in docs/FFI.md that the option does not do this.

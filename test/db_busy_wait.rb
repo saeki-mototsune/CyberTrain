@@ -3,7 +3,10 @@
 # worker, every green thread runs on the same OS thread: a busy wait inside
 # the SQLite call (the old busy handler slept there for up to about 5 s)
 # keeps the holder from ever reaching its COMMIT, so the waiter gave up with
-# "database is locked" and every other request stalled meanwhile.
+# "database is locked" and every other request stalled meanwhile. The busy
+# handler waits in C again, but inside an `offload: true` call
+# (cybertrain/db/sqlite_ffi.rb), which runs on a pool thread while the
+# worker runs the holder (spikes/NOTES.md rule 80).
 #
 # SPINEL_WORKERS is read when the first Thread.new starts the scheduler, so
 # it is set before anything else (spikes/NOTES.md rule 22).

@@ -18,7 +18,7 @@ module Probe
     const char *probe_bytes(long n) { sp_ffi_bin_len = (int)n; return "a\\0b\\0c"; }
   C
   ffi_func :probe_add, [:long, :long], :long
-  ffi_func :probe_hidden, [], :int
+  ffi_func :probe_hidden, [], :int, offload: true
   ffi_func :probe_store, [:ptr, :long], :void
   ffi_func :probe_hello, [], :str
   ffi_func :probe_bytes, [:long], :binstr

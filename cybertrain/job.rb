@@ -189,8 +189,9 @@ module Cybertrain
     # @api public
     OUTCOME_STALE = :stale
 
-    # Job.work_due's default bound: a SQLite call holds its OS worker until
-    # it returns, so an unbounded drain could keep requests waiting.
+    # Job.work_due's default bound: a handler's work, and a SQLite call that
+    # is not offloaded, hold the OS worker until they return, so an
+    # unbounded drain could keep requests waiting.
     JOBS_PER_POLL = 20
 
     # Job.process_label, computed on first use; "" until then.
