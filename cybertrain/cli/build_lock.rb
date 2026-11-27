@@ -133,35 +133,14 @@ module Cybertrain
         false
       end
 
-      # Whether the path still names the file f has open.
+      # Whether the path still names the file f has open: File#stat is
+      # fstat(2) of f's descriptor, File.stat a stat(2) of the path.
       def same_file?(f)
         there = File.stat(@lock_path)
-        descriptor_id(f) == "#{there.dev}:#{there.ino}"
+        here = f.stat
+        here.dev == there.dev && here.ino == there.ino
       rescue StandardError
         false
-      end
-
-      # The device and inode of the file f has open, from fstat(2). Under
-      # Spinel File#stat stats the path instead, and IO.for_fd's handle is a
-      # dup of the descriptor that stats it but must be closed here, or it
-      # would keep the flock alive after f closes (rule 112). Under CRuby
-      # File#stat is fstat, and closing an IO.for_fd would close f's own
-      # descriptor.
-      def descriptor_id(f)
-        if RUBY_ENGINE == "ruby"
-          st = f.stat
-          return "#{st.dev}:#{st.ino}"
-        end
-
-        io = IO.for_fd(f.fileno, autoclose: false)
-        id = ""
-        begin
-          st = io.stat
-          id = "#{st.dev}:#{st.ino}"
-        ensure
-          io.close
-        end
-        id
       end
 
       # Writes the PID into the locked file. Should that fail (a full disk),

@@ -538,7 +538,9 @@ decision, and 77 explicitly retires a workaround.
     Retry::BACKOFF`, `puts EARLY`) and read before its assignment raises
     NameError compiled too, at top level, in a module body and in a class
     body (status 17). The advice is unchanged.
-    Kept until docs/spinel-feedback.md AV is closed.
+    On 2026.11.27.7037 the class name raises NameError compiled too
+    (rechecks/differing/class_before_definition.rb).
+    Closed (docs/spinel-feedback.md AV): kept for its number.
 18. A module-level `@@class_variable` assigned inside `module Cybertrain`
     miscompiles once an earlier required file has already opened the module
     (C error "incompatible pointer to integer conversion"). Use a module-level
@@ -962,7 +964,10 @@ decision, and 77 explicitly retires a workaround.
     next "%" from `i + 1`, not `i + 3` (the byte at i + 1 is a hex digit, an
     ASCII byte, always a boundary; i + 3 can be a stray byte in a String
     nobody validated).
-    Kept until docs/spinel-feedback.md AD and AU are closed.
+    On 2026.11.27.7037 Spinel's `strip` raises
+    `Encoding::CompatibilityError` on such a String as CRuby's does (AU,
+    closed on 2026-11-27).
+    Kept until docs/spinel-feedback.md AD is closed.
 53. An exception object built with `.new("msg")` and never raised has no
     `#message` under Spinel (`undefined method 'message' for an instance of
     <its class>`, seen on a `Cybertrain::` exception subclass in review;
@@ -2182,7 +2187,10 @@ decision, and 77 explicitly retires a workaround.
      `IO.for_fd(f.fileno, autoclose: false)`, its `stat`, then its `close`
      under Spinel, and plain `f.stat` under CRuby, where closing the
      for_fd IO would close f's descriptor (`CLI::BuildLock#descriptor_id`).
-     Kept until docs/spinel-feedback.md AT is closed.
+     On 2026.11.27.7037 `File#stat` on an open File is the fstat(2) of its
+     descriptor, as under CRuby, and `CLI::BuildLock#same_file?` takes
+     `f.stat` under both runtimes; what is said above of `flock` stands.
+     Closed (docs/spinel-feedback.md AT): kept for its number.
 
 113. A rescuing yielder with one `rescue` clause around the yield,
      `value = nil; begin; value = yield; rescue JSON::NestingError,
