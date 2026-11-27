@@ -163,8 +163,8 @@ module Cybertrain
         nil
       end
 
-      # The ALTER TABLEs of the ALTER_COLUMNS `PRAGMA table_info` does not
-      # list. Two processes upgrading at once could both see a column missing:
+      # The ALTER TABLEs of the ALTER_COLUMNS DB::Dialect.column_names does
+      # not list. Two processes upgrading at once could both see a column missing:
       # outside a transaction the read and the ALTERs run under the write lock
       # (BEGIN IMMEDIATE), and a "duplicate column name" from a process that
       # still won the race (inside a caller's transaction, or an older
@@ -187,9 +187,7 @@ module Cybertrain
       end
 
       def self.alter_missing(conn)
-        rows = conn.execute("PRAGMA table_info('cybertrain_jobs')")
-        present = Array.new(0) { "" }
-        rows.each { |r| present << Cast.str(r["name"]) }
+        present = DB::Dialect.column_names(conn, "cybertrain_jobs")
         ALTER_COLUMNS.each do |pair|
           conn.execute(pair[1]) unless present.include?(pair[0])
         end

@@ -828,11 +828,10 @@ module Cybertrain
       end
     end
 
-    # "posts" -> "`posts`" (an embedded backtick is doubled).
+    # "posts" -> "`posts`" (an embedded backtick is doubled): the
+    # adapter's Cybertrain::DB::Dialect.quote_ident.
     def self.quote_ident(name)
-      return "`#{name}`" unless name.include?("`")
-
-      "`" + name.gsub("`", "``") + "`"
+      Cybertrain::DB::Dialect.quote_ident(name)
     end
 
     # "title DESC, id" -> "title ASC, id DESC"

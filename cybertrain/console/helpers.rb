@@ -171,7 +171,7 @@ module Cybertrain
       # subquery over the relation's own SELECT so neither its conditions
       # are lost nor the relation changed; then loaded by id.
       def record_matching(rel, conditions)
-        sql = +"SELECT " << Relation.quote_ident("id") << " FROM (" << rel.to_sql << ")"
+        sql = +"SELECT " << Cybertrain::DB::Dialect.quote_ident("id") << " FROM (" << rel.to_sql << ")"
         binds = Cast.empty_array
         rel.binds.each { |b| binds << b }
         clauses = Array.new(0) { "" }
@@ -242,10 +242,7 @@ module Cybertrain
       end
 
       def tables_command
-        sql = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
-        rows = Cybertrain::DB.with { |c| c.execute(sql) }
-        names = Array.new(0) { "" }
-        rows.each { |r| names << Cast.str(r["name"]) }
+        names = Cybertrain::DB.with { |c| Cybertrain::DB::Dialect.table_names(c) }
         Text.new(names.join("\n"))
       end
 

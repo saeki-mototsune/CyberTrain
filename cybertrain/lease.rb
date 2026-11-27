@@ -22,13 +22,6 @@ module Cybertrain
                 "holder TEXT NOT NULL, " \
                 "expires_at INTEGER NOT NULL);"
 
-    # One statement takes a free lease, renews our own, and takes over an
-    # expired one; a lease another holder still has is left alone (the DO
-    # UPDATE's WHERE is false, so no row changes).
-    ACQUIRE_SQL = "INSERT INTO cybertrain_leases (name, holder, expires_at) VALUES (?, ?, ?) " \
-                  "ON CONFLICT(name) DO UPDATE SET holder = excluded.holder, expires_at = excluded.expires_at " \
-                  "WHERE cybertrain_leases.holder = excluded.holder OR cybertrain_leases.expires_at < ?"
-
     # The DB.generation the table was last ensured for; -1 for never (as
     # Job's).
     @installed_generation = -1
@@ -63,13 +56,11 @@ module Cybertrain
     # @api public
     def self.acquire(name, holder, now, ttl:)
       ensure_installed
-      binds = Cast.binds(name, holder, now + ttl, now)
-      won = false
-      DB.with do |c|
-        c.execute(ACQUIRE_SQL, binds)
-        won = c.changes == 1
-      end
-      won
+      # One statement takes a free lease, renews our own, and takes over an
+      # expired one; a lease another holder still has is left alone
+      # (DB::Dialect.lease_acquire).
+      expires_at = now + ttl
+      DB.with { |c| DB::Dialect.lease_acquire(c, name, holder, expires_at, now) }
     end
 
     # Gives the lease up if `holder` has it (another holder's is left), so

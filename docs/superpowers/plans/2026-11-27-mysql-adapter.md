@@ -150,6 +150,31 @@ DB::Dialect.now_epoch_usec_sql        # => String  サービスが使う「今�
 
   - サービスの SQL のうち上の操作で表せないものは、そのサービスのファイルに Dialect のメソッドを1つ足して閉じ込める。名前は `<service>_<operation>`(例: `job_claim_sql`、`cache_increment(conn, key, by, expires)`)とし、ここに一覧を追記する。
   - メソッドを増やすときは、どれも SQLite と MySQL の両方で実装すること。
+  - 追記(Task 2 の実装): `DB::Adapter.name` は `DB::Adapter.adapter_name` とした(`name` という特異メソッドがあると、フレームワーク全体のプログラムで `x.class.name` が C のビルドエラーになる。spikes/NOTES.md rule 66 の第2段落)。サービス用に足したメソッド(MySQL の SQL は `cybertrain/db/sqlite/dialect.rb` の各メソッドのコメントにある):
+
+```ruby
+DB::Dialect.relation_float_total(arg)          # => String  Float の合計 "TOTAL(arg)"(Relation#sum_float*)
+DB::Dialect.bulk_writes_upsert_tail(conflict_cols, assignments) # => String " ON CONFLICT (...) DO UPDATE SET <assignments>" | 空なら DO NOTHING(Model.upsert、upsert_tail の本体)
+DB::Dialect.bulk_writes_ignore_tail            # => String  " ON CONFLICT DO NOTHING"(insert_all)
+DB::Dialect.bulk_writes_returning_tail(columns) # => String " RETURNING a, b"(insert_all の returning:)
+DB::Dialect.cache_write(conn, key, value, expires_at, now, unless_exist) # => bool 行を書いたか(Cache.write)
+DB::Dialect.cache_increment(conn, key, by, expires_at, now) # => Integer 足した後の値(Cache.increment)
+DB::Dialect.cache_prune(conn, now, limit)      # => Integer 消した行数(Cache.prune の1バッチ)
+DB::Dialect.lease_acquire(conn, name, holder, expires_at, now) # => bool リースを持ったか(Lease.acquire)
+DB::Dialect.timetable_write_sql                # => String  Timetable.write の INSERT(行を巻き戻さない)
+DB::Dialect.timetable_insert_missing_sql       # => String  Timetable.write_missing の INSERT(既存行はそのまま)
+DB::Dialect.feed_table_write_sql               # => String  FeedTable.upsert_feed の upsert
+DB::Dialect.test_database_clear_table(conn, table) # => nil  テーブルの全行を消す(Test::Database)
+DB::Dialect.test_database_mark(conn, marker)   # => nil  テスト用データベースの印を書く(Test::Database.mark!)
+DB::Dialect.schema_columns(conn, table)        # => Array<Hash> 列ごとに name/type/notnull/dflt_value/pk(SchemaDumper)
+DB::Dialect.schema_index_rows(conn, table)     # => Array<Hash> 索引ごとに name/unique(SchemaDumper、Migrator)
+DB::Dialect.schema_index_sql(conn, index)      # => String  索引の CREATE INDEX 文、なければ ""(SchemaDumper)
+DB::Dialect.schema_index_columns(conn, index)  # => Array<String> 索引の列(SchemaDumper、Migrator)
+DB::Dialect.schema_foreign_key_rows(conn, table) # => Array<Hash> 外部キーごとに table/from/on_delete(SchemaDumper)
+DB::Dialect.migrator_foreign_keys_enforced?(conn) # => bool 外部キーの検査が有効か(Migrator)
+DB::Dialect.migrator_foreign_key_check(conn)   # => String  違反の一覧 "t row N -> p, ..."、なければ ""(Migrator)
+DB::Dialect.migrator_rebuild(conn, op, definition) # => nil テーブルを作り直す操作を実行する(SQLite の run_rebuild。MySQL は ALTER TABLE)
+```
 
 - [ ] **Step 1:** `test/db_dialect_sqlite.rb` を書く。上の各メソッドについて、SQLite で今の SQL と同じ文字列または同じ結果になることを照合する。例:
   - `quote_ident("a`b") == "`a``b`"`

@@ -51,16 +51,15 @@ module Cybertrain
         @floor = value
       end
 
-      # Whether the connected database has the messages table. Read with a
-      # SELECT on sqlite_master: the table is never created here (as
+      # Whether the connected database has the messages table. Read with
+      # DB::Dialect.table_exists?: the table is never created here (as
       # Stream.ensure_installed would), so a test that broadcasts nothing
       # leaves its database as it was.
       # @api private
       def self.messages_table?
         return false unless DB.connected?
 
-        rows = DB.with { |c| c.execute("SELECT COUNT(*) AS n FROM sqlite_master WHERE type = 'table' AND name = 'cybertrain_messages'") }
-        Cast.int(rows[0]["n"]) > 0
+        DB.with { |c| DB::Dialect.table_exists?(c, "cybertrain_messages") }
       end
 
       # The largest message id now; 0 without a database or the table.

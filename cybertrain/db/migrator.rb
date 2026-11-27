@@ -149,24 +149,24 @@ module Cybertrain
       # A version with an operation that rebuilds a table runs with foreign
       # key enforcement off, as SQLite's procedure requires: dropping the old
       # table would otherwise fire ON DELETE CASCADE on its children.
-      # `PRAGMA foreign_keys = OFF` does nothing inside a transaction, so it
-      # is issued before BEGIN, and enforcement is restored after the
-      # version, whether it committed or not.
+      # Turning it off (DB::Dialect.foreign_keys_off) does nothing inside a
+      # transaction on SQLite, so it is issued before BEGIN, and enforcement
+      # is restored after the version, whether it committed or not.
       def apply_version(version, ops, forward, sql)
         rebuilt = rebuilt_tables(ops)
         if rebuilt == ""
           run_version(version, ops, forward, sql, rebuilt)
         else
-          enforced = foreign_keys_enforced?
-          @connection.exec_script("PRAGMA foreign_keys = OFF")
+          enforced = Dialect.migrator_foreign_keys_enforced?(@connection)
+          Dialect.foreign_keys_off(@connection)
           begin
-            if foreign_keys_enforced?
+            if Dialect.migrator_foreign_keys_enforced?(@connection)
               message = "cannot rebuild #{rebuilt}: foreign key enforcement stayed on (is a transaction open?)"
               raise Error, message
             end
             run_version(version, ops, forward, sql, rebuilt)
           ensure
-            @connection.exec_script("PRAGMA foreign_keys = ON") if enforced
+            Dialect.foreign_keys_on(@connection) if enforced
           end
         end
         puts "done" unless @quiet
@@ -174,8 +174,8 @@ module Cybertrain
       end
 
       # The version's transaction. With `rebuilt` (the rebuilt tables'
-      # names) non-empty, `PRAGMA foreign_key_check` runs before the commit
-      # and a violation raises, which rolls the version back. Called from a
+      # names) non-empty, DB::Dialect.migrator_foreign_key_check runs before
+      # the commit and a violation raises, which rolls the version back. Called from a
       # method body so the transaction (a yielding method with rescue) is
       # never inside a nested block (spikes/NOTES.md rule 45).
       def run_version(version, ops, forward, sql, rebuilt)
@@ -185,11 +185,6 @@ module Cybertrain
           @connection.execute(sql, [version])
         end
         nil
-      end
-
-      def foreign_keys_enforced?
-        rows = @connection.execute("PRAGMA foreign_keys")
-        !rows.empty? && Cybertrain::Cast.int(rows[0]["foreign_keys"]) != 0
       end
 
       # "posts, comments": the tables `ops` rebuild, each once, "" for none.
@@ -204,87 +199,19 @@ module Cybertrain
       end
 
       def check_foreign_keys(rebuilt)
-        rows = @connection.execute("PRAGMA foreign_key_check")
-        return nil if rows.empty?
-        found = Array.new(0) { "" }
-        rows.each { |r| found << "#{r["table"]} row #{r["rowid"]} -> #{r["parent"]}" }
-        message = "foreign key check failed after rebuilding #{rebuilt}: #{found.join(", ")}"
+        found = Dialect.migrator_foreign_key_check(@connection)
+        return nil if found == ""
+        message = "foreign key check failed after rebuilding #{rebuilt}: #{found}"
         raise Error, message
       end
 
-      # One rebuild operation: the live schema dumped now (after the
-      # version's earlier operations), the operation applied to it in
-      # memory, and the table rebuilt from the result with its triggers and
-      # its sqlite_sequence value as they were. A change_column_null to NOT
-      # NULL with a default first backfills the NULL cells.
+      # One rebuild operation, from the live schema dumped now (after the
+      # version's earlier operations): DB::Dialect.migrator_rebuild (on
+      # SQLite the table rebuilt by its procedure, with its triggers and
+      # its sqlite_sequence value as they were).
       def run_rebuild(op)
-        table_name = op.table_text
         definition = Cybertrain::DB::SchemaDumper.dump(@connection)
-        table = definition.table(table_name)
-        if table.nil?
-          message = "cannot #{op.kind} on #{table_name}: no such table"
-          raise Error, message
-        end
-        refused = Cybertrain::DB::SqliteDDL.rebuild_refusal(table_sql(table_name))
-        if refused != ""
-          message = "rebuilding #{table_name} would drop #{refused}: rewrite the migration with execute"
-          raise Error, message
-        end
-        definition.replace_table(Cybertrain::DB::SqliteDDL.table_after(table, op))
-        triggers = table_triggers(table_name)
-        sequence = table_sequence(table_name)
-        @connection.execute(op.exec_sql, op.exec_binds) if op.kind == :change_column_null && !op.null && op.exec_sql != ""
-        rename = Cybertrain::DB::SqliteDDL.rename_new_sql(table_name)
-        Cybertrain::DB::SqliteDDL.rebuild_table(definition, table_name, triggers, sequence).each do |sql|
-          if sql == rename
-            run_legacy_rename(sql)
-          else
-            @connection.exec_script(sql)
-          end
-        end
-        nil
-      end
-
-      # The rebuild's RENAME with legacy_alter_table on, so the views and
-      # the other tables' triggers that name the table are not checked
-      # while it does not exist (they would refuse the RENAME). The pragma
-      # is not transactional, so it is turned off again whatever happens.
-      # Never used for a plain rename_table, which needs it off for the
-      # references to follow the new name.
-      def run_legacy_rename(sql)
-        @connection.exec_script("PRAGMA legacy_alter_table = ON")
-        begin
-          @connection.exec_script(sql)
-        ensure
-          @connection.exec_script("PRAGMA legacy_alter_table = OFF")
-        end
-        nil
-      end
-
-      def table_sql(table_name)
-        rows = @connection.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", [table_name])
-        return "" if rows.empty?
-        Cybertrain::Cast.str_or_nil(rows[0]["sql"]).to_s
-      end
-
-      def table_triggers(table_name)
-        rows = @connection.execute("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ? ORDER BY name", [table_name])
-        result = Array.new(0) { "" }
-        rows.each do |r|
-          sql = Cybertrain::Cast.str_or_nil(r["sql"])
-          result << sql.to_s unless sql.nil?
-        end
-        result
-      end
-
-      # The table's sqlite_sequence value, -1 when it has none (or the
-      # database has no AUTOINCREMENT table at all).
-      def table_sequence(table_name)
-        exists = @connection.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'")
-        return -1 if exists.empty?
-        rows = @connection.execute("SELECT seq FROM sqlite_sequence WHERE name = ?", [table_name])
-        return -1 if rows.empty?
-        Cybertrain::Cast.int(rows[0]["seq"])
+        Dialect.migrator_rebuild(@connection, op, definition)
       end
 
       # Base#up/#down start from an empty operation list, but a migration
@@ -344,7 +271,7 @@ module Cybertrain
             elsif op.kind == :remove_index
               @connection.exec_script(Cybertrain::DB::SqliteDDL.drop_index_sql(index_to_remove(op, forward)))
             else
-              run_sql(Cybertrain::DB::SqliteDDL.statements(op))
+              run_sql(Dialect.ddl_statements(op))
             end
             i += 1
           end
@@ -381,9 +308,9 @@ module Cybertrain
       # Names of the indexes on `table` whose columns are exactly `columns`.
       def index_names_on(table, columns)
         result = Array.new(0) { "" }
-        @connection.execute("PRAGMA index_list(#{table})").each do |row|
+        Dialect.schema_index_rows(@connection, table).each do |row|
           name = row["name"].to_s
-          cols = @connection.execute("PRAGMA index_info(#{name})").map { |r| r["name"].to_s }
+          cols = Dialect.schema_index_columns(@connection, name)
           result << name if cols == columns
         end
         result

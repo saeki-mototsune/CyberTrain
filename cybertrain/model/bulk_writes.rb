@@ -91,17 +91,11 @@ module Cybertrain
       end
       marks = Array.new(columns.size) { "?" }
       # Each piece in a local before it is interpolated (NOTES rule 65).
-      quoted_table = Relation.quote_ident(table)
+      quoted_table = Cybertrain::DB::Dialect.quote_ident(table)
       column_list = columns.join(", ")
       mark_list = marks.join(", ")
-      target_list = target.join(", ")
-      sql = +"INSERT INTO #{quoted_table} (#{column_list}) VALUES (#{mark_list})"
-      sql << " ON CONFLICT (" << target_list << ")"
-      if sets.empty?
-        sql << " DO NOTHING"
-      else
-        sql << " DO UPDATE SET " << sets.join(", ")
-      end
+      tail = Cybertrain::DB::Dialect.bulk_writes_upsert_tail(target, sets)
+      sql = "INSERT INTO #{quoted_table} (#{column_list}) VALUES (#{mark_list})#{tail}"
       Relation.execute_write(sql, binds)
     end
 
@@ -262,15 +256,17 @@ module Cybertrain
       end
 
       # Each piece in a local before it is interpolated (NOTES rule 65).
-      quoted_table = Relation.quote_ident(table)
-      column_list = columns.map { |name| Relation.quote_ident(name) }.join(", ")
+      quoted_table = Cybertrain::DB::Dialect.quote_ident(table)
+      column_list = columns.map { |name| Cybertrain::DB::Dialect.quote_ident(name) }.join(", ")
       marks = Array.new(columns.size) { "?" }
       one_row = "(" + marks.join(", ") + ")"
-      tail = Model.bulk_conflict_sql(on_conflict, columns, targets, restricted, only, record_timestamps, column_types)
+      conflict = Model.bulk_conflict_sql(on_conflict, columns, targets, restricted, only, record_timestamps, column_types)
+      returning = ""
       unless returned.empty?
-        returned_list = returned.map { |name| Relation.quote_ident(name) }.join(", ")
-        tail << " RETURNING " << returned_list
+        quoted_returned = returned.map { |name| Cybertrain::DB::Dialect.quote_ident(name) }
+        returning = Cybertrain::DB::Dialect.bulk_writes_returning_tail(quoted_returned)
       end
+      tail = conflict + returning
       returned_types = Array.new(0) { :unknown }
       returned.each { |name| returned_types << column_types[name] }
 
@@ -370,29 +366,24 @@ module Cybertrain
       cells
     end
 
-    # The ON CONFLICT clause of a bulk statement ("" for insert_all!).
+    # The conflict clause of a bulk statement (the adapter's
+    # DB::Dialect.bulk_writes_ignore_tail / upsert_tail; "" for
+    # insert_all!).
     def self.bulk_conflict_sql(on_conflict, columns, targets, restricted, only, record_timestamps, column_types)
-      return +" ON CONFLICT DO NOTHING" if on_conflict == :nothing
-      return +"" unless on_conflict == :update
+      return Cybertrain::DB::Dialect.bulk_writes_ignore_tail if on_conflict == :nothing
+      return "" unless on_conflict == :update
 
-      sets = Array.new(0) { "" }
+      updated = Array.new(0) { "" }
       columns.each do |name|
         next if name == "id" || name == "created_at" || targets.include?(name)
 
         stamp = name == "updated_at" && record_timestamps && column_types.key?("updated_at")
         next if restricted && !stamp && !only.include?(name)
 
-        quoted = Relation.quote_ident(name)
-        sets << "#{quoted} = excluded.#{quoted}"
+        updated << Cybertrain::DB::Dialect.quote_ident(name)
       end
-      target_list = targets.map { |name| Relation.quote_ident(name) }.join(", ")
-      sql = +" ON CONFLICT (" << target_list << ")"
-      if sets.empty?
-        sql << " DO NOTHING"
-      else
-        sql << " DO UPDATE SET " << sets.join(", ")
-      end
-      sql
+      quoted_targets = targets.map { |name| Cybertrain::DB::Dialect.quote_ident(name) }
+      Cybertrain::DB::Dialect.upsert_tail(quoted_targets, updated)
     end
 
     # A RETURNING row with each named column cast by its type.

@@ -20,21 +20,12 @@ module Cybertrain
                   "next_run_at INTEGER NOT NULL, " \
                   "updated_at INTEGER NOT NULL);"
 
-      # A last run of 0 is stored as NULL (never ran). A row is never moved
+      # The row writes are the adapter's (DB::Dialect.timetable_write_sql:
+      # a last run of 0 is stored as NULL, never ran; a row is never moved
       # backwards: an update needs a later last run, or the same one and a
-      # next run no earlier (a leader that lost the lease while a task ran
-      # writes after the new leader).
-      WRITE_SQL = "INSERT INTO cybertrain_schedules (name, last_run_at, next_run_at, updated_at) " \
-                  "VALUES (?, NULLIF(?, 0), ?, ?) " \
-                  "ON CONFLICT(name) DO UPDATE SET last_run_at = excluded.last_run_at, " \
-                  "next_run_at = excluded.next_run_at, updated_at = excluded.updated_at " \
-                  "WHERE COALESCE(excluded.last_run_at, 0) > COALESCE(cybertrain_schedules.last_run_at, 0) " \
-                  "OR (COALESCE(excluded.last_run_at, 0) = COALESCE(cybertrain_schedules.last_run_at, 0) " \
-                  "AND excluded.next_run_at >= cybertrain_schedules.next_run_at)"
-
-      # A new task's row, left alone when one exists.
-      MISSING_SQL = "INSERT INTO cybertrain_schedules (name, last_run_at, next_run_at, updated_at) " \
-                    "VALUES (?, NULL, ?, ?) ON CONFLICT(name) DO NOTHING"
+      # next run no earlier, as a leader that lost the lease while a task
+      # ran writes after the new leader. DB::Dialect.timetable_insert_missing_sql:
+      # a new task's row, left alone when one exists).
 
       # The DB.generation the table was last ensured for; -1 for never (as
       # Job's and Lease's).
@@ -91,7 +82,8 @@ module Cybertrain
       def self.write(name, last_run_at, next_run_at, now)
         ensure_installed
         binds = Cast.binds(name, last_run_at, next_run_at, now)
-        DB.with { |c| c.execute(WRITE_SQL, binds) }
+        sql = DB::Dialect.timetable_write_sql
+        DB.with { |c| c.execute(sql, binds) }
         nil
       end
 
@@ -106,7 +98,8 @@ module Cybertrain
       def self.write_missing(name, next_run_at, now)
         ensure_installed
         binds = Cast.binds(name, next_run_at, now)
-        DB.with { |c| c.execute(MISSING_SQL, binds) }
+        sql = DB::Dialect.timetable_insert_missing_sql
+        DB.with { |c| c.execute(sql, binds) }
         nil
       end
 

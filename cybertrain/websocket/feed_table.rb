@@ -27,15 +27,6 @@ module Cybertrain
                   "restarts INTEGER, " \
                   "updated_at INTEGER NOT NULL);"
 
-      # A last activity of 0 is stored as NULL (none yet).
-      WRITE_SQL = "INSERT INTO cybertrain_feeds " \
-                  "(name, process, connected, started_at, last_activity_at, restarts, updated_at) " \
-                  "VALUES (?, ?, ?, ?, NULLIF(?, 0), ?, ?) " \
-                  "ON CONFLICT(name) DO UPDATE SET process = excluded.process, " \
-                  "connected = excluded.connected, started_at = excluded.started_at, " \
-                  "last_activity_at = excluded.last_activity_at, restarts = excluded.restarts, " \
-                  "updated_at = excluded.updated_at"
-
       # The DB.generation the table was last ensured for; -1 for never (as
       # Scheduler::Timetable's).
       @installed_generation = -1
@@ -99,7 +90,10 @@ module Cybertrain
       def self.upsert_feed(name, process, connected, started_at, last_activity_at, restarts, now)
         ensure_installed
         binds = Cast.binds(name, process, connected ? 1 : 0, started_at, last_activity_at, restarts, now)
-        DB.with { |c| c.execute(WRITE_SQL, binds) }
+        # The adapter's upsert; a last activity of 0 is stored as NULL (none
+        # yet).
+        sql = DB::Dialect.feed_table_write_sql
+        DB.with { |c| c.execute(sql, binds) }
         nil
       end
 

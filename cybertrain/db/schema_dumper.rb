@@ -40,14 +40,13 @@ module Cybertrain
       # cybertrain_schedules, cybertrain_cache and cybertrain_feeds (Job,
       # Lease, Stream, Scheduler::Timetable, Cache and WebSocket::FeedTable
       # create them at run time; in
-      # db/schema.rb the generator would make models of them) and SQLite's
-      # bookkeeping tables (sqlite_sequence, sqlite_stat*, ...).
+      # db/schema.rb the generator would make models of them) and the
+      # database's own bookkeeping tables (DB::Dialect.table_names leaves
+      # them out: SQLite's sqlite_sequence, sqlite_stat*, ...).
       def self.table_names(connection)
-        rows = connection.execute("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
         names = Array.new(0) { "" }
-        rows.each do |r|
-          name = r["name"].to_s
-          next if name == "schema_migrations" || name == "ar_internal_metadata" || name.start_with?("sqlite_")
+        Dialect.table_names(connection).each do |name|
+          next if name == "schema_migrations" || name == "ar_internal_metadata"
           next if name == "cybertrain_jobs" || name == "cybertrain_leases" || name == "cybertrain_messages"
           next if name == "cybertrain_schedules" || name == "cybertrain_cache" || name == "cybertrain_feeds"
           names << name
@@ -58,10 +57,7 @@ module Cybertrain
       # The highest applied migration version, or "0" when schema_migrations
       # does not exist yet (a database no Migrator has ever touched).
       def self.max_version(connection)
-        exists = connection.execute(
-          "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'schema_migrations'"
-        )
-        return "0" if exists.empty?
+        return "0" unless Dialect.table_exists?(connection, "schema_migrations")
         rows = connection.execute("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1")
         rows.empty? ? "0" : rows[0]["version"].to_s
       end
@@ -75,7 +71,7 @@ module Cybertrain
       # `create_table "x", id: false`, with every column; the PRIMARY KEY
       # of a kept column is not recorded.
       def self.id_primary_key?(connection, table_name)
-        rows = connection.execute("PRAGMA table_info(#{table_name})")
+        rows = Dialect.schema_columns(connection, table_name)
         rows.each do |r|
           next unless Cybertrain::Cast.int(r["pk"]) != 0 && r["name"].to_s.downcase == "id"
 
@@ -87,7 +83,7 @@ module Cybertrain
       # The declared columns; the primary key is left out when it is the
       # implicit id (with_id), and kept as a plain column otherwise.
       def self.add_columns(t, connection, table_name, with_id = true)
-        rows = connection.execute("PRAGMA table_info(#{table_name})")
+        rows = Dialect.schema_columns(connection, table_name)
         rows.each do |r|
           next if with_id && Cybertrain::Cast.int(r["pk"]) != 0
           name = r["name"].to_s
@@ -266,7 +262,7 @@ module Cybertrain
       # a list of column names, is an expression index's expression, and a
       # WHERE after it a partial index's predicate.
       def self.add_indexes(definition, connection, table_name)
-        rows = connection.execute("PRAGMA index_list(#{table_name})")
+        rows = Dialect.schema_index_rows(connection, table_name)
         rows.each do |r|
           name = r["name"].to_s
           next if name.start_with?("sqlite_autoindex_")
@@ -283,9 +279,7 @@ module Cybertrain
       end
 
       def self.index_sql_text(connection, index_name)
-        rows = connection.execute("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = ?", [index_name])
-        return "" if rows.empty?
-        Cybertrain::Cast.str_or_nil(rows[0]["sql"]).to_s
+        Dialect.schema_index_sql(connection, index_name)
       end
 
       # CREATE INDEX text -> [key, where]: the text between the first "("
@@ -377,13 +371,11 @@ module Cybertrain
       end
 
       def self.index_columns(connection, index_name)
-        rows = connection.execute("PRAGMA index_info(#{index_name})")
-        ordered = rows.sort_by { |r| Cybertrain::Cast.int(r["seqno"]) }
-        ordered.map { |r| r["name"].to_s }
+        Dialect.schema_index_columns(connection, index_name)
       end
 
       def self.add_foreign_keys(definition, connection, table_name)
-        rows = connection.execute("PRAGMA foreign_key_list(#{table_name})")
+        rows = Dialect.schema_foreign_key_rows(connection, table_name)
         rows.each do |r|
           definition.add_foreign_key(table_name, r["table"].to_s, column: r["from"].to_s,
                                                                   on_delete: on_delete_action(r["on_delete"].to_s))

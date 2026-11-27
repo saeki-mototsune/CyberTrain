@@ -56,41 +56,14 @@ module Cybertrain
     # A live row: one with no expiry, or whose expiry is now or later.
     LIVE_SQL = "SELECT value FROM cybertrain_cache WHERE key = ? AND (expires_at IS NULL OR expires_at >= ?)"
 
-    # An expires_at of 0 is stored as NULL (never expires).
-    WRITE_SQL = "INSERT INTO cybertrain_cache (key, value, expires_at, updated_at) " \
-                "VALUES (?, ?, NULLIF(?, 0), ?) " \
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, " \
-                "expires_at = excluded.expires_at, updated_at = excluded.updated_at"
-
-    # write(unless_exist: true): an existing row is replaced only once it
-    # has expired (the DO UPDATE's WHERE is false for a live row, so no row
-    # changes).
-    ADD_SQL = "#{WRITE_SQL} WHERE cybertrain_cache.expires_at IS NOT NULL AND cybertrain_cache.expires_at < ?"
-
     # race_condition_ttl: an expired row is given `n` more seconds; of the
     # callers that see it expired, the one whose UPDATE changed it
     # recomputes.
     EXTEND_SQL = "UPDATE cybertrain_cache SET expires_at = ? WHERE key = ? " \
                  "AND expires_at IS NOT NULL AND expires_at < ?"
 
-    # ?1 key, ?2 by, ?3 expires_at (0: none given), ?4 now. A missing row
-    # starts at `by`, an expired one too (and loses its old expiry); a live
-    # one adds `by` to its value read as an Integer (text that is not a
-    # number counts as 0). A given expiry replaces the row's.
-    INCREMENT_SQL = "INSERT INTO cybertrain_cache (key, value, expires_at, updated_at) " \
-                    "VALUES (?1, ?2, NULLIF(?3, 0), ?4) " \
-                    "ON CONFLICT(key) DO UPDATE SET " \
-                    "value = CASE WHEN cybertrain_cache.expires_at IS NOT NULL AND cybertrain_cache.expires_at < ?4 " \
-                    "THEN ?2 ELSE CAST(cybertrain_cache.value AS INTEGER) + ?2 END, " \
-                    "expires_at = CASE WHEN cybertrain_cache.expires_at IS NOT NULL AND cybertrain_cache.expires_at < ?4 " \
-                    "THEN NULLIF(?3, 0) " \
-                    "WHEN cybertrain_cache.expires_at IS NULL AND ?3 > 0 THEN ?3 " \
-                    "ELSE cybertrain_cache.expires_at END, " \
-                    "updated_at = ?4 " \
-                    "RETURNING CAST(value AS INTEGER) AS n"
-
-    PRUNE_SQL = "DELETE FROM cybertrain_cache WHERE rowid IN (SELECT rowid FROM cybertrain_cache " \
-                "WHERE expires_at IS NOT NULL AND expires_at < ? LIMIT #{PRUNE_BATCH})"
+    # The write, increment and prune statements are the adapter's
+    # (DB::Dialect.cache_write, cache_increment, cache_prune).
 
     # The DB.generation the table was last ensured for; -1 for never (as
     # Job's and Lease's).
@@ -290,15 +263,7 @@ module Cybertrain
       now = Cache.now
       prune_if_due(now)
       expires_at = expires_in > 0 ? now + expires_in : 0
-      sql = unless_exist ? ADD_SQL : WRITE_SQL
-      binds = Cast.binds(key, value, expires_at, now)
-      binds << now if unless_exist
-      changed = 0
-      DB.with do |c|
-        c.execute(sql, binds)
-        changed = c.changes
-      end
-      changed > 0
+      DB.with { |c| DB::Dialect.cache_write(c, key, value, expires_at, now, unless_exist) }
     end
 
     # Removes the row of `key`, live or expired.
@@ -346,10 +311,7 @@ module Cybertrain
       now = Cache.now
       prune_if_due(now)
       expires_at = expires_in > 0 ? now + expires_in : 0
-      rows = DB.with { |c| c.execute(INCREMENT_SQL, Cast.binds(key, by, expires_at, now)) }
-      return 0 if rows.empty?
-
-      Cast.int(rows[0]["n"])
+      DB.with { |c| DB::Dialect.cache_increment(c, key, by, expires_at, now) }
     end
 
     # Removes every row.
@@ -387,12 +349,7 @@ module Cybertrain
     # @return [Integer] how many rows were deleted
     # @api private
     def self.prune_batch(now)
-      deleted = 0
-      DB.with do |c|
-        c.execute(PRUNE_SQL, [now])
-        deleted = c.changes
-      end
-      deleted
+      DB.with { |c| DB::Dialect.cache_prune(c, now, PRUNE_BATCH) }
     end
 
     # Without jobs (no loaded feature runs periodic work:
