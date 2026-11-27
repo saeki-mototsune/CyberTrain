@@ -860,8 +860,11 @@ again since the lock left it).
   it is ready to report as a request (a large constant literal's stores
   written into helper functions of bounded size), and nothing in
   CyberTrain waits on it.
-- **AJ to AO** (phase 5a, 2026-11-12 and 2026-11-13): AJ, AM, AN and AO
-  are defects with a program each, ready to report; AK and AL are costs (the C compiler's
+- **AJ to AO** (phase 5a, 2026-11-12 and 2026-11-13): AJ and AN
+  are defects with a program each, ready to report; AM was found on
+  2026-11-27 to be Spinel's documented behaviour, with a lazier `-g`
+  backtrace still asked (see AM), and AO to be fixed upstream and in the
+  pin (see AO); AK and AL are costs (the C compiler's
   memory on a very large program, spin's freshness check), and nothing in
   CyberTrain waits on any of them.
 - **AP and AQ** (phase 5b, 2026-11-13, reduced 2026-11-14): defects with a
