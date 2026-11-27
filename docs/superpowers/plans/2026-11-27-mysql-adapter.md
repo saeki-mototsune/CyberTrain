@@ -297,7 +297,7 @@ DB::Dialect.migrator_rebuild(conn, op, definition) # => nil テーブルを作�
   - `MySQL::Result`:
     - `names : Array<String>`
     - `types : Array<Integer>`(MySQL のカラム型)
-    - `rows : Array<Array<Integer | Float | String | nil>>`
+    - `result_rows : Array<Array<Integer | Float | String | nil>>`(`rows` ではない: `Relation#rows` が `Array<Hash>` を返すため。NOTES rules 10、34)
     - `affected_rows : Integer`
     - `last_insert_id : Integer`
     - `datetime_columns : Array<bool>`
@@ -305,7 +305,7 @@ DB::Dialect.migrator_rebuild(conn, op, definition) # => nil テーブルを作�
     - `query(sql) -> Result`。COM_QUERY で送る。multi-statements の場合は最後の結果を返し、途中の ERR で止まる。
     - `prepare(sql) -> Integer`(statement id)。COM_STMT_PREPARE で送る。
     - `param_count(id) -> Integer`
-    - `execute(id, binds) -> Result`。COM_STMT_EXECUTE、binary protocol で送る。bind の型は次のとおり。
+    - `execute_statement(id, binds) -> Result`(`execute` ではない: `Connection#execute` が `Array<Hash>` を返すため。NOTES rules 10、34)。COM_STMT_EXECUTE、binary protocol で送る。bind の型は次のとおり。
       - `Integer` → LONGLONG
       - `Float` → DOUBLE
       - `String` → VAR_STRING(バイト列のまま)
