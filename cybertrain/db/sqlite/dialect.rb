@@ -476,7 +476,8 @@ module Cybertrain
       # Marks the database as one `cybertrain test` created (`marker` into
       # the file header's application_id) and checkpoints, so the mark is in
       # the file itself and not only in its write-ahead log.
-      # MySQL: nothing (the database name is the proof; nil).
+      # MySQL: CREATE TABLE IF NOT EXISTS cybertrain_test_marker (the
+      # marker table; `marker` is not used).
       # @param conn [Cybertrain::DB::Connection]
       # @param marker [Integer]
       # @return [nil]
@@ -484,6 +485,31 @@ module Cybertrain
         conn.execute("PRAGMA application_id = #{marker}")
         conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         nil
+      end
+
+      # Test::Database's refusal of the connected database: `file_verdict`,
+      # Test::Database.refusal(env, target) (a SQLite database is a file,
+      # whose path and header that method reads). MySQL: "" when env is
+      # "test" and the URL's database name ends in "_test", else the
+      # refusal, naming the URL without its password; `file_verdict` is not
+      # used.
+      # @param env [String]
+      # @param target [String] the path the pool was connected to
+      # @param file_verdict [String]
+      # @return [String]
+      def self.test_database_refusal(env, target, file_verdict)
+        file_verdict
+      end
+
+      # Test::Database's check on the connection before it deletes anything:
+      # "" (the file was checked by test_database_refusal). MySQL: "" when
+      # the database holds the table cybertrain_test_marker, or holds no
+      # table and that table was created now; else the refusal.
+      # @param conn [Cybertrain::DB::Connection]
+      # @param target [String]
+      # @return [String]
+      def self.test_database_claim(conn, target)
+        ""
       end
 
       # --- Schema reading (SchemaDumper, Migrator) --------------------------------

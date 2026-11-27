@@ -214,7 +214,10 @@ explicit), which `test/mysql/connection.rb`'s
 must leave the one OS worker to the other green threads; the program sets
 it again itself, before its first thread starts (spikes/NOTES.md rule 22).
 The tests create and drop their own tables (`ct_*`) in the database the URL
-names and never create or drop a database. CI's `mysql-tests` job runs
+names and never create or drop a database. `test/mysql/test_database.rb`
+also uses two databases of the same server, `cybertrain_tdb_test` and
+`cybertrain_tdb` (the URL with the name swapped), which `script/mysql-dev`
+and CI's `mysql-tests` job create when the server starts. CI's `mysql-tests` job runs
 `script/test-mysql` against a service container of the same image.
 
 If the Docker daemon is not running (a fresh cloud container), start it

@@ -514,6 +514,9 @@ module Cybertrain
 
       # --- Test::Database --------------------------------------------------------
 
+      # How Test::Database's refusals begin (SQLite's say the same).
+      TEST_DATABASE_WHO = "Test::Database refuses to empty"
+
       # Deletes every row of `table`.
       # @param conn [Cybertrain::DB::Connection]
       # @return [nil]
@@ -523,13 +526,41 @@ module Cybertrain
         nil
       end
 
-      # Nothing: on MySQL the database's name is the proof that `cybertrain
-      # test` may empty it.
+      # Marks the database as one `cybertrain test` took: the table
+      # MySQL::TestDatabase::MARKER_TABLE, created when it is not there
+      # (DDL: outside any transaction). `marker` is SQLite's application_id,
+      # not used here.
       # @param conn [Cybertrain::DB::Connection]
       # @param marker [Integer]
       # @return [nil]
       def self.test_database_mark(conn, marker)
-        nil
+        Cybertrain::DB::MySQL::TestDatabase.mark(conn)
+      end
+
+      # Test::Database's refusal of the connected database, decided before
+      # it connects: "" when env is "test" and the URL's database name ends
+      # in "_test", else "Test::Database refuses to empty <url without
+      # password>: <reason>" (MySQL::TestDatabase.url_refusal).
+      # `file_verdict` is the refusal of a database that is a file
+      # (Test::Database.refusal), which the SQLite Dialect answers; a MySQL
+      # database is on a server, and it is not used here.
+      # @param env [String]
+      # @param target [String] the URL the pool was connected to
+      # @param file_verdict [String]
+      # @return [String]
+      def self.test_database_refusal(env, target, file_verdict)
+        Cybertrain::DB::MySQL::TestDatabase.url_refusal(TEST_DATABASE_WHO, env, target)
+      end
+
+      # Test::Database's check on the connection, before it deletes
+      # anything: "" when the database holds the marker table, or holds no
+      # table and the marker table was created now (DDL, so never inside a
+      # transaction); else the refusal (MySQL::TestDatabase.claim_refusal).
+      # @param conn [Cybertrain::DB::Connection]
+      # @param target [String] the URL the pool was connected to
+      # @return [String]
+      def self.test_database_claim(conn, target)
+        Cybertrain::DB::MySQL::TestDatabase.claim_refusal(TEST_DATABASE_WHO, conn, target)
       end
 
       # --- Schema reading (SchemaDumper, Migrator) --------------------------------

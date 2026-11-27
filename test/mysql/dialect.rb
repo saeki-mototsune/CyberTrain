@@ -26,7 +26,7 @@ if URL.empty?
 end
 
 OWN_TABLES = ["posts", "comments", "cybertrain_jobs", "a`b", "stats", "cybertrain_cache", "cybertrain_leases",
-              "cybertrain_schedules", "cybertrain_feeds"]
+              "cybertrain_schedules", "cybertrain_feeds", "cybertrain_test_marker"]
 TABLE_OPTIONS = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin"
 
 # This program's own tables dropped (by name, with the other programs'
@@ -225,12 +225,16 @@ test "the schema readers answer name/type/notnull/dflt_value/pk, indexes and for
   conn.close
 end
 
-test "Test::Database's clear empties a table; the mark is nothing on MySQL" do
+test "Test::Database's clear empties a table; the mark is the table cybertrain_test_marker on MySQL" do
   conn = blog_db
   conn.execute("INSERT INTO posts (title) VALUES ('a'), ('b')")
   assert_nil Dialect.test_database_clear_table(conn, "posts")
   assert_equal 0, conn.execute("SELECT COUNT(*) AS n FROM posts")[0]["n"]
   assert_nil Dialect.test_database_mark(conn, 7)
+  assert_nil Dialect.test_database_mark(conn, 7)
+  assert Dialect.table_exists?(conn, "cybertrain_test_marker")
+  # Not left in the shared database, which it would mark as a test one.
+  conn.exec_script("DROP TABLE cybertrain_test_marker")
   conn.close
 end
 

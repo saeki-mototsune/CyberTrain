@@ -15,7 +15,7 @@ module MySQLTestTables
   # A table of these programs => the tables of these programs with a
   # foreign key to it (test/mysql/models.rb, models_gen_app.rb,
   # models_nested_includes.rb, models_through.rb, dialect.rb,
-  # migrations.rb).
+  # migrations.rb, test_database.rb).
   REFERENCING = {
     "posts" => ["comments", "taggings"],
     "users" => ["profiles", "notes", "tasks", "audits", "sessions"],
@@ -23,7 +23,8 @@ module MySQLTestTables
     "articles" => ["comments"],
     "comments" => ["likes"],
     "tags" => ["taggings"],
-    "mig_parents" => ["mig_children"]
+    "mig_parents" => ["mig_children"],
+    "tdb_posts" => ["tdb_comments"]
   }
 
   # `own` and every table that references one of them, transitively.

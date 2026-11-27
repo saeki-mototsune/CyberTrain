@@ -28,6 +28,13 @@
 # a private in-memory database. A development or production database is
 # never emptied, whatever a program connected to.
 #
+# On MySQL (DB::Dialect, cybertrain/db/mysql/test_database.rb) the guard is
+# the environment "test", a database name that ends in "_test", and the
+# table cybertrain_test_marker in the database (created when the database
+# is empty; a database with tables and no marker is refused). Its ALTER
+# TABLE ... AUTO_INCREMENT = 1 commits, so there the clear runs before the
+# inserts' transaction instead of inside it.
+#
 # Spinel rules followed: 58 (messages built into a local before raise), 33
 # (the rescue names JSON's errors with StandardError), 67 (only plain
 # methods are called on DB.with's connection).
@@ -273,8 +280,14 @@ module Cybertrain
         ""
       end
 
+      # Raises the refusal of the connected database ({refusal} on SQLite,
+      # whose database is a file; MySQL decides from the URL: the
+      # environment and a name that ends in "_test"), before anything
+      # connects.
       def self.refuse_unless_test_database
-        message = Database.refusal(Cybertrain.config.env, DB.connected_path)
+        env = Cybertrain.config.env
+        path = DB.connected_path
+        message = DB::Dialect.test_database_refusal(env, path, Database.refusal(env, path))
         raise message unless message.empty?
 
         nil
@@ -295,23 +308,36 @@ module Cybertrain
       # label or id that names no row: a foreign-key failure, which turning
       # foreign keys on again would not report). On a failure it rolls
       # back, turns foreign keys on again and re-raises. Refused inside an
-      # open transaction, whose rows the deletes would join.
+      # open transaction, whose rows the deletes would join, and when the
+      # connection's database is not one it may empty
+      # (DB::Dialect.test_database_claim: on MySQL, a database without the
+      # marker table that holds tables).
+      #
+      # Where DDL is not transactional (DB::Dialect.transactional_ddl?
+      # false: MySQL, whose ALTER TABLE ... AUTO_INCREMENT = 1 commits), the
+      # deletes and the id reset run before the transaction, each statement
+      # on its own, and only the inserts are in it: a failing insert or a
+      # foreign key violation rolls back the inserts, not the clear.
       def self.reset_on(c, clear, tables, sql, counts, now)
         if c.in_transaction?
           message = "Test::Database cannot clear or load fixtures inside an open transaction (DB.transaction or a BEGIN)"
           raise message
         end
-        present = clear ? DB::Dialect.table_names(c) : Array.new(0) { "" }
+        claim = DB::Dialect.test_database_claim(c, DB.connected_path)
+        raise claim unless claim.empty?
+
+        cleared = Array.new(0) { "" }
+        if clear
+          present = DB::Dialect.table_names(c)
+          tables.each { |t| cleared << t }
+          FRAMEWORK_TABLES.each { |t| cleared << t if present.include?(t) }
+        end
+        clear_inside = DB::Dialect.transactional_ddl?
         DB::Dialect.foreign_keys_off(c)
         begin
+          Database.clear_tables(c, cleared) if clear && !clear_inside
           c.begin!
-          if clear
-            cleared = Array.new(0) { "" }
-            tables.each { |t| cleared << t }
-            FRAMEWORK_TABLES.each { |t| cleared << t if present.include?(t) }
-            cleared.each { |t| DB::Dialect.test_database_clear_table(c, t) }
-            DB::Dialect.reset_sequences(c, cleared)
-          end
+          Database.clear_tables(c, cleared) if clear && clear_inside
           i = 0
           while i < sql.size
             binds = Array.new(counts[i]) { now }
@@ -327,6 +353,14 @@ module Cybertrain
           raise e
         end
         DB::Dialect.foreign_keys_on(c)
+        nil
+      end
+
+      # Deletes every row of `cleared` and resets their ids.
+      # @return [nil]
+      def self.clear_tables(c, cleared)
+        cleared.each { |t| DB::Dialect.test_database_clear_table(c, t) }
+        DB::Dialect.reset_sequences(c, cleared)
         nil
       end
 

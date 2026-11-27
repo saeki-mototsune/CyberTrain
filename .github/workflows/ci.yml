@@ -420,7 +420,10 @@ jobs:
   # root@'%' is switched to mysql_native_password, as script/mysql-dev does:
   # the URL is ssl_mode=disabled (a loopback address), where
   # caching_sha2_password's full authentication cannot run. The password
-  # is not a secret: the server lives for this job only.
+  # is not a secret: the server lives for this job only. The same step
+  # creates the two databases test/mysql/test_database.rb uses besides
+  # cybertrain_test (cybertrain_tdb_test and cybertrain_tdb; a test program
+  # never creates a database), as script/mysql-dev does.
   # Provisional limit: one program, about 2 minutes to compile on 4 cores.
   mysql-tests:
     needs: changes
@@ -458,6 +461,8 @@ jobs:
             "SET PERSIST time_zone = '+09:00'; SET PERSIST character_set_server = 'utf8mb4';
              SET PERSIST collation_server = 'utf8mb4_0900_bin';
              ALTER DATABASE cybertrain_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+             CREATE DATABASE IF NOT EXISTS cybertrain_tdb_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+             CREATE DATABASE IF NOT EXISTS cybertrain_tdb CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
              ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY 'cybertrain';"
           zone=$(docker exec "$MYSQL_CONTAINER" mysql -h 127.0.0.1 -uroot -pcybertrain -N -B -e "SELECT VERSION(), @@global.time_zone")
           echo "server: $zone"

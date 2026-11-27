@@ -11,7 +11,7 @@ ok   transactional_ddl? is false; ddl_statements is MySQL's DDL; schema_migratio
 ok   now_epoch_usec_sql reads the clock in UTC epoch microseconds
 ok   the relation pieces: a float total, a derived table's alias, LIKE's escape, no limit, a window of ids
 ok   the schema readers answer name/type/notnull/dflt_value/pk, indexes and foreign keys
-ok   Test::Database's clear empties a table; the mark is nothing on MySQL
+ok   Test::Database's clear empties a table; the mark is the table cybertrain_test_marker on MySQL
 ok   the timetable and feed statements: a row never moves backwards, a missing one is added once
 ok   the cache and lease writes answer whether a row changed
-16 tests, 99 assertions, 0 failures
+16 tests, 101 assertions, 0 failures

@@ -4,6 +4,14 @@
 # application, filtered by the run-time arguments (Cybertrain::Test::Args),
 # printed as docs/guide/testing.md's "Running the tests" shows: a heading
 # per file, a line per test, then the totals.
+#
+# What depends on the adapter is the adapter's bundle entry's:
+# Bundle.refusal (whether the configured database may be emptied, decided
+# before anything is opened) and Bundle.fresh_database (the empty, marked,
+# migrated test database), in cybertrain/test/bundle/sqlite.rb (SQLite: the
+# file is deleted and created again; cybertrain/test/bundle requires it) and
+# cybertrain/test/bundle/mysql.rb (MySQL: the database's tables are dropped;
+# cybertrain/test/bundle_mysql requires it).
 require "cybertrain/test"
 require "cybertrain/test/args"
 require "cybertrain/test/client"
@@ -35,10 +43,6 @@ module Cybertrain
       # The framework's own tests read the printed lines here.
       @capturing = false
       @captured = Array.new(0) { "" }
-
-      # The database `cybertrain test` may delete: storage/test.sqlite3, or
-      # the file CYBERTRAIN_TEST_DATABASE names.
-      DEFAULT_DATABASE = "storage/test.sqlite3".freeze
 
       # The sender a test's mail has when the application gives none
       # (Rails' generated ApplicationMailer uses it too).
@@ -86,51 +90,8 @@ module Cybertrain
         nil
       end
 
-      # Why boot must not delete the configured database ("" when it may),
-      # decided before anything is opened, in this order:
-      # CYBERTRAIN_TEST_DATABASE (or the configured path) is `:memory:` or a
-      # `file:` URI (only a plain path is taken); the path is the
-      # development or production database (Database.other_environment:
-      # named development.sqlite3 or production.sqlite3, or the same file as
-      # storage/<env>.sqlite3); the environment is not test, or the path is
-      # neither storage/test.sqlite3 nor the one CYBERTRAIN_TEST_DATABASE
-      # names; or the file exists and is not one `cybertrain test` created
-      # (Database.deletable?: without Database::TEST_MARKER, and not
-      # storage/test.sqlite3 itself).
-      # @return [String]
-      def self.refusal
-        c = Cybertrain.config
-        path = c.database_path
-        named = ENV["CYBERTRAIN_TEST_DATABASE"].to_s
-        unless named.empty? || Bundle.plain_path?(named)
-          return "cybertrain test refuses CYBERTRAIN_TEST_DATABASE #{named.inspect}: name the test database by its file path " \
-                 "(not :memory: or a file: URI)"
-        end
-        unless Bundle.plain_path?(path)
-          return "cybertrain test refuses the database #{path.inspect}: name the test database by its file path " \
-                 "(not :memory: or a file: URI)"
-        end
-        other = Database.other_environment(path)
-        return "cybertrain test refuses to delete #{path}: it is the #{other} database" unless other.empty?
-        # The same file in any spelling (absolute, `storage//test.sqlite3`).
-        default = Database.same_file?(path, DEFAULT_DATABASE)
-        unless c.env == "test" && (default || (!named.empty? && Database.same_file?(path, named)))
-          return "cybertrain test refuses to delete #{path}: not a test database (env #{c.env})"
-        end
-        return "" if Database.deletable?(path)
-
-        "cybertrain test refuses to delete #{path}: #{Database::NOT_CREATED}"
-      end
-
-      # Whether `path` names a file by its path: not empty, not SQLite's
-      # in-memory forms, not a `file:` URI.
-      # @api private
-      def self.plain_path?(path)
-        !path.empty? && !path.start_with?("file:") && !Cybertrain::DB::Connection.private_database?(path)
-      end
-
       # Boots the application on a new test database: refuses first
-      # ({refusal}, raising ArgumentError, nothing deleted), turns forgery
+      # (Bundle.refusal, raising ArgumentError, nothing deleted), turns forgery
       # protection off unless config/app.rb set `csrf` (Rails' test
       # environment), keeps mail at delivery `:test` and `force_ssl` off
       # unless config/app.rb set them (whatever CYBERTRAIN_MAIL_DELIVERY_METHOD
@@ -147,15 +108,16 @@ module Cybertrain
       # config/app.rb set `sentry_dsn` (whatever CYBERTRAIN_SENTRY_DSN says),
       # gives mail the sender
       # {DEFAULT_SENDER} unless CYBERTRAIN_SMTP_FROM or config/app.rb set
-      # `smtp_from`, deletes the database and its -wal / -shm, creates it
-      # marked with Database::TEST_MARKER (`PRAGMA application_id`), migrates
-      # Migration.all (quietly), boots, and sets {Cybertrain::Test.app}. Every test
+      # `smtp_from`, makes the test database afresh (Bundle.fresh_database:
+      # on SQLite deletes the database and its -wal / -shm, creates it
+      # marked with Database::TEST_MARKER (`PRAGMA application_id`); then
+      # migrates Migration.all, quietly), boots, and sets {Cybertrain::Test.app}. Every test
       # then starts in the configured time zone (a reset hook).
       # @param router [Cybertrain::Router]
       # @param url_resolver [Proc]
       # @return [Cybertrain::Application]
       def self.boot(router, url_resolver)
-        problem = refusal
+        problem = Bundle.refusal
         raise Refused, problem unless problem.empty?
 
         c = Cybertrain.config
@@ -172,26 +134,7 @@ module Cybertrain
           c.upload_root_unless_given(TEST_UPLOADS)
           Bundle.empty_directory(TEST_UPLOADS)
         end
-        path = c.database_path
-        # A dangling symlink too: SQLite would create the file it points at.
-        [path, "#{path}-wal", "#{path}-shm"].each { |f| File.delete(f) if File.exist?(f) || File.symlink?(f) }
-        connection = Cybertrain::DB::Connection.new(path)
-        # A symlink planted between the delete and the open (a shared,
-        # writable directory) was followed by SQLite: nothing is marked or
-        # migrated through it.
-        planted = Bundle.opened_problem(path)
-        unless planted.empty?
-          connection.close
-          raise Refused, planted
-        end
-        # The mark first, written through to the file itself (out of the
-        # write-ahead log), so a run stopped at any later step leaves a file
-        # the next run recognises as its own.
-        Database.mark!(connection)
-        migrator = Cybertrain::DB::Migrator.new(connection)
-        migrator.quiet!
-        migrator.migrate(Cybertrain::Migration.all)
-        connection.close
+        Bundle.fresh_database
         app = Cybertrain::Application.new(router: router, url_resolver: url_resolver)
         app.boot
         Cybertrain::Test.app = app
@@ -226,25 +169,12 @@ module Cybertrain
         e.message
       end
 
-      # Why the database just opened at `path` must not be used ("" when it
-      # may): `path` is a symlink, planted after the boot deleted what was
-      # there, so SQLite opened the file it points at.
-      # @param path [String]
-      # @return [String]
-      # @api private
-      def self.opened_problem(path)
-        return "" unless File.symlink?(path)
-
-        "cybertrain test refuses #{path}: it became a symlink while the test database was created " \
-          "(nothing was marked or migrated); remove it and run again"
-      end
-
-      # When {refusal} refuses the configured database: the reason on
+      # When Bundle.refusal refuses the configured database: the reason on
       # STDOUT and exit status 2. gen/tests.rb calls it right after
       # config/app.rb, before any helper, support or test file is loaded.
       # @return [nil]
       def self.check_database!
-        problem = refusal
+        problem = Bundle.refusal
         unless problem.empty?
           puts problem
           exit(2)
