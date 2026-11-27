@@ -1,5 +1,5 @@
 require "cybertrain/cast"
-require "cybertrain/db"
+require "cybertrain/db/base"
 
 module Cybertrain
   module Scheduler

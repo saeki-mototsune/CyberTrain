@@ -48,6 +48,7 @@ module Cybertrain
       # by SQLite itself (SQLITE_CANTOPEN -> DB::Error) instead of created.
       def initialize(path, create: true)
         @closed = false
+        @script_errcode = 0
         @transaction_depth = 0
         # SQLITE_LIMIT_VARIABLE_NUMBER, read on the first #variable_limit.
         @variable_limit = -1
@@ -223,7 +224,7 @@ module Cybertrain
           end
           if rc != SQLite3::DONE
             note_lost_transaction(in_transaction, sql)
-            raise Error, error_message(sql)
+            raise_failure(sql)
           end
         ensure
           if cached
@@ -253,9 +254,10 @@ module Cybertrain
 
         forget_names
         SQLite3.cybertrain_sqlite_busy_report(@busy, 0)
+        @script_errcode = 0
         message = run_script(sql)
         SQLite3.cybertrain_sqlite_busy_report(@busy, 1)
-        raise Error, message unless message.empty?
+        raise_with_code(message, @script_errcode) unless message.empty?
 
         nil
       end
@@ -677,7 +679,7 @@ module Cybertrain
             rc = SQLite3.sqlite3_exec(@db, sql, nil, nil, nil)
           end
         end
-        raise Error, error_message(sql) if rc != SQLite3::OK
+        raise_failure(sql) if rc != SQLite3::OK
         nil
       end
 
@@ -901,6 +903,7 @@ module Cybertrain
           rc = SQLite3.sqlite3_step(stmt) while rc == SQLite3::ROW
           if rc != SQLite3::DONE
             message = error_message(sql)
+            @script_errcode = SQLite3.sqlite3_extended_errcode(@db)
             SQLite3.sqlite3_finalize(stmt)
             note_lost_transaction(in_transaction, statement)
             return message
@@ -924,6 +927,25 @@ module Cybertrain
 
       def error_message(sql)
         "#{SQLite3.sqlite3_errmsg(@db)} (sql: #{sql})"
+      end
+
+      # Raises the failure of the last call on this handle: a unique or
+      # primary key violation as UniqueViolation, a foreign key one as
+      # ForeignKeyViolation (by SQLite's extended result code, which
+      # sqlite3_extended_errcode answers without the connection asking for
+      # extended codes), anything else as Error. The message is the same
+      # for all of them.
+      def raise_failure(sql)
+        raise_with_code(error_message(sql), SQLite3.sqlite3_extended_errcode(@db))
+      end
+
+      def raise_with_code(message, code)
+        if code == SQLite3::CONSTRAINT_UNIQUE || code == SQLite3::CONSTRAINT_PRIMARYKEY
+          raise UniqueViolation, message
+        end
+        raise ForeignKeyViolation, message if code == SQLite3::CONSTRAINT_FOREIGNKEY
+
+        raise Error, message
       end
     end
   end

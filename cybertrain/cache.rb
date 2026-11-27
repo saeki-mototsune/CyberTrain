@@ -2,7 +2,7 @@ require "json"
 require "cybertrain/cast"
 require "cybertrain/clock"
 require "cybertrain/config"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/params"
 require "cybertrain/feature"
 

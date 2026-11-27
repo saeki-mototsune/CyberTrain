@@ -1,5 +1,5 @@
 require "cybertrain/middleware"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/feature"
 
 module Cybertrain

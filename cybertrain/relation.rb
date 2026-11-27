@@ -1,6 +1,6 @@
 require "cybertrain/cast"
 require "cybertrain/ident"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/pagination"
 
 module Cybertrain

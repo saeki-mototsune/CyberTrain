@@ -1,6 +1,6 @@
 require "json"
 require "cybertrain/cast"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/model"
 require "cybertrain/relation"
 require "cybertrain/template/helpers"

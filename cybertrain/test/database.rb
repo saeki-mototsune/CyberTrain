@@ -33,7 +33,7 @@
 # methods are called on DB.with's connection).
 require "json"
 require "cybertrain/test"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/model"
 require "cybertrain/config"
 

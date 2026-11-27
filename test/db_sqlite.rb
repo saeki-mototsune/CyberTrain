@@ -155,7 +155,7 @@ test "a failed COMMIT rolls back and the next transaction works" do
     "CREATE TABLE notes (id INTEGER PRIMARY KEY, post_id INTEGER, " \
     "FOREIGN KEY(post_id) REFERENCES posts(id) DEFERRABLE INITIALLY DEFERRED);"
   )
-  message = assert_raises("Cybertrain::DB::Error") do
+  message = assert_raises("Cybertrain::DB::ForeignKeyViolation") do
     conn.transaction do
       conn.execute("INSERT INTO notes (post_id) VALUES (?)", [42])
     end
@@ -207,7 +207,7 @@ test "PRAGMA table_info and foreign_key_list rows" do
   assert_equal "posts", fks[0]["table"]
   assert_equal "post_id", fks[0]["from"]
   assert_equal "id", fks[0]["to"]
-  message = assert_raises("Cybertrain::DB::Error") do
+  message = assert_raises("Cybertrain::DB::ForeignKeyViolation") do
     conn.execute("INSERT INTO comments (post_id, body) VALUES (?, ?)", [99, "orphan"])
   end
   assert_includes message, "FOREIGN KEY"

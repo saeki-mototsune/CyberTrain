@@ -1,5 +1,5 @@
 require "cybertrain/db/error"
-require "cybertrain/db/connection"
+require "cybertrain/db/base"
 require "cybertrain/db/migrator"
 require "cybertrain/db/schema_dumper"
 require "cybertrain/db/normalizer"

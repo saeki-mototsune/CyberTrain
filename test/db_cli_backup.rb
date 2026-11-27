@@ -1,3 +1,4 @@
+require "cybertrain/db"
 require "cybertrain/db/cli"
 require "cybertrain/test"
 require_relative "support/file_tree"

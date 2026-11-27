@@ -16,5 +16,35 @@ module Cybertrain
     # @api public
     class Error < StandardError
     end
+
+    # A unique or primary key constraint refused a statement (a duplicate).
+    # The message is the database's own, as for {Error}. An {Error}, so
+    # rescuing {Error} still catches it.
+    # @api public
+    class UniqueViolation < Error
+    end
+
+    # A foreign key constraint refused a statement (a missing parent or a
+    # row still referenced). An {Error}.
+    # @api public
+    class ForeignKeyViolation < Error
+    end
+
+    # The database rolled a statement or transaction back to break a lock
+    # cycle; the caller may run the transaction again. An {Error}.
+    # @api public
+    class Deadlock < Error
+    end
+
+    # A statement gave up waiting for a lock. An {Error}.
+    # @api public
+    class LockTimeout < Error
+    end
+
+    # The connection to the database was lost (the server went away). An
+    # {Error}.
+    # @api public
+    class ConnectionLost < Error
+    end
   end
 end

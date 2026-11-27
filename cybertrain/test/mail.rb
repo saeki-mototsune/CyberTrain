@@ -7,7 +7,7 @@
 # this file and empties Mailer.deliveries before every test.
 require "cybertrain/test"
 require "cybertrain/test/jobs"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/mail_message"
 
 module Cybertrain

@@ -1,5 +1,5 @@
 require "cybertrain/cast"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/logger"
 require "cybertrain/websocket/status_writer"
 

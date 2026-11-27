@@ -1,6 +1,6 @@
 require "cybertrain/test"
 require "cybertrain/cast"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/job"
 
 module Cybertrain

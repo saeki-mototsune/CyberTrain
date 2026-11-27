@@ -1,4 +1,3 @@
-require "cybertrain/db/connection"
 require "cybertrain/logger"
 
 module Cybertrain

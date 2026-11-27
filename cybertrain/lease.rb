@@ -1,5 +1,5 @@
 require "cybertrain/cast"
-require "cybertrain/db"
+require "cybertrain/db/base"
 
 module Cybertrain
   # Cybertrain::Lease -- a named lock with an expiry, kept in the

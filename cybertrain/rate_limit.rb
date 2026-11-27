@@ -11,7 +11,7 @@
 # controller and the cache, not the whole core (bin/NAME.rb requires
 # cybertrain/core). Requiring it twice is a no-op.
 require "cybertrain/cache"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/feature"
 require "cybertrain/callback"
 require "cybertrain/controller"

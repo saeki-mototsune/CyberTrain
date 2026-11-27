@@ -12,7 +12,7 @@
 # boot, `/up` and Main.run reach jobs through JobsFeature, which this file
 # registers at its end (cybertrain/feature.rb). Requiring it twice, or after
 # require "cybertrain", is a no-op.
-require "cybertrain/core"
+require "cybertrain/core/common"
 require "cybertrain/feature"
 require "cybertrain/job"
 require "cybertrain/lease"

@@ -1,4 +1,5 @@
 require "stringio"
+require "cybertrain/db"
 require "cybertrain/scheduler"
 require "cybertrain/test"
 require_relative "support/log_capture"

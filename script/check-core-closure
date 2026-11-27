@@ -7,7 +7,7 @@
 # This reads the source, lexically (no Spinel, CRuby's standard library
 # only): it follows the `require "cybertrain/..."` and `require_relative`
 # calls (either quote, anywhere on a line outside a comment or a string)
-# from cybertrain/core.rb to the files under cybertrain/ they name, and the
+# from cybertrain/core/common.rb (the core without its database adapter; cybertrain/core.rb is it plus the SQLite adapter entry) to the files under cybertrain/ they name, and the
 # `require "spinel-http/..."` calls into spinel-http's source (the HTTP
 # layer, docs/design.md D91: the checkout spin.lock pins, found by
 # script/spinel_http_path.rb, its files listed as spinel-http/NAME.rb), and
@@ -39,7 +39,7 @@
 require_relative "spinel_http_path"
 
 ROOT = File.expand_path("..", __dir__)
-ENTRY = "cybertrain/core.rb"
+ENTRY = "cybertrain/core/common.rb"
 
 # The subsystems the core must not reach: file patterns (File.fnmatch,
 # relative to the repository root) and the constants that name them, one

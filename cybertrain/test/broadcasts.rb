@@ -29,7 +29,7 @@
 # one `Test.check_*` each, shared by every caller.
 require "cybertrain/test"
 require "cybertrain/cast"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/stream"
 require "cybertrain/turbo"
 require "cybertrain/test/html_reader"

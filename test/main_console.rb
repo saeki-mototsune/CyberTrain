@@ -1,4 +1,5 @@
 require "tmpdir"
+require "cybertrain/db"
 require "cybertrain/test"
 require "cybertrain/main"
 require_relative "support/file_tree"

@@ -1,4 +1,5 @@
 require "stringio"
+require "cybertrain/db"
 require "cybertrain/job"
 require "cybertrain/scheduler"
 require "cybertrain/websocket"
