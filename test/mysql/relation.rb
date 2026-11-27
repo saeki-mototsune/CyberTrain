@@ -383,6 +383,18 @@ end
 # TINYINT(1).
 TABLE_OPTIONS = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin"
 Cybertrain::DB.connect(URL, size: 1)
+# The test database is the suite's own (script/mysql-dev): every program
+# starts from an empty one, so that a table another program left behind
+# (one with a foreign key to a table of the same name as one here) cannot
+# get in the way. Dropped with the foreign key checks off.
+Cybertrain::DB.with do |c|
+  Cybertrain::DB::Dialect.foreign_keys_off(c)
+  Cybertrain::DB::Dialect.table_names(c).each do |name|
+    quoted = Cybertrain::DB::Dialect.quote_ident(name)
+    c.exec_script("DROP TABLE #{quoted}")
+  end
+  Cybertrain::DB::Dialect.foreign_keys_on(c)
+end
 Cybertrain::DB.with do |c|
   c.exec_script(
     "DROP TABLE IF EXISTS events; DROP TABLE IF EXISTS readings;" \

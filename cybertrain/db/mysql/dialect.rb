@@ -221,8 +221,13 @@ module Cybertrain
       # @param op [Cybertrain::Migration::Operation]
       # @return [Array<String>]
       def self.ddl_statements(op)
+        # Typed as the Array it will answer (a method that only raises
+        # has no return type for its callers to iterate).
+        statements = Array.new(0) { "" }
         message = "#{op.kind}: migrations on MySQL are not available yet (cybertrain/db/mysql/ddl.rb)"
-        raise Cybertrain::DB::Error, message
+        raise Cybertrain::DB::Error, message if statements.empty?
+
+        statements
       end
 
       # The current time as Integer epoch microseconds (UTC), in SQL: the
