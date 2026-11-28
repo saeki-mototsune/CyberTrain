@@ -474,6 +474,10 @@ as before; `docs/compatibility.md` has the statements that lift the limit.
 > clock), not done yet. Run one container, the web role alone, until a
 > release says otherwise; on MySQL `generate job` and `generate
 > authentication` leave `config/deploy.yml`'s worker role commented.
+> Across processes, a stream broadcast made inside a transaction in one
+> process can be skipped by another process's poller when a broadcast with
+> a higher id commits first; broadcast after the COMMIT when several
+> processes share a MySQL database.
 
 ## Time zones
 

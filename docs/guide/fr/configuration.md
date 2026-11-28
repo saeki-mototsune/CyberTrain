@@ -1,5 +1,5 @@
 ---
-source_sha256: 38b2745b3e9c1e93575660937aec807790dc13d9a4938710a2328faeae6eaf6f
+source_sha256: 10b0cff3a80b6e424cec763df2291df1a35c30b8320c8da9041fe5711dcf8362
 ---
 # Configuration
 
@@ -352,7 +352,7 @@ end
 Une clé de `Cache` (et donc de `rate_limit`) et la clé de concurrence d’un job peuvent être aussi longues que sur SQLite. Une table qu’une version antérieure de l’adaptateur MySQL a créée les limite toujours à 255 caractères (erreur 1406 au-delà) et fonctionne sinon comme avant&nbsp;; `docs/compatibility.md` donne les instructions qui lèvent la limite.
 
 > [!NOTE]
-> Un seul processus, pour l’instant. Sur MySQL, les jobs, les flux, les baux et les tâches planifiées sont garantis dans un processus (ils répondent comme sur SQLite), pas encore entre plusieurs processus ou hôtes qui partagent la base&nbsp;: c’est l’étape 2 de la feuille de route MySQL (la prise d’un job, l’ordre d’un flux, l’horloge d’un bail), pas encore faite. Faites tourner un seul conteneur, le rôle web seul, jusqu’à ce qu’une version dise autre chose&nbsp;; sur MySQL, `generate job` et `generate authentication` laissent en commentaire le rôle worker de `config/deploy.yml`.
+> Un seul processus, pour l’instant. Sur MySQL, les jobs, les flux, les baux et les tâches planifiées sont garantis dans un processus (ils répondent comme sur SQLite), pas encore entre plusieurs processus ou hôtes qui partagent la base&nbsp;: c’est l’étape 2 de la feuille de route MySQL (la prise d’un job, l’ordre d’un flux, l’horloge d’un bail), pas encore faite. Faites tourner un seul conteneur, le rôle web seul, jusqu’à ce qu’une version dise autre chose&nbsp;; sur MySQL, `generate job` et `generate authentication` laissent en commentaire le rôle worker de `config/deploy.yml`. Entre processus, une diffusion faite dans une transaction d’un processus peut être sautée par le poller d’un autre processus quand une diffusion d’id plus élevé est validée avant elle&nbsp;; diffusez après le COMMIT quand plusieurs processus partagent une base MySQL.
 
 ## Fuseaux horaires
 

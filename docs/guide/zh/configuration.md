@@ -1,5 +1,5 @@
 ---
-source_sha256: 38b2745b3e9c1e93575660937aec807790dc13d9a4938710a2328faeae6eaf6f
+source_sha256: 10b0cff3a80b6e424cec763df2291df1a35c30b8320c8da9041fe5711dcf8362
 ---
 # 配置
 
@@ -207,7 +207,7 @@ end
 `Cache` 的键（因而 `rate_limit` 的键）和作业的并发键可以与 SQLite 上一样长。由 MySQL 适配器较早的构建创建的表仍限制为 255 个字符（超过时为错误 1406），其他方面照旧工作；解除该限制的语句见 `docs/compatibility.md`。
 
 > [!NOTE]
-> 目前只保证一个进程。在 MySQL 上，作业、流、租约和计划任务在一个进程内得到保证（与 SQLite 的回答相同），但在共享同一数据库的多个进程或主机之间尚未得到保证：那是 MySQL 路线图的第 2 步（作业的领取、流的顺序、租约的时钟），尚未完成。在某个版本另有说明之前，请只运行一个容器，即单独的 web 角色；在 MySQL 上，`generate job` 和 `generate authentication` 会让 `config/deploy.yml` 的 worker 角色保持注释。
+> 目前只保证一个进程。在 MySQL 上，作业、流、租约和计划任务在一个进程内得到保证（与 SQLite 的回答相同），但在共享同一数据库的多个进程或主机之间尚未得到保证：那是 MySQL 路线图的第 2 步（作业的领取、流的顺序、租约的时钟），尚未完成。在某个版本另有说明之前，请只运行一个容器，即单独的 web 角色；在 MySQL 上，`generate job` 和 `generate authentication` 会让 `config/deploy.yml` 的 worker 角色保持注释。跨进程时，一个进程在事务中发出的流广播，在 id 更大的广播先提交时，可能被另一个进程的轮询器跳过；多个进程共享一个 MySQL 数据库时，请在 COMMIT 之后广播。
 
 ## 时区
 

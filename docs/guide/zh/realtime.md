@@ -1,5 +1,5 @@
 ---
-source_sha256: 378b47d92698d347661a11952915575f88a7711c7b02f125056c81f95d0055a0
+source_sha256: ef5fee540b06d127cd5f0f4d7e72eed9dd0b4a15c0efd9615205d60699999470
 ---
 # 实时：推送到浏览器的流
 
@@ -10,7 +10,7 @@ source_sha256: 378b47d92698d347661a11952915575f88a7711c7b02f125056c81f95d0055a0
 页面订阅一个或多个具名的流；应用中的任何部分都可以按名称向某个流广播；每个订阅了该流的页面大约在十分之一秒内收到消息。
 
 - **流有名称。** 名称可以是任意简短的文本（`"alerts"`），也可以是一条记录，其名称是它的表名和 id（`"articles:12"`，`Cybertrain::Stream.name_for(@article)`）。
-- **一次广播就是一行。** `Cybertrain::Stream.broadcast(name, payload)` 向 `cybertrain_messages` 插入一行，这张表由框架自己在应用的数据库中创建。在 `DB.transaction` 内部，只有事务提交时消息才会发出。因为它是一行，所以任何共享该数据库的进程都可以广播：请求、`worker` 进程中的作业、订阅回调、`Main.command`。在 MySQL 上，这在一个进程内得到保证，与 SQLite 上一样；在多个进程之间，直到 MySQL 路线图的第 2 步之前，消息仍可能丢失（[配置中的“MySQL”](configuration.md#mysql)）。
+- **一次广播就是一行。** `Cybertrain::Stream.broadcast(name, payload)` 向 `cybertrain_messages` 插入一行，这张表由框架自己在应用的数据库中创建。在 `DB.transaction` 内部，只有事务提交时消息才会发出。因为它是一行，所以任何共享该数据库的进程都可以广播：请求、`worker` 进程中的作业、订阅回调、`Main.command`。在 MySQL 上，消息 id 在 INSERT 时取得，在 COMMIT 时可见。发出广播的进程的轮询器会先等待本进程打开的事务，再投递之后的任何消息，所以在一个进程内消息与 SQLite 上一样按 id 顺序到达；请让发出广播的事务保持简短，因为之后的消息（所有流的）都要等它。另一个进程的轮询器不知道这个事务，可能跳过该消息：多个进程使用同一个 MySQL 数据库时，请在 COMMIT 之后广播（MySQL 路线图的第 2 步，[配置中的“MySQL”](configuration.md#mysql)）。
 - **每个 Web 进程轮询这张表。** 每个 `server` 进程有一个线程（流轮询器），每 `stream_poll_ms`（100 毫秒）读取新行，并把每一行交给该进程持有的浏览器。它每分钟删除一次早于 `stream_retention`（60 秒）的行。
 - **浏览器连接到同一个端点** `/cybertrain/stream`，通过 Server-Sent Events（`EventSource`）或 WebSocket，并带上一个签名令牌，令牌指明它可以读取哪些流（[签名的流名称](#signed-stream-names)）。
 
