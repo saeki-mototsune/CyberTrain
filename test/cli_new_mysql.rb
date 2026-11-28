@@ -20,6 +20,10 @@ at_exit do
   FileTree.remove(TMP)
 end
 
+# Fixed migration timestamps, as test/cli_authentication.rb: the generators'
+# output names the files, and the snapshot must not carry the clock.
+ENV["CYBERTRAIN_TIMESTAMP"] = "20260925120000"
+
 def read(path)
   File.read(path)
 end
