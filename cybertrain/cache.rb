@@ -301,9 +301,13 @@ module Cybertrain
     # increment (as Rails' stores do) and does not slide with every call.
     # The count is a 64-bit integer on SQLite; on MySQL it must stay within
     # -2**62 ... 2**62 - 1. Past the top the statement fails with DB::Error
-    # and nothing is written; past the bottom the new count is written and
-    # the call raises DB::ConnectionLost, since the client cannot read the
-    # insert id that carries it back.
+    # (MySQL 1690) and nothing is written; past the bottom the new count is
+    # written and the call raises DB::ConnectionLost, since the client
+    # cannot read the insert id that carries it back. A stored value beyond
+    # the 64-bit range (a long digit string written with Cache.write) is
+    # read as SQLite reads it, saturated to the end it passed, so adding to
+    # it is outside the counter's range, with the errors above (1690 for a
+    # value past the top).
     # @example A counter for the current minute
     #   Cybertrain::Cache.increment("hits/#{ip}", expires_in: 60)
     # @param key [String]
