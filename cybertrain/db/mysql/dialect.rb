@@ -71,8 +71,11 @@ module Cybertrain
       # The tail of an INSERT that updates `update_cols` from the inserted
       # row when it collides on a unique key: " AS excluded ON DUPLICATE KEY
       # UPDATE c = excluded.c, ..."; with no column, the colliding row is
-      # left as it is (bulk_writes_upsert_tail). MySQL has no conflict
-      # target: a collision on any unique key of the table takes the update.
+      # left as it is (bulk_writes_upsert_tail). The text alone, with no
+      # conflict target: a collision on any unique key of the table takes
+      # the update. Model.upsert and upsert_all write theirs with
+      # bulk_writes_upsert_sql, which checks the target and guards the
+      # other unique keys.
       # @param conflict_cols [Array<String>]
       # @param update_cols [Array<String>]
       # @return [String]
@@ -303,7 +306,7 @@ module Cybertrain
 
       # --- Model bulk writes --------------------------------------------------
 
-      # The tail of Model.upsert / upsert_all: " AS excluded ON DUPLICATE KEY
+      # The tail of an upsert as text alone: " AS excluded ON DUPLICATE KEY
       # UPDATE <assignments>" (each "`c` = <expr>", where excluded.c is the
       # value the INSERT tried to write). With no assignment the colliding
       # row is left as it is: " ON DUPLICATE KEY UPDATE <first conflict col>
@@ -311,18 +314,297 @@ module Cybertrain
       # NOTHING), without the alias, beside which the bare column would be
       # ambiguous (error 1052). For the same reason an assignment's
       # expression names the table's own column qualified by the table
-      # (`calls = stats.calls + excluded.calls`).
-      # @param conflict_cols [Array<String>]
+      # (`calls = stats.calls + excluded.calls`). It has no conflict target
+      # (MySQL has none): Model.upsert and upsert_all write theirs with
+      # bulk_writes_upsert_sql, which adds what they need.
+      # @param conflict_cols [Array<String>] quoted
       # @param assignments [Array<String>]
       # @return [String]
+      # @raise [ArgumentError] with no assignment and no conflict column
       def self.bulk_writes_upsert_tail(conflict_cols, assignments)
         if assignments.empty?
-          first = conflict_cols.empty? ? "`id`" : conflict_cols[0]
+          raise ArgumentError, "an upsert needs a conflict column" if conflict_cols.empty?
+
+          first = conflict_cols[0]
           return " ON DUPLICATE KEY UPDATE #{first} = #{first}"
         end
 
         set_list = assignments.join(", ")
         " AS #{ROW_ALIAS} ON DUPLICATE KEY UPDATE #{set_list}"
+      end
+
+      # --- Upserts: the conflict target MySQL does not have -------------------
+      #
+      # SQLite's `ON CONFLICT (cols)` names the unique index whose collision
+      # takes the update; a collision on any other unique key raises, and a
+      # target that is no unique index is refused. MySQL's ON DUPLICATE KEY
+      # UPDATE takes a collision on any unique key of the table. So that
+      # Model.upsert and upsert_all answer what they answer on SQLite:
+      #
+      # - the target must be exactly the columns of the primary key or of
+      #   one unique index (in any order), else DB::Error before anything
+      #   runs (upsert_unique_keys reads the table's unique keys once per
+      #   table and connect; upsert_target_key compares);
+      # - where the table has another unique key a row could collide on
+      #   (any unique index, or the primary key unless it is an
+      #   AUTO_INCREMENT id the rows do not supply), every assignment is
+      #   guarded by the target: it takes its expression only when the row
+      #   found has the inserted row's target values, and the first
+      #   assignment, for a row found on another key, evaluates UUID_TO_BIN
+      #   of UPSERT_GUARD, whose error 1411 fails the statement (InnoDB
+      #   rolls the statement back, so nothing of it is written);
+      #   bulk_writes_execute raises it as DB::UniqueViolation, as SQLite
+      #   raises its UNIQUE constraint failure. The guard's argument names a
+      #   column of the row found (LEFT(col, 0): `col IS NULL` on a NOT
+      #   NULL column is folded to a constant, and the server then raised
+      #   at PREPARE), so it is evaluated only for that row. When a row
+      #   collides on the target and on another key at once, MySQL takes
+      #   the key it checks first (the primary key, then the unique
+      #   indexes in order): a raise where SQLite may update the
+      #   target's row, never a write to a row the target does not name;
+      # - Model.upsert answers 1 or 0 (bulk_writes_upsert_count). The
+      #   affected-row count cannot: under CLIENT_FOUND_ROWS it is 1 for an
+      #   insert, 2 for an updated row and 1 for a row found and left as it
+      #   is. An empty `update` (DO NOTHING) marks the row it leaves through
+      #   LAST_INSERT_ID(UPSERT_SKIP_MARK), the statement's insert id when
+      #   no row was inserted; an inserted row's insert id is its own
+      #   AUTO_INCREMENT id (or 0), never the mark unless that id is
+      #   2**63 - 1.
+      #
+      # Assignments to target columns go last, so that every guard before
+      # them reads the row found as it was (MySQL assigns left to right).
+
+      # What the guard's UUID_TO_BIN is given: its error 1411 quotes it.
+      UPSERT_GUARD = "cybertrain: upsert collided on another unique key"
+
+      # The insert id of a DO NOTHING upsert that left a row (see above).
+      UPSERT_SKIP_MARK = 9_223_372_036_854_775_807
+
+      # table => its unique keys (upsert_unique_keys), for the connect
+      # @upsert_keys_generation names (DB.generation): module-level ivars
+      # (spikes/NOTES.md rule 18), read and written under UPSERT_KEYS_LOCK
+      # (rule 57: shared mutable state is synchronized).
+      @upsert_keys = { "" => [""] }
+      @upsert_keys.delete("")
+      @upsert_keys_generation = 0
+      UPSERT_KEYS_LOCK = Mutex.new
+
+      # Forgets every table's unique keys: the Migrator calls it after a
+      # version, whose DDL may have changed them. Keys read before another
+      # process changed the schema are kept until this process connects
+      # again or migrates.
+      # @return [nil]
+      def self.forget_schema_cache
+        UPSERT_KEYS_LOCK.synchronize { @upsert_keys.clear }
+        nil
+      end
+
+      # The unique keys of `table`, each "<kind>:<col>\u001f<col>..." in key
+      # order, the primary key first: kind "A" for a one-column
+      # AUTO_INCREMENT primary key, "P" for another primary key, "U" for a
+      # unique index; a key part that is an expression is "(expression)".
+      # Read once per table and connect; `fresh` reads again.
+      # @param conn [Cybertrain::DB::Connection]
+      # @param table [String]
+      # @param fresh [Boolean]
+      # @return [Array<String>]
+      def self.upsert_unique_keys(conn, table, fresh)
+        generation = Cybertrain::DB.generation
+        cached = Array.new(0) { "" }
+        found = false
+        UPSERT_KEYS_LOCK.synchronize do
+          if @upsert_keys_generation != generation
+            @upsert_keys.clear
+            @upsert_keys_generation = generation
+          end
+          if !fresh && @upsert_keys.key?(table)
+            cached = @upsert_keys[table]
+            found = true
+          end
+        end
+        return cached if found
+
+        rows = conn.execute("SELECT s.index_name AS name, s.column_name AS col, c.extra AS extra " \
+                            "FROM information_schema.statistics s LEFT JOIN information_schema.columns c " \
+                            "ON c.table_schema = s.table_schema AND c.table_name = s.table_name " \
+                            "AND c.column_name = s.column_name " \
+                            "WHERE s.table_schema = DATABASE() AND s.table_name = ? AND s.non_unique = 0 " \
+                            "ORDER BY s.index_name <> 'PRIMARY', s.index_name, s.seq_in_index", [table])
+        keys = Array.new(0) { "" }
+        name = ""
+        parts = Array.new(0) { "" }
+        auto = false
+        rows.each do |r|
+          index = Cybertrain::Cast.str(r["name"])
+          if !parts.empty? && index != name
+            keys << Dialect.upsert_key_text(name, parts, auto)
+            parts = Array.new(0) { "" }
+            auto = false
+          end
+          name = index
+          col = Cybertrain::Cast.str_or_nil(r["col"])
+          parts << (col.nil? ? "(expression)" : col)
+          auto = true if Cybertrain::Cast.str(r["extra"]).include?("auto_increment")
+        end
+        keys << Dialect.upsert_key_text(name, parts, auto) unless parts.empty?
+        UPSERT_KEYS_LOCK.synchronize { @upsert_keys[table] = keys } unless keys.empty?
+        keys
+      end
+
+      # One entry of upsert_unique_keys.
+      # @return [String]
+      def self.upsert_key_text(index, parts, auto)
+        kind = "U"
+        kind = parts.size == 1 && auto ? "A" : "P" if index == "PRIMARY"
+        joined = parts.join("\u001f")
+        "#{kind}:#{joined}"
+      end
+
+      # The columns of an upsert_unique_keys entry.
+      # @return [Array<String>]
+      def self.upsert_key_columns(key)
+        key[2, key.size - 2].split("\u001f")
+      end
+
+      # The entry of `keys` whose columns are `targets` (in any order), ""
+      # for none.
+      # @return [String]
+      def self.upsert_target_key(keys, targets)
+        wanted = targets.sort
+        keys.each do |key|
+          return key if Dialect.upsert_key_columns(key).sort == wanted
+        end
+        ""
+      end
+
+      # Whether a row of `columns` can collide on a unique key of `keys`
+      # other than `target`: any unique index, or a primary key but an
+      # AUTO_INCREMENT id the rows do not supply.
+      # @return [Boolean]
+      def self.upsert_other_key?(keys, target, columns)
+        keys.each do |key|
+          next if key == target
+          next if key.start_with?("A:") && !columns.include?(Dialect.upsert_key_columns(key)[0])
+
+          return true
+        end
+        false
+      end
+
+      # The tail of Model.upsert's statement (`mark` true) or of
+      # upsert_all's (`mark` false), after its VALUES: the ON DUPLICATE KEY
+      # UPDATE that sets `set_cols` (column names) to `set_exprs` (SQL, at
+      # the same positions) on a collision on `targets`, or leaves the row
+      # with none, as the section notes above say: the target checked
+      # against `table`'s unique keys, the assignments guarded where a row
+      # of `columns` (the INSERT's columns) can collide on another key, and,
+      # with `mark`, a row an empty update leaves marked. SQLite: ON
+      # CONFLICT (targets) DO UPDATE SET ... / DO NOTHING.
+      # @param conn [Cybertrain::DB::Connection]
+      # @param table [String]
+      # @param columns [Array<String>]
+      # @param targets [Array<String>]
+      # @param set_cols [Array<String>]
+      # @param set_exprs [Array<String>]
+      # @param mark [Boolean]
+      # @return [String]
+      # @raise [Cybertrain::DB::Error] when `targets` is not exactly the
+      #   primary key or a unique index of `table`
+      def self.bulk_writes_upsert_sql(conn, table, columns, targets, set_cols, set_exprs, mark)
+        keys = Dialect.upsert_unique_keys(conn, table, false)
+        target = Dialect.upsert_target_key(keys, targets)
+        if target == ""
+          keys = Dialect.upsert_unique_keys(conn, table, true)
+          target = Dialect.upsert_target_key(keys, targets)
+        end
+        # A table that is not there is the INSERT's own error.
+        if target == "" && (!keys.empty? || Dialect.table_exists?(conn, table))
+          list = targets.join(", ")
+          message = "upsert: #{list} is not the primary key or a unique index of #{table} (MySQL has no conflict " \
+                    "target: conflict: / unique_by: must name exactly the columns of one)"
+          raise Error, message
+        end
+        guarded = target != "" && Dialect.upsert_other_key?(keys, target, columns)
+        Dialect.upsert_tail_sql(table, targets, set_cols, set_exprs, mark, guarded)
+      end
+
+      # bulk_writes_upsert_sql's text, once the target is known good.
+      # @return [String]
+      def self.upsert_tail_sql(table, targets, set_cols, set_exprs, mark, guarded)
+        qt = Dialect.quote_ident(table)
+        first = Dialect.quote_ident(targets[0])
+        terms = Array.new(0) { "" }
+        targets.each do |name|
+          col = Dialect.quote_ident(name)
+          terms << "#{qt}.#{col} <=> #{ROW_ALIAS}.#{col}"
+        end
+        match = terms.join(" AND ")
+        raising = "UUID_TO_BIN(CONCAT('#{UPSERT_GUARD}', COALESCE(LEFT(#{qt}.#{first}, 0), ''))) IS NULL"
+        if set_cols.empty?
+          kept = guarded ? "#{qt}.#{first}" : first
+          kept = "IF(LAST_INSERT_ID(#{UPSERT_SKIP_MARK}) > 0, #{kept}, #{kept})" if mark
+          return " ON DUPLICATE KEY UPDATE #{first} = #{kept}" unless guarded
+
+          return " AS #{ROW_ALIAS} ON DUPLICATE KEY UPDATE #{first} = " \
+                 "CASE WHEN #{match} THEN #{kept} WHEN #{raising} THEN #{qt}.#{first} ELSE #{qt}.#{first} END"
+        end
+
+        sets = Array.new(0) { "" }
+        unless guarded
+          set_cols.each_with_index { |name, i| sets << "#{Dialect.quote_ident(name)} = #{set_exprs[i]}" }
+          return Dialect.bulk_writes_upsert_tail([first], sets)
+        end
+
+        order = Array.new(0) { 0 }
+        set_cols.each_with_index { |name, i| order << i unless targets.include?(name) }
+        set_cols.each_with_index { |name, i| order << i if targets.include?(name) }
+        order.each do |i|
+          col = Dialect.quote_ident(set_cols[i])
+          expr = set_exprs[i]
+          set = "#{col} = IF(#{match}, #{expr}, #{qt}.#{col})"
+          if sets.empty?
+            set = "#{col} = CASE WHEN #{match} THEN #{expr} WHEN #{raising} THEN #{qt}.#{col} ELSE #{qt}.#{col} END"
+          end
+          sets << set
+        end
+        Dialect.bulk_writes_upsert_tail([first], sets)
+      end
+
+      # Runs one statement of Model.upsert or upsert_all: a collision the
+      # guard caught (UPSERT_GUARD's error) raised as DB::UniqueViolation,
+      # any other error as it came. SQLite: conn.execute.
+      # @param conn [Cybertrain::DB::Connection]
+      # @param sql [String]
+      # @param binds [Array]
+      # @return [Array<Hash{String => Object}>]
+      # @raise [Cybertrain::DB::UniqueViolation] on a collision on a unique
+      #   key other than the conflict target
+      def self.bulk_writes_execute(conn, sql, binds)
+        conn.execute(sql, binds)
+      rescue Cybertrain::DB::Error => e
+        raise e unless e.message.include?(UPSERT_GUARD)
+
+        message = "upsert: a row collides with an existing row on a unique key other than the conflict target, " \
+                  "and nothing was written (SQLite: UNIQUE constraint failed): #{e.message}"
+        raise UniqueViolation, message
+      end
+
+      # Runs Model.upsert's statement and answers the rows it wrote, as
+      # SQLite counts them: 1 for a row inserted or updated, 0 for a row an
+      # empty update (`skips`) left as it was (see the section notes).
+      # @param conn [Cybertrain::DB::Connection]
+      # @param sql [String]
+      # @param binds [Array]
+      # @param skips [Boolean]
+      # @return [Integer]
+      def self.bulk_writes_upsert_count(conn, sql, binds, skips)
+        conn.forget_last_insert_id
+        Dialect.bulk_writes_execute(conn, sql, binds)
+        return conn.changes > 0 ? 1 : 0 unless skips
+        return 1 unless conn.last_insert_id == UPSERT_SKIP_MARK
+
+        conn.forget_last_insert_id
+        0
       end
 
       # The tail of Model.insert_all: a row that collides on any unique key

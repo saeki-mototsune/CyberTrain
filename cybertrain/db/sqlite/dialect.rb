@@ -52,9 +52,9 @@ module Cybertrain
       # row when it collides on `conflict_cols` (each name as SQL text,
       # already quoted where it needs to be); DO NOTHING when `update_cols`
       # is empty.
-      # MySQL: " ON DUPLICATE KEY UPDATE c = VALUES(c), ..." (no conflict
-      # target; with no column, " ON DUPLICATE KEY UPDATE <first conflict
-      # col> = <first conflict col>").
+      # MySQL: " AS excluded ON DUPLICATE KEY UPDATE c = excluded.c, ..."
+      # (the row alias; no conflict target; with no column, " ON DUPLICATE
+      # KEY UPDATE <first conflict col> = <first conflict col>").
       # @param conflict_cols [Array<String>]
       # @param update_cols [Array<String>]
       # @return [String]
@@ -266,9 +266,9 @@ module Cybertrain
       # The tail of Model.upsert / upsert_all: on a collision on
       # `conflict_cols`, `assignments` ("`c` = <expr>" each), DO NOTHING
       # when there is none.
-      # MySQL: " ON DUPLICATE KEY UPDATE <assignments>" (excluded.c reads
-      # VALUES(c)); with none, " ON DUPLICATE KEY UPDATE <first conflict col>
-      # = <first conflict col>".
+      # MySQL: " AS excluded ON DUPLICATE KEY UPDATE <assignments>" (the
+      # row alias excluded); with none, " ON DUPLICATE KEY UPDATE <first
+      # conflict col> = <first conflict col>".
       # @param conflict_cols [Array<String>]
       # @param assignments [Array<String>]
       # @return [String]
@@ -284,9 +284,67 @@ module Cybertrain
         sql
       end
 
+      # The tail of Model.upsert's statement (`mark` true) or of
+      # upsert_all's (`mark` false), after its VALUES: ON CONFLICT
+      # (`targets`) DO UPDATE SET each of `set_cols` (column names) to
+      # `set_exprs` (SQL, at the same positions), DO NOTHING with none.
+      # SQLite itself refuses a target that is no unique index, and raises
+      # on a collision on another one; `conn`, `table`, `columns` and `mark`
+      # are not used. MySQL (no conflict target): checks the target against
+      # the table's unique keys, guards the assignments by it where a row
+      # can collide on another key, and with `mark` marks a row an empty
+      # update leaves (bulk_writes_upsert_count).
+      # @param conn [Cybertrain::DB::Connection]
+      # @param table [String]
+      # @param columns [Array<String>]
+      # @param targets [Array<String>]
+      # @param set_cols [Array<String>]
+      # @param set_exprs [Array<String>]
+      # @param mark [Boolean]
+      # @return [String]
+      def self.bulk_writes_upsert_sql(conn, table, columns, targets, set_cols, set_exprs, mark)
+        quoted = Array.new(0) { "" }
+        targets.each { |name| quoted << Dialect.quote_ident(name) }
+        sets = Array.new(0) { "" }
+        set_cols.each_with_index { |name, i| sets << "#{Dialect.quote_ident(name)} = #{set_exprs[i]}" }
+        Dialect.bulk_writes_upsert_tail(quoted, sets)
+      end
+
+      # Runs one statement of Model.upsert or upsert_all. MySQL: raises the
+      # guard's error (bulk_writes_upsert_sql) as DB::UniqueViolation.
+      # @param conn [Cybertrain::DB::Connection]
+      # @param sql [String]
+      # @param binds [Array]
+      # @return [Array<Hash{String => Object}>]
+      def self.bulk_writes_execute(conn, sql, binds)
+        conn.execute(sql, binds)
+      end
+
+      # Runs Model.upsert's statement and answers the rows it wrote: 1
+      # inserted or updated, 0 when an empty update (`skips`) left a
+      # conflicting row, which is SQLite's count. MySQL counts 2 for an
+      # updated row and 1 for one left, and answers this from a mark.
+      # @param conn [Cybertrain::DB::Connection]
+      # @param sql [String]
+      # @param binds [Array]
+      # @param skips [Boolean]
+      # @return [Integer]
+      def self.bulk_writes_upsert_count(conn, sql, binds, skips)
+        conn.execute(sql, binds)
+        conn.changes
+      end
+
+      # Forgets what the Dialect read of the schema (MySQL: the tables'
+      # unique keys); the Migrator calls it after a version. SQLite reads
+      # nothing ahead: nil.
+      # @return [nil]
+      def self.forget_schema_cache
+        nil
+      end
+
       # The tail of Model.insert_all: a row that collides on any unique key
-      # is skipped. MySQL: INSERT IGNORE has no tail; " ON DUPLICATE KEY
-      # UPDATE `id` = `id`".
+      # is skipped. MySQL: " ON DUPLICATE KEY UPDATE `id` = `id`" (not
+      # INSERT IGNORE, which would also turn other errors into warnings).
       # @return [String]
       def self.bulk_writes_ignore_tail
         " ON CONFLICT DO NOTHING"
@@ -559,8 +617,8 @@ module Cybertrain
       # Timetable.write's statement: binds name, last_run_at (0: stored as
       # NULL), next_run_at, now. A row is never moved backwards: an update
       # needs a later last run, or the same one and a next run no earlier.
-      # MySQL: INSERT ... ON DUPLICATE KEY UPDATE with each column
-      # IF(<the same test on VALUES()>, VALUES(c), c), updated_at last.
+      # MySQL: INSERT ... AS excluded ON DUPLICATE KEY UPDATE with each
+      # column IF(<the same test on excluded>, excluded.c, c).
       # @return [String]
       def self.timetable_write_sql
         "INSERT INTO cybertrain_schedules (name, last_run_at, next_run_at, updated_at) " \

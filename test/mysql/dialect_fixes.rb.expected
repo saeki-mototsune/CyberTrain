@@ -1,0 +1,5 @@
+ok   upsert answers 1 for an insert and an update, 0 for a row an empty update left
+ok   a conflict target that is no unique key is refused before anything is written
+ok   a row that collides on another unique key raises UniqueViolation and changes no row
+ok   a collision on the target itself still takes the update where other unique keys exist
+4 tests, 32 assertions, 0 failures
