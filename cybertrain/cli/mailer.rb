@@ -39,13 +39,15 @@ module Cybertrain
         segments = GeneratedFiles.name_segments(name, "mailer")
         stem = segments.last.delete_suffix("_mailer")
         raise InvalidArgument, "bad mailer name '#{name}'" if stem.empty?
-        if segments.size == 1 && stem == "application"
-          raise InvalidArgument, "ApplicationMailer is the base the generator writes when it is missing: give the mailer another name"
-        end
 
         segments[segments.size - 1] = "#{stem}_mailer"
         modules = segments.map { |s| Inflector.camelize(s) }
         full = modules.join("::")
+        # Checked on the class name, so every spelling that camelizes to it
+        # ("application", "application_", "Application") is refused.
+        if full == "ApplicationMailer"
+          raise InvalidArgument, "ApplicationMailer is the base the generator writes when it is missing: give the mailer another name"
+        end
         rel = segments.join("/")
         actions.each { |a| check_action(a) }
         files = [["app/mailers/#{rel}.rb", class_source(modules, rel, actions)]]

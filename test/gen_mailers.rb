@@ -63,7 +63,7 @@ test "the fixture's mailer classes in load order, the module left out" do
   assert_equal "", notice.mailer_layout_name
   assert_equal ["module"], notice.mailer_scopes
   user = infos[2]
-  assert_equal ["welcome", "reset", "plain_note", "empty_note"], user.mailer_actions.map { |a| a.action_name }
+  assert_equal ["welcome", "reset", "plain_note", "empty_note", "html_partial_only"], user.mailer_actions.map { |a| a.action_name }
   assert_equal "user, greeting = \"Hello\", copy: false", user.mailer_actions[0].action_params
   assert_equal "user, greeting, copy: copy", user.mailer_actions[0].action_args
   assert_equal "", user.mailer_actions[1].action_params
@@ -90,6 +90,8 @@ test "a parameter list without parentheses ends at the semicolon of a one-line d
   infos = scan(one_mailer("  def note to, subject = \"a;b\"; mail(to: to, subject: subject); end\n"))
   assert_equal "to, subject = \"a;b\"", infos[1].mailer_actions[0].action_params
   assert_equal "to, subject", infos[1].mailer_actions[0].action_args
+  escaped = scan(one_mailer("  def note to, subject = \"a\\\";b\"; mail(to: to, subject: subject); end\n"))
+  assert_equal "to, subject = \"a\\\";b\"", escaped[1].mailer_actions[0].action_params
 end
 
 test "a subclass dispatches its ancestors' actions through itself, its own first" do

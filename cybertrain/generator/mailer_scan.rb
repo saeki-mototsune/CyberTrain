@@ -305,7 +305,9 @@ module Cybertrain
         i = 0
         while i < text.size
           ch = text[i, 1]
-          if quote != ""
+          if quote != "" && ch == "\\"
+            i += 1 # an escaped character inside a String ("a\";b")
+          elsif quote != ""
             quote = "" if ch == quote
           elsif ch == "\"" || ch == "'"
             quote = ch

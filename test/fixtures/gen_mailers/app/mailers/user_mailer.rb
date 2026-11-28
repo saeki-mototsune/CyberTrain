@@ -29,6 +29,11 @@ class UserMailer < ApplicationMailer
     mail(to: to, subject: "Empty", body: "")
   end
 
+  # Its text view renders a partial that exists only as HTML.
+  def html_partial_only(to)
+    mail(to: to, subject: "Partial")
+  end
+
   private def helper_not_an_action
     nil
   end

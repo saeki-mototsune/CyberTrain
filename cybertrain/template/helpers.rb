@@ -758,7 +758,8 @@ module Cybertrain
       # "comment" from a comments/ template), remembered like model_key.
       # Ending in .erb, it is used by Engine#template as is. From a mailer's
       # text view (`format` "text", Views.render_mailer_view) it is
-      # "_comment.text.erb", with no fallback to the HTML partial.
+      # "_comment.text.erb", with no fallback to the HTML partial (a missing
+      # one is the render's Template::RuntimeError, as any missing partial).
       def partial_file(dir, name, format = "")
         key = format == "text" ? "#{dir}\ttext" : dir
         by_name = @partial_files[key]

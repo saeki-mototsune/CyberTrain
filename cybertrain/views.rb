@@ -205,8 +205,10 @@ module Cybertrain
     # ("layouts/mailer.html.erb") when that is not "" and exists. A
     # `.text.erb` view and layout print `<%= %>` unescaped, as Rails
     # treats text/plain (Template::Interpreter), and a partial it renders
-    # is the `.text.erb` one (`_footer.text.erb`; a missing one raises
-    # MissingTemplate rather than rendering the HTML partial).
+    # is the `.text.erb` one (`_footer.text.erb`; a missing one fails the
+    # render, as any missing partial does, with Template::RuntimeError
+    # "<view>:<line>: Missing template .../_footer.text.erb", rather than
+    # rendering the HTML partial).
     # @return [String]
     def self.render_mailer_view(name, assigns, layout)
       engine = configured_engine

@@ -4,6 +4,7 @@ ok   with(params) gives the action its params
 ok   an action that returns before mail answers a skipped message that sends nothing
 ok   body: skips the views, from: overrides the default
 ok   body: "" is an empty text, no view read
+ok   a text view's partial must exist as .text.erb: the HTML one is not used
 ok   a namespaced mailer reads its own view directory, layout false
 ok   a mailer module still works beside the classes
 ok   deliver_now stores the message with its attachments under :test
@@ -11,4 +12,4 @@ ok   deliver_now over SMTP sends multipart/mixed with the files
 ok   deliver_later queues the message, files included, and the job sends it
 ok   assert_enqueued_emails, assert_no_enqueued_emails and assert_enqueued_email_with
 ok   a view the action lacks raises MissingTemplate naming both files
-13 tests, 68 assertions, 0 failures
+14 tests, 71 assertions, 0 failures

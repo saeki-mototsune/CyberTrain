@@ -111,6 +111,13 @@ class UserMailer < ApplicationMailer
       mailer.empty_note(to)
       mailer.mailer_result
     end
+
+    def html_partial_only(to)
+      mailer = UserMailer.new
+      mailer.mailer_setup(@params, "html_partial_only")
+      mailer.html_partial_only(to)
+      mailer.mailer_result
+    end
   end
 
   def self.with(params)
@@ -131,5 +138,9 @@ class UserMailer < ApplicationMailer
 
   def self.empty_note(to)
     with({}).empty_note(to)
+  end
+
+  def self.html_partial_only(to)
+    with({}).html_partial_only(to)
   end
 end

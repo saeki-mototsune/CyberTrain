@@ -75,6 +75,8 @@ ok   a second mailer leaves the application mailer and the layouts alone, a name
 error: 'params' is a method of every mailer: give the action another name
 error: bad action name '9lives'
 error: ApplicationMailer is the base the generator writes when it is missing: give the mailer another name
+error: ApplicationMailer is the base the generator writes when it is missing: give the mailer another name
+error: ApplicationMailer is the base the generator writes when it is missing: give the mailer another name
 error: app/mailers/user_mailer.rb already exists (pass --force to overwrite it)
 force app/mailers/user_mailer.rb
 identical app/views/user_mailer/welcome.html.erb
@@ -92,4 +94,4 @@ next:
   cybertrain test        # test/mailers/user_mailer_test.rb among the others
 error: usage: cybertrain generate mailer NAME [action ...] [--force]
 ok   refusals: a reserved action, a bad name, an existing file without --force
-7 tests, 28 assertions, 0 failures
+7 tests, 31 assertions, 0 failures

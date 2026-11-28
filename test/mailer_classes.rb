@@ -122,6 +122,12 @@ test "body: \"\" is an empty text, no view read" do
   assert_equal "Empty", m.mail_subject
 end
 
+test "a text view's partial must exist as .text.erb: the HTML one is not used" do
+  message = assert_raises("Cybertrain::Template::RuntimeError") { UserMailer.html_partial_only("bob@example.org") }
+  assert message.start_with?("user_mailer/html_partial_only.text.erb:1: Missing template ")
+  assert message.end_with?("user_mailer/_html_only.text.erb")
+end
+
 test "a namespaced mailer reads its own view directory, layout false" do
   m = Admin::NoticeMailer.report(3)
   assert_equal "<p>3 new</p>\n", m.mail_html
