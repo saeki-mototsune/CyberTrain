@@ -76,12 +76,24 @@ module I18n
   # @api private
   def self.no_list(key) = key == "\u0000" ? [""] : []
 
+  # A fresh empty Hash of `%{name}` values, typed as interpolation_vars'
+  # (rule 9).
+  # @api private
+  def self.empty_vars
+    vars = { "" => "" }
+    vars.delete("")
+    vars
+  end
+
   @app_texts = I18n.no_texts
   @app_lists = I18n.no_lists
   @default_locale = :en
   @available_locales = [:en]
   @raise_on_missing = false
   @mark_missing = true
+  # The values of a lookup with no options, shared and never written to
+  # (interpolate_vars only reads them): most `t` calls have none.
+  @no_vars = I18n.empty_vars
 
   # Installs the application's dictionary. gen/locales.rb's last line calls
   # it with `Gen::Locales.resolver` and `Gen::Locales.list_resolver`;
@@ -265,7 +277,7 @@ module I18n
   def self.find_translation(key, options = {})
     k = Cybertrain::Key.string_of(key)
     loc = I18n.option_locale(options)
-    vars = I18n.interpolation_vars(options)
+    vars = options.empty? ? @no_vars : I18n.interpolation_vars(options)
     count = options[:count]
     counted = count.is_a?(Integer)
     n = counted ? count.to_i : 0
@@ -673,7 +685,7 @@ module I18n
     keys << "activerecord.errors.messages.#{ty}"
     keys << "errors.attributes.#{a}.#{ty}"
     keys << "errors.messages.#{ty}"
-    vars = I18n.interpolation_vars(options)
+    vars = options.empty? ? @no_vars : I18n.interpolation_vars(options)
     count = options[:count]
     counted = count.is_a?(Integer)
     n = counted ? count.to_i : 0
@@ -763,8 +775,7 @@ module I18n
     return text unless text.nil?
 
     bundled = I18n.dictionary_text(false, full)
-    # Probed only here, off the common path: the application's forms hide
-    # a bundled text.
+    # The application's plural forms hide a bundled text.
     return bundled unless bundled.nil? || I18n.plural_forms_at?(true, full)
     return nil unless counted
 
@@ -789,12 +800,22 @@ module I18n
     I18n.dictionary_text(false, sub)
   end
 
-  # Whether one dictionary holds any plural form under full.
+  # Whether one dictionary holds any plural form under full. Every text
+  # found in the bundled dictionary alone (number settings, date formats,
+  # error messages) comes through here, so the six keys are written into
+  # one buffer in turn rather than built as six Strings: a lookup does not
+  # keep its key, and a `while` loop holds no closure cells (performance-next.md
+  # candidates 9 and 15).
   # @api private
   def self.plural_forms_at?(app, full)
-    PLURAL_KEYS.each do |form|
-      sub = "#{full}.#{form}"
+    sub = +""
+    i = 0
+    while i < PLURAL_KEYS.size
+      sub.clear
+      sub << full << "." << PLURAL_KEYS[i]
       return true unless I18n.dictionary_text(app, sub).nil?
+
+      i += 1
     end
     false
   end

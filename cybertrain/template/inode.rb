@@ -237,7 +237,7 @@ module Cybertrain
           t
         when HashLit
           t = node(INode::K_HASH, 0)
-          t.ipairs = n.key_names
+          t.ipairs = frozen_names(n.key_names)
           t.ikids = convert(n.value_nodes)
           t
         when BinOp
@@ -290,6 +290,23 @@ module Cybertrain
         nil
       end
 
+      # Frozen copies of keyword or Hash-literal key names. The interpreter
+      # stores a value under each name on every evaluation (eval_kwargs, the
+      # K_HASH case of eval_expr), and a Hash copies an unfrozen String key:
+      # frozen, the name itself is the key.
+      def self.frozen_names(names)
+        return names if names.empty?
+
+        out = Array.new(0) { "" }
+        i = 0
+        while i < names.size
+          name = names[i].dup
+          out << name.freeze
+          i += 1
+        end
+        out
+      end
+
       # The method Symbol is interned here, once per call site, so the
       # interpreter's dispatch `case`s compare Symbols instead of Strings.
       def self.convert_call(n)
@@ -299,7 +316,7 @@ module Cybertrain
         r = n.recv
         t.ia = convert_node(r) unless r.nil?
         t.ikids = convert(n.args)
-        t.ipairs = n.kwarg_names
+        t.ipairs = frozen_names(n.kwarg_names)
         t.ikids2 = convert(n.kwarg_values)
         t.iint = n.safe_nav ? 1 : 0
         b = n.call_block

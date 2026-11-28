@@ -461,8 +461,20 @@ module Cybertrain
     # @return [String]
     # @api public
     def self.dom_id(record, prefix = "")
-      key = Inflector.underscore(record.model_name).tr("/", "_")
-      id = record.id
+      Html.dom_id_of(Html.dom_key(Inflector.underscore(record.model_name)), record.id, prefix)
+    end
+
+    # A model's underscored name as dom_id writes it: "admin/post" ->
+    # "admin_post"; a name without "/" is returned as it is.
+    # @api private
+    def self.dom_key(underscored)
+      underscored.include?("/") ? underscored.tr("/", "_") : underscored
+    end
+
+    # dom_id for a record whose key (dom_key) is already known: the template
+    # helpers pass the one they remember per model for the request.
+    # @api private
+    def self.dom_id_of(key, id, prefix)
       if id.nil? || id == 0
         return prefix.empty? ? "new_#{key}" : "#{prefix}_#{key}"
       end

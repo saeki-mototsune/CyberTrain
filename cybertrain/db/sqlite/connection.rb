@@ -219,7 +219,12 @@ module Cybertrain
             datetimes = Array.new(0) { 0 }
             column = 0
             while column < columns
-              built << SQLite3.sqlite3_column_name(stmt, column)
+              # Frozen, so that read_row's `row[name] =` stores this String
+              # as the key instead of a frozen copy of it per row and
+              # column (a Hash copies an unfrozen String key, in Ruby and in
+              # Spinel alike). Bound to a local before the push (rule 58).
+              name = SQLite3.sqlite3_column_name(stmt, column)
+              built << name.freeze
               datetimes << (Connection.datetime_decl?(SQLite3.sqlite3_column_decltype(stmt, column)) ? 1 : 0)
               column += 1
             end
@@ -626,7 +631,8 @@ module Cybertrain
       # A :str FFI return is already a copy (Spinel builds it with
       # sp_str_dup_external), so neither the names nor the text values are
       # copied again: SQLite reusing its buffer on the next step cannot
-      # reach them.
+      # reach them. The names are the frozen Strings #execute remembered,
+      # which every row shares as its keys.
       def read_row(stmt, names, datetimes, epoch)
         row = {}
         columns = names.size

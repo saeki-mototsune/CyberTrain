@@ -7,9 +7,11 @@ sections ("Where it stands now", the candidates) were last reviewed on
 2026-11-05 against cybertrain 0.4.1 (dade561) and the pinned Spinel
 2026.11.04.7026, before phases 1 to 5b changed the framework and
 examples/blog's pages ([benchmark.md](benchmark.md#the-apps-today)); the
-development-flow section is of 2026-11-12 and 2026-11-13. Every number says
-which build it is from, and a number from an older build has not been
-re-measured unless it says so.
+development-flow section is of 2026-11-12 and 2026-11-13. The object counts
+were taken again on 2026-11-28 at cybertrain 0.4.3 (1fb44e2) on the pinned
+Spinel 2026.11.27.7037, and candidates 15 to 20 come from that count. Every
+number says which build it is from, and a number from an older build has not
+been re-measured unless it says so.
 
 Requests per second are for [examples/blog](../examples/blog), one core, 16
 connections, on the cloud VM described in benchmark.md; that VM runs the
@@ -30,6 +32,8 @@ the first):
 | the same commit and Spinel, counted again on 2026-11-05 (macOS, arm64) | 498 | 510 |
 | cybertrain 0.4.1 (dade561), Spinel 2026.11.04.7026, counted on 2026-11-05 (macOS, arm64) | 1,650 | 1,822 |
 | the same with candidate 9 done, counted on 2026-11-05 (macOS, arm64) | 1,073 | 1,058 |
+| cybertrain 0.4.3 (1fb44e2), Spinel 2026.11.27.7037, counted on 2026-11-28 (Linux x86-64) | 2,446 | 5,123 |
+| the same with candidates 15 to 20 done, counted on 2026-11-28 (Linux x86-64) | 1,937 | 2,632 |
 
 At dade561 the pinned build allocated more than three times the objects of
 the build this page was first written for; with candidate 9 done it is a
@@ -42,6 +46,31 @@ line behind most of them is the same in both commits, and the 2026.09.12
 build allocates none. [spinel-feedback.md](spinel-feedback.md) E has an
 earlier measurement of the same kind (852 objects against 511 for one
 source, on 2026.10.09-7009).
+
+The pages grew between 0.4.1 and 0.4.3 (phases 1 to 5b): both are
+translated through `t` (about 30 calls on the article page, 50 on the
+list), the list prints a comment count per row with
+`number_with_delimiter`, and each comment is a component. On 1fb44e2 that
+cost the list page more than its rows did: 487 objects in
+`I18n.text_in_locale` and 434 in the number settings, most of them the
+plural-form probe of candidate 16. The count of 2026-11-28 differs from the
+earlier ones in method too: one process, snapshots by signal (under "How to
+measure"), the client Ruby's Net::HTTP on one keep-alive connection, the
+database seeded with SQL rather than through the form. The two windows of
+200 requests counted for each page agree to within 0.3 objects a page (the
+job thread's polling, which is not per request).
+
+What is left after candidates 15 to 20, by the function that allocates
+(2026-11-28):
+
+| `GET /articles/1`, 1,937 | `GET /articles`, 2,632 |
+| --- | --- |
+| text values of rows: 26 (candidate 7) | text values of rows: 201 (candidate 7) |
+| `Time.at`: 48 (candidate 3) | `Time.at`: 166 (candidate 3) |
+| the Arrays of a call's arguments (`eval_args`): 91 | the same: 155 |
+| `SafeString`: 93 | `SafeString`: 97 |
+| `I18n.interpolate_vars` for the 22 calls with values: about 55 | a Relation per row for `article.comments.size`, with its binds, condition and quoted names: about 350 (`CommentRelation.new`, `Relation#initialize`, `Cast.empty_binds`, `where_term`, `add_where`, `quote_ident`) |
+| the session cookie, `Cookies.serialize` in spinel-http: 38 | the same: 38 |
 
 The 1,650 objects of an article page on 2026.11.04.7026 at dade561, before
 candidate 9 (which took 566 of the cells and 11 of the `(no-scan)` ones,
@@ -116,7 +145,7 @@ marked 2026.09.12 are from 2026-10-09 and were not re-derived; counts
 marked 2026.11.04.7026 are from the reports of 2026-11-05, by the function
 that allocates. The code each item names was checked against dade561.
 
-Still open: 1 to 5 and 7. Done: 8, 9, 12, 13 and 14. Overtaken by a later
+Still open: 1 to 5 and 7. Done: 8, 9, 12 to 20. Overtaken by a later
 change: 6. Explained and worked around: 10. Held: 11.
 
 1. **Partial output buffers, about 22 objects on 2026.09.12 (4%).**
@@ -281,6 +310,63 @@ change: 6. Explained and worked around: 10. Held: 11.
     alternated rounds gave a median of 1.24 times the requests against 1.03 for
     the control (Linux arm64 in Docker on a Mac). The gain on a real session
     POST could not be read: the comments table grew during the run.
+
+15. **Row keys, 119 (`GET /articles/1`) and 379 (`GET /articles`) on
+    2026.11.27.7037: done 2026-11-28.** `read_row` stores each value under
+    the column's name, which `execute` remembers once per SQL text, and a
+    Hash copies an unfrozen String key (`sp_hash_key_from_bytes` returns a
+    frozen String as it is). The remembered names are frozen now, so every
+    row keeps them as its keys. 2,446 to 2,372 and 5,123 to 4,762.
+16. **The plural-form probe, 6 Strings per bundled lookup: done
+    2026-11-28.** A text found only in the bundled dictionary (the number
+    helpers' settings, date formats, error messages) is returned after
+    checking that the application holds no plural form under its key, and
+    `plural_forms_at?` built the six keys as six Strings (12 objects; a
+    reduced program on the pin). It writes them into one buffer in turn (2
+    objects), in a `while` loop (candidate 9). 2,372 to 2,342 and 4,762 to
+    4,132.
+17. **`t` with no keywords: done 2026-11-28.** The template helper
+    recomputed the lazy scope from the template name per call (about five
+    substrings), and built an options Hash (with its typing Array and a
+    closure cell) and an empty Hash of interpolation values even when the
+    call had no keywords. The scope is remembered per template name for the
+    request, as the model keys are; a call with no keywords shares one empty
+    options Hash per Helpers and one empty values Hash per process, neither
+    written to. 2,342 to 2,101 and 4,132 to 3,511.
+18. **`number_with_delimiter` of a small Integer: done 2026-11-28.** An
+    Integer between -999 and 999 was turned into text, parsed into a
+    Decimal and rendered back, after the template helper had read the
+    delimiter and the separator. Its answer is its `to_s` whatever those are,
+    so the module function and the helper return that first. 3,511 to 2,639
+    on the list (the article page has no number). Larger numbers take the
+    old path; a per-request memo of the number settings would help them,
+    and is not done because neither page reads a setting any more.
+19. **Keyword and Hash-literal names in templates: done 2026-11-28.**
+    `eval_kwargs` and the Hash literal case of `eval_expr` build a Hash per
+    evaluation under the names the parser gave, unfrozen, so each name was
+    copied every time, as in 15. Compile freezes copies once per template.
+    2,101 to 2,061 and 2,639 to 2,637.
+20. **`dom_id` per record: done 2026-11-28.** `Html.dom_id` underscored
+    the model name per call (about six objects), and a comment component
+    calls the template's `dom_id` once per comment. The template helpers
+    pass the model key they already remember per request
+    (`Helpers#model_key`). 2,061 to 1,937 and 2,637 to 2,632.
+
+Looked at on 2026-11-28 and left:
+
+- The lazy key whole (`"articles.show.title"`) remembered per template and
+  key, beside candidate 17's scope: most keys are used once per page, and
+  remembering one costs a copy of the key, so it would save about 14
+  objects on the list page.
+- `Cookies.serialize`, 19 slices per response that writes the session:
+  in spinel-http, a separate package with its own releases
+  (CONTRIBUTING.md, "Working on spinel-http").
+- The list page's Relation per row (`article.comments.size` after
+  `includes(:comments)`: a `CommentRelation`, its condition, binds and
+  quoted identifiers, about 12 objects a row): whether the reader of a
+  preloaded association can answer `size` without building one is a
+  question for the generated model, a generator change with examples/blog's
+  gen/ regenerated, and was left out of this round.
 
 Not attributed yet on 2026.11.04.7026, and each larger than candidates 1
 to 7: the 187 Arrays from `sp_PolyArray_new` and the 119 allocations of
@@ -498,7 +584,14 @@ up as issues, is [spinel-feedback.md](spinel-feedback.md).
 
 - Objects per request: build with `cybertrain build`, then run
   `SPINEL_ALLOC_REPORT=/tmp/alloc.txt SPINEL_ALLOC_SITES=1 ./blog` from
-  `dist/`. The report is written when the server exits and counts
+  `dist/`. On 2026.11.27.7037 the report is written when the process gets
+  `SIGUSR1` (`SPINEL_ALLOC_REPORT_SIGNAL` names another), not when the
+  server stops on TERM, and each line is `alloc;<function>;<type> <count>`,
+  the function already named on Linux too, followed by `# bytes` lines.
+  So one process does: warm up, signal and copy the file, 200 requests,
+  signal and copy, and the difference of each line over 200 is the
+  page's (2026-11-28). On older builds the report is written when the
+  server exits and counts
   everything since it started, the boot and the seeding included: run it
   twice with the same seeding, once with 200 requests for the page and
   once with 400, and divide the difference of each line by 200. Each line
