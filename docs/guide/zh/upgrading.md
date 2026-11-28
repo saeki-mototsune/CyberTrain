@@ -1,5 +1,5 @@
 ---
-source_sha256: 3481073c4117c9ba8efb72dfab303d8797ba831aa29ca72f28a91b6b47466da0
+source_sha256: aa94573d5fa5de921b4a7702820ac9633b05893e95b333b7050af1f3ae74bf0a
 ---
 # 升级
 
@@ -220,7 +220,7 @@ cybertrain build
 - 名为 `handle` 的模型列现在读作 `handle_column`：有 `users.handle` 列的应用把 `user.handle` 的调用改为 `user.handle_column`（查询仍用 SQL 名称）。不是文本的 `request_id` 或 `release` 列会被 gen 拒绝（[列名](models.md#column-names)）。
 - 除非 `config/app.rb` 设置了它们，`cybertrain test` 忽略导出的 `CYBERTRAIN_LOG_FORMAT` 和 `CYBERTRAIN_SENTRY_DSN`（测试读取文本行，不发送任何东西）。`generate authentication` 写的密码测试会在其 `with_config` 中关闭 JSON 行；以前生成的、测试以 `log_format :json` 运行的应用，请重新运行生成器或照搬这一修改。
 - `require "cybertrain"` 现在通过 Sentry 发送器链接 `HttpClient` 和 TLS 层。
-- 约束失败会抛出 `Cybertrain::DB::UniqueViolation` 或 `Cybertrain::DB::ForeignKeyViolation`，它们是 `Cybertrain::DB::Error` 的子类：针对 `DB::Error` 的 `rescue`、`rescue_from`、`retry_on` 和 `discard_on` 仍然能捕获它们，但失败作业的 `last_error`、其日志行和错误报告的类型现在显示子类的名称（`Cybertrain::DB::UniqueViolation: UNIQUE constraint failed: ...`）。匹配文本 `Cybertrain::DB::Error:` 的告警、仪表板或测试，也要匹配子类的名称。
+- 约束失败会抛出 `Cybertrain::DB::UniqueViolation` 或 `Cybertrain::DB::ForeignKeyViolation`，它们是 `Cybertrain::DB::Error` 的子类：针对 `DB::Error` 的 `rescue`、`rescue_from`、`retry_on` 和 `discard_on` 仍然能捕获它们，但失败作业的 `last_error`、其日志行和错误报告的类型现在显示子类的名称（`Cybertrain::DB::UniqueViolation: UNIQUE constraint failed: ...`）。匹配文本 `Cybertrain::DB::Error:` 的告警、仪表板或测试不再匹配约束失败：请改为匹配 `Cybertrain::DB::` 或子类的名称。
 
 ### 从 0.4：测试
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: 3481073c4117c9ba8efb72dfab303d8797ba831aa29ca72f28a91b6b47466da0
+source_sha256: aa94573d5fa5de921b4a7702820ac9633b05893e95b333b7050af1f3ae74bf0a
 ---
 # Обновление
 
@@ -289,7 +289,8 @@ cybertrain build
   упавшего задания, его строка лога и тип отчёта об ошибке теперь называют
   подкласс (`Cybertrain::DB::UniqueViolation: UNIQUE constraint failed:
   ...`). Оповещение, дашборд или тест, сверявшие текст
-  `Cybertrain::DB::Error:`, сверяют и имя подкласса.
+  `Cybertrain::DB::Error:`, больше не находят нарушение ограничения:
+  сверяйте `Cybertrain::DB::` или имя подкласса.
 
 ### С 0.4: тесты
 

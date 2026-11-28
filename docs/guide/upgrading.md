@@ -448,7 +448,8 @@ Two defaults changed after 0.4
   `last_error`, its log line and an error report's type now name the
   subclass (`Cybertrain::DB::UniqueViolation: UNIQUE constraint failed:
   ...`). An alert, a dashboard or a test that matched the text
-  `Cybertrain::DB::Error:` matches the subclass's name too.
+  `Cybertrain::DB::Error:` no longer matches a failed constraint: match
+  `Cybertrain::DB::` or the subclass's name.
 
 ### From 0.4: tests
 

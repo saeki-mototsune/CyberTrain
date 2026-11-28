@@ -1,5 +1,5 @@
 ---
-source_sha256: 3481073c4117c9ba8efb72dfab303d8797ba831aa29ca72f28a91b6b47466da0
+source_sha256: aa94573d5fa5de921b4a7702820ac9633b05893e95b333b7050af1f3ae74bf0a
 ---
 # アップグレード
 
@@ -220,7 +220,7 @@ cybertrain build
 - `handle` という名前のモデルの列は `handle_column` として読むようになりました。`users.handle` の列を持つアプリケーションは、`user.handle` の呼び出しを `user.handle_column` に変えます（クエリは SQL の名前のままです）。テキストでない `request_id` や `release` の列は gen が拒否します（[列の名前](models.md#column-names)）。
 - `cybertrain test` は、`config/app.rb` が設定していない限り、エクスポートされた `CYBERTRAIN_LOG_FORMAT` と `CYBERTRAIN_SENTRY_DSN` を無視します（テストはテキストの行を読み、何も送りません）。`generate authentication` が書くパスワードのテストは、`with_config` の中で JSON の行を止めるようになりました。テストを `log_format :json` で動かしている、以前に生成したアプリケーションは、ジェネレーターを再実行するか、その変更を写してください。
 - `require "cybertrain"` は、Sentry の送信側を通じて `HttpClient` と TLS 層をリンクするようになりました。
-- 制約の違反は、`Cybertrain::DB::Error` のサブクラスである `Cybertrain::DB::UniqueViolation` か `Cybertrain::DB::ForeignKeyViolation` を投げます。`DB::Error` に対する `rescue`、`rescue_from`、`retry_on`、`discard_on` はこれまでどおり捕まえますが、失敗したジョブの `last_error`、そのログの行、エラーレポートの型はサブクラスの名前になります（`Cybertrain::DB::UniqueViolation: UNIQUE constraint failed: ...`）。`Cybertrain::DB::Error:` という文字列で照合していたアラート、ダッシュボード、テストは、サブクラスの名前も照合するようにしてください。
+- 制約の違反は、`Cybertrain::DB::Error` のサブクラスである `Cybertrain::DB::UniqueViolation` か `Cybertrain::DB::ForeignKeyViolation` を投げます。`DB::Error` に対する `rescue`、`rescue_from`、`retry_on`、`discard_on` はこれまでどおり捕まえますが、失敗したジョブの `last_error`、そのログの行、エラーレポートの型はサブクラスの名前になります（`Cybertrain::DB::UniqueViolation: UNIQUE constraint failed: ...`）。`Cybertrain::DB::Error:` という文字列で照合していたアラート、ダッシュボード、テストは、制約の違反にはもう一致しません。`Cybertrain::DB::` かサブクラスの名前で照合してください。
 
 ### 0.4 から：テスト
 

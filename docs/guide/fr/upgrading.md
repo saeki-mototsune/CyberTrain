@@ -1,5 +1,5 @@
 ---
-source_sha256: 3481073c4117c9ba8efb72dfab303d8797ba831aa29ca72f28a91b6b47466da0
+source_sha256: aa94573d5fa5de921b4a7702820ac9633b05893e95b333b7050af1f3ae74bf0a
 ---
 # Mise à jour
 
@@ -293,7 +293,8 @@ Deux valeurs par défaut ont changé après 0.4
   d’un job en échec, sa ligne de journal et le type d’un rapport d’erreur
   nomment désormais la sous-classe (`Cybertrain::DB::UniqueViolation: UNIQUE constraint failed:
   ...`). Une alerte, un tableau de bord ou un test qui comparait le texte
-  `Cybertrain::DB::Error:` compare aussi le nom de la sous-classe.
+  `Cybertrain::DB::Error:` ne trouve plus une violation de contrainte&nbsp;:
+  comparez `Cybertrain::DB::` ou le nom de la sous-classe.
 
 ### Depuis 0.4&nbsp;: tests
 
