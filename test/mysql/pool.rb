@@ -116,12 +116,15 @@ end
 test "a timeout is not retried" do
   # The server may be running the statement: read_timeout's loss is
   # ConnectionLost after one wait, and the statement is not sent again.
-  DB.connect(url_with("ssl_mode=disabled&read_timeout=1"), size: 1)
+  # A retry would wait read_timeout a second time (4 s here), so the bound
+  # leaves 1.5 s of slack on a shared runner (with read_timeout=1 and
+  # SLEEP(2) it was 0.8 s).
+  DB.connect(url_with("ssl_mode=disabled&read_timeout=2"), size: 1)
   started = monotonic
-  message = assert_raises("Cybertrain::DB::ConnectionLost") { DB.with { |c| c.execute("SELECT SLEEP(2) AS s") } }
+  message = assert_raises("Cybertrain::DB::ConnectionLost") { DB.with { |c| c.execute("SELECT SLEEP(6) AS s") } }
   elapsed = monotonic - started
-  assert_equal true, message.end_with?("reading timed out after 1s (sql: SELECT SLEEP(2) AS s)")
-  assert elapsed < 1.8, "the timed-out statement took #{elapsed.round(2)} s: it was run again"
+  assert_equal true, message.end_with?("reading timed out after 2s (sql: SELECT SLEEP(6) AS s)")
+  assert elapsed < 3.5, "the timed-out statement took #{elapsed.round(2)} s: it was run again"
   DB.disconnect
 end
 

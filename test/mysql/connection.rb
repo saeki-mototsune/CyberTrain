@@ -398,8 +398,23 @@ test "slow_query_does_not_block_worker" do
   conn.close
 end
 
+# The statements prepared by the session of performance_schema thread
+# `thread` (this query's own included when it is conn's). Not
+# Prepared_stmt_count, which is the server's total whatever SHOW SESSION
+# says: another client of the same server (a --blog run, a console) would
+# count too.
+PREPARED_SQL = "SELECT COUNT(*) AS n FROM performance_schema.prepared_statements_instances WHERE OWNER_THREAD_ID = ?"
+
+def prepared_by(conn, thread)
+  conn.execute(PREPARED_SQL, [thread])[0]["n"].to_s.to_i
+end
+
+def ps_thread(conn)
+  conn.execute("SELECT PS_CURRENT_THREAD_ID() AS t")[0]["t"].to_s.to_i
+end
+
 def prepared_count(conn)
-  conn.execute("SHOW SESSION STATUS LIKE 'Prepared_stmt_count'")[0]["Value"].to_s.to_i
+  prepared_by(conn, ps_thread(conn))
 end
 
 test "statement_cache_evicts" do
@@ -416,12 +431,19 @@ test "statement_cache_evicts" do
   assert_equal [{ "v" => 1 }], conn.execute("SELECT ? + 0 AS v", [1])
   assert_equal [{ "v" => 2001 }], conn.execute("SELECT ? + 1999 AS v", [2])
   assert prepared_count(conn) <= 256, "past 256 after a re-prepare"
-  # The server drops a session's statements with it: a new session holds
-  # its own SHOW alone.
+  # The server drops a session's statements with it, once it has finished
+  # closing the session (polled, not a fixed sleep).
+  thread = ps_thread(conn)
   conn.close
-  sleep 0.2
   fresh = connect
-  assert_equal 1, prepared_count(fresh)
+  left = prepared_by(fresh, thread)
+  tries = 0
+  while left > 0 && tries < 100
+    sleep 0.05
+    left = prepared_by(fresh, thread)
+    tries += 1
+  end
+  assert_equal 0, left
   fresh.close
 end
 
