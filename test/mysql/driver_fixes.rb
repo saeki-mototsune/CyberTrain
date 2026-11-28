@@ -62,4 +62,104 @@ test "the pool's log line after a lost ROLLBACK names the server without the pas
   DB.disconnect
 end
 
+# The class and message of what the statement raised, or "nothing raised".
+def failure(conn, sql)
+  got = "nothing raised"
+  begin
+    conn.execute(sql)
+  rescue Cybertrain::DB::Error => e
+    got = "#{e.class.name}: #{e.message}"
+  end
+  got
+end
+
+def script_failure(conn, sql)
+  got = "nothing raised"
+  begin
+    conn.exec_script(sql)
+  rescue Cybertrain::DB::Error => e
+    got = "#{e.class.name}: #{e.message}"
+  end
+  got
+end
+
+# conn holds row 2 in an open transaction; the holder takes rows 1, 3, 4
+# and waits for row 2 in a thread, then conn asks for row 1: InnoDB picks
+# conn, which wrote less, and rolls its whole transaction back. What conn's
+# statement raised.
+def deadlock_victim(conn, holder)
+  holder.begin!
+  holder.execute("UPDATE ct_df_locks SET v = v + 1 WHERE id IN (1, 3, 4)")
+  waiting = Thread.new { holder.execute("UPDATE ct_df_locks SET v = v + 1 WHERE id = 2") }
+  sleep 0.3
+  got = failure(conn, "UPDATE ct_df_locks SET v = v + 1 WHERE id = 1")
+  waiting.join
+  holder.commit!
+  got
+end
+
+GONE = "Cybertrain::DB::Error: the enclosing transaction is no longer open (MySQL rolled it back after an error, " \
+       "or a statement committed it); the statement was not run"
+
+test "a raw COMMIT after MySQL rolled the transaction back is refused, as commit! refuses it" do
+  conn = connect
+  conn.exec_script("DROP TABLE IF EXISTS ct_df_locks; CREATE TABLE ct_df_locks (id INT PRIMARY KEY, v INT) ENGINE=InnoDB; " \
+                   "INSERT INTO ct_df_locks VALUES (1, 0), (2, 0), (3, 0), (4, 0)")
+  holder = connect
+  conn.execute("BEGIN")
+  conn.execute("UPDATE ct_df_locks SET v = v + 10 WHERE id = 2")
+  assert_equal true, deadlock_victim(conn, holder).start_with?("Cybertrain::DB::Deadlock: ")
+  # MySQL would answer this COMMIT with OK, though nothing is committed.
+  assert_equal "#{GONE} (sql: COMMIT)", failure(conn, "COMMIT")
+  # The COMMIT ended the lost transaction: the connection works after it.
+  assert_equal [{ "one" => 1 }], conn.execute("SELECT 1 AS one")
+  assert_equal false, conn.in_transaction?
+  assert_equal [{ "v" => 1 }], conn.execute("SELECT v FROM ct_df_locks WHERE id = 2")
+
+  # The same through exec_script, with a statement after the COMMIT: the
+  # whole script is refused, not run as if the COMMIT had committed.
+  conn.exec_script("BEGIN")
+  conn.execute("UPDATE ct_df_locks SET v = v + 10 WHERE id = 2")
+  assert_equal true, deadlock_victim(conn, holder).start_with?("Cybertrain::DB::Deadlock: ")
+  assert_equal "#{GONE} (sql: COMMIT; INSERT INTO ct_df_locks VALUES (5, 0))",
+               script_failure(conn, "COMMIT; INSERT INTO ct_df_locks VALUES (5, 0)")
+  assert_equal [{ "n" => 4 }], conn.execute("SELECT COUNT(*) AS n FROM ct_df_locks")
+  # A bare ROLLBACK still answers nothing to do.
+  conn.exec_script("BEGIN")
+  conn.execute("UPDATE ct_df_locks SET v = v + 10 WHERE id = 2")
+  assert_equal true, deadlock_victim(conn, holder).start_with?("Cybertrain::DB::Deadlock: ")
+  assert_equal [], conn.execute("ROLLBACK")
+  assert_equal [{ "one" => 1 }], conn.execute("SELECT 1 AS one")
+  conn.exec_script("DROP TABLE ct_df_locks")
+  holder.close
+  conn.close
+end
+
+# A row value execute_models answered as a Time (a fixed Time otherwise,
+# which no assertion here expects).
+def time_value(value)
+  case value
+  when Time then value
+  else Time.at(0, 7).utc
+  end
+end
+
+test "execute_models answers a DATETIME before 1970 as a Time too" do
+  conn = connect
+  row = conn.execute_models("SELECT CAST('1965-03-02 00:00:00.250000' AS DATETIME(6)) AS a, " \
+                            "CAST('1969-12-31 23:59:59.999999' AS DATETIME(6)) AS b, " \
+                            "CAST('0001-01-01 00:00:00' AS DATETIME(6)) AS c, " \
+                            "CAST('1970-01-01 00:00:00' AS DATETIME(6)) AS d")[0]
+  a = time_value(row["a"])
+  assert_equal [-152_582_400, 250_000], [a.to_i, a.usec]
+  b = time_value(row["b"])
+  assert_equal [-1, 999_999], [b.to_i, b.usec]
+  assert_equal "1969-12-31 23:59:59", b.strftime("%Y-%m-%d %H:%M:%S")
+  c = time_value(row["c"])
+  assert_equal [-62_135_596_800, 0], [c.to_i, c.usec]
+  d = time_value(row["d"])
+  assert_equal [0, 0], [d.to_i, d.usec]
+  conn.close
+end
+
 Cybertrain::Test.run!

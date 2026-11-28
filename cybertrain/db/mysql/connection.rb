@@ -254,8 +254,8 @@ module Cybertrain
 
       # execute for the ORM: a DATETIME or TIMESTAMP column comes back as a
       # UTC Time (with microseconds; Cast.time_or_nil takes it as is)
-      # instead of its text; a value that does not read as one (a zero
-      # date) stays text. Relation reads its rows through this; execute
+      # instead of its text, before 1970 too; a value that does not read as
+      # one (a zero date) stays text. Relation reads its rows through this; execute
       # keeps returning the text.
       def execute_models(sql, binds = [])
         run_statement(sql, binds, true)
@@ -282,7 +282,7 @@ module Cybertrain
               case value
               when String
                 us = Connection.epoch_us(value)
-                if us >= 0
+                if us != NOT_DATETIME
                   row[names[column]] = Time.at(us / 1_000_000, us % 1_000_000).utc
                 else
                   row[names[column]] = value
@@ -521,13 +521,19 @@ module Cybertrain
         nil
       end
 
+      # What #epoch_us answers for text that is not a datetime: below any
+      # DATETIME (year 1 is about -6.2e16 microseconds), so every value
+      # before 1970, which is negative, is still a value.
+      NOT_DATETIME = -(2**62)
+
       # epoch microseconds of "YYYY-MM-DD HH:MM:SS.ffffff" read as UTC (the
-      # text result.rb decodes every DATETIME and TIMESTAMP to), or -1 for
-      # text of another shape or a zero date.
+      # text result.rb decodes every DATETIME and TIMESTAMP to), negative
+      # before 1970, or NOT_DATETIME for text of another shape or a zero
+      # date.
       # @return [Integer]
       def self.epoch_us(text)
         s = text.to_s # NOTES rule 62
-        return -1 unless s.bytesize == 26
+        return NOT_DATETIME unless s.bytesize == 26
 
         year = Connection.digits(s, 0, 4)
         month = Connection.digits(s, 5, 2)
@@ -536,8 +542,8 @@ module Cybertrain
         minute = Connection.digits(s, 14, 2)
         second = Connection.digits(s, 17, 2)
         micro = Connection.digits(s, 20, 6)
-        return -1 if year < 1 || month < 1 || month > 12 || day < 1 || day > 31
-        return -1 if hour < 0 || minute < 0 || second < 0 || micro < 0
+        return NOT_DATETIME if year < 1 || month < 1 || month > 12 || day < 1 || day > 31
+        return NOT_DATETIME if hour < 0 || minute < 0 || second < 0 || micro < 0
 
         days = Connection.days_from_civil(year, month, day)
         ((days * 86_400) + (hour * 3600) + (minute * 60) + second) * 1_000_000 + micro
@@ -766,8 +772,11 @@ module Cybertrain
       # * @transaction_lost: a statement that started inside a transaction
       #   failed and the server rolled the transaction back
       #   (#note_lost_transaction). COMMIT and ROLLBACK end the lost
-      #   transaction and are let through; true is returned for a ROLLBACK,
-      #   which has nothing left to do.
+      #   transaction. A bare ROLLBACK has nothing left to do (true is
+      #   returned); a ROLLBACK followed by more statements runs. A COMMIT
+      #   is refused, after the flag is cleared: MySQL answers a COMMIT with
+      #   nothing open with OK (SQLite refuses it), and the caller would be
+      #   told its writes were committed, as #commit! explains.
       # * a depth above 0 while the server has no transaction open: the
       #   transaction #begin! opened is gone, however it went.
       #
@@ -776,7 +785,7 @@ module Cybertrain
         if @transaction_lost
           if Connection.ends_transaction?(sql)
             @transaction_lost = false
-            return Connection.rollback_statement?(sql)
+            return Connection.rollback_statement?(sql) unless Connection.commit_statement?(sql)
           end
           raise Error, Connection.transaction_gone_message(sql)
         end
@@ -828,6 +837,11 @@ module Cybertrain
       def self.ends_transaction?(sql)
         words = Connection.statement_words(sql)
         Connection.bare_keyword?(words, "COMMIT") || Connection.bare_keyword?(words, "ROLLBACK")
+      end
+
+      # Whether the first statement of sql is COMMIT [WORK].
+      def self.commit_statement?(sql)
+        Connection.bare_keyword?(Connection.statement_words(sql), "COMMIT")
       end
 
       # A ROLLBACK and nothing else (comments, empty statements and a
