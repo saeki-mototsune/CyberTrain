@@ -3,4 +3,5 @@ ok   discard_job stamps a failed job's updated_at, and keeps a discarded one's
 ok   Stream.prune does not wait for a broadcast in an open transaction
 ok   a claim that waited for its lock is asked again before it takes the row
 ok   the health check's database query answers on MySQL
-5 tests, 13 assertions, 0 failures
+ok   a record whose INSERT generates no id does not take the connection's earlier id
+6 tests, 17 assertions, 0 failures

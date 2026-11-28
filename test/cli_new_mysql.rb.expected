@@ -170,8 +170,8 @@ create test/test_helper.rb
 create test/integration/health_test.rb
 create test/fixtures/.keep
 create test/support/.keep
-create db/migrate/20261128102138_create_users.rb
-create db/migrate/20261128102139_create_sessions.rb
+create db/migrate/20260925120000_create_users.rb
+create db/migrate/20260925120001_create_sessions.rb
 create app/models/user.rb
 create app/models/session.rb
 create app/controllers/concerns/authentication.rb

@@ -856,7 +856,14 @@ module Cybertrain
       columns = row.keys.map { |k| Cybertrain::DB::Dialect.quote_ident(k) }
       sql = "INSERT INTO #{Cybertrain::DB::Dialect.quote_ident(self.class.table_name)} (#{columns.join(", ")}) VALUES (#{marks.join(", ")})"
       binds = row.values
+      # Forgotten first: MySQL's OK packet reports insert id 0 for an INSERT
+      # that generates none (an id that is a default expression, not
+      # AUTO_INCREMENT), and the connection would otherwise answer the id
+      # of its previous INSERT, so that a later update wrote WHERE id = that
+      # row's. The record then keeps 0, no id. A no-op on SQLite, where
+      # every rowid INSERT sets the id.
       new_id = Cybertrain::DB.with do |c|
+        c.forget_last_insert_id
         c.execute(sql, binds)
         c.last_insert_id
       end

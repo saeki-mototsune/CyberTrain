@@ -59,8 +59,10 @@ module Cybertrain
       end
 
       # "index_<table>_on_<col>_and_<col>": the one definition of the
-      # derived name, shared with SqliteDDL.derived_index_name (DROP INDEX
-      # for a remove_index without `name:`, and the Migrator's bookkeeping).
+      # derived name, called by both adapters' DDL (SqliteDDL and
+      # DB::MySQL::DDL, for the DROP INDEX of a remove_index without
+      # `name:`) and by the Migrator's bookkeeping. MySQL shortens a derived
+      # name past 64 characters (DB::MySQL::DDL.checked_index_name).
       def self.derived_name(table, columns)
         "index_#{table}_on_#{columns.join("_and_")}"
       end

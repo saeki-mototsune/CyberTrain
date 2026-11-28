@@ -29,4 +29,7 @@ ok   broadcast_replace_to writes the Turbo Stream HTML
 ok   broadcast_replace_to with partial: keeps the partial's markup and escapes its locals
 ok   the other broadcast shortcuts
 ok   broadcast_joins_transaction
-31 tests, 120 assertions, 0 failures
+ok   a broadcast that commits after a later one is still delivered, in id order
+ok   a broadcast whose transaction rolls back does not hold the poller
+ok   the poller waits for an INSERT of this process that has no id yet
+34 tests, 130 assertions, 0 failures

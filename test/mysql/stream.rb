@@ -14,7 +14,10 @@ require_relative "support/services"
 # the poller, prune and replay answer on MySQL what they answer on SQLite;
 # then MySQL's own: broadcast_joins_transaction (a broadcast in a
 # transaction that rolls back is gone with it, one in a transaction that
-# commits is kept, and the poller sees it only after the COMMIT).
+# commits is kept, and the poller sees it only after the COMMIT), and the
+# poller's bound (Stream.delivery_bound): a broadcast that commits after one
+# with a higher id is still delivered, one rolled back does not hold the
+# poller, an INSERT with no id yet holds it.
 #
 # What differs from the original is marked where it is:
 # - the program: the original requires the whole framework ("cybertrain"),
@@ -536,6 +539,93 @@ test "broadcast_joins_transaction" do
   # poller's cursor with it.
   assert_equal 3, Stream.max_id
   assert_equal 3, Stream::Poller.last_id
+end
+
+
+# Out of id order: a broadcast whose transaction is still open when a later
+# one commits. Thread A broadcasts inside DB.transaction (the row takes the
+# lower id, unseen until the COMMIT), says so on OPENED and waits on CLOSE
+# before it commits, or raises to roll back.
+OPENED = Queue.new
+CLOSE = Queue.new
+
+def broadcast_held_open(outcome)
+  DB.transaction do |c|
+    Stream.broadcast("a", "first")
+    OPENED << "opened"
+    CLOSE.pop(timeout: 10)
+    raise "roll it back" if outcome == "rollback"
+  end
+  nil
+end
+
+def broadcast_held_open_rescued(outcome)
+  broadcast_held_open(outcome)
+rescue RuntimeError
+  nil
+end
+
+# Through a method, so the closure captures the parameter (NOTES rule 21).
+def spawn_held_open(outcome)
+  Thread.new { broadcast_held_open_rescued(outcome) }
+end
+
+test "a broadcast that commits after a later one is still delivered, in id order" do
+  fresh_db
+  Stream.install!
+  hub = Stream::Hub.new(1000)
+  sub = hub.subscribe(["a"])
+  OPENED.clear
+  CLOSE.clear
+  writer = spawn_held_open("commit")
+  OPENED.pop(timeout: 10)
+  second = Stream.broadcast("a", "second")
+  assert_equal 2, second
+  # Row 1 is not committed: the poller waits below it instead of passing it.
+  ticks = Array.new(0) { 0 }
+  ticks << Stream::Poller.run_once(hub)
+  CLOSE << "commit"
+  writer.join
+  ticks << Stream::Poller.run_once(hub)
+  assert_equal [0, 2], ticks
+  assert_equal ["first", "second"], payloads_of(sub)
+  assert_equal 2, Stream::Poller.last_id
+end
+
+test "a broadcast whose transaction rolls back does not hold the poller" do
+  fresh_db
+  Stream.install!
+  hub = Stream::Hub.new(1000)
+  sub = hub.subscribe(["a"])
+  OPENED.clear
+  CLOSE.clear
+  writer = spawn_held_open("rollback")
+  OPENED.pop(timeout: 10)
+  Stream.broadcast("a", "second")
+  ticks = Array.new(0) { 0 }
+  ticks << Stream::Poller.run_once(hub)
+  CLOSE << "rollback"
+  writer.join
+  ticks << Stream::Poller.run_once(hub)
+  ticks << Stream::Poller.run_once(hub)
+  assert_equal [0, 1, 0], ticks
+  assert_equal ["second"], payloads_of(sub)
+  assert_equal 2, Stream::Poller.last_id
+end
+
+test "the poller waits for an INSERT of this process that has no id yet" do
+  fresh_db
+  Stream.install!
+  hub = Stream::Hub.new(1000)
+  sub = hub.subscribe(["a"])
+  # A ticket taken by hand stands for a broadcast between its ticket and
+  # its INSERT's answer: its id may be below a row the poller reads.
+  ticket = Stream.take_ticket
+  Stream.broadcast("a", "seen")
+  assert_equal 0, Stream::Poller.run_once(hub)
+  Stream.finish_ticket(ticket, 0)
+  assert_equal 1, Stream::Poller.run_once(hub)
+  assert_equal ["seen"], payloads_of(sub)
 end
 
 Cybertrain::Test.run!

@@ -75,9 +75,10 @@ module Cybertrain
     # @example bin/blog.rb, before `exit(Cybertrain::Main.run(...))`
     #   Cybertrain::Main.command("prune", "delete comments older than DAYS") do |argv|
     #     days = argv.empty? ? 30 : argv[0].to_i
-    #     Cybertrain::DB.with do |c|
-    #       c.execute("DELETE FROM comments WHERE created_at < datetime('now', ?)", ["-#{days} days"])
-    #     end
+    #     # The cut-off is computed here, not in SQL: SQLite's datetime('now', ...)
+    #     # is not MySQL's, and a bound timestamp reads the same on both.
+    #     cutoff = Cybertrain::Cast.sql_datetime(Cybertrain::Clock.now - days * 86_400)
+    #     Cybertrain::DB.with { |c| c.execute("DELETE FROM comments WHERE created_at < ?", [cutoff]) }
     #     puts "pruned"
     #     0
     #   end

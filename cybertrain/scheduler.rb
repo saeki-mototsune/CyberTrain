@@ -16,7 +16,8 @@ module Cybertrain
   #
   #   # config/app.rb, or a file bin/<app>.rb requires before Main.run:
   #   Cybertrain::Scheduler.every(3600, "prune sessions") do
-  #     Cybertrain::DB.with { |c| c.execute("DELETE FROM sessions WHERE updated_at < datetime('now', '-30 days')") }
+  #     cutoff = Cybertrain::Cast.sql_datetime(Cybertrain::Clock.now - 30 * 86_400)
+  #     Cybertrain::DB.with { |c| c.execute("DELETE FROM sessions WHERE updated_at < ?", [cutoff]) }
   #   end
   #   Cybertrain::Scheduler.cron("0 9 * * 1-5", "morning report", tz: "Asia/Tokyo",
   #                              job: "morning_report", args: { "scope" => "all" })
