@@ -1322,6 +1322,8 @@ module Cybertrain
         helper_arity!("number_with_delimiter", args, 1, 1)
         helper_keywords!("number_with_delimiter", kwargs, ["delimiter", "separator"], 0)
         return "" if args[0].nil?
+        # Neither setting is read for a number they cannot change.
+        return args[0].to_s if NumberHelper.ungrouped_integer?(args[0])
 
         delimiter = Helpers.number_keyword(kwargs, "delimiter", "")
         separator = Helpers.number_keyword(kwargs, "separator", "")

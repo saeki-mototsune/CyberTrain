@@ -45,6 +45,8 @@ module Cybertrain
     # 12345678 -> "12,345,678"; the fraction is kept as given.
     # @api public
     def self.number_with_delimiter(number, delimiter: ",", separator: ".")
+      return number.to_s if NumberHelper.ungrouped_integer?(number)
+
       d = NumberHelper.parse_number(number, "number_with_delimiter")
       NumberHelper.render_fixed(d, d.places, delimiter, separator, false)
     end
@@ -171,6 +173,17 @@ module Cybertrain
       when Integer then number.to_f
       when Float then number
       else number.to_s.to_f
+      end
+    end
+
+    # Whether number is an Integer of at most three digits, which
+    # number_with_delimiter writes as its to_s whatever the delimiter and
+    # separator (no group to delimit, no fraction): the common case of a
+    # count, answered without the Decimal.
+    def self.ungrouped_integer?(number)
+      case number
+      when Integer then number > -1000 && number < 1000
+      else false
       end
     end
 
