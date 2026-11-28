@@ -7,6 +7,7 @@ ok   health_query answers one row
 ok   foreign_keys_off and foreign_keys_on toggle the session's checks
 ok   reset_sequences sets AUTO_INCREMENT back so ids start again at 1
 ok   foreign_key_violation describes the first dangling row, and the migrator's check lists them
+ok   foreign_key_violation and the migrator's check name an id-less table's row by its foreign key column
 ok   transactional_ddl? is false; ddl_statements is MySQL's DDL; schema_migrations has a VARCHAR key
 ok   now_epoch_usec_sql reads the clock in UTC epoch microseconds
 ok   the relation pieces: a float total, a derived table's alias, LIKE's escape, no limit, a window of ids
@@ -14,4 +15,4 @@ ok   the schema readers answer name/type/notnull/dflt_value/pk, indexes and fore
 ok   Test::Database's clear empties a table; the mark is the table cybertrain_test_marker on MySQL
 ok   the timetable and feed statements: a row never moves backwards, a missing one is added once
 ok   the cache and lease writes answer whether a row changed
-16 tests, 101 assertions, 0 failures
+17 tests, 105 assertions, 0 failures

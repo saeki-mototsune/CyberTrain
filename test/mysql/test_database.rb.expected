@@ -3,4 +3,5 @@ ok   a _test database with tables and no marker is refused, and nothing is chang
 ok   an empty database gets the marker first; the bundle drops the rest and migrates
 ok   after the clear and the fixture load, ids start again at 1
 ok   a fixture's foreign key violation is reported, and the fixtures are rolled back
-5 tests, 46 assertions, 0 failures
+ok   fixtures load beside an id-less table with a foreign key, and its dangling row is named by its column
+6 tests, 52 assertions, 0 failures

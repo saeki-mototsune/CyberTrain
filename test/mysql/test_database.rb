@@ -55,7 +55,7 @@ NOT_CREATED = "not a database cybertrain test created (it has tables and no cybe
               "empty it yourself or name another database"
 
 # Every table this program makes in cybertrain_tdb_test.
-OWN_TABLES = ["cybertrain_test_marker", "schema_migrations", "tdb_notes", "tdb_comments", "tdb_posts"]
+OWN_TABLES = ["cybertrain_test_marker", "schema_migrations", "tdb_notes", "tdb_post_tags", "tdb_comments", "tdb_posts"]
 
 CONFIG = Cybertrain.config
 CONFIG.env = "test"
@@ -221,6 +221,31 @@ test "a fixture's foreign key violation is reported, and the fixtures are rolled
   message = assert_raises { DB.transaction { |c| Database.clear!(TABLES) } }
   assert_equal "Test::Database cannot clear or load fixtures inside an open transaction (DB.transaction or a BEGIN)", message
   DB.disconnect
+end
+
+# An id-less join table (create_table ..., id: false) with a foreign key:
+# the check after every fixture load reads it by its foreign key column,
+# since it has no id to name the row by.
+test "fixtures load beside an id-less table with a foreign key, and its dangling row is named by its column" do
+  conn = DB::Connection.new(TEST_URL)
+  conn.exec_script("CREATE TABLE tdb_post_tags (tdb_post_id BIGINT NOT NULL, tag VARCHAR(50) NOT NULL, " \
+                   "CONSTRAINT fk_tdb_post_tags_post FOREIGN KEY (tdb_post_id) REFERENCES tdb_posts(id))#{OPTIONS}")
+  conn.close
+  tables = ["tdb_post_tags"] + TABLES
+  tag = "INSERT INTO tdb_post_tags (tdb_post_id, tag) VALUES (42, 'ruby')"
+  DB.connect(TEST_URL, size: 1)
+  assert_nil Database.clear_and_load!(tables, FIXTURE_SQL + [tag], FIXTURE_TIMESTAMPS + [0])
+  assert_equal 1, count_rows("tdb_post_tags")
+  dangling = "INSERT INTO tdb_post_tags (tdb_post_id, tag) VALUES (999, 'gone')"
+  message = assert_raises { Database.clear_and_load!(tables, FIXTURE_SQL + [dangling], FIXTURE_TIMESTAMPS + [0]) }
+  assert_equal "fixtures: tdb_post_tags row with tdb_post_id 999, which names no row of tdb_posts " \
+               "(a belongs_to label or id with no fixture in test/fixtures/tdb_posts.yml)", message
+  assert_equal 0, count_rows("tdb_post_tags")
+  assert_equal 1, checks
+  DB.disconnect
+  conn = DB::Connection.new(TEST_URL)
+  MySQLTestTables.drop(conn, ["tdb_post_tags"])
+  conn.close
 end
 
 Cybertrain::Test.run!

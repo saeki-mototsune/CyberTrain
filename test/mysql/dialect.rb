@@ -25,7 +25,7 @@ if URL.empty?
   exit 2
 end
 
-OWN_TABLES = ["posts", "comments", "cybertrain_jobs", "a`b", "stats", "cybertrain_cache", "cybertrain_leases",
+OWN_TABLES = ["posts", "comments", "post_tags", "cybertrain_jobs", "a`b", "stats", "cybertrain_cache", "cybertrain_leases",
               "cybertrain_schedules", "cybertrain_feeds", "cybertrain_test_marker"]
 TABLE_OPTIONS = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin"
 
@@ -164,6 +164,23 @@ test "foreign_key_violation describes the first dangling row, and the migrator's
   Dialect.foreign_keys_on(conn)
   assert_equal "comments row with id 5 has post_id 999, which names no row of posts", Dialect.foreign_key_violation(conn)
   assert_equal "comments row 5 -> posts, comments row 6 -> posts", Dialect.migrator_foreign_key_check(conn)
+  conn.close
+end
+
+test "foreign_key_violation and the migrator's check name an id-less table's row by its foreign key column" do
+  conn = blog_db
+  conn.exec_script("CREATE TABLE post_tags (post_id BIGINT NOT NULL, tag VARCHAR(50) NOT NULL, " \
+                   "CONSTRAINT fk_post_tags_post FOREIGN KEY (post_id) REFERENCES posts(id))#{TABLE_OPTIONS}")
+  assert_equal "", Dialect.foreign_key_violation(conn)
+  assert_equal "", Dialect.migrator_foreign_key_check(conn)
+  Dialect.foreign_keys_off(conn)
+  conn.execute("INSERT INTO post_tags (post_id, tag) VALUES (999, 'a')")
+  conn.execute("INSERT INTO post_tags (post_id, tag) VALUES (998, 'b')")
+  Dialect.foreign_keys_on(conn)
+  assert_equal "post_tags row with post_id 998, which names no row of posts", Dialect.foreign_key_violation(conn)
+  assert_equal "post_tags row with post_id 998 -> posts, post_tags row with post_id 999 -> posts",
+               Dialect.migrator_foreign_key_check(conn)
+  MySQLTestTables.drop(conn, ["post_tags"])
   conn.close
 end
 

@@ -161,8 +161,10 @@ module Cybertrain
       # of <parent>" (always ending in the parent table's name).
       # MySQL: no foreign_key_check; for each foreign key in
       # information_schema.key_column_usage (referenced_table_name IS NOT
-      # NULL), SELECT c.id, c.<col> FROM <table> c LEFT JOIN <parent> p ON
-      # p.<ref> = c.<col> WHERE c.<col> IS NOT NULL AND p.<ref> IS NULL LIMIT 1.
+      # NULL), SELECT c.id (when the table has an id column), c.<col> FROM
+      # <table> c LEFT JOIN <parent> p ON p.<ref> = c.<col> WHERE c.<col> IS
+      # NOT NULL AND p.<ref> IS NULL LIMIT 1. SQLite's own check names the
+      # row by its rowid, which an `id: false` table has too.
       # @param conn [Cybertrain::DB::Connection]
       # @return [String]
       def self.foreign_key_violation(conn)

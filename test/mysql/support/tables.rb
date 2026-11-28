@@ -17,14 +17,14 @@ module MySQLTestTables
   # models_nested_includes.rb, models_through.rb, dialect.rb,
   # migrations.rb, test_database.rb).
   REFERENCING = {
-    "posts" => ["comments", "taggings"],
+    "posts" => ["comments", "taggings", "post_tags"],
     "users" => ["profiles", "notes", "tasks", "audits", "sessions"],
     "authors" => ["articles", "comments", "profiles", "posts"],
     "articles" => ["comments"],
     "comments" => ["likes"],
     "tags" => ["taggings"],
     "mig_parents" => ["mig_children"],
-    "tdb_posts" => ["tdb_comments"]
+    "tdb_posts" => ["tdb_comments", "tdb_post_tags"]
   }
 
   # `own` and every table that references one of them, transitively.

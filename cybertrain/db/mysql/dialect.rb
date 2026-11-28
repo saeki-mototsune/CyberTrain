@@ -176,20 +176,33 @@ module Cybertrain
         conn.execute(sql, binds)
       end
 
-      # The first row of `table` whose `column` names no row of `parent`
-      # (by `ref`): [id, value], or [] when every row has its parent.
-      def self.orphan_rows(conn, table, column, parent, ref, limit)
+      # The rows of `table` whose `column` names no row of `parent` (by
+      # `ref`), at most `limit`: each with "v", the value, and, when
+      # `with_id`, "id", in id order. A table without an id column
+      # (create_table ..., id: false) is read by the foreign key column
+      # alone, in its order.
+      def self.orphan_rows(conn, table, column, parent, ref, limit, with_id)
         t = Dialect.quote_ident(table)
         c = Dialect.quote_ident(column)
         p = Dialect.quote_ident(parent)
         r = Dialect.quote_ident(ref)
-        conn.execute("SELECT ch.`id` AS id, ch.#{c} AS v FROM #{t} ch LEFT JOIN #{p} pa ON pa.#{r} = ch.#{c} " \
-                     "WHERE ch.#{c} IS NOT NULL AND pa.#{r} IS NULL ORDER BY ch.`id` LIMIT #{limit}")
+        id = with_id ? "ch.`id` AS id, " : ""
+        order = with_id ? "ch.`id`" : "ch.#{c}"
+        conn.execute("SELECT #{id}ch.#{c} AS v FROM #{t} ch LEFT JOIN #{p} pa ON pa.#{r} = ch.#{c} " \
+                     "WHERE ch.#{c} IS NOT NULL AND pa.#{r} IS NULL ORDER BY #{order} LIMIT #{limit}")
+      end
+
+      # Whether `table` has an id column to name its rows by.
+      def self.id_column?(conn, table)
+        Dialect.column_names(conn, table).include?("id")
       end
 
       # "" when no row names a missing parent, else the first such row as
       # "<table> row with id <id> has <column> <value>, which names no row
-      # of <parent>" (the SQLite Dialect's text). MySQL has no
+      # of <parent>" (the SQLite Dialect's text), or, in a table without an
+      # id column, "<table> row with <column> <value>, which names no row of
+      # <parent>". Either ends in the parent's name, which
+      # Test::Database.violation_parent reads. MySQL has no
       # foreign_key_check: each foreign key is joined to its parent.
       # @param conn [Cybertrain::DB::Connection]
       # @return [String]
@@ -198,11 +211,14 @@ module Cybertrain
           table = Cybertrain::Cast.str(fk["t"])
           column = Cybertrain::Cast.str(fk["c"])
           parent = Cybertrain::Cast.str(fk["p"])
-          found = Dialect.orphan_rows(conn, table, column, parent, Cybertrain::Cast.str(fk["r"]), 1)
+          with_id = Dialect.id_column?(conn, table)
+          found = Dialect.orphan_rows(conn, table, column, parent, Cybertrain::Cast.str(fk["r"]), 1, with_id)
           next if found.empty?
 
-          id = Cybertrain::Cast.int(found[0]["id"])
           value = Cybertrain::Cast.str(found[0]["v"])
+          return "#{table} row with #{column} #{value}, which names no row of #{parent}" unless with_id
+
+          id = Cybertrain::Cast.int(found[0]["id"])
           return "#{table} row with id #{id} has #{column} #{value}, which names no row of #{parent}"
         end
         ""
@@ -820,17 +836,26 @@ module Cybertrain
       end
 
       # Every row that names a missing parent, as "<table> row <id> ->
-      # <parent>" joined with ", "; "" when there is none.
+      # <parent>" (in a table without an id column, "<table> row with
+      # <column> <value> -> <parent>") joined with ", "; "" when there is
+      # none.
       # @param conn [Cybertrain::DB::Connection]
       # @return [String]
       def self.migrator_foreign_key_check(conn)
         found = Array.new(0) { "" }
         Dialect.foreign_key_columns(conn, "").each do |fk|
           table = Cybertrain::Cast.str(fk["t"])
+          column = Cybertrain::Cast.str(fk["c"])
           parent = Cybertrain::Cast.str(fk["p"])
-          rows = Dialect.orphan_rows(conn, table, Cybertrain::Cast.str(fk["c"]), parent,
-                                     Cybertrain::Cast.str(fk["r"]), 1_000_000)
-          rows.each { |r| found << "#{table} row #{Cybertrain::Cast.int(r["id"])} -> #{parent}" }
+          with_id = Dialect.id_column?(conn, table)
+          rows = Dialect.orphan_rows(conn, table, column, parent, Cybertrain::Cast.str(fk["r"]), 1_000_000, with_id)
+          rows.each do |r|
+            if with_id
+              found << "#{table} row #{Cybertrain::Cast.int(r["id"])} -> #{parent}"
+            else
+              found << "#{table} row with #{column} #{Cybertrain::Cast.str(r["v"])} -> #{parent}"
+            end
+          end
         end
         found.join(", ")
       end
