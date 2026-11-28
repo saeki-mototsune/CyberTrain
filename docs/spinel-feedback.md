@@ -329,8 +329,8 @@ request this project sent and matz/spinel merged (brought up to date on
 | AW | bug | 27 | closed | 2026-11-27, by the change that set this row: 2026.11.27.7037 (matz/spinel#12629); never had a workaround. Both lines of rechecks/differing/socket_bytes.rb print CRuby's result on it, `gets: ASCII-8BIT 13 13` and `append: Encoding::CompatibilityError`, and rechecks/socket_shapes.rb still matches ("2026.11.27.7037" in the list of builds). Framing by byte stays in rule 27 as advice |
 | AX | bug |  | closed | 2026-11-27, by the change that set this row: withdrawn as not a Spinel behaviour, a difference between json gem releases (see AX, "What AX turned out to be"). On matz/spinel master 6f27d4e99 (macOS arm64) every nesting line of rechecks/differing/json_parse_nesting.rb prints what CRuby 4.0.7 with json 2.18.0, its default gem, prints; the report had compared with CRuby 3.3.6 and json 2.7. Never had a workaround and has no rule |
 | AY | bug | 124 | closed | 2026-11-27, by the change that set this row: 2026.11.27.7037 (matz/spinel#12628). rechecks/differing/raising_helper_beside_lambda.rb builds and prints CRuby's line on it ("2026.11.27.7037" in the list of builds). The typed values after the `raise` are gone from `Console.unknown_model` and `unknown_record` (cybertrain/console.rb), and test/console.rb's case "an unknown model or record raises through a rescuing caller" passes compiled without them |
-| AZ | cost | 125 | open on 2026.11.15.7033 (the run in AZ, 2026-11-21). Half fixed upstream, in the pin: `Symbol#to_s` (37c296601, matz/spinel#12115) and `.freeze` of a String made at run time (6e08d6934, #12166), both first in 2026.11.23.7035; their programs stay near 2.4 MB of peak RSS on matz/spinel master 6f27d4e99 (macOS arm64, 2026-11-27), not run on the pin's own build. `String#clone` of a frozen String, and `clone(freeze: true)`, still grow there; a fix is sent, matz/spinel#12784 (2026-11-28, open). Workaround kept (`Cybertrain::Key.string_of`) |  |
-| BA | bug |  | open ("Status by rule", row BA): `Thread.new` passes the program's file name to `sp_Thread_spawn_fiber_at` as a bare C literal, which that function roots as a String, so a collection inside the thread record's allocation reads the byte in front of the literal (`sp_mark_string`'s `s[-1]`). Seen only under AddressSanitizer (rechecks/2026.11.15.7033/ba_thread_birth_file.rb, with `SPINEL_GC_THRESHOLD_KB=1`); a plain build reads a byte it then ignores. No workaround and no rule: nothing in the framework can avoid it short of not calling `Thread.new`. Still on matz/spinel master 6f27d4e99 (macOS arm64, 2026-11-27); a fix is sent, matz/spinel#12782 (2026-11-28, open; see BA) |  |
+| AZ | cost | 125 | open on 2026.11.15.7033 (the run in AZ, 2026-11-21). Half fixed upstream, in the pin: `Symbol#to_s` (37c296601, matz/spinel#12115) and `.freeze` of a String made at run time (6e08d6934, #12166), both first in 2026.11.23.7035; their programs stay near 2.4 MB of peak RSS on matz/spinel master 6f27d4e99 (macOS arm64, 2026-11-27), not run on the pin's own build. `String#clone` of a frozen String, and `clone(freeze: true)`, still grow there; a fix, matz/spinel#12784, was merged on 2026-11-28 (df2cee405), not yet in the pin. Workaround kept (`Cybertrain::Key.string_of`) |  |
+| BA | bug |  | open ("Status by rule", row BA): `Thread.new` passes the program's file name to `sp_Thread_spawn_fiber_at` as a bare C literal, which that function roots as a String, so a collection inside the thread record's allocation reads the byte in front of the literal (`sp_mark_string`'s `s[-1]`). Seen only under AddressSanitizer (rechecks/2026.11.15.7033/ba_thread_birth_file.rb, with `SPINEL_GC_THRESHOLD_KB=1`); a plain build reads a byte it then ignores. No workaround and no rule: nothing in the framework can avoid it short of not calling `Thread.new`. Still on matz/spinel master 6f27d4e99 (macOS arm64, 2026-11-27); a fix, matz/spinel#12782, was merged on 2026-11-28 (1a0ca2563), not yet in the pin (see BA) |  |
 | rule 1 | constraint | 1 | settled (1.4: no run-time code); the probes of a computed `send` and of reflection with a non-literal name match on the pin (rechecks/dispatch_shapes.rb) |  |
 | rule 2 | constraint | 2 | settled (1.4); a stored block handed to `instance_exec` still raises when reached on the pin (status 2) |  |
 | rule 3 | bug | 3 | probe matches on the pin (rechecks/dispatch_shapes.rb), workaround kept |  |
@@ -660,7 +660,7 @@ not by design. Costs are in 2; what is by design is in 1.4.
 | AQ | Four threads writing one StringIO with no lock crash the program (phase 5b) | 17 lines | Sent: #12783 with its fix, open (2026-11-28) |
 | AR | A regex literal holding a require-shaped text is read as a require | 2 lines | No; fixed upstream by a9c356b7f and 1151b431d, in 2026.11.27.7037 (see AR) |
 | AS | `ENV[name]` with a key held in a variable answers the key | Not reduced (spikes/rechecks/differing/env_nonliteral_key.rb, against two framework files) | No |
-| BA | A collection inside `Thread.new` reads the byte in front of the C literal holding the program's file name (found under AddressSanitizer on 2026-11-23; harmless in a plain build as far as seen) | 10 lines; spikes/rechecks/2026.11.15.7033/ba_thread_birth_file.rb ("Status by rule", row BA) | Sent: #12782 with its fix, open (2026-11-28) |
+| BA | A collection inside `Thread.new` reads the byte in front of the C literal holding the program's file name (found under AddressSanitizer on 2026-11-23; harmless in a plain build as far as seen) | 10 lines; spikes/rechecks/2026.11.15.7033/ba_thread_birth_file.rb ("Status by rule", row BA) | Sent: #12782 with its fix, merged 2026-11-28 |
 | V | `strftime` with a built pattern returns the pattern | Not reduced | Sent (a shape): #11784, merged 2026-11-14 |
 | W | An ivar String passed to a stored lambda is refused | Not reduced | Sent (two shapes): #11801 and #11860, merged 2026-11-14 and 2026-11-15 |
 | X | Type inference does not converge in examples/blog's generator | Not reduced | Sent (a shape): #11785, merged 2026-11-14 |
@@ -724,10 +724,10 @@ section records its pull request. Fixed upstream without a report: AO
 Work started on 2026-11-27, in progress and not sent: the analysis time
 (5, "Build time"); the full-collection cadence, 5 (a); allocations (AA,
 an FFI `:str` argument, the copy of `"#{v}"`, `str << int`, URI encoding
-and the SHA-256 state); and AB. Sent on 2026-11-28 and open: BA
+and the SHA-256 state); and AB. Sent on 2026-11-28: BA
 (matz/spinel#12782), AQ (#12783), the `String#clone` half of AZ
 (#12784), and the `.cold.N` name in a `-g` backtrace found beside AM
-(#12785). Found that day on master 6f27d4e99:
+(#12785); all but AQ were merged that day, none is in the pin yet. Found that day on master 6f27d4e99:
 AG was fixed upstream by #11353 (in the pin), half of AZ by #12115 and
 #12166 (in the pin), and AM is documented behaviour; each item records
 it.
@@ -944,7 +944,7 @@ run on master 1c0cc5e35:
 | AJ | `Test::BUILTIN_PARENTS` and the `Errno::` prefix in `assert_raises` (spikes/NOTES.md rule 104) | **Ready to report**: the 6-line program in AJ, the same defect as AE. Not reported; not run on master |
 | AK | the framework's suite kept one program per file (design D34, D83) | A measurement (spikes/phase5/bundle_suite.sh), to be mentioned as a cost, not reported alone. Not reported |
 | AL | none (the cost is paid) | A request to spin, not to Spinel. Not reported |
-| AM | the test runner names a test by its `test` line (spikes/NOTES.md rule 107) | **Ready to report**: spikes/phase5/backtrace.rb. Not reported; not run on master. **By design** (2026-11-27): Spinel's docs/limitations.md documents it, and `-g` is the opt-in; what can be sent is a request to format a `-g` backtrace only when it is read, and the `.cold.N` fix is sent, matz/spinel#12785 (see AM) |
+| AM | the test runner names a test by its `test` line (spikes/NOTES.md rule 107) | **Ready to report**: spikes/phase5/backtrace.rb. Not reported; not run on master. **By design** (2026-11-27): Spinel's docs/limitations.md documents it, and `-g` is the opt-in; what can be sent is a request to format a `-g` backtrace only when it is read, and the `.cold.N` fix was merged as matz/spinel#12785 on 2026-11-28 (see AM) |
 | AN | the sentinel default `Cookies::NO_EXPIRES` (spikes/NOTES.md rule 109) | **Ready to report**: spikes/phase5/nil_default_time.rb (SIGSEGV, exit 139; CRuby `none`, `1970`). Not reported; not run on master |
 | AO | an `if` chain in `HtmlReader.parse` instead of a statement `case` (spikes/NOTES.md rule 110) | **Ready to report**: spikes/phase5/case_nullable_temp.rb (the C compile fails, `'_o1' undeclared`; CRuby `amp`, `long`). Not reported; not run on master. **Fixed upstream** by another contributor (2026-11-27): matz/spinel#12334, in 2026.11.27.7037 (see AO). Nothing to send |
 | AP | no Queue is kept in an Array (spikes/NOTES.md rule 117) | **Ready to report**: the 4-line program in AP (spikes/phase5/queue_in_array.rb). Not reported; not run on master |
@@ -4527,7 +4527,7 @@ rate.
   `addr2line` run by `popen` (read from the code, not profiled). The kind
   is now constraint, and the ask is narrower: keep the raw addresses at
   the raise and format them only when `#backtrace` is called.
-- Found beside it, and sent as matz/spinel#12785 (2026-11-28, open): a
+- Found beside it, and merged as matz/spinel#12785 (2026-11-28, c9f10d5d1): a
   `-g` backtrace named one method twice, once for clang's `.cold.N` piece
   of it (branch `fix/release-backtrace`, commit a31a8ac03). Also seen and not reduced
   further: `caller` inside a top-level `rescue` answers `[]` in every
@@ -5308,7 +5308,7 @@ from the collector's own report. In examples/blog, `params[:id]`,
   a million of them grow to about 134 MB on that master, because
   `sp_str_clone_val` and two sites in the generated code still set the
   0xf1 marker that makes a String immortal. The fix, sent as
-  matz/spinel#12784 (2026-11-28, open): `fix/string-clone-frozen-collected`, commit
+  matz/spinel#12784 (merged 2026-11-28, df2cee405): `fix/string-clone-frozen-collected`, commit
   f37fc1310, with test/string_clone_frozen_collected.rb. The framework's
   workaround stays.
 
@@ -5428,7 +5428,8 @@ alternate signal stack. J's server is killed and never gets there.)
   harm, and worth sending: the reduced program, the fix and its run are
   ready, and an AddressSanitizer job upstream would meet it on any
   threaded program that collects at that point.
-- Sent with its fix as matz/spinel#12782 (2026-11-28, open).
+- Sent with its fix as matz/spinel#12782, merged on 2026-11-28 (1a0ca2563);
+  not yet in the pin.
 - Still on matz/spinel master 6f27d4e99 (macOS arm64, 2026-11-27). The fix
   in #12782: `fix/thread-spawn-file-literal`,
   commit 93b90dcdf, which drops `SP_GC_ROOT_STR(file)` in
