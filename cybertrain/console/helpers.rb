@@ -171,7 +171,10 @@ module Cybertrain
       # subquery over the relation's own SELECT so neither its conditions
       # are lost nor the relation changed; then loaded by id.
       def record_matching(rel, conditions)
+        # The derived table carries the adapter's alias ("" on SQLite; MySQL
+        # refuses a derived table without one, error 1248).
         sql = +"SELECT " << Cybertrain::DB::Dialect.quote_ident("id") << " FROM (" << rel.to_sql << ")"
+        sql << Cybertrain::DB::Dialect.relation_subquery_alias
         binds = Cast.empty_array
         rel.binds.each { |b| binds << b }
         clauses = Array.new(0) { "" }
