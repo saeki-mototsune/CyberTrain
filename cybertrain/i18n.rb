@@ -76,12 +76,24 @@ module I18n
   # @api private
   def self.no_list(key) = key == "\u0000" ? [""] : []
 
+  # A fresh empty Hash of `%{name}` values, typed as interpolation_vars'
+  # (rule 9).
+  # @api private
+  def self.empty_vars
+    vars = { "" => "" }
+    vars.delete("")
+    vars
+  end
+
   @app_texts = I18n.no_texts
   @app_lists = I18n.no_lists
   @default_locale = :en
   @available_locales = [:en]
   @raise_on_missing = false
   @mark_missing = true
+  # The values of a lookup with no options, shared and never written to
+  # (interpolate_vars only reads them): most `t` calls have none.
+  @no_vars = I18n.empty_vars
 
   # Installs the application's dictionary. gen/locales.rb's last line calls
   # it with `Gen::Locales.resolver` and `Gen::Locales.list_resolver`;
@@ -265,7 +277,7 @@ module I18n
   def self.find_translation(key, options = {})
     k = Cybertrain::Key.string_of(key)
     loc = I18n.option_locale(options)
-    vars = I18n.interpolation_vars(options)
+    vars = options.empty? ? @no_vars : I18n.interpolation_vars(options)
     count = options[:count]
     counted = count.is_a?(Integer)
     n = counted ? count.to_i : 0
@@ -673,7 +685,7 @@ module I18n
     keys << "activerecord.errors.messages.#{ty}"
     keys << "errors.attributes.#{a}.#{ty}"
     keys << "errors.messages.#{ty}"
-    vars = I18n.interpolation_vars(options)
+    vars = options.empty? ? @no_vars : I18n.interpolation_vars(options)
     count = options[:count]
     counted = count.is_a?(Integer)
     n = counted ? count.to_i : 0

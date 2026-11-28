@@ -63,6 +63,13 @@ module Cybertrain
         # only (a collection renders the same partial once per record).
         @partial_files = { "" => { "" => "" } }
         @partial_files.delete("")
+        # template name => its lazy-lookup scope (`t(".title")`), for this
+        # request only: a page asks once per key, in a few templates.
+        @lazy_scopes = { "" => "" }
+        @lazy_scopes.delete("")
+        # The options of a `t` with no keywords: never written to
+        # (I18n.find_translation only reads them).
+        @no_t_options = Helpers.empty_options
         # The components being rendered, innermost last: their view methods
         # answer receiverless names (render_with pushes and pops). Typed
         # empty Array (rule 9).
@@ -1149,14 +1156,14 @@ module Cybertrain
         helper_arity!("t", args, 1, 1)
         key = text_arg(args, 0, "t")
         if key.start_with?(".")
-          scope = Helpers.lazy_scope(interp.current_template_name)
+          scope = Helpers.remembered_scope(@lazy_scopes, interp.current_template_name)
           if scope.empty?
             msg = "t: the lazy key #{key.inspect} needs a template name"
             raise ArgumentError, msg
           end
           key = "#{scope}#{key}"
         end
-        options = Helpers.symbol_options(kwargs)
+        options = kwargs.empty? ? @no_t_options : Helpers.symbol_options(kwargs)
         html = I18n.html_key?(key)
         options = Helpers.escaped_interpolations(options) if html
         found = I18n.find_translation(key, options)
@@ -1223,6 +1230,18 @@ module Cybertrain
           end
         end
         out
+      end
+
+      # Helpers.lazy_scope of name, remembered in memo (a Helpers' own, for
+      # one request). A class method: an instance method's name would be
+      # one more an application helper may not take.
+      def self.remembered_scope(memo, name)
+        found = memo[name]
+        return found unless found.nil?
+
+        scope = Helpers.lazy_scope(name)
+        memo[name] = scope
+        scope
       end
 
       # The lazy-lookup scope of a template name (Rails' virtual path):
