@@ -1,5 +1,5 @@
 ---
-source_sha256: 5508f9f060e3e3ca9a9ada2b047e0e7d1ad60bec891c513ebee81baba949fe0d
+source_sha256: 62a0bd1d33a7be6c9ed41733a8c5eb80589d86b951d76619bdb2726638f47cfd
 ---
 # Modèles et base de données
 
@@ -1170,6 +1170,16 @@ Un fichier SQLite créé par une application Rails 8 se lit tel quel&nbsp;:
 Écrivez ensuite `app/models/*.rb` avec les validations, les associations et
 les scopes qu’avaient les modèles Rails, sous les formes que montre cette
 page.
+
+Les utilisateurs gardent leur mot de passe&nbsp;:
+`Cybertrain::Password.verify?` lit les condensats bcrypt que
+`has_secure_password` a écrits dans `password_digest`, et la connexion
+qu’écrit `cybertrain generate authentication` remplace chacun par un
+condensat PBKDF2 la première fois que son utilisateur se connecte. Tant que
+l’application Rails connecte encore des utilisateurs sur la même base,
+mettez `Cybertrain::Password.rehash_bcrypt = false` dans `config/app.rb`,
+car Rails ne lit pas les nouveaux condensats
+([Authentification](authentication.md#the-pieces-the-framework-provides)).
 
 ## MySQL
 

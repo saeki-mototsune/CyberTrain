@@ -88,8 +88,10 @@ Since 2026-11-05 porting an existing Rails application by hand is a goal
 ([design record](docs/design.md), D1). A port is a rewrite against
 cybertrain's API, not Rails code run unchanged. The five phases planned for
 it have shipped, and a SQLite database that a Rails application created can
-be taken over as it is
-([guide](https://www.cybertrain.dev/guide/models.html#taking-over-a-database-rails-created)).
+be taken over as it is, its users signing in with the passwords they had
+(the bcrypt digests `has_secure_password` wrote are verified, then replaced
+with PBKDF2 ones;
+[guide](https://www.cybertrain.dev/guide/models.html#taking-over-a-database-rails-created)).
 
 ## Quick start
 

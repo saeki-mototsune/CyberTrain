@@ -1149,6 +1149,15 @@ A SQLite file that a Rails 8 application created can be read as it is:
 Then write `app/models/*.rb` with the validations, associations and scopes
 the Rails models had, in the shapes this page shows.
 
+The users keep their passwords: `Cybertrain::Password.verify?` reads the
+bcrypt digests `has_secure_password` wrote into `password_digest`, and the
+sign-in that `cybertrain generate authentication` writes replaces each with a
+PBKDF2 digest the first time its user signs in. Set
+`Cybertrain::Password.rehash_bcrypt = false` in `config/app.rb` while the
+Rails application still signs users in from the same database, since Rails
+cannot read the new digests
+([Authentication](authentication.md#the-pieces-the-framework-provides)).
+
 ## MySQL
 
 An application built with `require "cybertrain/mysql"`

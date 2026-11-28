@@ -1,5 +1,5 @@
 ---
-source_sha256: 5508f9f060e3e3ca9a9ada2b047e0e7d1ad60bec891c513ebee81baba949fe0d
+source_sha256: 62a0bd1d33a7be6c9ed41733a8c5eb80589d86b951d76619bdb2726638f47cfd
 ---
 # 模型与数据库
 
@@ -638,6 +638,8 @@ Rails 8 应用创建的 SQLite 文件可以直接读取：
 5. 限制：主键不是 `id` 列的表（连接表）会导出为 `create_table "articles_tags", id: false`，没有模型（`spin run gen` 会打印 `skipped articles_tags: no id column, so no model (reach it with Cybertrain::DB.with)`）；不是整数的 `id` 主键（Rails 的 `id: :uuid` 或 `id: :string`）也同样导出，`id` 保留为没有 PRIMARY KEY 的普通列；`ar_internal_metadata` 保持不动；`CREATE TABLE` 中含有 schema 无法表达内容的表，不能用重建类辅助方法修改（[修改表](#changing-a-table)）；Rails 加密过的列需要重新加密（[加密已有文本的列](#encrypting-a-column-that-already-holds-text)）。
 
 然后按本页所示的形式，在 `app/models/*.rb` 中写出 Rails 模型原有的校验、关联和 scope。
+
+用户保留原来的密码：`Cybertrain::Password.verify?` 能读取 `has_secure_password` 写入 `password_digest` 的 bcrypt 摘要，`cybertrain generate authentication` 写出的登录会在用户第一次登录时把它换成 PBKDF2 摘要。Rails 读不了新的摘要，所以在 Rails 应用仍然从同一个数据库让用户登录期间，请在 `config/app.rb` 中设置 `Cybertrain::Password.rehash_bcrypt = false`（[认证](authentication.md#the-pieces-the-framework-provides)）。
 
 ## MySQL
 

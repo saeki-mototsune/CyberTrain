@@ -352,7 +352,7 @@ The generated code is built from framework API, usable on its own:
 
 | API | What it does |
 | --- | --- |
-| `Cybertrain::Password` | PBKDF2-HMAC-SHA256 digests: `hash`, `verify?`, `verify_serialized`, `dummy_digest`, `needs_rehash?`, `session_key`, `session_key_matches?` ([docs/design.md](../design.md) D25) |
+| `Cybertrain::Password` | PBKDF2-HMAC-SHA256 digests: `hash`, `verify?`, `verify_serialized`, `dummy_digest`, `needs_rehash?`, `rehash_bcrypt`, `session_key`, `session_key_matches?` ([docs/design.md](../design.md) D25); `verify?` also reads bcrypt digests from Rails (D97) |
 | `Cybertrain::Token` | `issue(purpose, id, expires_in, bound_to)` gives `"<id>--<expires>--<hmac>"`; `id_from(token)`; `valid?(token, purpose, bound_to)` |
 | `Cybertrain::MailMessage` | what a mailer method returns: `deliver_later` (a job) or `deliver_now` |
 | `Session#restart_lifetime!`, `stamp_lifetime!(seconds, persistent)` | a sign-in's own lifetime and a browser-session cookie |
@@ -370,6 +370,17 @@ takes as long for an unknown address; `session[:password_key] =
 Cybertrain::Password.session_key(user.password_digest)` at sign-in, checked
 with `session_key_matches?` on each request, signs a browser out once the
 password changes.
+
+`verify?` also reads the bcrypt digests (`$2a$`, `$2b$`, `$2y$`) that Rails'
+`has_secure_password` wrote, so users brought over with a Rails database
+([Taking over a database Rails created](models.md#taking-over-a-database-rails-created))
+sign in with the passwords they had. `needs_rehash?` is true for such a
+digest, so the generated `authenticate` replaces it with a PBKDF2 one at the
+first successful sign-in. `Cybertrain::Password.rehash_bcrypt = false` in
+`config/app.rb` keeps bcrypt digests as they are, for as long as the Rails
+application still signs users in from the same database. bcrypt counts at
+most 72 bytes of a password; a check at Rails' cost (12) takes about 0.3 s
+compiled ([docs/design.md](../design.md) D97).
 
 `Token.valid?` checks a token against the `bound_to` given, so look the
 record up by `Token.id_from` first and check against that record's own

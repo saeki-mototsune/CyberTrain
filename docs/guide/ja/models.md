@@ -1,5 +1,5 @@
 ---
-source_sha256: 5508f9f060e3e3ca9a9ada2b047e0e7d1ad60bec891c513ebee81baba949fe0d
+source_sha256: 62a0bd1d33a7be6c9ed41733a8c5eb80589d86b951d76619bdb2726638f47cfd
 ---
 # モデルとデータベース
 
@@ -638,6 +638,8 @@ Rails 8 のアプリケーションが作った SQLite のファイルは、そ�
 5. 制限：主キーが `id` カラムでないテーブル（結合テーブル）は `create_table "articles_tags", id: false` としてダンプされ、モデルはありません（`spin run gen` が `skipped articles_tags: no id column, so no model (reach it with Cybertrain::DB.with)` と表示します）。整数でない `id` 主キー（Rails の `id: :uuid` や `id: :string`）も同じようにダンプされ、`id` は PRIMARY KEY のない普通のカラムとして残ります。`ar_internal_metadata` はそのままにします。スキーマが表せないものを `CREATE TABLE` に含むテーブルは、作り直すヘルパーでは変えられません（[テーブルを変える](#changing-a-table)）。Rails が暗号化したカラムは暗号化し直します（[すでにテキストのあるカラムを暗号化する](#encrypting-a-column-that-already-holds-text)）。
 
 そのうえで、Rails のモデルにあったバリデーション、関連付け、スコープを、このページの形で `app/models/*.rb` に書きます。
+
+ユーザーはパスワードをそのまま使えます：`Cybertrain::Password.verify?` は `has_secure_password` が `password_digest` に書いた bcrypt ダイジェストを読み、`cybertrain generate authentication` が書くサインインは、ユーザーが最初にサインインしたときにそれを PBKDF2 のダイジェストに置き換えます。Rails は新しいダイジェストを読めないので、同じデータベースで Rails のアプリケーションがまだユーザーをサインインさせている間は、`config/app.rb` で `Cybertrain::Password.rehash_bcrypt = false` にしてください（[認証](authentication.md#the-pieces-the-framework-provides)）。
 
 ## MySQL
 

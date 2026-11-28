@@ -1,5 +1,5 @@
 ---
-source_sha256: 0949ea9f7b5309187c8e36797c312be87f337f90198a89473d0af15ffa61a97e
+source_sha256: 7df3204076c802181b9937edee56bbb0655b7145003c69ce8a1579683baf4531
 ---
 # 認証
 
@@ -170,7 +170,7 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 
 | API | 役割 |
 | --- | --- |
-| `Cybertrain::Password` | PBKDF2-HMAC-SHA256 のダイジェスト：`hash`、`verify?`、`verify_serialized`、`dummy_digest`、`needs_rehash?`、`session_key`、`session_key_matches?`（[docs/design.md](../design.md) D25） |
+| `Cybertrain::Password` | PBKDF2-HMAC-SHA256 のダイジェスト：`hash`、`verify?`、`verify_serialized`、`dummy_digest`、`needs_rehash?`、`rehash_bcrypt`、`session_key`、`session_key_matches?`（[docs/design.md](../design.md) D25）。`verify?` は Rails の bcrypt ダイジェストも読みます（D97） |
 | `Cybertrain::Token` | `issue(purpose, id, expires_in, bound_to)` は `"<id>--<expires>--<hmac>"` を返す。`id_from(token)`、`valid?(token, purpose, bound_to)` |
 | `Cybertrain::MailMessage` | メーラーのメソッドが返すもの：`deliver_later`（ジョブ）または `deliver_now` |
 | `Session#restart_lifetime!`、`stamp_lifetime!(seconds, persistent)` | サインインごとの有効期間と、ブラウザーセッションのクッキー |
@@ -181,6 +181,8 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 | `check_box_tag(name, value = "1", checked = false)` | hidden フィールドのないチェックボックス |
 
 手書きのサインインは、生成される `User` と同じように `Password` を使います：`Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)` はプロセスごとに 1 つずつパスワードを検証し（1 回の検証に約 0.2 秒の CPU を使います）、未知のアドレスでも同じ時間がかかります。サインイン時の `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)` を各リクエストで `session_key_matches?` で確かめれば、パスワードが変わったときにブラウザーをサインアウトさせられます。
+
+`verify?` は Rails の `has_secure_password` が書いた bcrypt ダイジェスト（`$2a$`、`$2b$`、`$2y$`）も読むので、Rails のデータベースごと移ってきたユーザー（[Rails が作ったデータベースを引き継ぐ](models.md#taking-over-a-database-rails-created)）は、それまでのパスワードでサインインできます。そのようなダイジェストでは `needs_rehash?` が true になるので、生成される `authenticate` は最初にサインインに成功したときに PBKDF2 のダイジェストに置き換えます。同じデータベースで Rails のアプリケーションがまだユーザーをサインインさせている間は、`config/app.rb` に `Cybertrain::Password.rehash_bcrypt = false` と書くと bcrypt のダイジェストをそのまま残せます。bcrypt が数えるのはパスワードの先頭 72 バイトまでです。Rails のコスト（12）での検証には、コンパイル後で約 0.3 秒かかります（[docs/design.md](../design.md) D97）。
 
 `Token.valid?` は渡された `bound_to` に対してトークンを検証するので、先に `Token.id_from` でレコードを見つけ、そのレコード自身の値に対して検証してください。`User.find_by_password_reset_token` はそうしています。
 

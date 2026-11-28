@@ -1,5 +1,5 @@
 ---
-source_sha256: 0949ea9f7b5309187c8e36797c312be87f337f90198a89473d0af15ffa61a97e
+source_sha256: 7df3204076c802181b9937edee56bbb0655b7145003c69ce8a1579683baf4531
 ---
 # Аутентификация
 
@@ -170,7 +170,7 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 
 | API | Что делает |
 | --- | --- |
-| `Cybertrain::Password` | дайджесты PBKDF2-HMAC-SHA256: `hash`, `verify?`, `verify_serialized`, `dummy_digest`, `needs_rehash?`, `session_key`, `session_key_matches?` ([docs/design.md](../design.md) D25) |
+| `Cybertrain::Password` | дайджесты PBKDF2-HMAC-SHA256: `hash`, `verify?`, `verify_serialized`, `dummy_digest`, `needs_rehash?`, `rehash_bcrypt`, `session_key`, `session_key_matches?` ([docs/design.md](../design.md) D25); `verify?` читает и дайджесты bcrypt из Rails (D97) |
 | `Cybertrain::Token` | `issue(purpose, id, expires_in, bound_to)` даёт `"<id>--<expires>--<hmac>"`; `id_from(token)`; `valid?(token, purpose, bound_to)` |
 | `Cybertrain::MailMessage` | то, что возвращает метод почтовика: `deliver_later` (задание) или `deliver_now` |
 | `Session#restart_lifetime!`, `stamp_lifetime!(seconds, persistent)` | собственный срок входа и cookie на сеанс браузера |
@@ -181,6 +181,18 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 | `check_box_tag(name, value = "1", checked = false)` | флажок без скрытого поля |
 
 Вход, написанный вручную, использует `Password`, как сгенерированный `User`: `Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)` проверяет в процессе по одному паролю за раз (проверка занимает около 0,2 с процессорного времени) и для неизвестного адреса длится столько же; `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)` при входе, проверяемый через `session_key_matches?` в каждом запросе, завершает сеанс браузера после смены пароля.
+
+`verify?` читает и дайджесты bcrypt (`$2a$`, `$2b$`, `$2y$`), которые
+записал `has_secure_password` в Rails, так что пользователи, пришедшие вместе
+с базой данных Rails ([Перенос базы данных, созданной
+Rails](models.md#taking-over-a-database-rails-created)), входят со своими
+прежними паролями. Для такого дайджеста `needs_rehash?` возвращает true, и
+сгенерированный `authenticate` заменяет его дайджестом PBKDF2 при первом
+успешном входе. `Cybertrain::Password.rehash_bcrypt = false` в
+`config/app.rb` оставляет дайджесты bcrypt как есть, пока приложение на Rails
+ещё впускает пользователей из той же базы данных. bcrypt учитывает не больше
+72 байт пароля; проверка при стоимости Rails (12) занимает около 0,3 с в
+скомпилированной программе ([docs/design.md](../design.md) D97).
 
 `Token.valid?` проверяет токен по переданному `bound_to`, поэтому сначала найдите запись по `Token.id_from` и проверяйте по её собственному значению, как это делает `User.find_by_password_reset_token`.
 

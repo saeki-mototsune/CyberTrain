@@ -1,5 +1,5 @@
 ---
-source_sha256: 0949ea9f7b5309187c8e36797c312be87f337f90198a89473d0af15ffa61a97e
+source_sha256: 7df3204076c802181b9937edee56bbb0655b7145003c69ce8a1579683baf4531
 ---
 # 认证
 
@@ -170,7 +170,7 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 
 | API | 作用 |
 | --- | --- |
-| `Cybertrain::Password` | PBKDF2-HMAC-SHA256 摘要：`hash`、`verify?`、`verify_serialized`、`dummy_digest`、`needs_rehash?`、`session_key`、`session_key_matches?`（[docs/design.md](../design.md) D25） |
+| `Cybertrain::Password` | PBKDF2-HMAC-SHA256 摘要：`hash`、`verify?`、`verify_serialized`、`dummy_digest`、`needs_rehash?`、`rehash_bcrypt`、`session_key`、`session_key_matches?`（[docs/design.md](../design.md) D25）；`verify?` 也能读取 Rails 的 bcrypt 摘要（D97） |
 | `Cybertrain::Token` | `issue(purpose, id, expires_in, bound_to)` 返回 `"<id>--<expires>--<hmac>"`；`id_from(token)`；`valid?(token, purpose, bound_to)` |
 | `Cybertrain::MailMessage` | 邮件方法返回的对象：`deliver_later`（作业）或 `deliver_now` |
 | `Session#restart_lifetime!`、`stamp_lifetime!(seconds, persistent)` | 一次登录自己的有效期，以及浏览器会话 cookie |
@@ -181,6 +181,8 @@ jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :req
 | `check_box_tag(name, value = "1", checked = false)` | 没有隐藏字段的复选框 |
 
 手写的登录像生成的 `User` 那样使用 `Password`：`Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)` 在每个进程中一次只校验一个密码（一次校验约占 0.2 秒 CPU），对未知地址也耗时相同；登录时写入 `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)`，并在每个请求中用 `session_key_matches?` 检查，密码改变后浏览器就会退出登录。
+
+`verify?` 也能读取 Rails 的 `has_secure_password` 写下的 bcrypt 摘要（`$2a$`、`$2b$`、`$2y$`），所以随 Rails 数据库一起迁移过来的用户（[接管 Rails 创建的数据库](models.md#taking-over-a-database-rails-created)）可以用原来的密码登录。对这样的摘要，`needs_rehash?` 为 true，所以生成的 `authenticate` 会在第一次成功登录时把它换成 PBKDF2 摘要。在 Rails 应用仍然从同一个数据库让用户登录期间，在 `config/app.rb` 中写 `Cybertrain::Password.rehash_bcrypt = false`，即可保留 bcrypt 摘要不变。bcrypt 最多只计算密码的前 72 个字节；按 Rails 的成本（12）校验一次，编译后约需 0.3 秒（[docs/design.md](../design.md) D97）。
 
 `Token.valid?` 针对传入的 `bound_to` 校验令牌，所以要先用 `Token.id_from` 找到记录，再针对该记录自己的值校验，`User.find_by_password_reset_token` 就是这样做的。
 

@@ -1,0 +1,7 @@
+[package]
+name = "bcrypt-package-spike"
+version = "0.0.0"
+
+[dependencies]
+# roundhouse's bcrypt (docs/design.md D97): the tag roundhouse's generator names.
+bcrypt = { git = "https://github.com/roundhouse-rb/spinel-bcrypt", ref = "v0.1.1" }
