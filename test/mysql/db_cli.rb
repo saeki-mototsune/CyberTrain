@@ -233,14 +233,28 @@ test "server_url drops the database and keeps the password and the parameters" d
   assert_equal "mysql://u@[::1]:3306", CLI.server_url("mysql://u@[::1]:3306/db")
 end
 
+test "db migrate, rollback, status and schema wait as long as an ALTER takes" do
+  assert_equal "mysql://u:p@h/db?read_timeout=86400", CLI.migration_url("mysql://u:p@h/db")
+  assert_equal "mysql://u:a?b@h/db?ssl_mode=disabled&read_timeout=86400",
+               CLI.migration_url("mysql://u:a?b@h/db?ssl_mode=disabled")
+  assert_equal "mysql://u@h/db?read_timeout=600", CLI.migration_url("mysql://u@h/db?read_timeout=600")
+  assert_equal "mysql://u@h/db?ssl_mode=disabled&read_timeout=5",
+               CLI.migration_url("mysql://u@h/db?ssl_mode=disabled&read_timeout=5")
+  assert_equal 86_400, CLI.parsed_url(CLI.migration_url("mysql://u:p@h/db")).read_timeout
+end
+
 test "dbconsole runs mysql over TCP with the server, the user and the database, and the password in MYSQL_PWD" do
   ENV["SSL_CERT_FILE"] = "/etc/app/ca.pem"
   ENV.delete("SSL_CERT_DIR")
   config = Cybertrain::Config.new
   config.database_url = "mysql://app:s%40cr%2Ft@db.internal:3307/shop_development"
   args = CLI.console_args(config)
+  init = "--init-command=#{Cybertrain::DB::Connection::SESSION_SETTINGS}"
   assert_equal ["--protocol=TCP", "--host=db.internal", "--port=3307", "--user=app", "--database=shop_development",
-                "--ssl-mode=VERIFY_IDENTITY", "--ssl-ca=/etc/app/ca.pem"], args
+                init, "--ssl-mode=VERIFY_IDENTITY", "--ssl-ca=/etc/app/ca.pem"], args
+  # The session the application has: UTC and the strict sql_mode.
+  assert_includes init, "time_zone = '+00:00'"
+  assert_includes init, "STRICT_ALL_TABLES"
   args.each { |arg| refute arg.include?("s@cr/t") }
   env = CLI.console_env(config)
   assert_equal ["MYSQL_PWD"], env.keys
@@ -249,7 +263,8 @@ test "dbconsole runs mysql over TCP with the server, the user and the database, 
   # localhost is the client's Unix socket unless the protocol is TCP: the
   # URL's port is kept.
   config.database_url = "mysql://root@localhost:33306/blog?ssl_mode=disabled"
-  assert_equal ["--protocol=TCP", "--host=localhost", "--port=33306", "--user=root", "--database=blog", "--ssl-mode=DISABLED"],
+  assert_equal ["--protocol=TCP", "--host=localhost", "--port=33306", "--user=root", "--database=blog", init,
+                "--ssl-mode=DISABLED"],
                CLI.console_args(config)
   assert_equal 0, CLI.console_env(config).size
   ENV.delete("SSL_CERT_FILE")

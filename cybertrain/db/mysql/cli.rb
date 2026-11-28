@@ -53,13 +53,36 @@ module Cybertrain
 
       # migrate, rollback, status and the schema dump connect to the
       # database itself; one that does not exist is the server's error
-      # (`Unknown database`), since `db create` makes it.
+      # (`Unknown database`), since `db create` makes it. With the longest
+      # read wait (migration_url): an ALTER TABLE on a large table can run
+      # for longer than the 30 seconds the application's connections wait,
+      # and a cut connection would leave the server finishing the ALTER and
+      # the version unrecorded.
       def self.open_for_migrate(root)
-        Connection.new(database_url)
+        Connection.new(CLI.migration_url(database_url))
       end
 
       def self.open_existing(root)
-        Connection.new(database_url)
+        Connection.new(CLI.migration_url(database_url))
+      end
+
+      # `text` with read_timeout=MySQL::Url::MAX_TIMEOUT (a day) among its
+      # parameters, unless it names a read_timeout itself. The parameters
+      # follow the first "?" after the last "@" (a password may hold "?"
+      # and "@"), or the authority when the URL has no "@".
+      # @param text [String]
+      # @return [String]
+      def self.migration_url(text)
+        at = text.rindex("@")
+        from = at.nil? ? 0 : at + 1
+        mark = text.index("?", from)
+        wait = "read_timeout=#{MySQL::Url::MAX_TIMEOUT}"
+        return "#{text}?#{wait}" if mark.nil?
+
+        query = text[mark + 1, text.size - mark - 1].to_s
+        return text if query.start_with?("read_timeout=") || query.include?("&read_timeout=")
+
+        "#{text}&#{wait}"
       end
 
       # What `db schema` says the dump was read from: the URL without its
@@ -230,8 +253,14 @@ module Cybertrain
       # Its arguments: --protocol=TCP, then --host, --port, --user and
       # --database from DATABASE_URL, each with its value in the same word (a
       # value that starts with "-" is not taken for an option), then
-      # --ssl-mode and, for ssl_mode=verify, the CA (console_ca_args). Never
-      # the password: console_env gives it.
+      # --init-command, then --ssl-mode and, for ssl_mode=verify, the CA
+      # (console_ca_args). Never the password: console_env gives it.
+      #
+      # --init-command runs the framework's own session settings
+      # (Connection::SESSION_SETTINGS: utf8mb4, time_zone '+00:00', the
+      # strict sql_mode), so that what is typed there reads and writes as
+      # the application does: NOW() into a datetime column is UTC, which the
+      # application reads it as, not the server's local time.
       #
       # --protocol=TCP: the client takes --host=localhost for its Unix socket
       # and ignores --port, so a localhost URL would reach whatever server
@@ -246,7 +275,7 @@ module Cybertrain
       def self.console_args(config)
         url = parsed_url(DB::Adapter.connect_target(config))
         args = ["--protocol=TCP", "--host=#{url.url_host}", "--port=#{url.port}", "--user=#{url.url_user}",
-                "--database=#{url.database}"]
+                "--database=#{url.database}", "--init-command=#{Cybertrain::DB::Connection::SESSION_SETTINGS}"]
         if url.ssl_mode == "disabled"
           args << "--ssl-mode=DISABLED"
         else
