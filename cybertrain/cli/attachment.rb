@@ -86,6 +86,14 @@ module Cybertrain
     module Attachment
       MARK = "cybertrain:attachment"
       BACKUP_NOTE = "note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the SQLite file"
+      MYSQL_BACKUP_NOTE = "note: uploaded files live in storage/uploads/; back it up (and mount it as a volume) together with the MySQL database"
+
+      # The note printed after an attachment is generated: the SQLite file,
+      # or (an application whose bin/<app>.rb requires cybertrain/mysql)
+      # the MySQL database, is what the uploads are backed up with.
+      def self.backup_note(root)
+        Templates.mysql_app?(root, Build.app_name(root)) ? MYSQL_BACKUP_NOTE : BACKUP_NOTE
+      end
       IMAGE_TYPES_LITERAL = "[\"image/png\", \"image/jpeg\", \"image/gif\", \"image/webp\"]"
 
       # Returns the paths it created. Raises InvalidArgument, before anything
