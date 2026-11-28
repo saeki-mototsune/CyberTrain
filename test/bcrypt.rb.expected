@@ -1,0 +1,8 @@
+ok   OpenBSD's vectors verify, and a changed password does not
+ok   crypt_blowfish's vectors verify, with each prefix read as the bcrypt gem reads it
+ok   the password counts to 72 bytes and to its first NUL
+ok   digests of the shapes Rails, PHP and UTF-8 passwords give
+ok   anything not a bcrypt digest is false, never an exception
+ok   Password.verify? reads a bcrypt digest, and needs_rehash? asks to replace it
+ok   verifications run side by side without sharing state
+7 tests, 94 assertions, 0 failures

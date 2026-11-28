@@ -19,10 +19,18 @@
 #
 # `needs_rehash?` tells a login flow to rehash with the current parameters
 # after a successful verify, as Django does.
+#
+# `verify?` also reads the bcrypt digests Rails' `has_secure_password`
+# writes (`$2a$`, `$2b$`, `$2y$`; cybertrain/bcrypt.rb), so the users of a
+# database taken over from Rails can sign in, and `needs_rehash?` is true
+# for them, so the generated `User#authenticate` replaces each with a PBKDF2
+# digest at its first successful sign-in (unless `rehash_bcrypt` is off).
+# New digests are never bcrypt (docs/design.md D15, D97).
 require "digest"
 require "securerandom"
 require "base64"
 require "cybertrain/crypto"
+require "cybertrain/bcrypt"
 require "cybertrain/config"
 
 module Cybertrain
@@ -40,6 +48,8 @@ module Cybertrain
   # server has the budget (600,000 is OWASP's 2023 figure, about a second).
   # In the test environment the default is {TEST_ITERATIONS}, so test
   # suites do not pay that cost per user they create.
+  # {verify?} also accepts a bcrypt digest from Rails' `has_secure_password`
+  # ({Cybertrain::Bcrypt}), and {needs_rehash?} says to replace it.
   # The loop is interruptible Ruby (a safepoint per iteration), so other
   # requests keep being served while a login hashes; a login flow calls
   # {verify_serialized} so that a burst of attempts occupies one worker at
@@ -120,14 +130,17 @@ module Cybertrain
     # Whether the password matches the digest. A malformed digest, an
     # unknown algorithm or an empty password is false, never an exception,
     # so a login form can call it with whatever it was given. The comparison
-    # is constant-time.
+    # is constant-time. A bcrypt digest (`$2a$`, `$2b$`, `$2y$`, as Rails'
+    # `has_secure_password` writes) is verified by {Cybertrain::Bcrypt},
+    # which reads at most 72 bytes of the password, as bcrypt does.
     # @param password [String]
-    # @param digest [String, nil] what {hash} returned, from the database
+    # @param digest [String, nil] what {hash} returned, or a bcrypt digest, from the database
     # @return [Boolean]
     # @api public
     def self.verify?(password, digest)
       plain = password.to_s
       return false if plain.empty? || plain.bytesize > MAX_PASSWORD_BYTES
+      return Bcrypt.verify?(plain, digest) if Bcrypt.digest?(digest)
 
       parts = Password.parse(digest)
       return false if parts.nil?
@@ -140,16 +153,40 @@ module Cybertrain
     end
 
     # Whether a digest was made with fewer iterations than the current
-    # {iterations} (or is not a digest this version understands), so that
-    # a login flow can store a fresh {hash} of the password it just verified.
+    # {iterations} (or is not a digest this version understands, a bcrypt
+    # digest included), so that a login flow can store a fresh {hash} of the
+    # password it just verified. False for a bcrypt digest when
+    # {rehash_bcrypt} is off.
     # @param digest [String, nil]
     # @return [Boolean]
     # @api public
     def self.needs_rehash?(digest)
+      return Password.rehash_bcrypt if Bcrypt.digest?(digest)
+
       parts = Password.parse(digest)
       return true if parts.nil?
 
       parts[0].to_i < Password.iterations
+    end
+
+    @rehash_bcrypt = true
+
+    # Whether {needs_rehash?} is true for a bcrypt digest, so that the
+    # generated `User#authenticate` replaces it with a PBKDF2 one at the
+    # user's first successful sign-in (true by default). Turn it off in
+    # `config/app.rb` while a Rails application still signs users in from
+    # the same database: Rails cannot read a PBKDF2 digest.
+    # @return [Boolean]
+    # @api public
+    def self.rehash_bcrypt
+      @rehash_bcrypt
+    end
+
+    # @param on [Boolean]
+    # @return [Boolean]
+    # @api public
+    def self.rehash_bcrypt=(on)
+      @rehash_bcrypt = on == true
     end
 
     # Serializes {verify_serialized}: one verification at a time per

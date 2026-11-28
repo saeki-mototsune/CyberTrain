@@ -1,5 +1,5 @@
 ---
-source_sha256: 5508f9f060e3e3ca9a9ada2b047e0e7d1ad60bec891c513ebee81baba949fe0d
+source_sha256: 62a0bd1d33a7be6c9ed41733a8c5eb80589d86b951d76619bdb2726638f47cfd
 ---
 # Модели и база данных
 
@@ -1172,6 +1172,15 @@ Post.order(SORTS.fetch(params[:sort].to_s, "id"))
 
 Затем напишите `app/models/*.rb` с валидациями, ассоциациями и скоупами,
 которые были у моделей Rails, в формах, показанных на этой странице.
+
+Пароли пользователей сохраняются: `Cybertrain::Password.verify?` читает
+дайджесты bcrypt, которые `has_secure_password` записал в `password_digest`,
+а вход, который пишет `cybertrain generate authentication`, заменяет каждый из
+них дайджестом PBKDF2, когда его пользователь впервые входит. Пока приложение
+на Rails ещё впускает пользователей из той же базы данных, задайте
+`Cybertrain::Password.rehash_bcrypt = false` в `config/app.rb`: Rails не
+читает новые дайджесты
+([Аутентификация](authentication.md#the-pieces-the-framework-provides)).
 
 ## MySQL
 

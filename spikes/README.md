@@ -24,6 +24,8 @@ each pin goes only to docs/spinel-feedback.md, "Status by rule".
   differ from CRuby or need the framework on the load path, and
   [rechecks/2026.11.15.7033/](rechecks/2026.11.15.7033/README.md) the
   reduced programs written when that build was checked.
+- [bcrypt/](bcrypt/README.md): the programs that compared the framework's
+  bcrypt verifier with roundhouse's bcrypt package (docs/design.md D97).
 - `decimal/`, `phase4b/`, `phase5/`, `phase6/`: programs written while a
   part of the framework was designed, kept because a rule of NOTES.md, an
   item of docs/spinel-feedback.md or a comment in the code cites them.

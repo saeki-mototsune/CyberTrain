@@ -1,5 +1,5 @@
 ---
-source_sha256: 0949ea9f7b5309187c8e36797c312be87f337f90198a89473d0af15ffa61a97e
+source_sha256: 7df3204076c802181b9937edee56bbb0655b7145003c69ce8a1579683baf4531
 ---
 # Authentification
 
@@ -170,7 +170,7 @@ Le code généré est construit à partir d’API du framework, utilisables seul
 
 | API | Ce qu’elle fait |
 | --- | --- |
-| `Cybertrain::Password` | condensats PBKDF2-HMAC-SHA256&nbsp;: `hash`, `verify?`, `verify_serialized`, `dummy_digest`, `needs_rehash?`, `session_key`, `session_key_matches?` ([docs/design.md](../design.md) D25) |
+| `Cybertrain::Password` | condensats PBKDF2-HMAC-SHA256&nbsp;: `hash`, `verify?`, `verify_serialized`, `dummy_digest`, `needs_rehash?`, `rehash_bcrypt`, `session_key`, `session_key_matches?` ([docs/design.md](../design.md) D25)&nbsp;; `verify?` lit aussi les condensats bcrypt de Rails (D97) |
 | `Cybertrain::Token` | `issue(purpose, id, expires_in, bound_to)` donne `"<id>--<expires>--<hmac>"`&nbsp;; `id_from(token)`&nbsp;; `valid?(token, purpose, bound_to)` |
 | `Cybertrain::MailMessage` | ce que renvoie une méthode de mailer&nbsp;: `deliver_later` (un job) ou `deliver_now` |
 | `Session#restart_lifetime!`, `stamp_lifetime!(seconds, persistent)` | la durée de vie propre d’une connexion et un cookie de session de navigateur |
@@ -181,6 +181,19 @@ Le code généré est construit à partir d’API du framework, utilisables seul
 | `check_box_tag(name, value = "1", checked = false)` | une case à cocher sans champ caché |
 
 Une connexion écrite à la main utilise `Password` comme le fait le `User` généré&nbsp;: `Cybertrain::Password.verify_serialized(password, user.nil? ? Cybertrain::Password.dummy_digest : user.password_digest)` vérifie un mot de passe à la fois par processus (une vérification prend environ 0,2&nbsp;s de CPU) et prend autant de temps pour une adresse inconnue&nbsp;; `session[:password_key] = Cybertrain::Password.session_key(user.password_digest)` à la connexion, vérifié par `session_key_matches?` à chaque requête, déconnecte un navigateur une fois le mot de passe changé.
+
+`verify?` lit aussi les condensats bcrypt (`$2a$`, `$2b$`, `$2y$`) que
+`has_secure_password` a écrits dans Rails&nbsp;: les utilisateurs venus avec
+une base de données Rails ([Reprendre une base de données créée par
+Rails](models.md#taking-over-a-database-rails-created)) se connectent avec
+le mot de passe qu’ils avaient. `needs_rehash?` est vrai pour un tel
+condensat, si bien que l’`authenticate` généré le remplace par un condensat
+PBKDF2 à la première connexion réussie.
+`Cybertrain::Password.rehash_bcrypt = false` dans `config/app.rb` garde les
+condensats bcrypt tels quels, tant que l’application Rails connecte encore
+des utilisateurs sur la même base. bcrypt ne compte que les 72 premiers
+octets d’un mot de passe&nbsp;; une vérification au coût de Rails (12) prend
+environ 0,3&nbsp;s compilée ([docs/design.md](../design.md) D97).
 
 `Token.valid?` vérifie un jeton contre le `bound_to` donné&nbsp;: cherchez donc d’abord l’enregistrement par `Token.id_from` et vérifiez contre la valeur propre de cet enregistrement, comme le fait `User.find_by_password_reset_token`.
 
