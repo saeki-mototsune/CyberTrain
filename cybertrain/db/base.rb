@@ -130,7 +130,15 @@ module Cybertrain
     # transaction that reads and then writes, so that a concurrent writer
     # makes it wait at the start (SQLite's busy handler, about five seconds)
     # instead of failing with "database is locked" at its first write. It has
-    # no effect on a nested call. A thread started inside the block is not
+    # no effect on a nested call. On MySQL it has no effect at all: MySQL
+    # has no write lock to take at BEGIN, so both forms send BEGIN, and two
+    # such blocks are not run one after the other. Each reads a snapshot
+    # (REPEATABLE READ) that takes no lock, so two blocks that check a row
+    # (or its absence) and then write can both pass the check: a read that
+    # must hold until the COMMIT has to lock what it read, with SQL of its
+    # own (`SELECT ... FOR UPDATE`; on an empty result it locks the gap the
+    # row would go in), or the write must carry the check (a unique index,
+    # an UPDATE's WHERE). A thread started inside the block is not
     # part of the transaction, and neither is a DB.with block that encloses
     # the call: called from inside `DB.with { |c| ... }`, DB.transaction checks
     # out a second connection (on a one-connection pool such as ":memory:"
@@ -141,7 +149,8 @@ module Cybertrain
     # type-check under Spinel): assign what the block computes to a local
     # declared before it. Do not `break` or `return` out of the block (see
     # Connection#transaction).
-    # @param immediate [Boolean] BEGIN IMMEDIATE instead of BEGIN
+    # @param immediate [Boolean] BEGIN IMMEDIATE instead of BEGIN (SQLite;
+    #   ignored on MySQL, above)
     # @yieldparam conn [Cybertrain::DB::Connection] the transaction's connection
     # @return [nil]
     # @raise [Cybertrain::DB::Error] when not connected, when BEGIN or COMMIT

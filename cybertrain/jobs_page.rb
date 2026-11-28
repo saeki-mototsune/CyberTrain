@@ -137,9 +137,13 @@ module Cybertrain
       changed = 0
       DB.with do |c|
         # A row already discarded keeps its updated_at, so discarding it
-        # again does not put off its pruning.
-        c.execute("UPDATE cybertrain_jobs SET state = 'discarded', " \
-                  "updated_at = CASE WHEN state = 'discarded' THEN updated_at ELSE ? END " \
+        # again does not put off its pruning. updated_at is assigned first:
+        # MySQL evaluates the assignments left to right, each reading the
+        # values the earlier ones wrote, so after `state = 'discarded'` the
+        # CASE would always keep the old time (SQLite reads the old row in
+        # either order).
+        c.execute("UPDATE cybertrain_jobs SET updated_at = CASE WHEN state = 'discarded' THEN updated_at ELSE ? END, " \
+                  "state = 'discarded' " \
                   "WHERE id = ? AND state IN ('failed', 'discarded')", Cast.binds(Clock.now.to_i, id))
         changed = c.changes
       end

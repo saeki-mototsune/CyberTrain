@@ -1191,7 +1191,10 @@ module Cybertrain
       Config.list_from(ENV["CYBERTRAIN_ALLOWED_HOSTS"] || "").each { |name| @allowed_hosts << name }
       @port = (ENV["PORT"] || "3000").to_i
       @database_path = Config.default_database_path(@env)
-      @database_url = ENV["DATABASE_URL"] || ""
+      # Stripped: a trailing newline or space (a secrets file read with
+      # $(cat ...), a quoted .env line) would become part of the database
+      # name, and the server's "Unknown database" does not show it.
+      @database_url = (ENV["DATABASE_URL"] || "").strip
       @secret_key_base = ENV["CYBERTRAIN_SECRET_KEY_BASE"] || ""
       # Stripped, like the previous keys: a .env line's newline is not part of it.
       @encryption_key = (ENV["CYBERTRAIN_ENCRYPTION_KEY"] || "").strip

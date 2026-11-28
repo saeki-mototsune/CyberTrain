@@ -48,7 +48,8 @@ module Cybertrain
     PRUNE_TASK = "cybertrain cache prune"
 
     # Cache.prune deletes at most this many rows per statement, so the
-    # writer lock is released between batches.
+    # locks a statement takes (SQLite's write lock, MySQL's row locks) are
+    # released between batches.
     PRUNE_BATCH = 1000
 
     # The column `key` is written `` `key` ``: a reserved word in MySQL,
@@ -332,8 +333,9 @@ module Cybertrain
     end
 
     # Deletes the rows expired at `now` (an `expires_at` before it), at
-    # most 1000 per statement so the writer lock is released between
-    # batches. The scheduled task `"cybertrain cache prune"` calls it with
+    # most 1000 per statement so the locks a statement takes (SQLite's write
+    # lock, MySQL's row locks) are released between batches, outside a
+    # caller's transaction. The scheduled task `"cybertrain cache prune"` calls it with
     # {Cache.now}.
     # @param now [Integer] epoch seconds
     # @return [Integer] how many rows were deleted

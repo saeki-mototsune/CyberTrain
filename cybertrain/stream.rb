@@ -15,7 +15,7 @@ require "cybertrain/stream/hub"
 module Cybertrain
   # Cybertrain::Stream -- the pub/sub behind the realtime endpoint
   # (docs/design.md D37). A broadcast is a row in the application's own
-  # SQLite database, in the `cybertrain_messages` table the framework creates
+  # database, in the `cybertrain_messages` table the framework creates
   # itself (`CREATE TABLE IF NOT EXISTS`) and leaves out of `db/schema.rb`;
   # every web process polls the table ({Stream::Poller}, every
   # {Config#stream_poll_ms} ms) and hands new rows to the browsers
@@ -60,6 +60,15 @@ module Cybertrain
     # the stream (in this process and every other one polling the same
     # database) within about {Config#stream_poll_ms}. Inside a
     # {DB.transaction} the message is sent only if the transaction commits.
+    #
+    # On MySQL, a broadcast made inside a transaction can be missed: the row
+    # takes its id at the INSERT but is seen only at the COMMIT, so a
+    # broadcast that commits first with a higher id moves the poller past
+    # it, and it is delivered neither live nor by a replay from a later id
+    # (SQLite makes ids visible in id order: it has one writer). Broadcast
+    # after the COMMIT on MySQL. Two broadcasts outside a transaction, on
+    # two threads at once, have the same window, the length of one INSERT
+    # (docs/compatibility.md).
     # @param name [String] the stream ({Stream.name_for} for a record)
     # @param payload [String] what the subscribers receive: Turbo Stream
     #   HTML, JSON or any text
@@ -279,8 +288,20 @@ module Cybertrain
       ensure_installed
       count = 0
       DB.with do |c|
-        c.execute("DELETE FROM cybertrain_messages WHERE created_at < ?", [before])
-        count = c.changes
+        # Bounded by id, the primary key: the newest old row is found with
+        # a plain read, and the DELETE then scans the key only up to it. A
+        # DELETE by created_at alone, which no index covers, reads (and on
+        # MySQL has to lock) every row, so it would wait for the row of a
+        # broadcast in a transaction still open on another connection, up
+        # to innodb_lock_wait_timeout, and the poller, which prunes, would
+        # deliver nothing meanwhile. Below the bound only a transaction
+        # open since before `before` can still hold a row.
+        rows = c.execute("SELECT MAX(id) AS m FROM cybertrain_messages WHERE created_at < ?", [before])
+        last = rows.empty? ? 0 : Cast.int(rows[0]["m"])
+        if last > 0
+          c.execute("DELETE FROM cybertrain_messages WHERE id <= ? AND created_at < ?", [last, before])
+          count = c.changes
+        end
       end
       count
     end
