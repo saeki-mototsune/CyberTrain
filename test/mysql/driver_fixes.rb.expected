@@ -1,4 +1,5 @@
 ok   the pool's log line after a lost ROLLBACK names the server without the password
 ok   a raw COMMIT after MySQL rolled the transaction back is refused, as commit! refuses it
 ok   execute_models answers a DATETIME before 1970 as a Time too
-3 tests, 22 assertions, 0 failures
+ok   a cached SELECT * re-prepares on the server after another session's ALTER
+4 tests, 33 assertions, 0 failures

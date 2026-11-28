@@ -162,4 +162,26 @@ test "execute_models answers a DATETIME before 1970 as a Time too" do
   conn.close
 end
 
+# The review asked whether a cached statement can be left answering 1615
+# (ER_NEED_REPREPARE) after DDL from another session: MySQL 8.0 re-prepares
+# it on the next execute, each time, and the new columns come back.
+test "a cached SELECT * re-prepares on the server after another session's ALTER" do
+  conn = connect
+  other = connect
+  conn.exec_script("DROP TABLE IF EXISTS ct_df_reprep; CREATE TABLE ct_df_reprep (id INT PRIMARY KEY, v INT); " \
+                   "INSERT INTO ct_df_reprep VALUES (1, 2)")
+  assert_equal [{ "id" => 1, "v" => 2 }], conn.execute("SELECT * FROM ct_df_reprep")
+  i = 1
+  while i <= 5
+    other.exec_script("ALTER TABLE ct_df_reprep ADD COLUMN c#{i} INT DEFAULT #{i}")
+    assert_equal [{ "id" => 1, "v" => 2, "c#{i}" => i }], conn.execute("SELECT * FROM ct_df_reprep")
+    other.exec_script("ALTER TABLE ct_df_reprep DROP COLUMN c#{i}")
+    assert_equal [{ "id" => 1, "v" => 2 }], conn.execute("SELECT * FROM ct_df_reprep")
+    i += 1
+  end
+  conn.exec_script("DROP TABLE ct_df_reprep")
+  other.close
+  conn.close
+end
+
 Cybertrain::Test.run!

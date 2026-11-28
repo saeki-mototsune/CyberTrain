@@ -52,6 +52,7 @@
 # No message holds the password: the URL's parts are named by host:port
 # only (Url#server_label), and Url#to_s / #inspect leave it out.
 require "cybertrain/cast"
+require "cybertrain/time_zone"
 require "cybertrain/db/blob"
 require "cybertrain/db/error"
 require "cybertrain/net/socket"
@@ -553,7 +554,7 @@ module Cybertrain
         return NOT_DATETIME if year < 1 || month < 1 || month > 12 || day < 1 || day > 31
         return NOT_DATETIME if hour < 0 || minute < 0 || second < 0 || micro < 0
 
-        days = Connection.days_from_civil(year, month, day)
+        days = Cybertrain::TimeZone.days_from_civil(year, month, day)
         ((days * 86_400) + (hour * 3600) + (minute * 60) + second) * 1_000_000 + micro
       end
 
@@ -569,18 +570,6 @@ module Cybertrain
           i += 1
         end
         value
-      end
-
-      # Days since 1970-01-01 of a proleptic Gregorian date, year 1 or later
-      # (Howard Hinnant's days_from_civil).
-      def self.days_from_civil(year, month, day)
-        y = month <= 2 ? year - 1 : year
-        era = y / 400
-        yoe = y - era * 400
-        mp = month > 2 ? month - 3 : month + 9
-        doy = (153 * mp + 2) / 5 + day - 1
-        doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
-        era * 146_097 + doe - 719_468
       end
 
       # An empty bind list of the type #wire_binds answers.
