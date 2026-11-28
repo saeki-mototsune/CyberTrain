@@ -155,10 +155,13 @@ module Cybertrain
       # (BEGIN IMMEDIATE), and a "duplicate column name" from a process that
       # still won the race (inside a caller's transaction, or an older
       # release's ALTER) is taken as "already there" and the check runs again.
+      # (MySQL takes no table lock at BEGIN, so there the race is caught only
+      # by this rescue; its message is "Duplicate column name", SQLite's
+      # "duplicate column name", hence the comparison without case.)
       def self.add_missing_columns
         add_columns_once
       rescue Cybertrain::DB::Error => e
-        raise e unless e.message.include?("duplicate column")
+        raise e unless e.message.downcase.include?("duplicate column")
 
         add_columns_once
       end
@@ -388,12 +391,14 @@ module Cybertrain
       # heartbeat, and comes back as the {Job::Run} of that attempt. When
       # nothing is due, or another claimer took the row, the Run's run_id
       # is -1 (a typed "none": NOTES rules 11/56) and nothing was written.
-      # `ticket` is the caller's, opaque here: under the write lock, before
-      # anything is read or written, the claim asks {Job.claim_open?}
-      # whether the caller still wants a row, and takes none when it does
-      # not. The wait for the lock can be long (another process's
-      # transaction), and what the caller checked before the wait may no
-      # longer hold after it.
+      # `ticket` is the caller's, opaque here: the claim asks
+      # {Job.claim_open?} whether the caller still wants a row, and takes
+      # none when it does not, once before it reads and again with the row
+      # locked, before it writes (SQLite waits for its write lock at the
+      # BEGIN IMMEDIATE, before the first question; MySQL at the SELECT,
+      # between the two). The wait for the lock can be long (another
+      # process's transaction), and what the caller checked before the wait
+      # may no longer hold after it.
       def self.claim(now, label, ticket)
         ensure_installed
         # A read outside any transaction first: an idle thread then takes no
@@ -412,7 +417,9 @@ module Cybertrain
         # claimers (threads or processes) can both take the last free slot.
         limited = Job.limits?
         DB.transaction(immediate: true) do |c|
-          # The lock is held from here: the caller's last word on the claim.
+          # On SQLite the write lock is held from here, so this is the
+          # caller's last word on the claim; on MySQL the locks come with the
+          # statements below, and the claim is asked again after them.
           if Job.claim_open?(ticket)
             # (MySQL takes row locks, not one write lock: the adapter makes
             # a limited claim wait for another's COMMIT before it counts.)
@@ -434,7 +441,14 @@ module Cybertrain
             end
             sql << " ORDER BY run_at, id LIMIT 1"
             sql << DB::Dialect.job_claim_lock
-            run = take_first(c, c.execute(sql, binds), label, now)
+            found = c.execute(sql, binds)
+            # Asked again once the SELECT returned: on MySQL the BEGIN above
+            # took no lock, and the wait for one (job_claim_serialize's, or
+            # the row lock of the SELECT's FOR UPDATE) came after the first
+            # question; a stop requested during that wait is seen here,
+            # before the row is taken. (On SQLite both questions run under
+            # the write lock BEGIN IMMEDIATE took, and answer alike.)
+            run = take_first(c, found, label, now) if Job.claim_open?(ticket)
           end
         end
         run
@@ -474,8 +488,9 @@ module Cybertrain
 
       # Claims the first of `rows` (a claim SELECT's result) for `label` and
       # answers its Run, or {no_run} when there is no row or another claimer
-      # took it. Must be called inside the caller's BEGIN IMMEDIATE, on its
-      # connection: the SELECT and this UPDATE are one claim.
+      # took it. Must be called inside the caller's transaction, on its
+      # connection (BEGIN IMMEDIATE on SQLite; on MySQL the claim SELECT's
+      # FOR UPDATE holds the row): the SELECT and this UPDATE are one claim.
       def self.take_first(conn, rows, label, now)
         return no_run(label, now) if rows.empty?
 
