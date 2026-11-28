@@ -2,8 +2,8 @@
 
 What a model does beyond the scaffold: migrations, column types, queries,
 associations, validations, encrypted columns, paging, transactions, the rules
-column names and `order` clauses follow under Spinel, and taking over a
-database that Rails created.
+column names and `order` clauses follow under Spinel, taking over a
+database that Rails created, and what changes on MySQL.
 
 ## Migrations
 
@@ -1133,6 +1133,72 @@ A SQLite file that a Rails 8 application created can be read as it is:
 
 Then write `app/models/*.rb` with the validations, associations and scopes
 the Rails models had, in the shapes this page shows.
+
+## MySQL
+
+An application built with `require "cybertrain/mysql"`
+([Configuration, "MySQL"](configuration.md#mysql)) runs the same models,
+migrations and queries on MySQL 8.0, and they answer what they answer on
+SQLite; `docs/compatibility.md` lists the differences with the tests that
+pin them. What a model's code meets:
+
+- **Column types.** `string` is `VARCHAR(255)` (`limit:` changes it),
+  `text` `MEDIUMTEXT`, `integer` `INT` (an `id` and every integer `*_id`
+  are `BIGINT`), `boolean` `TINYINT(1)`, `decimal` `DECIMAL(p,s)`, `float`
+  `DOUBLE`, `date` `DATE`, `datetime` `DATETIME(6)` in UTC, `json` `JSON`,
+  `binary` `LONGBLOB`. The attributes read as on SQLite.
+- **Comparisons are exact.** Tables use `utf8mb4` with the binary
+  collation `utf8mb4_0900_bin`, so `where`, `uniqueness` and a unique index
+  tell `"A"` from `"a"` and `"a"` from `"a "`, as SQLite does. `LIKE` and
+  `where_like` are therefore case-sensitive too, where SQLite's fold ASCII
+  case: compare `LOWER(title) LIKE ?` with a lowercased pattern for a
+  search box.
+- **JSON is normalised.** The server stores `{"k": [1, 2]}` for
+  `{"k":[1,2]}`: the Hash an attribute reads is the same, the stored text
+  (in `execute`, a dump, an `ORDER BY`) is not.
+- **Decimals out of range are refused.** The connection's strict
+  `sql_mode` refuses a value outside the column's precision (`Out of range
+  value for column 'price'`, error 1264) where SQLite stores the Float;
+  this reaches `update_columns`, `update_all` and the bulk writes, which
+  skip the validation `save` runs ([Decimals are Floats](#decimals-are-floats)).
+- **Errors.** A constraint failure raises the same classes on both
+  (`Cybertrain::DB::UniqueViolation`, `ForeignKeyViolation`; `Deadlock`,
+  `LockTimeout` and `ConnectionLost` on MySQL); the message is the
+  server's (`Duplicate entry 'x' for key ... (MySQL 1062, 23000)`), so
+  match the class, not the text.
+- **`upsert`'s `update:`.** The new row is `excluded` on both, but a bare
+  column name is ambiguous on MySQL (error 1052): qualify the table's own
+  columns, and use `GREATEST` / `LEAST` for SQLite's two-argument `MAX` /
+  `MIN`:
+
+```ruby
+# MySQL: INSERT ... AS excluded ON DUPLICATE KEY UPDATE ...
+Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: Time.now },
+            conflict: [:project_id, :key],
+            update: { calls: "stats.calls + excluded.calls", max_ms: "GREATEST(stats.max_ms, excluded.max_ms)",
+                      seen_at: "excluded.seen_at" })
+```
+
+- **`returning:`.** MySQL has no `RETURNING`: `insert_all` and
+  `upsert_all` read the rows back in the same transaction and answer the
+  rows SQLite would. On a table with a unique index (besides the primary
+  key), `insert_all(..., returning:)` needs the rows to supply every
+  column of one such index, or it raises `Cybertrain::DB::Error` before
+  writing: a skipped duplicate could not be told apart otherwise.
+- **Migrations are not rolled back.** MySQL's DDL commits as it runs, so a
+  migration that fails half way keeps what ran before the failing
+  statement: `migration V failed at statement 2 of 3; statements 1..1 were
+  applied and cannot be rolled back (MySQL DDL commits implicitly): ...`.
+  The version is not recorded; undo the applied part (or finish it by
+  hand) before running `db migrate` again. Rails' MySQL adapter behaves the
+  same. Keep one change per migration where you can.
+- **No partial indexes.** `add_index ..., where:` stops `spin run gen`
+  with the file and line (`partial indexes (where:) are not supported on
+  MySQL`) before anything is written; index the column whole, or put the
+  condition in a generated column.
+- **The schema.** `db/schema.rb` is dumped from `information_schema`; the
+  same migrations write the same file as on SQLite. `db normalize`,
+  `db backup` and `db vacuum` are SQLite's.
 
 ## Upgrading
 

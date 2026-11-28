@@ -1,5 +1,5 @@
 ---
-source_sha256: 1cb9b3e64fe318d289c631fe4208fe60ad0804f122583b822b2149454db538f6
+source_sha256: 3481073c4117c9ba8efb72dfab303d8797ba831aa29ca72f28a91b6b47466da0
 ---
 # Обновление
 
@@ -282,6 +282,14 @@ cybertrain build
   `log_format :json`, перезапускает генератор или переносит это изменение.
 - `require "cybertrain"` теперь связывает `HttpClient` и слой TLS через
   отправитель Sentry.
+- Нарушение ограничения выбрасывает `Cybertrain::DB::UniqueViolation` или
+  `Cybertrain::DB::ForeignKeyViolation`, подклассы
+  `Cybertrain::DB::Error`: `rescue`, `rescue_from`, `retry_on` и
+  `discard_on` по `DB::Error` по-прежнему их ловят, но `last_error`
+  упавшего задания, его строка лога и тип отчёта об ошибке теперь называют
+  подкласс (`Cybertrain::DB::UniqueViolation: UNIQUE constraint failed:
+  ...`). Оповещение, дашборд или тест, сверявшие текст
+  `Cybertrain::DB::Error:`, сверяют и имя подкласса.
 
 ### С 0.4: тесты
 

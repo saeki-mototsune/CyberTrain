@@ -42,6 +42,29 @@ of those lines are contracts and how each is held.
 A row is added when a new API takes a Rails name with a different meaning,
 in the pull request that adds the API.
 
+## The same application on SQLite and on MySQL
+
+An application chooses its database when it is built: SQLite with
+`require "cybertrain"`, MySQL 8.0 with `require "cybertrain/mysql"`
+([configuration guide, "MySQL"](guide/configuration.md#mysql); D96). Its
+code is the same on both, and models, migrations, the tests and the
+framework's services answer the same. These are the differences kept on
+purpose, each pinned by a MySQL test that `script/test-mysql` compiles and
+runs against a server (CI's `mysql-tests` job):
+
+| Behaviour | SQLite | MySQL | Explained in | Pinned by |
+| --- | --- | --- | --- | --- |
+| A `json` column's stored text | as written (`{"k":[1,2]}`) | normalised by the server (`{"k": [1, 2]}`); reads give the same Hash | models guide, "MySQL"; D96 | test/mysql/bulk_writes.rb, test/mysql/connection.rb |
+| `LIKE`, `where_like` | case-insensitive for ASCII | case-sensitive (the `utf8mb4_0900_bin` collation, which makes `where`, `uniqueness` and unique indexes compare as SQLite does) | models guide, "MySQL" | test/mysql/relation.rb, test/mysql/models.rb |
+| Error messages (a duplicate, a NULL, a foreign key) | SQLite's wording | the server's wording, with `(MySQL <code>, <state>)`; the classes (`DB::UniqueViolation`, `DB::ForeignKeyViolation`, ...) are the same | models guide, "MySQL"; D96 | test/mysql/models.rb, test/mysql/bulk_writes.rb, test/db_error_classes.rb |
+| A migration that fails half way | rolled back whole | the statements before the failing one stay applied (MySQL's DDL commits), the error says how many, the version is not recorded | models guide, "MySQL"; D96 | test/mysql/migrations.rb |
+| `add_index ..., where:` | a partial index | refused by gen, with the file and line, before anything is written | models guide, "MySQL" | test/gen_dialect.rb, test/mysql/migrations.rb |
+| A decimal outside the column's precision | stored as the Float (the writers without validations) | refused by the strict sql_mode (`Out of range value`, 1264) | models guide, "MySQL"; D96 | test/mysql/models_gen_app.rb |
+| `Model.upsert`'s `update:` | `calls + excluded.calls`, `MAX(a, b)` | a column of the table qualified (`stats.calls + excluded.calls`), `GREATEST(a, b)`; `excluded` is the new row on both | models guide, "MySQL" | test/mysql/dialect.rb, test/mysql/bulk_writes.rb |
+| `insert_all(..., returning:)` on a table with unique indexes | any rows | the rows must supply one unique index whole, or `DB::Error` before writing | models guide, "MySQL" | test/mysql/bulk_writes.rb |
+| A framework table (jobs, streams, cache, ...) missing at its first use inside `DB.transaction` | created inside the transaction | `DB::Error`, nothing committed: first use outside a transaction, or `install!` | configuration guide, "MySQL" | test/mysql/jobs.rb |
+| Several processes or hosts on one database | one host (D74) | jobs, streams, leases and scheduled tasks guaranteed in one process only, until the roadmap's step 2 | configuration guide, "MySQL"; D96 | (not yet guaranteed) |
+
 ## The template language
 
 The grammar, the callable methods per type and the helpers are the

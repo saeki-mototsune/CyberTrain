@@ -1,9 +1,9 @@
 ---
-source_sha256: 9448b08f2105bfebf96da9fa441104f830033615cec5905c22830b88988af371
+source_sha256: ebea5fd4f6551f5a27f619315ce4c4c6037bfe519fe8ce4bc13323c83c30a561
 ---
 # 模型与数据库
 
-模型在脚手架之外还能做什么：迁移、列类型、查询、关联、校验、加密列、分页、事务、在 Spinel 下列名和 `order` 子句所遵循的规则，以及接管 Rails 创建的数据库。
+模型在脚手架之外还能做什么：迁移、列类型、查询、关联、校验、加密列、分页、事务、在 Spinel 下列名和 `order` 子句所遵循的规则，接管 Rails 创建的数据库，以及在 MySQL 上有哪些变化。
 
 ## 迁移
 
@@ -636,6 +636,30 @@ Rails 8 应用创建的 SQLite 文件可以直接读取：
 5. 限制：主键不是 `id` 列的表（连接表）会导出为 `create_table "articles_tags", id: false`，没有模型（`spin run gen` 会打印 `skipped articles_tags: no id column, so no model (reach it with Cybertrain::DB.with)`）；不是整数的 `id` 主键（Rails 的 `id: :uuid` 或 `id: :string`）也同样导出，`id` 保留为没有 PRIMARY KEY 的普通列；`ar_internal_metadata` 保持不动；`CREATE TABLE` 中含有 schema 无法表达内容的表，不能用重建类辅助方法修改（[修改表](#changing-a-table)）；Rails 加密过的列需要重新加密（[加密已有文本的列](#encrypting-a-column-that-already-holds-text)）。
 
 然后按本页所示的形式，在 `app/models/*.rb` 中写出 Rails 模型原有的校验、关联和 scope。
+
+## MySQL
+
+用 `require "cybertrain/mysql"` 构建的应用程序（[配置中的“MySQL”](configuration.md#mysql)）在 MySQL 8.0 上运行相同的模型、迁移和查询，回答与 SQLite 上相同；`docs/compatibility.md` 列出了差异以及固定它们的测试。模型代码会遇到的是：
+
+- **列类型。** `string` 是 `VARCHAR(255)`（`limit:` 可改变它），`text` 是 `MEDIUMTEXT`，`integer` 是 `INT`（`id` 和每个整数 `*_id` 是 `BIGINT`），`boolean` 是 `TINYINT(1)`，`decimal` 是 `DECIMAL(p,s)`，`float` 是 `DOUBLE`，`date` 是 `DATE`，`datetime` 是 UTC 的 `DATETIME(6)`，`json` 是 `JSON`，`binary` 是 `LONGBLOB`。属性的读取与 SQLite 上相同。
+- **比较是精确的。** 表使用 `utf8mb4` 和二进制排序规则 `utf8mb4_0900_bin`，所以 `where`、`uniqueness` 和唯一索引会区分 `"A"` 与 `"a"`、`"a"` 与 `"a "`，与 SQLite 相同。因此 `LIKE` 和 `where_like` 也区分大小写，而 SQLite 的 LIKE 不区分 ASCII 大小写：搜索框请用小写化的模式与 `LOWER(title) LIKE ?` 比较。
+- **JSON 会被规范化。** 服务器把 `{"k":[1,2]}` 存为 `{"k": [1, 2]}`：属性读到的 Hash 相同，存储的文本（在 `execute`、转储、`ORDER BY` 中）不同。
+- **超出范围的 decimal 会被拒绝。** 连接的严格 `sql_mode` 会拒绝超出列精度的值（`Out of range value for column 'price'`，错误 1264），而 SQLite 会存储该 Float；这也适用于跳过 `save` 所运行校验的 `update_columns`、`update_all` 和批量写入（[decimal 是 Float](#decimals-are-floats)）。
+- **错误。** 约束失败在两者上抛出相同的类（`Cybertrain::DB::UniqueViolation`、`ForeignKeyViolation`；在 MySQL 上还有 `Deadlock`、`LockTimeout` 和 `ConnectionLost`）；消息是服务器的（`Duplicate entry 'x' for key ... (MySQL 1062, 23000)`），所以请匹配类，而不是文本。
+- **`upsert` 的 `update:`。** 新行在两者上都是 `excluded`，但在 MySQL 上不带表名的列名有歧义（错误 1052）：请给表自己的列加上表名，并用 `GREATEST` / `LEAST` 代替 SQLite 的两参数 `MAX` / `MIN`：
+
+```ruby
+# MySQL：INSERT ... AS excluded ON DUPLICATE KEY UPDATE ...
+Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: Time.now },
+            conflict: [:project_id, :key],
+            update: { calls: "stats.calls + excluded.calls", max_ms: "GREATEST(stats.max_ms, excluded.max_ms)",
+                      seen_at: "excluded.seen_at" })
+```
+
+- **`returning:`。** MySQL 没有 `RETURNING`：`insert_all` 和 `upsert_all` 在同一事务中读回这些行，并返回 SQLite 会返回的行。在有（主键之外的）唯一索引的表上，`insert_all(..., returning:)` 需要这些行完整提供其中一个索引的所有列，否则在写入之前抛出 `Cybertrain::DB::Error`：否则无法分辨被跳过的重复行。
+- **迁移不会回滚。** MySQL 的 DDL 一执行就提交，所以中途失败的迁移会保留失败语句之前已运行的部分：`migration V failed at statement 2 of 3; statements 1..1 were applied and cannot be rolled back (MySQL DDL commits implicitly): ...`。该版本不会被记录；再次运行 `db migrate` 之前，请撤销已应用的部分（或手动完成它）。Rails 的 MySQL 适配器也是如此。尽可能让一个迁移只做一项更改。
+- **没有部分索引。** `add_index ..., where:` 会在写入任何东西之前带着文件和行号停止 `spin run gen`（`partial indexes (where:) are not supported on MySQL`）；请对整列建立索引，或把条件放进生成列。
+- **模式。** `db/schema.rb` 从 `information_schema` 转储；相同的迁移会写出与 SQLite 上相同的文件。`db normalize`、`db backup` 和 `db vacuum` 属于 SQLite。
 
 ## 升级
 

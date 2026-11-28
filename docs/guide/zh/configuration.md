@@ -1,5 +1,5 @@
 ---
-source_sha256: e32d060026ee89e81d8d10cb10d7b869f44492533353eb0ab56b1584ab7c5317
+source_sha256: 31cef0c4fd1f43cff188d2552a04cd69056b049d8bc2dcc24fb09e6bc6ef3dae
 ---
 # 配置
 
@@ -20,6 +20,7 @@ end
 | `CYBERTRAIN_ENV` | `env` | `"development"`；在 `cybertrain build` 构建的二进制文件中为 `"production"`（还有 `"test"`）。请设置变量，而不是 `c.env`：`database_path`、`session_secure` 和 `mail_delivery_method` 的默认值在 `config/app.rb` 运行之前就由它推出 |
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
+| `DATABASE_URL` | `database_url` | `""`。仅限 MySQL：用 `cybertrain/mysql` 构建的应用程序所连接的数据库，`mysql://USER:PASSWORD@HOST:3306/NAME`（参见 [MySQL](#mysql)）；为空或格式错误时启动失败 |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | 生产环境中必需；开发和测试环境会自动生成一个，写入 `tmp/secret_key` |
 | `CYBERTRAIN_ENCRYPTION_KEY` | `encryption_key` | `""`；64 个十六进制字符（`cybertrain secret --hex`），模型用 `encrypts` 加密的列的密钥。格式不对，或模型声明了 `encrypts` 而它为空时，启动失败（见[加密列](models.md#encrypted-columns)） |
 | `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS` | `encryption_keys_previous` | `[]`；以逗号分隔的旧密钥，只用于解密，因此重新保存记录即可轮换密钥；格式错误的条目会让启动停止 |
@@ -150,6 +151,53 @@ end
 ### 认证设置
 
 `cybertrain generate authentication` 写出的代码读取四个设置（变量见上表）：用于 [锁定](authentication.md#lockout) 的 `auth_lockout_attempts`（10）和 `auth_lockout_period`（3600 秒），用于“保持登录”的 `auth_remember_for`（30 天），以及用于未被使用的登录的 `auth_idle_timeout`（7 天）（[保持登录](authentication.md#remember-me-and-session-limits)）；不勾选的登录持续 `session_absolute_max_age`（两周）。超出范围的值会使启动停止。生成器还声明应用设置 `base_url`，取自 `<APP>_BASE_URL`，邮件中的链接以它开头；在提供应用的每个地方都用 https 设置它（[邮件中的链接](authentication.md#links-in-mails)）。
+
+## MySQL
+
+应用程序只为一种数据库构建：默认的 SQLite，或 MySQL 8.0 及更新版本（`docs/design.md` 的 D96）。选择哪一种，由 `bin/<app>.rb` 和 `bin/db.rb` 的第一个 `require` 在构建应用程序时决定；运行时没有任何东西会切换它：
+
+```ruby bin/<app>.rb (excerpt)
+require "cybertrain/mysql"   # 所有子系统；"cybertrain/core/mysql" 只有核心
+```
+
+`cybertrain new NAME --database=mysql` 会写入这一行，在 `config/app.rb` 和 `.env.example` 中说明 `DATABASE_URL`，在 `config/deploy.yml` 和 `.kamal/secrets` 中把它作为密钥传入，并写一个针对 MySQL 服务运行测试的 CI 工作流。为 SQLite 创建的应用程序，只要改掉两个文件中的这一行就能迁移（数据留在 SQLite 文件中）。模型、迁移和测试在两者上相同；[模型与数据库](models.md#mysql)列出了 MySQL 回答不同的地方。
+
+数据库是 `DATABASE_URL` 指定的那个（`database_url`，在 `config/app.rb` 运行之前读取）：
+
+```shell
+export DATABASE_URL='mysql://app:PASSWORD@db.internal:3306/shop_production'
+```
+
+- `USER`、`PASSWORD` 和数据库名会做百分号解码（`%40` 是 `@`）。`?` 之后的参数是 `ssl_mode`、`connect_timeout`（默认 5 秒）、`read_timeout` 和 `write_timeout`（各 30 秒，指等待服务器一次的时间，而不是整个查询）；其他名称会使启动失败。任何消息、日志行或 `inspect` 都不会显示密码。
+- 把密码放在环境变量或部署的密钥（`.kamal/secrets`）中，绝不要写进 `config/app.rb` 或仓库：二进制文件不包含密码。
+- 默认的 `ssl_mode=verify` 通过 TLS 连接，并检查服务器的证书和主机名。`ssl_mode=disabled` 不使用 TLS 连接，且只用于 URL 中写明的 `localhost`、回环地址、私有地址（10/8、172.16/12、192.168/16）或唯一本地 IPv6 地址；其他主机会被拒绝。没有只加密而不检查证书的模式。
+- 没有 TLS 时，MySQL 8.0 默认的 `caching_sha2_password` 无法检查服务器尚未缓存的密码，连接会被拒绝并给出说明：请使用 TLS，或让开发用的用户使用 `mysql_native_password`。
+- 证书根据系统的 CA 存储检查，若设置了 `SSL_CERT_FILE`（证书包）或 `SSL_CERT_DIR` 则根据它们检查，框架的所有 TLS 连接都是如此。托管服务器的 CA 放在那里。对于 Amazon RDS 或 Aurora MySQL，下载全局证书包并指定它（`SSL_CERT_FILE` 会在进程的所有 TLS 连接中取代系统的证书包文件，包括 HTTP 客户端和邮件，所以当应用程序还调用其他服务时，请把两者合并）：
+
+```shell
+curl -fsSLo /etc/ssl/certs/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+cat /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/rds-global-bundle.pem > /etc/ssl/certs/app-ca.pem
+export SSL_CERT_FILE=/etc/ssl/certs/app-ca.pem
+export DATABASE_URL='mysql://app:PASSWORD@shop.abc123.ap-northeast-1.rds.amazonaws.com:3306/shop_production'
+```
+
+`db` 命令使用同一个数据库：`db create` 和 `db drop` 创建和删除它（`utf8mb4`，排序规则 `utf8mb4_0900_bin`）；`migrate`、`rollback`、`status`、`schema` 和 `schema:dump` 与 SQLite 上一样工作；`dbconsole` 通过 TCP、以相同的 TLS 模式和 CA 打开 `mysql` 客户端，密码放在客户端的环境中。`db backup`、`vacuum` 和 `normalize` 是 SQLite 的命令，以状态 2 退出：请使用 `mysqldump` 或服务商的快照。
+
+`cybertrain test` 在测试之前清空 `DATABASE_URL` 指定的数据库并重新迁移，因此它会拒绝名称不以 `_test` 结尾的数据库、`test` 以外的环境，以及有表却没有标记表 `cybertrain_test_marker` 的数据库（它在空数据库中创建该标记表）。它从不创建或删除数据库：请先创建一次 `NAME_test`（用那个 URL 执行 `db create`，或在服务商的控制台中），并在运行测试时 export 它的 URL。在测试之间，表会被清空并重新插入 fixture；在 MySQL 上，清空会在插入 fixture 之前提交（重置 id 是 DDL），所以加载失败的 fixture 会让表保持为空。
+
+框架的表（作业、流、缓存、租约、调度器的时刻表、feed 的状态）不在 `db/schema.rb` 中，`db migrate` 也不创建它们：与 SQLite 一样，每张表在其功能第一次使用时创建。在 MySQL 上，事务中的 CREATE TABLE 会把事务提交到一半，所以在 `DB.transaction` 中的第一次使用（在从未有过该表的数据库上，于事务中调用 `Job.enqueue` 或 `broadcast_*`）会改为抛出 `Cybertrain::DB::Error`，并且什么都不提交。运行作业的进程在启动时创建 `cybertrain_jobs`；对于其他表（或该进程首次启动之前就入队的作业），请在第一次 `migrate` 之后、在事务之外创建一次，例如用一个运维命令：
+
+```ruby bin/<app>.rb (excerpt)
+Cybertrain::Main.command("install_tables", "create the framework's tables") do |argv|
+  Cybertrain::Job.install!
+  Cybertrain::Stream.install!
+  Cybertrain::Cache.install!
+  0
+end
+```
+
+> [!NOTE]
+> 目前只保证一个进程。在 MySQL 上，作业、流、租约和计划任务在一个进程内得到保证（与 SQLite 的回答相同），但在共享同一数据库的多个进程或主机之间尚未得到保证：作业的领取、流的顺序和租约的时钟是路线图的下一步。在某个版本另有说明之前，请只运行一个容器，即单独的 web 角色。
 
 ## 时区
 

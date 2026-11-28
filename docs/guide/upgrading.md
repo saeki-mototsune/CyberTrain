@@ -441,6 +441,14 @@ Two defaults changed after 0.4
   generator again or copies that change.
 - `require "cybertrain"` now links `HttpClient` and the TLS layer, through
   the Sentry sender.
+- A failed constraint raises `Cybertrain::DB::UniqueViolation` or
+  `Cybertrain::DB::ForeignKeyViolation`, subclasses of
+  `Cybertrain::DB::Error`: `rescue`, `rescue_from`, `retry_on` and
+  `discard_on` on `DB::Error` still catch them, but a failed job's
+  `last_error`, its log line and an error report's type now name the
+  subclass (`Cybertrain::DB::UniqueViolation: UNIQUE constraint failed:
+  ...`). An alert, a dashboard or a test that matched the text
+  `Cybertrain::DB::Error:` matches the subclass's name too.
 
 ### From 0.4: tests
 

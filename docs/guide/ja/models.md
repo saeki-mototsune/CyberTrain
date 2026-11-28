@@ -1,9 +1,9 @@
 ---
-source_sha256: 9448b08f2105bfebf96da9fa441104f830033615cec5905c22830b88988af371
+source_sha256: ebea5fd4f6551f5a27f619315ce4c4c6037bfe519fe8ce4bc13323c83c30a561
 ---
 # モデルとデータベース
 
-スキャフォールドを超えてモデルが行うこと：マイグレーション、カラムの型、クエリ、関連付け、バリデーション、暗号化されたカラム、ページ分け、トランザクション、Spinel のもとでカラム名と `order` 句が従う規則、そして Rails が作ったデータベースの引き継ぎです。
+スキャフォールドを超えてモデルが行うこと：マイグレーション、カラムの型、クエリ、関連付け、バリデーション、暗号化されたカラム、ページ分け、トランザクション、Spinel のもとでカラム名と `order` 句が従う規則、Rails が作ったデータベースの引き継ぎ、そして MySQL で変わることです。
 
 ## マイグレーション
 
@@ -636,6 +636,30 @@ Rails 8 のアプリケーションが作った SQLite のファイルは、そ�
 5. 制限：主キーが `id` カラムでないテーブル（結合テーブル）は `create_table "articles_tags", id: false` としてダンプされ、モデルはありません（`spin run gen` が `skipped articles_tags: no id column, so no model (reach it with Cybertrain::DB.with)` と表示します）。整数でない `id` 主キー（Rails の `id: :uuid` や `id: :string`）も同じようにダンプされ、`id` は PRIMARY KEY のない普通のカラムとして残ります。`ar_internal_metadata` はそのままにします。スキーマが表せないものを `CREATE TABLE` に含むテーブルは、作り直すヘルパーでは変えられません（[テーブルを変える](#changing-a-table)）。Rails が暗号化したカラムは暗号化し直します（[すでにテキストのあるカラムを暗号化する](#encrypting-a-column-that-already-holds-text)）。
 
 そのうえで、Rails のモデルにあったバリデーション、関連付け、スコープを、このページの形で `app/models/*.rb` に書きます。
+
+## MySQL
+
+`require "cybertrain/mysql"` でビルドしたアプリケーション（[設定の「MySQL」](configuration.md#mysql)）は、同じモデル、マイグレーション、クエリを MySQL 8.0 で動かし、SQLite と同じ答えを返します。違いと、それを固定するテストは `docs/compatibility.md` にあります。モデルのコードが出会うのは次のことです：
+
+- **カラムの型。** `string` は `VARCHAR(255)`（`limit:` で変わる）、`text` は `MEDIUMTEXT`、`integer` は `INT`（`id` と整数の `*_id` はすべて `BIGINT`）、`boolean` は `TINYINT(1)`、`decimal` は `DECIMAL(p,s)`、`float` は `DOUBLE`、`date` は `DATE`、`datetime` は UTC の `DATETIME(6)`、`json` は `JSON`、`binary` は `LONGBLOB` です。属性は SQLite と同じように読めます。
+- **比較は厳密です。** テーブルは `utf8mb4` とバイナリの照合順序 `utf8mb4_0900_bin` を使うので、`where`、`uniqueness`、一意インデックスは、SQLite と同じく `"A"` と `"a"`、`"a"` と `"a "` を区別します。そのため `LIKE` と `where_like` も大文字と小文字を区別します（SQLite の LIKE は ASCII の大文字小文字を区別しません）。検索ボックスには、小文字にしたパターンと `LOWER(title) LIKE ?` を比べてください。
+- **JSON は正規化されます。** サーバーは `{"k":[1,2]}` を `{"k": [1, 2]}` として保存します。属性が読む Hash は同じですが、保存されたテキスト（`execute`、ダンプ、`ORDER BY`）は違います。
+- **範囲外の decimal は拒否されます。** 接続の厳格な `sql_mode` は、カラムの精度を超える値を拒否します（`Out of range value for column 'price'`、エラー 1264）。SQLite は Float を保存します。これは、`save` が実行するバリデーションを飛ばす `update_columns`、`update_all`、一括書き込みにも及びます（[decimal は Float](#decimals-are-floats)）。
+- **エラー。** 制約の違反は、どちらでも同じクラスを投げます（`Cybertrain::DB::UniqueViolation`、`ForeignKeyViolation`。MySQL ではさらに `Deadlock`、`LockTimeout`、`ConnectionLost`）。メッセージはサーバーのもの（`Duplicate entry 'x' for key ... (MySQL 1062, 23000)`）なので、文言ではなくクラスで照合してください。
+- **`upsert` の `update:`。** 新しい行はどちらでも `excluded` ですが、MySQL ではテーブルを付けないカラム名はあいまいです（エラー 1052）。テーブル自身のカラムには名前を付け、SQLite の 2 引数の `MAX` / `MIN` には `GREATEST` / `LEAST` を使います：
+
+```ruby
+# MySQL：INSERT ... AS excluded ON DUPLICATE KEY UPDATE ...
+Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: Time.now },
+            conflict: [:project_id, :key],
+            update: { calls: "stats.calls + excluded.calls", max_ms: "GREATEST(stats.max_ms, excluded.max_ms)",
+                      seen_at: "excluded.seen_at" })
+```
+
+- **`returning:`。** MySQL には `RETURNING` がありません。`insert_all` と `upsert_all` は同じトランザクションの中で行を読み戻し、SQLite が返すのと同じ行を返します。（主キー以外の）一意インデックスがあるテーブルでは、`insert_all(..., returning:)` は、行がそのようなインデックスの 1 つのカラムをすべて含んでいる必要があり、そうでなければ書く前に `Cybertrain::DB::Error` を投げます。そうでないと、飛ばした重複を見分けられないからです。
+- **マイグレーションは巻き戻りません。** MySQL の DDL は実行するたびにコミットされるので、途中で失敗したマイグレーションは、失敗した文より前に実行したものを残します：`migration V failed at statement 2 of 3; statements 1..1 were applied and cannot be rolled back (MySQL DDL commits implicitly): ...`。バージョンは記録されません。もう一度 `db migrate` を実行する前に、適用された部分を元に戻して（または手で終わらせて）ください。Rails の MySQL アダプターも同じです。できるところでは、1 つのマイグレーションに 1 つの変更にしてください。
+- **部分インデックスはありません。** `add_index ..., where:` は、何かを書く前に、ファイルと行を示して `spin run gen` を止めます（`partial indexes (where:) are not supported on MySQL`）。カラム全体にインデックスを張るか、条件を生成カラムに入れてください。
+- **スキーマ。** `db/schema.rb` は `information_schema` からダンプされ、同じマイグレーションからは SQLite と同じファイルができます。`db normalize`、`db backup`、`db vacuum` は SQLite のものです。
 
 ## アップグレード
 

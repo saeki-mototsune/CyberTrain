@@ -1,9 +1,9 @@
 ---
-source_sha256: 9448b08f2105bfebf96da9fa441104f830033615cec5905c22830b88988af371
+source_sha256: ebea5fd4f6551f5a27f619315ce4c4c6037bfe519fe8ce4bc13323c83c30a561
 ---
 # Modèles et base de données
 
-Ce que fait un modèle au-delà du scaffold&nbsp;: les migrations, les types de colonnes, les requêtes, les associations, les validations, les colonnes chiffrées, la pagination, les transactions, les règles que suivent sous Spinel les noms de colonnes et les clauses `order`, et la reprise d’une base de données créée par Rails.
+Ce que fait un modèle au-delà du scaffold&nbsp;: les migrations, les types de colonnes, les requêtes, les associations, les validations, les colonnes chiffrées, la pagination, les transactions, les règles que suivent sous Spinel les noms de colonnes et les clauses `order`, la reprise d’une base de données créée par Rails, et ce qui change sur MySQL.
 
 ## Migrations
 
@@ -1168,6 +1168,30 @@ Un fichier SQLite créé par une application Rails 8 se lit tel quel&nbsp;:
 Écrivez ensuite `app/models/*.rb` avec les validations, les associations et
 les scopes qu’avaient les modèles Rails, sous les formes que montre cette
 page.
+
+## MySQL
+
+Une application compilée avec `require "cybertrain/mysql"` ([Configuration, «&nbsp;MySQL&nbsp;»](configuration.md#mysql)) exécute les mêmes modèles, migrations et requêtes sur MySQL 8.0, et ils répondent ce qu’ils répondent sur SQLite&nbsp;; `docs/compatibility.md` liste les différences avec les tests qui les fixent. Ce que rencontre le code d’un modèle&nbsp;:
+
+- **Types de colonnes.** `string` est `VARCHAR(255)` (`limit:` le change), `text` `MEDIUMTEXT`, `integer` `INT` (un `id` et tout `*_id` entier sont `BIGINT`), `boolean` `TINYINT(1)`, `decimal` `DECIMAL(p,s)`, `float` `DOUBLE`, `date` `DATE`, `datetime` `DATETIME(6)` en UTC, `json` `JSON`, `binary` `LONGBLOB`. Les attributs se lisent comme sur SQLite.
+- **Les comparaisons sont exactes.** Les tables utilisent `utf8mb4` avec la collation binaire `utf8mb4_0900_bin`&nbsp;: `where`, `uniqueness` et un index unique distinguent `"A"` de `"a"` et `"a"` de `"a "`, comme SQLite. `LIKE` et `where_like` sont donc sensibles à la casse aussi, là où le LIKE de SQLite ignore la casse ASCII&nbsp;: pour un champ de recherche, comparez `LOWER(title) LIKE ?` à un motif en minuscules.
+- **Le JSON est normalisé.** Le serveur stocke `{"k": [1, 2]}` pour `{"k":[1,2]}`&nbsp;: le Hash que lit l’attribut est le même, le texte stocké (dans `execute`, un dump, un `ORDER BY`) ne l’est pas.
+- **Les décimaux hors limites sont refusés.** Le `sql_mode` strict de la connexion refuse une valeur hors de la précision de la colonne (`Out of range value for column 'price'`, erreur 1264) là où SQLite stocke le Float&nbsp;; cela touche `update_columns`, `update_all` et les écritures en masse, qui sautent la validation que fait `save` ([Les décimaux sont des Floats](#decimals-are-floats)).
+- **Erreurs.** Une violation de contrainte lève les mêmes classes sur les deux (`Cybertrain::DB::UniqueViolation`, `ForeignKeyViolation`&nbsp;; sur MySQL aussi `Deadlock`, `LockTimeout` et `ConnectionLost`)&nbsp;; le message est celui du serveur (`Duplicate entry 'x' for key ... (MySQL 1062, 23000)`)&nbsp;: comparez la classe, pas le texte.
+- **Le `update:` de `upsert`.** La nouvelle ligne est `excluded` sur les deux, mais un nom de colonne nu est ambigu sur MySQL (erreur 1052)&nbsp;: qualifiez les colonnes de la table, et utilisez `GREATEST` / `LEAST` pour le `MAX` / `MIN` à deux arguments de SQLite&nbsp;:
+
+```ruby
+# MySQL : INSERT ... AS excluded ON DUPLICATE KEY UPDATE ...
+Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: Time.now },
+            conflict: [:project_id, :key],
+            update: { calls: "stats.calls + excluded.calls", max_ms: "GREATEST(stats.max_ms, excluded.max_ms)",
+                      seen_at: "excluded.seen_at" })
+```
+
+- **`returning:`.** MySQL n’a pas de `RETURNING`&nbsp;: `insert_all` et `upsert_all` relisent les lignes dans la même transaction et répondent les lignes que SQLite répondrait. Sur une table qui a un index unique (en plus de la clé primaire), `insert_all(..., returning:)` demande que les lignes fournissent toutes les colonnes d’un tel index, sinon il lève `Cybertrain::DB::Error` avant d’écrire&nbsp;: un doublon ignoré ne pourrait pas être distingué autrement.
+- **Les migrations ne sont pas annulées.** Le DDL de MySQL est validé à mesure qu’il s’exécute&nbsp;: une migration qui échoue à mi-chemin garde ce qui a tourné avant l’instruction en échec&nbsp;: `migration V failed at statement 2 of 3; statements 1..1 were applied and cannot be rolled back (MySQL DDL commits implicitly): ...`. La version n’est pas enregistrée&nbsp;; défaites la partie appliquée (ou terminez-la à la main) avant de relancer `db migrate`. L’adaptateur MySQL de Rails fait de même. Gardez un changement par migration quand c’est possible.
+- **Pas d’index partiels.** `add_index ..., where:` arrête `spin run gen` avec le fichier et la ligne (`partial indexes (where:) are not supported on MySQL`) avant que rien ne soit écrit&nbsp;; indexez la colonne entière, ou mettez la condition dans une colonne générée.
+- **Le schéma.** `db/schema.rb` est extrait de `information_schema`&nbsp;; les mêmes migrations écrivent le même fichier que sur SQLite. `db normalize`, `db backup` et `db vacuum` sont propres à SQLite.
 
 ## Mise à jour
 

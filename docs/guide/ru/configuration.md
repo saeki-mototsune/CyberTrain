@@ -1,5 +1,5 @@
 ---
-source_sha256: e32d060026ee89e81d8d10cb10d7b869f44492533353eb0ab56b1584ab7c5317
+source_sha256: 31cef0c4fd1f43cff188d2552a04cd69056b049d8bc2dcc24fb09e6bc6ef3dae
 ---
 # Конфигурация
 
@@ -20,6 +20,7 @@ end
 | `CYBERTRAIN_ENV` | `env` | `"development"`; `"production"` в бинарном файле из `cybertrain build` (также `"test"`). Задавайте переменную, а не `c.env`: `database_path`, `session_secure` и значение `mail_delivery_method` по умолчанию выводятся из неё до выполнения `config/app.rb` |
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
+| `DATABASE_URL` | `database_url` | `""`; только MySQL: база, к которой подключается приложение, собранное с `cybertrain/mysql`, `mysql://USER:PASSWORD@HOST:3306/NAME` (см. [MySQL](#mysql)); загрузка не проходит, если она пуста или некорректна |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | обязательна в production; в dev/test генерируется автоматически в `tmp/secret_key` |
 | `CYBERTRAIN_ENCRYPTION_KEY` | `encryption_key` | `""`; 64 шестнадцатеричных символа (`cybertrain secret --hex`), ключ столбцов, которые модель шифрует через `encrypts`. Запуск завершается ошибкой, если ключ неверного вида или пуст, когда модель объявляет `encrypts` (см. [Зашифрованные столбцы](models.md#encrypted-columns)) |
 | `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS` | `encryption_keys_previous` | `[]`; прежние ключи через запятую, пробуются только для расшифровки, так что ключ меняют, пересохраняя записи; неверная запись останавливает запуск |
@@ -280,6 +281,53 @@ end
 ### Настройки аутентификации
 
 Код, который пишет `cybertrain generate authentication`, читает четыре настройки (переменные — в таблице выше): `auth_lockout_attempts` (10) и `auth_lockout_period` (3600 с) для [блокировки](authentication.md#lockout), `auth_remember_for` (30 дней) для входа с «оставаться в системе» и `auth_idle_timeout` (7 дней) для неиспользуемого входа ([Оставаться в системе](authentication.md#remember-me-and-session-limits)); вход без флажка длится `session_absolute_max_age` (две недели). Значение вне диапазона останавливает загрузку. Генератор также объявляет настройку приложения `base_url` из `<APP>_BASE_URL`, с которой начинаются ссылки в письмах; задайте её с https везде, где работает приложение ([Ссылки в письмах](authentication.md#links-in-mails)).
+
+## MySQL
+
+Приложение собирается для одной базы данных: SQLite, по умолчанию, или MySQL 8.0 и новее (`docs/design.md`, D96). Выбор делает первый `require` в `bin/<app>.rb` и `bin/db.rb` при сборке приложения; во время работы ничто его не переключает:
+
+```ruby bin/<app>.rb (excerpt)
+require "cybertrain/mysql"   # все подсистемы; "cybertrain/core/mysql" — только ядро
+```
+
+`cybertrain new NAME --database=mysql` пишет эту строку, объясняет `DATABASE_URL` в `config/app.rb` и `.env.example`, передаёт её как секрет в `config/deploy.yml` и `.kamal/secrets` и пишет workflow CI, который запускает тесты на сервисе MySQL. Приложение, созданное для SQLite, переходит, если поменять эту строку в обоих файлах (данные остаются в файле SQLite). Модели, миграции и тесты одинаковы на обеих базах; [Модели и база данных](models.md#mysql) перечисляет, где MySQL отвечает иначе.
+
+База данных — та, которую называет `DATABASE_URL` (`database_url`, читается до `config/app.rb`):
+
+```shell
+export DATABASE_URL='mysql://app:PASSWORD@db.internal:3306/shop_production'
+```
+
+- `USER`, `PASSWORD` и имя базы декодируются из процентной записи (`%40` — это `@`). Параметры после `?`: `ssl_mode`, `connect_timeout` (по умолчанию 5 секунд), `read_timeout` и `write_timeout` (по 30 секунд, на одно ожидание сервера, а не на весь запрос); любое другое имя останавливает загрузку. Ни одно сообщение, строка лога или `inspect` не показывает пароль.
+- Держите пароль в окружении или в секретах деплоя (`.kamal/secrets`), никогда в `config/app.rb` или в репозитории: в бинарнике пароля нет.
+- `ssl_mode=verify`, по умолчанию, подключается по TLS и проверяет сертификат сервера и его имя хоста. `ssl_mode=disabled` подключается без TLS, и только к `localhost`, адресу loopback, частному адресу (10/8, 172.16/12, 192.168/16) или уникальному локальному адресу IPv6, записанному в URL; любой другой хост отклоняется. Режима, который шифрует без проверки сертификата, нет.
+- Без TLS используемый по умолчанию в MySQL 8.0 `caching_sha2_password` не может проверить пароль, которого сервер ещё не кэшировал, и подключение отклоняется с сообщением об этом: используйте TLS или дайте пользователю для разработки `mysql_native_password`.
+- Сертификаты проверяются по системному хранилищу CA или по `SSL_CERT_FILE` (связке) или `SSL_CERT_DIR`, если они заданы, как и любое TLS-соединение фреймворка. CA управляемого сервера кладётся туда. Для Amazon RDS или Aurora MySQL скачайте глобальную связку и укажите её (`SSL_CERT_FILE` заменяет системный файл связки для всех TLS-соединений процесса, включая HTTP-клиент и почту, поэтому соедините оба файла, если приложение обращается и к другим сервисам):
+
+```shell
+curl -fsSLo /etc/ssl/certs/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+cat /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/rds-global-bundle.pem > /etc/ssl/certs/app-ca.pem
+export SSL_CERT_FILE=/etc/ssl/certs/app-ca.pem
+export DATABASE_URL='mysql://app:PASSWORD@shop.abc123.ap-northeast-1.rds.amazonaws.com:3306/shop_production'
+```
+
+Команды `db` работают с той же базой: `db create` и `db drop` создают и удаляют её (`utf8mb4`, сортировка `utf8mb4_0900_bin`); `migrate`, `rollback`, `status`, `schema` и `schema:dump` работают как на SQLite; `dbconsole` открывает клиент `mysql` по TCP, с тем же режимом TLS и CA, а пароль передаёт в окружении клиента. `db backup`, `vacuum` и `normalize` — команды SQLite и завершаются со статусом 2: используйте `mysqldump` или снимки провайдера.
+
+`cybertrain test` перед тестами очищает базу, которую называет `DATABASE_URL`, и мигрирует её заново, поэтому отклоняет базу, имя которой не оканчивается на `_test`, окружение, отличное от `test`, и базу, в которой есть таблицы, но нет таблицы-метки `cybertrain_test_marker` (её он создаёт в пустой базе). Он никогда не создаёт и не удаляет базу: создайте `NAME_test` один раз (`db create` с этим URL или в консоли провайдера) и экспортируйте её URL для запуска тестов. Между тестами таблицы очищаются и фикстуры вставляются заново; на MySQL очистка фиксируется до вставки фикстур (сброс id — это DDL), поэтому фикстура, которая не загрузилась, оставляет таблицы пустыми.
+
+Таблиц фреймворка (задания, потоки, кэш, аренды, расписание планировщика, состояние фидов) нет в `db/schema.rb`, и `db migrate` их не создаёт: каждая создаётся при первом использовании своей функции, как на SQLite. На MySQL CREATE TABLE внутри транзакции зафиксировал бы транзакцию на полпути, поэтому первое использование внутри `DB.transaction` (`Job.enqueue` или `broadcast_*` в транзакции, на базе, где этой таблицы ещё не было) вместо этого выбрасывает `Cybertrain::DB::Error` и ничего не фиксирует. Процесс, который выполняет задания, создаёт `cybertrain_jobs` при старте; для остальных (или для заданий, поставленных в очередь до первого старта этого процесса) создайте таблицы один раз вне транзакции после первого `migrate`, например служебной командой:
+
+```ruby bin/<app>.rb (excerpt)
+Cybertrain::Main.command("install_tables", "create the framework's tables") do |argv|
+  Cybertrain::Job.install!
+  Cybertrain::Stream.install!
+  Cybertrain::Cache.install!
+  0
+end
+```
+
+> [!NOTE]
+> Пока — один процесс. На MySQL задания, потоки, аренды и запланированные задачи гарантированы в пределах одного процесса (они отвечают как на SQLite), но ещё не для нескольких процессов или хостов с общей базой: захват задания, порядок потока и часы аренды — следующий шаг дорожной карты. Запускайте один контейнер, только роль web, пока релиз не скажет иного.
 
 ## Часовые пояса
 

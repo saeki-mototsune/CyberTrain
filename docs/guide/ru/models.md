@@ -1,12 +1,12 @@
 ---
-source_sha256: 9448b08f2105bfebf96da9fa441104f830033615cec5905c22830b88988af371
+source_sha256: ebea5fd4f6551f5a27f619315ce4c4c6037bfe519fe8ce4bc13323c83c30a561
 ---
 # Модели и база данных
 
 Что модель делает помимо скаффолда: миграции, типы столбцов, запросы,
 ассоциации, валидации, зашифрованные столбцы, постраничный вывод, транзакции,
 правила, которым под Spinel подчиняются имена столбцов и конструкции `order`,
-и перенос базы данных, созданной Rails.
+перенос базы данных, созданной Rails, и что меняется на MySQL.
 
 ## Миграции
 
@@ -1156,6 +1156,73 @@ Post.order(SORTS.fetch(params[:sort].to_s, "id"))
 
 Затем напишите `app/models/*.rb` с валидациями, ассоциациями и скоупами,
 которые были у моделей Rails, в формах, показанных на этой странице.
+
+## MySQL
+
+Приложение, собранное с `require "cybertrain/mysql"`
+([Конфигурация, «MySQL»](configuration.md#mysql)), выполняет те же модели,
+миграции и запросы на MySQL 8.0, и они отвечают то же, что на SQLite;
+`docs/compatibility.md` перечисляет различия вместе с тестами, которые их
+закрепляют. С чем встречается код модели:
+
+- **Типы столбцов.** `string` — `VARCHAR(255)` (меняется через `limit:`),
+  `text` — `MEDIUMTEXT`, `integer` — `INT` (`id` и любой целочисленный
+  `*_id` — `BIGINT`), `boolean` — `TINYINT(1)`, `decimal` — `DECIMAL(p,s)`,
+  `float` — `DOUBLE`, `date` — `DATE`, `datetime` — `DATETIME(6)` в UTC,
+  `json` — `JSON`, `binary` — `LONGBLOB`. Атрибуты читаются как на SQLite.
+- **Сравнения точные.** Таблицы используют `utf8mb4` с двоичной
+  сортировкой `utf8mb4_0900_bin`, поэтому `where`, `uniqueness` и
+  уникальный индекс отличают `"A"` от `"a"` и `"a"` от `"a "`, как SQLite.
+  Поэтому `LIKE` и `where_like` тоже чувствительны к регистру, тогда как
+  LIKE в SQLite не различает регистр ASCII: для поля поиска сравнивайте
+  `LOWER(title) LIKE ?` с шаблоном в нижнем регистре.
+- **JSON нормализуется.** Сервер хранит `{"k": [1, 2]}` вместо
+  `{"k":[1,2]}`: Hash, который читает атрибут, тот же, а сохранённый текст
+  (в `execute`, дампе, `ORDER BY`) — нет.
+- **Decimal вне диапазона отклоняется.** Строгий `sql_mode` соединения
+  отклоняет значение вне точности столбца (`Out of range value for column
+  'price'`, ошибка 1264), тогда как SQLite сохраняет Float; это касается и
+  `update_columns`, `update_all` и массовых записей, которые пропускают
+  валидацию, выполняемую `save` ([Decimal — это Float](#decimals-are-floats)).
+- **Ошибки.** Нарушение ограничения выбрасывает одни и те же классы на
+  обеих базах (`Cybertrain::DB::UniqueViolation`, `ForeignKeyViolation`;
+  на MySQL также `Deadlock`, `LockTimeout` и `ConnectionLost`); сообщение —
+  сервера (`Duplicate entry 'x' for key ... (MySQL 1062, 23000)`), поэтому
+  сверяйте класс, а не текст.
+- **`update:` у `upsert`.** Новая строка — `excluded` на обеих базах, но
+  голое имя столбца на MySQL неоднозначно (ошибка 1052): уточняйте
+  собственные столбцы таблицы её именем и используйте `GREATEST` / `LEAST`
+  вместо двухаргументных `MAX` / `MIN` SQLite:
+
+```ruby
+# MySQL: INSERT ... AS excluded ON DUPLICATE KEY UPDATE ...
+Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: Time.now },
+            conflict: [:project_id, :key],
+            update: { calls: "stats.calls + excluded.calls", max_ms: "GREATEST(stats.max_ms, excluded.max_ms)",
+                      seen_at: "excluded.seen_at" })
+```
+
+- **`returning:`.** В MySQL нет `RETURNING`: `insert_all` и `upsert_all`
+  читают строки обратно в той же транзакции и отвечают теми строками,
+  которыми ответил бы SQLite. На таблице с уникальным индексом (помимо
+  первичного ключа) `insert_all(..., returning:)` требует, чтобы строки
+  содержали все столбцы одного такого индекса, иначе выбрасывает
+  `Cybertrain::DB::Error` до записи: иначе пропущенный дубликат не отличить.
+- **Миграции не откатываются.** DDL в MySQL фиксируется по мере
+  выполнения, поэтому миграция, упавшая на полпути, сохраняет то, что
+  выполнилось до упавшей инструкции: `migration V failed at statement 2 of
+  3; statements 1..1 were applied and cannot be rolled back (MySQL DDL
+  commits implicitly): ...`. Версия не записывается; отмените применённую
+  часть (или завершите её вручную), прежде чем снова запускать
+  `db migrate`. Адаптер MySQL в Rails ведёт себя так же. По возможности
+  делайте одно изменение на миграцию.
+- **Частичных индексов нет.** `add_index ..., where:` останавливает
+  `spin run gen` с файлом и строкой (`partial indexes (where:) are not
+  supported on MySQL`) до того, как что-либо записано; индексируйте столбец
+  целиком или вынесите условие в генерируемый столбец.
+- **Схема.** `db/schema.rb` выгружается из `information_schema`; те же
+  миграции пишут тот же файл, что и на SQLite. `db normalize`, `db backup`
+  и `db vacuum` — команды SQLite.
 
 ## Обновление
 

@@ -17,6 +17,7 @@ end
 | `CYBERTRAIN_ENV` | `env` | `"development"`; `"production"` in a binary from `cybertrain build` (also `"test"`). Set the variable, not `c.env`: `database_path`, `session_secure` and the default `mail_delivery_method` are derived from it before `config/app.rb` runs |
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
+| `DATABASE_URL` | `database_url` | `""`; MySQL only: the database an application built with `cybertrain/mysql` connects to, `mysql://USER:PASSWORD@HOST:3306/NAME` (see [MySQL](#mysql)); boot fails when it is empty or malformed |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | required in production; dev/test auto-generate one into `tmp/secret_key` |
 | `CYBERTRAIN_ENCRYPTION_KEY` | `encryption_key` | `""`; 64 hex characters (`cybertrain secret --hex`), the key of the columns a model `encrypts`. Boot fails when it is malformed, or empty once a model declares `encrypts` (see [Encrypted columns](models.md#encrypted-columns)) |
 | `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS` | `encryption_keys_previous` | `[]`; comma-separated earlier keys, tried for decryption only, so a key can be rotated by saving the records again; a malformed entry stops the boot |
@@ -285,6 +286,114 @@ out of range stops the boot. The generator also declares the application
 setting `base_url`, from `<APP>_BASE_URL`, where links in mails start; set
 it, with https, wherever the application is served
 ([Links in mails](authentication.md#links-in-mails)).
+
+## MySQL
+
+An application is built for one database: SQLite, the default, or MySQL
+8.0 or newer (`docs/design.md` D96). The first `require` of
+`bin/<app>.rb` and `bin/db.rb` chooses it when the application is built;
+nothing switches it at run time:
+
+```ruby bin/<app>.rb (excerpt)
+require "cybertrain/mysql"   # every subsystem; "cybertrain/core/mysql" is the core alone
+```
+
+`cybertrain new NAME --database=mysql` writes that line, explains
+`DATABASE_URL` in `config/app.rb` and `.env.example`, passes it as a
+secret in `config/deploy.yml` and `.kamal/secrets`, and writes a CI
+workflow that runs the tests against a MySQL service. An application made
+for SQLite moves by changing the line in both files (its data stays in the
+SQLite file). The models, migrations and tests are the same on both;
+[Models and the database](models.md#mysql) lists what MySQL answers
+differently.
+
+The database is the one `DATABASE_URL` names (`database_url`, read before
+`config/app.rb` runs):
+
+```shell
+export DATABASE_URL='mysql://app:PASSWORD@db.internal:3306/shop_production'
+```
+
+- `USER`, `PASSWORD` and the database name are percent-decoded (`%40` is
+  `@`). The parameters after `?` are `ssl_mode`, `connect_timeout` (5
+  seconds by default), `read_timeout` and `write_timeout` (30 seconds
+  each, for one wait on the server, not for a whole query); any other
+  name stops the boot. No message, log line or `inspect` shows the
+  password.
+- Keep the password in the environment or the deploy's secrets
+  (`.kamal/secrets`), never in `config/app.rb` or the repository: the
+  binary holds no password.
+- `ssl_mode=verify`, the default, connects over TLS and checks the
+  server's certificate and its host name. `ssl_mode=disabled` connects
+  without TLS, and only to `localhost`, a loopback address, a private
+  address (10/8, 172.16/12, 192.168/16) or a unique local IPv6 address
+  written in the URL; any other host is refused. There is no mode that
+  encrypts without checking the certificate.
+- Without TLS, MySQL 8.0's default `caching_sha2_password` cannot check a
+  password the server has not cached yet, and the connection is refused
+  with a message saying so: use TLS, or give a development user
+  `mysql_native_password`.
+- The certificates are checked against the system's CA store, or against
+  `SSL_CERT_FILE` (a bundle) or `SSL_CERT_DIR` when they are set, as every
+  TLS connection of the framework is. A managed server's CA goes there.
+  For Amazon RDS or Aurora MySQL, download the global bundle and name it
+  (`SSL_CERT_FILE` replaces the system's bundle file for every TLS
+  connection of the process, the HTTP client and mail included, so join
+  the two when the application also calls other services):
+
+```shell
+curl -fsSLo /etc/ssl/certs/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+cat /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/rds-global-bundle.pem > /etc/ssl/certs/app-ca.pem
+export SSL_CERT_FILE=/etc/ssl/certs/app-ca.pem
+export DATABASE_URL='mysql://app:PASSWORD@shop.abc123.ap-northeast-1.rds.amazonaws.com:3306/shop_production'
+```
+
+The `db` commands take the same database: `db create` and `db drop`
+create and drop it (`utf8mb4`, collation `utf8mb4_0900_bin`); `migrate`,
+`rollback`, `status`, `schema` and `schema:dump` work as on SQLite; and
+`dbconsole` opens the `mysql` client on it, over TCP, with the same TLS
+mode and CA, the password in the client's environment. `db backup`,
+`vacuum` and `normalize` are SQLite's and exit with status 2: use
+`mysqldump` or the provider's snapshots.
+
+`cybertrain test` empties and migrates the database `DATABASE_URL` names
+before the tests, so it refuses one whose name does not end in `_test`, an
+environment other than `test`, and a database that has tables but not the
+marker table `cybertrain_test_marker`, which it creates in an empty one. It
+never creates or drops a database: make `NAME_test` once (`db create`
+with that URL, or your provider's console) and export its URL for the test
+run. Between tests the tables are emptied and the fixtures inserted again;
+on MySQL the emptying commits before the fixtures go in (resetting the ids
+is DDL), so a fixture that fails to load leaves the tables empty.
+
+The framework's tables (jobs, streams, the cache, leases, the scheduler's
+timetable, the feed state) are not in `db/schema.rb` and `db migrate` does
+not make them: each is created when its feature is first used, as on
+SQLite. A CREATE TABLE inside a transaction would commit the transaction
+half way on MySQL, so a first use inside `DB.transaction` (a `Job.enqueue`
+or a `broadcast_*` in a transaction, on a database that has never had the
+table) raises `Cybertrain::DB::Error` instead and commits nothing. The
+process that runs jobs creates `cybertrain_jobs` when it starts; for the
+others (or for jobs enqueued before that process first starts), create the
+tables once outside a transaction after the first `migrate`, for instance
+with an operational command:
+
+```ruby bin/<app>.rb (excerpt)
+Cybertrain::Main.command("install_tables", "create the framework's tables") do |argv|
+  Cybertrain::Job.install!
+  Cybertrain::Stream.install!
+  Cybertrain::Cache.install!
+  0
+end
+```
+
+> [!NOTE]
+> One process, for now. On MySQL the jobs, streams, leases and scheduled
+> tasks are guaranteed within one process (they answer as on SQLite), not
+> yet across several processes or hosts sharing the database: a job's
+> claim, a stream's order and a lease's clock are the next step of the
+> roadmap. Run one container, the web role alone, until a release says
+> otherwise.
 
 ## Time zones
 
