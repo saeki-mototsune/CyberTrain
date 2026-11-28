@@ -802,6 +802,25 @@ module Cybertrain
         found.join(", ")
       end
 
+      # Nothing: SQLite refuses an ADD COLUMN NOT NULL without a default
+      # itself. MySQL refuses one, or an add_reference NOT NULL, on a table
+      # with rows (it would fill them with 0 or '').
+      # @param conn [Cybertrain::DB::Connection]
+      # @param op [Cybertrain::Migration::Operation]
+      # @return [nil]
+      def self.migrator_check_operation(conn, op)
+        nil
+      end
+
+      # True: SQLite rebuilds a table for change_column and its kin by
+      # dropping it, which would fire ON DELETE CASCADE on its children, so
+      # the Migrator turns foreign keys off around such a version and checks
+      # them before it commits. MySQL: false (it changes the table in place).
+      # @return [Boolean]
+      def self.migrator_rebuild_foreign_keys_off?
+        true
+      end
+
       # Whether `next_op` is the :add_foreign_key that Base#add_reference
       # records right after the :add_reference `op` (same table and column),
       # which the migrator then runs together with it, as

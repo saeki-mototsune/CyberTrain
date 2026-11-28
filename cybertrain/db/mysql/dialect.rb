@@ -100,18 +100,26 @@ module Cybertrain
       def self.table_names(conn)
         rows = conn.execute("SELECT table_name AS name FROM information_schema.tables " \
                             "WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE' ORDER BY table_name")
+        Dialect.names_of(rows)
+      end
+
+      # The "name" cell of each row, as Strings.
+      # @param rows [Array<Hash{String => Object}>]
+      # @return [Array<String>]
+      def self.names_of(rows)
         names = Array.new(0) { "" }
         rows.each { |r| names << Cybertrain::Cast.str(r["name"]) }
         names
       end
 
-      # Whether the table exists (read without creating anything).
+      # Whether the table exists (read without creating anything): a base
+      # table, as table_names lists them, not a view.
       # @param conn [Cybertrain::DB::Connection]
       # @param name [String]
       # @return [Boolean]
       def self.table_exists?(conn, name)
         rows = conn.execute("SELECT 1 AS n FROM information_schema.tables " \
-                            "WHERE table_schema = DATABASE() AND table_name = ?", [name])
+                            "WHERE table_schema = DATABASE() AND table_name = ? AND table_type = 'BASE TABLE'", [name])
         !rows.empty?
       end
 
@@ -122,9 +130,7 @@ module Cybertrain
       def self.column_names(conn, table)
         rows = conn.execute("SELECT column_name AS name FROM information_schema.columns " \
                             "WHERE table_schema = DATABASE() AND table_name = ? ORDER BY ordinal_position", [table])
-        names = Array.new(0) { "" }
-        rows.each { |r| names << Cybertrain::Cast.str(r["name"]) }
-        names
+        Dialect.names_of(rows)
       end
 
       # A cheap SELECT that answers one row while the server is there.
@@ -150,13 +156,26 @@ module Cybertrain
       end
 
       # Ids start again at 1 in `tables` (rows already deleted): an ALTER
-      # TABLE per table, which MySQL takes as the lowest value above the
-      # table's largest id. DDL: it commits an open transaction.
+      # TABLE, which MySQL takes as the lowest value above the table's
+      # largest id, for each table whose next id is above 1 (Test::Database
+      # clears every table between two tests, and most of them have not
+      # moved). The next ids are read in one query, live from the engine
+      # (information_schema_stats_expiry 0 for it: the server otherwise
+      # answers a cached value). DDL: it commits an open transaction.
       # @param conn [Cybertrain::DB::Connection]
       # @param tables [Array<String>]
       # @return [nil]
       def self.reset_sequences(conn, tables)
-        tables.each do |table|
+        return nil if tables.empty?
+
+        marks = Array.new(tables.size) { "?" }.join(", ")
+        binds = Cybertrain::Cast.empty_binds
+        tables.each { |t| binds << t }
+        conn.execute("SET SESSION information_schema_stats_expiry = 0")
+        rows = conn.execute("SELECT table_name AS name FROM information_schema.tables WHERE table_schema = DATABASE() " \
+                            "AND auto_increment > 1 AND table_name IN (#{marks})", binds)
+        conn.execute("SET SESSION information_schema_stats_expiry = DEFAULT")
+        Dialect.names_of(rows).each do |table|
           quoted = Dialect.quote_ident(table)
           conn.exec_script("ALTER TABLE #{quoted} AUTO_INCREMENT = 1")
         end
@@ -164,26 +183,38 @@ module Cybertrain
       end
 
       # The foreign keys of the database (or of one table, when `table` is
-      # not ""), one row each with "table", "column", "parent" and "ref",
-      # in table and constraint order.
+      # not ""), one row each with "t" (the table), "c" (the column), "p"
+      # (the parent table), "r" (the parent's column) and "i" (1 when the
+      # table has an integer `id` column to name its rows by, else 0), in
+      # table and constraint order: one query, whatever the number of
+      # foreign keys.
+      # @param conn [Cybertrain::DB::Connection]
+      # @param table [String]
+      # @return [Array<Hash{String => Object}>]
       def self.foreign_key_columns(conn, table)
-        sql = +"SELECT table_name AS t, column_name AS c, referenced_table_name AS p, " \
-               "referenced_column_name AS r FROM information_schema.key_column_usage " \
-               "WHERE table_schema = DATABASE() AND referenced_table_name IS NOT NULL"
+        sql = +"SELECT k.table_name AS t, k.column_name AS c, k.referenced_table_name AS p, " \
+               "k.referenced_column_name AS r, " \
+               "IF(EXISTS (SELECT 1 FROM information_schema.columns ic WHERE ic.table_schema = k.table_schema " \
+               "AND ic.table_name = k.table_name AND ic.column_name = 'id' " \
+               "AND ic.data_type IN ('tinyint', 'smallint', 'mediumint', 'int', 'bigint')), 1, 0) AS i " \
+               "FROM information_schema.key_column_usage k " \
+               "WHERE k.table_schema = DATABASE() AND k.referenced_table_name IS NOT NULL"
         binds = Cybertrain::Cast.empty_binds
         unless table.empty?
-          sql << " AND table_name = ?"
+          sql << " AND k.table_name = ?"
           binds << table
         end
-        sql << " ORDER BY table_name, constraint_name, ordinal_position"
+        sql << " ORDER BY k.table_name, k.constraint_name, k.ordinal_position"
         conn.execute(sql, binds)
       end
 
       # The rows of `table` whose `column` names no row of `parent` (by
       # `ref`), at most `limit`: each with "v", the value, and, when
-      # `with_id`, "id", in id order. A table without an id column
-      # (create_table ..., id: false) is read by the foreign key column
-      # alone, in its order.
+      # `with_id`, "id", in id order. A table without an integer id column
+      # (create_table ..., id: false, or a uuid id) is read by the foreign
+      # key column alone, in its order.
+      # @param conn [Cybertrain::DB::Connection]
+      # @return [Array<Hash{String => Object}>]
       def self.orphan_rows(conn, table, column, parent, ref, limit, with_id)
         t = Dialect.quote_ident(table)
         c = Dialect.quote_ident(column)
@@ -195,9 +226,33 @@ module Cybertrain
                      "WHERE ch.#{c} IS NOT NULL AND pa.#{r} IS NULL ORDER BY #{order} LIMIT #{limit}")
       end
 
-      # Whether `table` has an id column to name its rows by.
-      def self.id_column?(conn, table)
-        Dialect.column_names(conn, table).include?("id")
+      # The rows that name a missing parent, at most `limit` per foreign
+      # key, each described in foreign_key_violation's words (`short`
+      # false) or in migrator_foreign_key_check's (`short` true).
+      # @param conn [Cybertrain::DB::Connection]
+      # @param limit [Integer]
+      # @param short [Boolean]
+      # @return [Array<String>]
+      def self.orphan_descriptions(conn, limit, short)
+        found = Array.new(0) { "" }
+        Dialect.foreign_key_columns(conn, "").each do |fk|
+          table = Cybertrain::Cast.str(fk["t"])
+          column = Cybertrain::Cast.str(fk["c"])
+          parent = Cybertrain::Cast.str(fk["p"])
+          with_id = Cybertrain::Cast.int(fk["i"]) == 1
+          rows = Dialect.orphan_rows(conn, table, column, parent, Cybertrain::Cast.str(fk["r"]), limit, with_id)
+          rows.each do |r|
+            value = Cybertrain::Cast.str(r["v"])
+            id = Cybertrain::Cast.str(r["id"])
+            text = "#{table} row with #{column} #{value}, which names no row of #{parent}"
+            text = "#{table} row with id #{id} has #{column} #{value}, which names no row of #{parent}" if with_id
+            text = "#{table} row with #{column} #{value} -> #{parent}" if short
+            text = "#{table} row #{id} -> #{parent}" if short && with_id
+            found << text
+          end
+          break if !short && !found.empty?
+        end
+        found
       end
 
       # "" when no row names a missing parent, else the first such row as
@@ -210,21 +265,10 @@ module Cybertrain
       # @param conn [Cybertrain::DB::Connection]
       # @return [String]
       def self.foreign_key_violation(conn)
-        Dialect.foreign_key_columns(conn, "").each do |fk|
-          table = Cybertrain::Cast.str(fk["t"])
-          column = Cybertrain::Cast.str(fk["c"])
-          parent = Cybertrain::Cast.str(fk["p"])
-          with_id = Dialect.id_column?(conn, table)
-          found = Dialect.orphan_rows(conn, table, column, parent, Cybertrain::Cast.str(fk["r"]), 1, with_id)
-          next if found.empty?
+        found = Dialect.orphan_descriptions(conn, 1, false)
+        return "" if found.empty?
 
-          value = Cybertrain::Cast.str(found[0]["v"])
-          return "#{table} row with #{column} #{value}, which names no row of #{parent}" unless with_id
-
-          id = Cybertrain::Cast.int(found[0]["id"])
-          return "#{table} row with id #{id} has #{column} #{value}, which names no row of #{parent}"
-        end
-        ""
+        found[0]
       end
 
       # Whether DDL rolls back with its transaction: no, each DDL statement
@@ -695,10 +739,10 @@ module Cybertrain
           "updated_at BIGINT NOT NULL, " \
           "claimed_by VARCHAR(255), " \
           "heartbeat_at BIGINT, " \
-          "concurrency_key VARCHAR(255) NOT NULL DEFAULT '', " \
+          "concurrency_key MEDIUMTEXT NOT NULL DEFAULT (''), " \
           "request_id VARCHAR(255) NOT NULL DEFAULT '', " \
           "INDEX index_cybertrain_jobs_on_state_and_run_at (state, run_at), " \
-          "INDEX cybertrain_jobs_state_kind_key (state, kind, concurrency_key))" +
+          "INDEX cybertrain_jobs_state_kind_key (state, kind, concurrency_key(255)))" +
           Cybertrain::DB::MySQL::DDL::TABLE_OPTIONS
       end
 
@@ -735,14 +779,21 @@ module Cybertrain
         nil
       end
 
-      # Cache's table.
+      # Cache's table: a key of any length (see above), unique by its
+      # SHA-256 (key_digest, which every upsert's ON DUPLICATE KEY finds),
+      # read by `key` = ? through its prefix index; and an index on
+      # expires_at, so that cache_prune's DELETE reads and locks only the
+      # rows that have expired.
       # @return [String]
       def self.cache_table_sql
         "CREATE TABLE IF NOT EXISTS cybertrain_cache (" \
-          "`key` VARCHAR(255) NOT NULL PRIMARY KEY, " \
+          "`key` MEDIUMTEXT NOT NULL, " \
+          "key_digest BINARY(32) AS (UNHEX(SHA2(`key`, 256))) STORED NOT NULL PRIMARY KEY, " \
           "value MEDIUMTEXT NOT NULL, " \
           "expires_at BIGINT, " \
-          "updated_at BIGINT NOT NULL)" +
+          "updated_at BIGINT NOT NULL, " \
+          "INDEX index_cybertrain_cache_on_key (`key`(255)), " \
+          "INDEX index_cybertrain_cache_on_expires_at (expires_at))" +
           Cybertrain::DB::MySQL::DDL::TABLE_OPTIONS
       end
 
@@ -830,11 +881,27 @@ module Cybertrain
                       "+ 0 * LAST_INSERT_ID(IF(#{CACHE_EXPIRED}, 1, 2)), " \
                       "expires_at = IF(#{CACHE_EXPIRED}, excluded.expires_at, cybertrain_cache.expires_at)"
 
+      # The leading number of a cache value: its digits after spaces, with a
+      # sign (NULL when it has none); its sign; its digits without leading
+      # zeros (CACHE_INT_VALUE).
+      CACHE_INT_TEXT = "REGEXP_SUBSTR(cybertrain_cache.value, '^ *[-+]?[0-9]+')"
+      CACHE_INT_NEGATIVE = "(#{CACHE_INT_TEXT} LIKE '%-%')"
+      CACHE_INT_DIGITS = "TRIM(LEADING '0' FROM REGEXP_SUBSTR(#{CACHE_INT_TEXT}, '[0-9]+'))"
+
       # A value read as an Integer as SQLite's CAST(value AS INTEGER) reads
       # it: its leading digits (after spaces, with a sign), 0 when it has
-      # none. A plain CAST would refuse text that is not a number under the
-      # strict sql_mode.
-      CACHE_INT_VALUE = "COALESCE(CAST(REGEXP_SUBSTR(cybertrain_cache.value, '^ *[-+]?[0-9]+') AS SIGNED), 0)"
+      # none, and past the BIGINT range the end it passed (SQLite
+      # saturates). A plain CAST would refuse text that is not a number,
+      # and a number past the range (error 1292), under the strict
+      # sql_mode; so the digits are compared as text first. The lowest
+      # BIGINT is written as -9223372036854775807 - 1, a BIGINT, where the
+      # literal would be a DECIMAL.
+      CACHE_INT_VALUE = "(CASE WHEN #{CACHE_INT_TEXT} IS NULL THEN 0 " \
+                        "WHEN CHAR_LENGTH(#{CACHE_INT_DIGITS}) > 19 OR (CHAR_LENGTH(#{CACHE_INT_DIGITS}) = 19 " \
+                        "AND #{CACHE_INT_DIGITS} > IF(#{CACHE_INT_NEGATIVE}, '9223372036854775808', " \
+                        "'9223372036854775807')) " \
+                        "THEN IF(#{CACHE_INT_NEGATIVE}, -9223372036854775807 - 1, 9223372036854775807) " \
+                        "ELSE CAST(#{CACHE_INT_TEXT} AS SIGNED) END)"
 
       # What Cache.increment adds to the counter before it hands it to
       # LAST_INSERT_ID(expr), and takes off again: LAST_INSERT_ID is
@@ -1092,9 +1159,7 @@ module Cybertrain
         rows = conn.execute("SELECT column_name AS name FROM information_schema.statistics " \
                             "WHERE table_schema = DATABASE() AND table_name = ? AND index_name = ? " \
                             "ORDER BY seq_in_index", [table, index])
-        names = Array.new(0) { "" }
-        rows.each { |r| names << Cybertrain::Cast.str(r["name"]) }
-        names
+        Dialect.names_of(rows)
       end
 
       # The table's foreign keys, one row each with "table" (the parent),
@@ -1129,22 +1194,43 @@ module Cybertrain
       # @param conn [Cybertrain::DB::Connection]
       # @return [String]
       def self.migrator_foreign_key_check(conn)
-        found = Array.new(0) { "" }
-        Dialect.foreign_key_columns(conn, "").each do |fk|
-          table = Cybertrain::Cast.str(fk["t"])
-          column = Cybertrain::Cast.str(fk["c"])
-          parent = Cybertrain::Cast.str(fk["p"])
-          with_id = Dialect.id_column?(conn, table)
-          rows = Dialect.orphan_rows(conn, table, column, parent, Cybertrain::Cast.str(fk["r"]), 1_000_000, with_id)
-          rows.each do |r|
-            if with_id
-              found << "#{table} row #{Cybertrain::Cast.int(r["id"])} -> #{parent}"
-            else
-              found << "#{table} row with #{column} #{Cybertrain::Cast.str(r["v"])} -> #{parent}"
-            end
-          end
-        end
-        found.join(", ")
+        Dialect.orphan_descriptions(conn, 1_000_000, true).join(", ")
+      end
+
+      # False: MySQL changes a table in place for the operations SQLite
+      # rebuilds one for (migrator_rebuild), so the Migrator neither turns
+      # foreign key checks off around them nor checks the foreign keys
+      # after them: the server keeps checking (it refuses a type change
+      # that would break a foreign key, error 3780, even with the checks
+      # off), and a check after DDL that has committed could only leave
+      # the version applied and unrecorded.
+      # @return [Boolean]
+      def self.migrator_rebuild_foreign_keys_off?
+        false
+      end
+
+      # Refuses an operation before its first statement runs where MySQL
+      # would do what SQLite refuses: an add_column NOT NULL without a
+      # default, or an add_reference NOT NULL (its column has none), on a
+      # table that has a row. MySQL would give every row 0 or '' and, for
+      # a reference, fail at the foreign key afterwards with the column
+      # and its index applied. On an empty table it runs (no row is
+      # filled in). nil when the operation may run.
+      # @param conn [Cybertrain::DB::Connection]
+      # @param op [Cybertrain::Migration::Operation]
+      # @return [nil]
+      # @raise [Cybertrain::DB::Error]
+      def self.migrator_check_operation(conn, op)
+        filled = (op.kind == :add_column && !op.null && op.default.nil?) || (op.kind == :add_reference && !op.null)
+        return nil unless filled
+
+        table = op.table_text
+        quoted = Dialect.quote_ident(table)
+        return nil if conn.execute("SELECT 1 AS n FROM #{quoted} LIMIT 1").empty?
+
+        message = "Cannot add a NOT NULL column with default value NULL: #{table}.#{op.name} on a table with rows " \
+                  "(MySQL would write 0 or '' into every row; SQLite refuses it): pass null: true, or a default"
+        raise Error, message
       end
 
       # False: MySQL adds a foreign key to an existing table, so an
