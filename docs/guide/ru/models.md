@@ -1,5 +1,5 @@
 ---
-source_sha256: b40bfa6c7fc2b8082236e6ccd7d093bf6e0daa289f26af1371789b9cf724cca8
+source_sha256: f5c73b275f1fdf56c1574b71501412b09d25246ca9bcfe16c4ae1ec94896c4d5
 ---
 # Модели и база данных
 
@@ -1220,9 +1220,23 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
   `spin run gen` с файлом и строкой (`partial indexes (where:) are not
   supported on MySQL`) до того, как что-либо записано; индексируйте столбец
   целиком или вынесите условие в генерируемый столбец.
-- **Схема.** `db/schema.rb` выгружается из `information_schema`; те же
-  миграции пишут тот же файл, что и на SQLite. `db normalize`, `db backup`
-  и `db vacuum` — команды SQLite.
+- **Индексы по выражению.** MySQL принимает выражение только в отдельных
+  скобках: `execute "CREATE UNIQUE INDEX index_users_on_lower_email ON
+  users ((LOWER(email)))"`. Форма с одной парой скобок из
+  [Миграций](#migrations) — это форма SQLite, на MySQL она даёт
+  синтаксическую ошибку (1064). `db/schema.rb` выгружает индекс так, как
+  его пишет MySQL: ``"(lower(`email`))"``.
+- **Схема.** `db/schema.rb` выгружается из `information_schema`. Для типов
+  и опций столбцов, которыми пользуется examples/blog, те же миграции пишут
+  тот же файл, что и на SQLite; остальные выгружаются так, как их хранит
+  MySQL: `limit: 255` у строки пропадает, `scale: 0` у decimal пропадает
+  или добавляется, `t.bigint` с именем `*_id` выгружается как `t.integer`,
+  значение по умолчанию у decimal получает его масштаб, значение по
+  умолчанию у столбца text или json и индекс по выражению записываются
+  текстом MySQL, а внешний ключ без индекса получает индекс. Поэтому
+  `db/schema.rb`, записанный на SQLite, может измениться при первом
+  `db migrate` на MySQL; `docs/compatibility.md` их перечисляет.
+  `db normalize`, `db backup` и `db vacuum` — команды SQLite.
 - **Один процесс.** Задания, потоки, аренды и запланированные задачи
   гарантированы в пределах одного процесса; для нескольких процессов или
   хостов с одной базой — не раньше шага 2 дорожной карты MySQL

@@ -1,0 +1,3 @@
+ok   update_columns and update_all are refused a value outside the precision (1264)
+ok   insert_all is refused a value outside the precision and writes none of its rows
+2 tests, 13 assertions, 0 failures

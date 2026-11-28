@@ -208,27 +208,45 @@ script/mysql-dev stop                # removes the container
 [script/test-mysql](script/test-mysql) compiles each program itself
 (`spinel $(spin flags) FILE -o build/test-mysql/NAME`), runs it and
 compares its output with `test/mysql/NAME.rb.expected`, printing what
-`spin test` prints; without `CYBERTRAIN_TEST_MYSQL_URL` it exits 2. It runs
+`spin test` prints (and a `run  NAME.rb` line before each compile). A program
+that links libsqlite3 fails, and one still running after ten minutes is
+stopped and fails (`CYBERTRAIN_TEST_MYSQL_RUN_LIMIT` sets the seconds). It runs
 every program with `SPINEL_WORKERS=1` (the runtime's default, made
 explicit), which `test/mysql/connection.rb`'s
 `slow_query_does_not_block_worker` relies on: a query waiting on the server
 must leave the one OS worker to the other green threads; the program sets
 it again itself, before its first thread starts (spikes/NOTES.md rule 22).
-The tests create and drop their own tables (`ct_*`) in the database the URL
-names and never create or drop a database. `test/mysql/test_database.rb`
-also uses two databases of the same server, `cybertrain_tdb_test` and
-`cybertrain_tdb` (the URL with the name swapped), which `script/mysql-dev`
-and CI's `mysql-tests` job create when the server starts. CI's `mysql-tests` job runs
+**The tests drop tables with application names in the database the URL
+names**, with foreign key checks off: `posts`, `users`, `comments`,
+`articles`, `sessions`, `tags`, `profiles`, `notes`, `items`, `events`,
+`schema_migrations`, the framework's own tables (`cybertrain_jobs`,
+`cybertrain_cache`, `cybertrain_leases`, `cybertrain_messages`,
+`cybertrain_schedules`, `cybertrain_feeds`) and others, then create them
+again. Point it at a server that holds nothing else, such as the one
+`script/mysql-dev` starts. `script/test-mysql` exits 2 unless the URL's
+database ends in `_test` and its host is a loopback or private address
+(`localhost`, `127.*`, `::1`, `10.*`, `172.16-31.*`, `192.168.*`, `fc00::/7`);
+`CYBERTRAIN_TEST_MYSQL_ANY_HOST=1` lifts the host rule only, for a test
+server reached by another name. No program creates or drops a database but
+`test/mysql/db_cli.rb`, which creates and drops `cybertrain_cli_test` through
+`db create` and `db drop`. `test/mysql/test_database.rb` also uses two
+databases of the same server, `cybertrain_tdb_test` and `cybertrain_tdb`
+(the URL with the name swapped), which `script/mysql-dev` and CI's
+`mysql-tests` job create when the server starts. CI's `mysql-tests` job runs
 `script/test-mysql` against a service container of the same image, in three
 shards.
 
 `script/test-mysql --blog` runs examples/blog's tests on MySQL: it copies the
-blog into a temporary directory, makes its `bin/blog.rb` require
-`cybertrain/mysql`, runs `generate authentication --invite-only --force` there
-(after checking that the generator forces nothing on the SQLite copy) and then
-`cybertrain test`, on the database `cybertrain_blog_test` of the same server,
-which `script/mysql-dev` creates. CI runs it in the `mysql-blog` job. Run it
-after a change that can reach what a MySQL application compiles.
+blog into a temporary directory, makes its `bin/blog.rb` and `bin/db.rb`
+require `cybertrain/mysql`, runs `generate authentication --invite-only
+--force` there (after checking that the generator forces nothing on the
+SQLite copy) and then `cybertrain test`, on the database `cybertrain_blog_test`
+of the same server, which `script/mysql-dev` creates. Without arguments it
+then compiles what a MySQL application ships, `cybertrain build` (the
+release binary) and `cybertrain db status` (bin/db.rb, which only reads),
+and fails if either binary links libsqlite3. The copy is removed unless the
+run fails, when its path is printed. CI runs it in the `mysql-blog` job. Run
+it after a change that can reach what a MySQL application compiles.
 
 If the Docker daemon is not running (a fresh cloud container), start it
 first (`sudo dockerd &`) and stop it when you are done.

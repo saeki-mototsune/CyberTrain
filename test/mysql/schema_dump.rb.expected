@@ -1,0 +1,26 @@
+Cybertrain::Schema.define(version: "20270301000000") do |s|
+  s.create_table "dump_items" do |t|
+    t.string "name"
+    t.decimal "whole"
+    t.decimal "rate", precision: 8, scale: 0
+    t.decimal "price", precision: 10, scale: 2, null: false, default: "0.00"
+    t.integer "account_id"
+  end
+
+end
+ok   column options MySQL does not keep dump as MySQL holds them
+Cybertrain::Schema.define(version: "20270301000100") do |s|
+  s.create_table "dump_children" do |t|
+    t.integer "dump_parent_id", null: false
+  end
+
+  s.create_table "dump_parents" do |t|
+    t.string "label"
+  end
+
+  s.add_index "dump_children", ["dump_parent_id"], name: "dump_parent_id"
+
+  s.add_foreign_key "dump_children", "dump_parents", column: "dump_parent_id", on_delete: :cascade
+end
+ok   a foreign key without an index gains one from MySQL, which is dumped
+2 tests, 6 assertions, 0 failures

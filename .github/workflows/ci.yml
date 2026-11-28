@@ -422,18 +422,24 @@ jobs:
   # caching_sha2_password's full authentication cannot run. The password
   # is not a secret: the server lives for this job only. The same step
   # creates the two databases test/mysql/test_database.rb uses besides
-  # cybertrain_test (cybertrain_tdb_test and cybertrain_tdb; a test program
-  # never creates a database), and cybertrain_blog_test, as script/mysql-dev
-  # does.
+  # cybertrain_test (cybertrain_tdb_test and cybertrain_tdb; only
+  # test/mysql/db_cli.rb creates and drops a database, its own
+  # cybertrain_cli_test, through the CLI), and cybertrain_blog_test, as
+  # script/mysql-dev does.
   # Three shards, each with its own server (the programs share the tables
   # of the database they run on, so one server runs them one at a time):
   # on 96b5508 the twenty programs in one job passed its 30 minutes on a
   # ubuntu-26.04 runner, compiling. A shard takes the sorted programs at
-  # positions shard, shard + 3, ... The `mysql-blog` job beside it runs
-  # examples/blog's tests on MySQL (`script/test-mysql --blog`: a copy built
-  # with cybertrain/mysql, one program of about eight minutes to compile on
-  # 4 cores, then its tests) with the same server setup, as a job of its
-  # own rather than a step after the programs.
+  # positions shard, shard + job-total, ... The `mysql-blog` job beside it
+  # runs examples/blog's tests on MySQL (`script/test-mysql --blog`: a copy
+  # whose bin/blog.rb and bin/db.rb require cybertrain/mysql, its test
+  # program of about eight minutes to compile on 4 cores, then its tests,
+  # then `cybertrain build` and `cybertrain db status` there, so the release
+  # binary and bin/db.rb of a MySQL application are compiled too, and
+  # neither may link libsqlite3) with the same server setup, as a job of its
+  # own rather than a step after the programs. script/test-mysql refuses a
+  # URL whose database does not end in _test or whose host is not loopback
+  # or private.
   mysql-tests:
     needs: changes
     if: needs.changes.outputs.framework == 'true'
@@ -487,9 +493,16 @@ jobs:
       - name: MySQL tests
         env:
           SHARD: ${{ matrix.shard }}
+          TOTAL: ${{ strategy.job-total }}
         run: |
           spinel --version
-          files=$(printf '%s\n' test/mysql/*.rb | LC_ALL=C sort | awk -v s="$SHARD" '(NR - 1) % 3 == s')
+          files=$(printf '%s\n' test/mysql/*.rb | LC_ALL=C sort | awk -v s="$SHARD" -v t="$TOTAL" '(NR - 1) % t == s')
+          # script/test-mysql with no file runs every program, which is not
+          # what an empty shard means (script/test-shard guards the same).
+          if [ -z "$files" ]; then
+            echo "shard $SHARD of $TOTAL has no programs"
+            exit 0
+          fi
           echo "$files"
           # shellcheck disable=SC2086
           script/test-mysql $files

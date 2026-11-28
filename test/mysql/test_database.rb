@@ -20,9 +20,11 @@ require "cybertrain/test/bundle/mysql"
 # own, its URL with the name swapped: cybertrain_tdb_test, which this
 # program empties of its own tables first and then needs empty (the shared
 # database holds the other programs' tables), and cybertrain_tdb, which is
-# only refused and never written. A test program never creates a database:
+# only refused and never written. This program creates no database:
 # script/mysql-dev and CI's mysql-tests job create both when the server
-# starts. Only the bundle's runner and its boot, which need the whole
+# starts (only test/mysql/db_cli.rb creates and drops one, its own). The
+# tests depend on their order (the third creates the tables the next three
+# use): Cybertrain::Test.run! runs them in the order they are written. Only the bundle's runner and its boot, which need the whole
 # framework, are left to the SQLite tests (test/test_bundle.rb).
 
 DB = Cybertrain::DB

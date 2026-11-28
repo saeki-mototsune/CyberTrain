@@ -1,5 +1,5 @@
 ---
-source_sha256: b40bfa6c7fc2b8082236e6ccd7d093bf6e0daa289f26af1371789b9cf724cca8
+source_sha256: f5c73b275f1fdf56c1574b71501412b09d25246ca9bcfe16c4ae1ec94896c4d5
 ---
 # 模型与数据库
 
@@ -659,7 +659,8 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 - **`returning:`。** MySQL 没有 `RETURNING`：`insert_all` 和 `upsert_all` 在同一事务中读回这些行，并返回 SQLite 会返回的行。在有（主键之外的）唯一索引的表上，`insert_all(..., returning:)` 需要这些行完整提供其中一个索引的所有列，否则在写入之前抛出 `Cybertrain::DB::Error`：否则无法分辨被跳过的重复行。
 - **迁移不会回滚。** MySQL 的 DDL 一执行就提交，所以中途失败的迁移会保留失败语句之前已运行的部分：`migration V failed at statement 2 of 3; statements 1..1 were applied and cannot be rolled back (MySQL DDL commits implicitly): ...`。该版本不会被记录；再次运行 `db migrate` 之前，请撤销已应用的部分（或手动完成它）。Rails 的 MySQL 适配器也是如此。尽可能让一个迁移只做一项更改。
 - **没有部分索引。** `add_index ..., where:` 会在写入任何东西之前带着文件和行号停止 `spin run gen`（`partial indexes (where:) are not supported on MySQL`）；请对整列建立索引，或把条件放进生成列。
-- **模式。** `db/schema.rb` 从 `information_schema` 转储；相同的迁移会写出与 SQLite 上相同的文件。`db normalize`、`db backup` 和 `db vacuum` 属于 SQLite。
+- **表达式索引。** MySQL 只接受放在它自己一对括号里的表达式：`execute "CREATE UNIQUE INDEX index_users_on_lower_email ON users ((LOWER(email)))"`。[迁移](#migrations)中只有一对括号的写法是 SQLite 的，在 MySQL 上是语法错误（1064）。`db/schema.rb` 按 MySQL 的写法转储该索引：``"(lower(`email`))"``。
+- **模式。** `db/schema.rb` 从 `information_schema` 转储。对于 examples/blog 使用的列类型和选项，相同的迁移会写出与 SQLite 上相同的文件；其余的按 MySQL 保存的样子转储：字符串的 `limit: 255` 会被去掉，decimal 的 `scale: 0` 会被去掉或加上，名为 `*_id` 的 `t.bigint` 转储为 `t.integer`，decimal 的默认值带上小数位数，text 或 json 列的默认值和表达式索引是 MySQL 的文本，没有索引的外键会多出一个索引。因此在 SQLite 上写出的 `db/schema.rb` 可能在 MySQL 上第一次 `db migrate` 时改变；`docs/compatibility.md` 列出了这些情况。`db normalize`、`db backup` 和 `db vacuum` 属于 SQLite。
 - **一个进程。** 作业、流、租约和计划任务在一个进程内得到保证；在使用同一数据库的多个进程或主机之间，直到 MySQL 路线图的第 2 步之前都不保证（[配置中的“MySQL”](configuration.md#mysql)）。
 
 ## 升级

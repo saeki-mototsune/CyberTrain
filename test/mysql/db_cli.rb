@@ -21,6 +21,9 @@ require "cybertrain/test"
 # information_schema to see what they did. What the CLI prints names the
 # server by its URL without the password (Url#to_s), which is
 # mysql://root@127.0.0.1:33306/... with the URL of script/mysql-dev and CI.
+# The tests depend on their order (create, migrate, status, rollback,
+# schema, drop): Cybertrain::Test.run! runs them in the order they are
+# written.
 
 URL = ENV.fetch("CYBERTRAIN_TEST_MYSQL_URL", "")
 if URL.empty?

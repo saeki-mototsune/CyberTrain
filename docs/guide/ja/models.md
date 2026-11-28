@@ -1,5 +1,5 @@
 ---
-source_sha256: b40bfa6c7fc2b8082236e6ccd7d093bf6e0daa289f26af1371789b9cf724cca8
+source_sha256: f5c73b275f1fdf56c1574b71501412b09d25246ca9bcfe16c4ae1ec94896c4d5
 ---
 # モデルとデータベース
 
@@ -659,7 +659,8 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 - **`returning:`。** MySQL には `RETURNING` がありません。`insert_all` と `upsert_all` は同じトランザクションの中で行を読み戻し、SQLite が返すのと同じ行を返します。（主キー以外の）一意インデックスがあるテーブルでは、`insert_all(..., returning:)` は、行がそのようなインデックスの 1 つのカラムをすべて含んでいる必要があり、そうでなければ書く前に `Cybertrain::DB::Error` を投げます。そうでないと、飛ばした重複を見分けられないからです。
 - **マイグレーションは巻き戻りません。** MySQL の DDL は実行するたびにコミットされるので、途中で失敗したマイグレーションは、失敗した文より前に実行したものを残します：`migration V failed at statement 2 of 3; statements 1..1 were applied and cannot be rolled back (MySQL DDL commits implicitly): ...`。バージョンは記録されません。もう一度 `db migrate` を実行する前に、適用された部分を元に戻して（または手で終わらせて）ください。Rails の MySQL アダプターも同じです。できるところでは、1 つのマイグレーションに 1 つの変更にしてください。
 - **部分インデックスはありません。** `add_index ..., where:` は、何かを書く前に、ファイルと行を示して `spin run gen` を止めます（`partial indexes (where:) are not supported on MySQL`）。カラム全体にインデックスを張るか、条件を生成カラムに入れてください。
-- **スキーマ。** `db/schema.rb` は `information_schema` からダンプされ、同じマイグレーションからは SQLite と同じファイルができます。`db normalize`、`db backup`、`db vacuum` は SQLite のものです。
+- **式インデックス。** MySQL は式をそれ専用の括弧の中でしか受け付けません：`execute "CREATE UNIQUE INDEX index_users_on_lower_email ON users ((LOWER(email)))"`。[マイグレーション](#migrations)の括弧 1 組の形は SQLite のもので、MySQL では構文エラー（1064）になります。`db/schema.rb` はこのインデックスを MySQL の綴りのまま ``"(lower(`email`))"`` とダンプします。
+- **スキーマ。** `db/schema.rb` は `information_schema` からダンプされます。examples/blog が使うカラムの型とオプションなら、同じマイグレーションから SQLite と同じファイルができます。それ以外は MySQL が保持する形でダンプされます：文字列の `limit: 255` は落ち、decimal の `scale: 0` は落ちるか付き、`*_id` という名前の `t.bigint` は `t.integer` になり、decimal の既定値には位取りが付き、text や json のカラムの既定値と式インデックスは MySQL のテキストになり、インデックスのない外部キーにはインデックスが付きます。そのため SQLite で書いた `db/schema.rb` は、MySQL での最初の `db migrate` で変わることがあります。一覧は `docs/compatibility.md` にあります。`db normalize`、`db backup`、`db vacuum` は SQLite のものです。
 - **1 プロセス。** ジョブ、ストリーム、リース、スケジュールされたタスクは 1 プロセスの中で保証されます。1 つのデータベースを使う複数のプロセスやホストでは、MySQL のロードマップの第 2 段まで保証されません（[設定の「MySQL」](configuration.md#mysql)）。
 
 ## アップグレード
