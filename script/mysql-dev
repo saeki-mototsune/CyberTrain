@@ -10,8 +10,9 @@
 # The server runs with --default-time-zone=+09:00 on purpose: datetimes must
 # round-trip in UTC on a server whose zone is not UTC (the plan's Review
 # Focus 4, test/mysql/connection.rb's datetime_utc_on_non_utc_server). A
-# container that is reused is checked for that zone, so a server started
-# some other way is not mistaken for this one. Its character set and
+# container that is reused is checked for that zone and for the pinned
+# image, so a server started some other way, or from an earlier pin, is not
+# mistaken for this one. Its character set and
 # collation default to utf8mb4 / utf8mb4_0900_bin, the adapter's. Besides
 # cybertrain_test (the URL's), it holds the databases cybertrain_tdb_test and
 # cybertrain_tdb, which test/mysql/test_database.rb uses, and
@@ -59,7 +60,7 @@ elif [ -n "$(docker ps -aq --filter "name=^${name}\$")" ]; then
   docker start "$name" >/dev/null
   reused=true
 else
-  docker run -d --name cybertrain-mysql -e MYSQL_ROOT_PASSWORD=cybertrain -e MYSQL_DATABASE=cybertrain_test \
+  docker run -d --name "$name" -e MYSQL_ROOT_PASSWORD="$password" -e MYSQL_DATABASE=cybertrain_test \
     -p 127.0.0.1:33306:3306 "$image" --default-time-zone=+09:00 \
     --character-set-server=utf8mb4 --collation-server=utf8mb4_0900_bin >/dev/null
 fi
@@ -77,6 +78,13 @@ until docker exec "$name" mysqladmin ping -h 127.0.0.1 -uroot -p"$password" --si
 done
 
 if [ "$reused" = true ]; then
+  # A container made from an earlier pin is not reused silently: local runs
+  # and CI would be on different servers until someone removed it.
+  used=$(docker inspect -f '{{.Config.Image}}' "$name")
+  if [ "$used" != "$image" ]; then
+    echo "script/mysql-dev: the running $name is from the image '${used}', not $image; remove it (script/mysql-dev stop) and run this again" >&2
+    exit 1
+  fi
   zone=$(docker exec "$name" mysql -h 127.0.0.1 -uroot -p"$password" -N -B -e "SELECT @@global.time_zone" 2>/dev/null || true)
   if [ "$zone" != "+09:00" ]; then
     echo "script/mysql-dev: the running $name has time zone '${zone}', not +09:00; remove it (script/mysql-dev stop) and run this again" >&2
@@ -88,9 +96,10 @@ docker exec "$name" mysql -h 127.0.0.1 -uroot -p"$password" -e \
   "ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '$password';" 2>/dev/null
 
 # The two databases test/mysql/test_database.rb uses besides cybertrain_test
-# (a test program never creates a database): cybertrain_tdb_test, which it
-# needs empty but for its own tables, and cybertrain_tdb, a name without
-# _test, which it only sees refused. And examples/blog's
+# (no test program creates them; test/mysql/db_cli.rb creates and drops a
+# database of its own, cybertrain_cli_test, through `db create` and `db
+# drop`): cybertrain_tdb_test, which it needs empty but for its own tables,
+# and cybertrain_tdb, a name without _test, which it only sees refused. And examples/blog's
 # (`script/test-mysql --blog`), which its test bundle empties.
 docker exec "$name" mysql -h 127.0.0.1 -uroot -p"$password" -e \
   "CREATE DATABASE IF NOT EXISTS cybertrain_tdb_test; CREATE DATABASE IF NOT EXISTS cybertrain_tdb;
