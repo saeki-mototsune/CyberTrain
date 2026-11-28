@@ -184,4 +184,23 @@ test "a cached SELECT * re-prepares on the server after another session's ALTER"
   conn.close
 end
 
+# MySQL stores a non-finite DOUBLE bound to a DECIMAL column as 0.00 with no
+# error (seen through insert_all); the bind is refused before anything is
+# sent, and the connection goes on.
+test "a non-finite Float bind is refused, and the connection stays usable" do
+  conn = connect
+  conn.exec_script("DROP TABLE IF EXISTS ct_df_floats; CREATE TABLE ct_df_floats (id INT PRIMARY KEY, d DECIMAL(10,2))")
+  [Float::INFINITY, -Float::INFINITY, Float::NAN].each_with_index do |value, i|
+    message = assert_raises("Cybertrain::DB::Error") do
+      conn.execute("INSERT INTO ct_df_floats (id, d) VALUES (?, ?)", [i + 1, value])
+    end
+    assert_equal "MySQL: cannot bind the non-finite Float #{value} (sql: INSERT INTO ct_df_floats (id, d) VALUES (?, ?))", message
+    assert_equal [{ "n" => 0 }], conn.execute("SELECT COUNT(*) AS n FROM ct_df_floats")
+  end
+  conn.execute("INSERT INTO ct_df_floats (id, d) VALUES (?, ?)", [9, 2.5])
+  assert_equal [{ "id" => 9, "d" => 2.5 }], conn.execute("SELECT id, d FROM ct_df_floats")
+  conn.exec_script("DROP TABLE ct_df_floats")
+  conn.close
+end
+
 Cybertrain::Test.run!

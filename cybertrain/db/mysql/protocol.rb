@@ -181,6 +181,11 @@ module Cybertrain
               types << Wire.int_le(BIND_LONGLONG, 1)
               values << Wire.int_le(value, 8)
             when Float
+              # MySQL takes an infinite or NaN DOUBLE into a DECIMAL column
+              # as 0.00 without an error: refused here, before anything is
+              # sent, so the exchange never starts and the connection goes on.
+              raise Cybertrain::DB::Error, "MySQL: cannot bind the non-finite Float #{value}" unless value.finite?
+
               types << Wire.int_le(BIND_DOUBLE, 1)
               values << Wire.bytes([value].pack("E"))
             when String

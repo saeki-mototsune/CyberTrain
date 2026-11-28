@@ -2,4 +2,5 @@ ok   the pool's log line after a lost ROLLBACK names the server without the pass
 ok   a raw COMMIT after MySQL rolled the transaction back is refused, as commit! refuses it
 ok   execute_models answers a DATETIME before 1970 as a Time too
 ok   a cached SELECT * re-prepares on the server after another session's ALTER
-4 tests, 33 assertions, 0 failures
+ok   a non-finite Float bind is refused, and the connection stays usable
+5 tests, 43 assertions, 0 failures
