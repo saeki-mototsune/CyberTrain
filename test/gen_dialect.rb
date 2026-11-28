@@ -103,6 +103,10 @@ test "an entry line inside a heredoc, an =begin block or after __END__ is text, 
   assert_equal "sqlite", Cybertrain::Gen::Dialect.in_source("require \"cybertrain\"\n__END__\nrequire \"cybertrain/mysql\"\n")
   assert_equal "mysql", Cybertrain::Gen::Dialect.in_source("X = <<~TEXT\n  require \"cybertrain\"\nTEXT\nrequire \"cybertrain/mysql\"\n")
   assert_equal [4], Cybertrain::Gen::Dialect.entry_lines(help)
+  # A quoted or dash ID, two heredocs on one line, and `<<` that opens none.
+  two = "puts(<<-'A', <<B)\n  require \"cybertrain/mysql\"\n  A\nrequire \"cybertrain/mysql\"\nB\nx = [] << \"y\"\nrequire \"cybertrain\"\n"
+  assert_equal [7], Cybertrain::Gen::Dialect.entry_lines(two)
+  assert_equal [1, 2], Cybertrain::Gen::Dialect.entry_lines("require \"cybertrain/mysql\" # <<~X\nrequire \"cybertrain\"\n")
 end
 
 test "an entry of each adapter is refused, naming both lines; gen writes nothing" do

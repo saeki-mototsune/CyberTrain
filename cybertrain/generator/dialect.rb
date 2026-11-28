@@ -1,5 +1,3 @@
-require "cybertrain/generator/code_view"
-
 module Cybertrain
   module Gen
     # Cybertrain::Gen::Dialect -- which DB adapter the application is built
@@ -86,8 +84,8 @@ module Cybertrain
       # The adapter the application at `root` is built with: "sqlite" or
       # "mysql", from bin/NAME.rb's entry require. NAME is read by
       # ViewRequires.package_name, which the caller has loaded (Runner and the
-      # tests do; this file requires only CodeView, since the CLI loads it too
-      # and the gem ships only the files the CLI needs: view_requires.rb is not one).
+      # tests do; this file requires nothing, since the CLI loads it too and
+      # the gem ships only the files the CLI needs).
       # @param root [String]
       # @return [String]
       def self.detect(root)
@@ -125,25 +123,84 @@ module Cybertrain
       end
 
       # The 1-based numbers of the lines of `source` that require an entry
-      # (SQLITE_ENTRIES, MYSQL_ENTRIES), among the lines that begin as code
-      # (CodeView): a heredoc's body, an =begin ... =end block or the text
-      # after __END__ that holds such a line (a command's help text) is not
-      # a require.
+      # (SQLITE_ENTRIES, MYSQL_ENTRIES), among the lines that are code: a
+      # heredoc's body, an =begin ... =end block or the text after __END__
+      # that holds such a line (a command's help text) is not a require.
+      # Heredocs are found as Ruby opens them (`<<~ID`, `<<-ID`, `<<ID` with
+      # ID uppercase, or a quoted ID) outside string literals and comments.
       # @param source [String]
       # @return [Array<Integer>]
       def self.entry_lines(source)
-        view = CodeView.new(source)
-        raws = source.lines
+        raws = source.split("\n")
         found = Array.new(0) { 0 }
+        # The heredocs still to be read: their IDs, and whether the closing
+        # line may be indented (<<~ and <<-).
+        tags = Array.new(0) { "" }
+        indented = Array.new(0) { false }
+        in_doc = false
         i = 0
-        while i < raws.size && i < view.code_start.size
-          if view.code_start[i] && !view.commented[i]
-            spec = required_spec(raws[i].strip)
+        while i < raws.size
+          raw = raws[i]
+          if in_doc
+            in_doc = false if raw.start_with?("=end")
+          elsif !tags.empty?
+            done = indented[0] ? raw.strip == tags[0] : raw == tags[0]
+            if done
+              tags.shift
+              indented.shift
+            end
+          elsif raw.start_with?("=begin")
+            in_doc = true
+          elsif raw == "__END__"
+            return found
+          else
+            spec = required_spec(raw.strip)
             found << i + 1 if SQLITE_ENTRIES.include?(spec) || MYSQL_ENTRIES.include?(spec)
+            heredoc_openers(code_of(raw), tags, indented)
           end
           i += 1
         end
         found
+      end
+
+      # Appends to `tags` (and `indented`) the heredocs `code` (one line,
+      # its comment cut) opens, in order.
+      # @param code [String]
+      # @param tags [Array<String>]
+      # @param indented [Array<Boolean>]
+      # @return [nil]
+      def self.heredoc_openers(code, tags, indented)
+        blanked = without_strings(code)
+        from = 0
+        while from < blanked.size
+          at = blanked.index("<<", from)
+          return nil if at.nil?
+
+          k = at + 2
+          squiggly = k < code.size && (code[k, 1] == "~" || code[k, 1] == "-")
+          k += 1 if squiggly
+          first = k < code.size ? code[k, 1] : ""
+          if first == "\"" || first == "'" || first == "`"
+            close = code.index(first, k + 1)
+            unless close.nil?
+              tags << code[k + 1, close - k - 1].to_s
+              indented << squiggly
+              from = close + 1
+              next
+            end
+          elsif first != "" && word_char?(first) && (squiggly || upper_or_underscore?(first))
+            stop = k
+            while stop < code.size && word_char?(code[stop, 1])
+              stop += 1
+            end
+            tags << code[k, stop - k].to_s
+            indented << squiggly
+            from = stop
+            next
+          end
+          from = at + 2
+        end
+        nil
       end
 
       # Why `source` (bin/NAME.rb, `rel` its path) names no single adapter:
@@ -362,6 +419,12 @@ module Cybertrain
         return false unless value.start_with?("nil")
 
         value.size == 3 || !word_char?(value[3, 1])
+      end
+
+      # A..Z or _: what a bare `<<ID` heredoc starts with.
+      def self.upper_or_underscore?(char)
+        b = char.getbyte(0)
+        (b >= 65 && b <= 90) || b == 95
       end
 
       def self.word_char?(char)
