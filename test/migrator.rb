@@ -1,4 +1,4 @@
-require "cybertrain/db/connection"
+require "cybertrain/db/sqlite"
 require "cybertrain/db/migrator"
 require "cybertrain/test"
 

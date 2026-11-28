@@ -270,6 +270,21 @@ module Cybertrain
     # the assertion when it is a StandardError, and does not match (so it
     # is raised on) when it is not.
     def self.raised_matches?(expected, raised, standard)
+      name = raised.name.to_s
+      if Cybertrain::DB.error_subclass?(name)
+        # A subclass of Cybertrain::DB::Error is what an expectation of
+        # DB::Error names too (as a `rescue` clause takes it).
+        if expected.is_a?(String)
+          return true if raised_matches_plain?(expected, raised, standard)
+        elsif expected.name.to_s == name
+          return true
+        end
+        return raised_matches_plain?(expected, Cybertrain::DB::Error, standard)
+      end
+      raised_matches_plain?(expected, raised, standard)
+    end
+
+    def self.raised_matches_plain?(expected, raised, standard)
       if expected.is_a?(String)
         return standard if expected == ""
 

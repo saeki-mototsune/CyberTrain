@@ -13,6 +13,7 @@
 # the Test.after_this_case callables (the receivers' stop). The class form
 # runs them through Test.before_case / Test.run_body / Test.after_case, the
 # top-level form through Test.run_top_level_case.
+require "cybertrain/db/error"
 require "cybertrain/clock"
 require "cybertrain/test/time_helpers"
 

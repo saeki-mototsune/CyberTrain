@@ -23,6 +23,7 @@ require "cybertrain/generator/locales_emitter"
 require "cybertrain/generator/test_scan"
 require "cybertrain/generator/tests_emitter"
 require "cybertrain/generator/test_data_emitter"
+require "cybertrain/generator/dialect"
 
 module Cybertrain
   module Gen
@@ -64,6 +65,24 @@ module Cybertrain
         unless refusals.empty?
           refusals.each { |line| puts line }
           return 1
+        end
+        # The adapter the app is built with (bin/NAME.rb's entry require;
+        # SQLite without a MySQL one). Both a SQLite and a MySQL entry:
+        # refused, nothing written.
+        conflict = Dialect.entry_conflict_of(root)
+        unless conflict.empty?
+          puts conflict
+          return 1
+        end
+        dialect = Dialect.of(root)
+        # MySQL has no partial index: an add_index with where: stops gen,
+        # nothing written, before `db migrate` would run it.
+        if dialect.mysql?
+          partial = Runner.partial_index_refusals(root)
+          unless partial.empty?
+            partial.each { |line| puts line }
+            return 1
+          end
         end
         check = argv.include?("--check")
         embed = argv.include?("--embed-views")
@@ -129,7 +148,7 @@ module Cybertrain
           bundle = if !test_problem.empty?
                      TestsEmitter.refused_program(test_problem)
                    elsif fixture_problem.empty?
-                     TestsEmitter.emit(root, test_files, !schema.nil?)
+                     TestsEmitter.emit(root, test_files, !schema.nil?, dialect)
                    else
                      TestsEmitter.refused_program(fixture_problem)
                    end
@@ -152,10 +171,10 @@ module Cybertrain
           validated = ModelValidation.validate_all(schema, infos, SchemaPlaces.in_app(root))
           if File.directory?("#{root}/test")
             # No rows while the fixtures are refused (gen/tests.rb aborts).
-            outputs << [TestScan::DATA_FILE, TestDataEmitter.emit(schema, fixture_rows)]
+            outputs << [TestScan::DATA_FILE, TestDataEmitter.emit(schema, fixture_rows, dialect)]
           end
           models = Array.new(0) { "" }
-          ModelsEmitter.outputs_for(validated).each do |rel, source|
+          ModelsEmitter.outputs_for(validated, dialect).each do |rel, source|
             outputs << [rel, source]
             models << rel.delete_suffix(".rb")
           end
@@ -173,6 +192,23 @@ module Cybertrain
           stale += sync_file(root, "gen/app.rb", Manifest.emit_with_models(root, models), check)
         end
         stale > 0 ? 1 : 0
+      end
+
+      # "<path>:<line>: partial indexes (where:) are not supported on
+      # MySQL" for each add_index with a where: in db/migrate/*.rb and
+      # db/schema.rb (paths relative to `root`).
+      def self.partial_index_refusals(root)
+        paths = Array.new(0) { "" }
+        SourceText.ruby_files("#{root}/db/migrate").each { |path| paths << path }
+        paths << "#{root}/db/schema.rb" if File.file?("#{root}/db/schema.rb")
+        refusals = Array.new(0) { "" }
+        paths.each do |path|
+          rel = path.delete_prefix("#{root}/")
+          Dialect.partial_index_lines(File.read(path)).each do |line|
+            refusals << "#{rel}:#{line}: #{Dialect::PARTIAL_INDEX}"
+          end
+        end
+        refusals
       end
 
       # A gen/concerns file whose concern is gone, and the directories

@@ -1,4 +1,5 @@
 require "cybertrain/feature_catalog"
+require "cybertrain/generator/dialect"
 
 module Cybertrain
   module Gen
@@ -12,10 +13,10 @@ module Cybertrain
     # NAME is spin.toml's [package] name. bin/NAME.rb is read lexically: a
     # line that is, after its indentation, `require "LINE"` (or 'LINE', or
     # require("LINE")) adds what FeatureCatalog.loaded_by(LINE) loads;
-    # `require "cybertrain"` loads everything. A require written another
-    # way, or in a file bin/NAME.rb requires, is not seen. With no spin.toml
-    # name or no bin/NAME.rb (a fixture tree, an app laid out otherwise)
-    # nothing is refused: the check needs the file to say what is loaded.
+    # `require "cybertrain"` (or "cybertrain/mysql") loads everything. A
+    # require written another way, or in a file bin/NAME.rb requires, is
+    # not seen. With no spin.toml name or no bin/NAME.rb (a fixture tree,
+    # an app laid out otherwise) nothing is refused: the check needs the file to say what is loaded.
     #
     # The views are app/views/**/*.erb and app/components/**/*.erb. In each
     # `<% %>`, `<%= %>` and `<%== %>` tag (not `<%# %>` nor a literal `<%%`)
@@ -80,31 +81,10 @@ module Cybertrain
       def self.loaded_subsystems(source)
         out = Array.new(0) { "" }
         source.split("\n").each do |raw|
-          spec = required_spec(raw.strip)
+          spec = Dialect.required_spec(raw.strip)
           FeatureCatalog.loaded_by(spec).each { |s| out << s } unless spec.empty?
         end
         out
-      end
-
-      # The argument of a `require "x"`, `require 'x'` or `require("x")`
-      # line; "" for any other line.
-      # @param line [String] stripped
-      # @return [String]
-      def self.required_spec(line)
-        return "" unless line.start_with?("require")
-
-        rest = line[7, line.size - 7]
-        rest = rest[1, rest.size - 1] if rest.start_with?("(")
-        rest = rest.strip
-        return "" if rest.empty?
-
-        quote = rest[0]
-        return "" unless quote == "\"" || quote == "'"
-
-        close = rest.index(quote, 1)
-        return "" if close.nil?
-
-        rest[1, close - 1]
       end
 
       # Appends a refusal to `out` for each call of a `missing` helper in

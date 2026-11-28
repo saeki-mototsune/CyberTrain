@@ -28,12 +28,19 @@
 # a private in-memory database. A development or production database is
 # never emptied, whatever a program connected to.
 #
+# On MySQL (DB::Dialect, cybertrain/db/mysql/test_database.rb) the guard is
+# the environment "test", a database name that ends in "_test", and the
+# table cybertrain_test_marker in the database (created when the database
+# is empty; a database with tables and no marker is refused). Its ALTER
+# TABLE ... AUTO_INCREMENT = 1 commits, so there the clear runs before the
+# inserts' transaction instead of inside it.
+#
 # Spinel rules followed: 58 (messages built into a local before raise), 33
 # (the rescue names JSON's errors with StandardError), 67 (only plain
 # methods are called on DB.with's connection).
 require "json"
 require "cybertrain/test"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/model"
 require "cybertrain/config"
 
@@ -151,9 +158,7 @@ module Cybertrain
       # @return [nil]
       # @api private
       def self.mark!(connection)
-        connection.execute("PRAGMA application_id = #{TEST_MARKER}")
-        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        nil
+        DB::Dialect.test_database_mark(connection, TEST_MARKER)
       end
 
       # The end of the refusal of an existing file without {TEST_MARKER}.
@@ -275,8 +280,14 @@ module Cybertrain
         ""
       end
 
+      # Raises the refusal of the connected database ({refusal} on SQLite,
+      # whose database is a file; MySQL decides from the URL: the
+      # environment and a name that ends in "_test"), before anything
+      # connects.
       def self.refuse_unless_test_database
-        message = Database.refusal(Cybertrain.config.env, DB.connected_path)
+        env = Cybertrain.config.env
+        path = DB.connected_path
+        message = DB::Dialect.test_database_refusal(env, path, Database.refusal(env, path))
         raise message unless message.empty?
 
         nil
@@ -291,31 +302,42 @@ module Cybertrain
       end
 
       # One transaction, foreign keys off around it: with `clear`, the
-      # deletes of `tables`, of the framework tables present and of
-      # sqlite_sequence; then the inserts, and `PRAGMA foreign_key_check`
-      # before the COMMIT (a belongs_to label or id that names no row:
-      # a foreign-key failure, which turning foreign keys on
-      # again would not report). On a failure it rolls back, turns foreign
-      # keys on again and re-raises. Refused inside an open transaction,
-      # whose rows the deletes would join.
+      # deletes of `tables` and of the framework tables present, and their
+      # ids reset (DB::Dialect.reset_sequences); then the inserts, and
+      # DB::Dialect.foreign_key_violation before the COMMIT (a belongs_to
+      # label or id that names no row: a foreign-key failure, which turning
+      # foreign keys on again would not report). On a failure it rolls
+      # back, turns foreign keys on again and re-raises. Refused inside an
+      # open transaction, whose rows the deletes would join, and when the
+      # connection's database is not one it may empty
+      # (DB::Dialect.test_database_claim: on MySQL, a database without the
+      # marker table that holds tables).
+      #
+      # Where DDL is not transactional (DB::Dialect.transactional_ddl?
+      # false: MySQL, whose ALTER TABLE ... AUTO_INCREMENT = 1 commits), the
+      # deletes and the id reset run before the transaction, each statement
+      # on its own, and only the inserts are in it: a failing insert or a
+      # foreign key violation rolls back the inserts, not the clear.
       def self.reset_on(c, clear, tables, sql, counts, now)
         if c.in_transaction?
           message = "Test::Database cannot clear or load fixtures inside an open transaction (DB.transaction or a BEGIN)"
           raise message
         end
-        present = Array.new(0) { "" }
-        # Every name qualified with "main": a TEMP table of the same name
-        # would otherwise take an unqualified DELETE, and an ATTACHed
-        # database is never the target.
-        c.execute("SELECT name FROM \"main\".sqlite_master WHERE type = 'table'").each { |r| present << r["name"].to_s } if clear
-        c.execute("PRAGMA foreign_keys = OFF")
+        claim = DB::Dialect.test_database_claim(c, DB.connected_path)
+        raise claim unless claim.empty?
+
+        cleared = Array.new(0) { "" }
+        if clear
+          present = DB::Dialect.table_names(c)
+          tables.each { |t| cleared << t }
+          FRAMEWORK_TABLES.each { |t| cleared << t if present.include?(t) }
+        end
+        clear_inside = DB::Dialect.transactional_ddl?
+        DB::Dialect.foreign_keys_off(c)
         begin
+          Database.clear_tables(c, cleared) if clear && !clear_inside
           c.begin!
-          if clear
-            tables.each { |t| c.execute("DELETE FROM \"main\".\"#{t}\"") }
-            FRAMEWORK_TABLES.each { |t| c.execute("DELETE FROM \"main\".\"#{t}\"") if present.include?(t) }
-            c.execute("DELETE FROM \"main\".sqlite_sequence") if present.include?("sqlite_sequence")
-          end
+          Database.clear_tables(c, cleared) if clear && clear_inside
           i = 0
           while i < sql.size
             binds = Array.new(counts[i]) { now }
@@ -330,32 +352,41 @@ module Cybertrain
           Database.restore_after_failure(Database.rollback_step(c), Database.foreign_keys_step(c))
           raise e
         end
-        c.execute("PRAGMA foreign_keys = ON")
+        DB::Dialect.foreign_keys_on(c)
         nil
       end
 
-      # The first row PRAGMA foreign_key_check reports, as a message
-      # ("" when there is none): its table, its id (the fixture's id), the
-      # column and the parent table it names no row of.
+      # Deletes every row of `cleared` and resets their ids.
+      # @return [nil]
+      def self.clear_tables(c, cleared)
+        cleared.each { |t| DB::Dialect.test_database_clear_table(c, t) }
+        DB::Dialect.reset_sequences(c, cleared)
+        nil
+      end
+
+      # The first row that names no row of its parent, as a message ("" when
+      # there is none): DB::Dialect.foreign_key_violation's description (its
+      # table, its id (the fixture's id), the column and the parent table),
+      # and the fixture file of that parent.
       # @return [String]
       def self.foreign_key_problem(c)
-        rows = c.execute("PRAGMA foreign_key_check")
-        return "" if rows.empty?
+        violation = DB::Dialect.foreign_key_violation(c)
+        return "" if violation.empty?
 
-        r = rows[0]
-        table = r["table"].to_s
-        parent = r["parent"].to_s
-        rowid = Cybertrain::Cast.int(r["rowid"])
-        fkid = Cybertrain::Cast.int(r["fkid"])
-        column = ""
-        c.execute("PRAGMA foreign_key_list(\"#{table}\")").each { |f| column = f["from"].to_s if Cybertrain::Cast.int(f["id"]) == fkid }
-        value = ""
-        unless column.empty?
-          found = c.execute("SELECT \"#{column}\" AS v FROM \"#{table}\" WHERE rowid = ?", [rowid])
-          value = Cybertrain::Cast.int(found[0]["v"]).to_s unless found.empty?
-        end
-        "fixtures: #{table} row with id #{rowid} has #{column} #{value}, which names no row of #{parent} " \
-          "(a belongs_to label or id with no fixture in test/fixtures/#{parent}.yml)"
+        parent = Database.violation_parent(violation)
+        "fixtures: #{violation} (a belongs_to label or id with no fixture in test/fixtures/#{parent}.yml)"
+      end
+
+      # The parent table a foreign_key_violation description ends with
+      # ("..., which names no row of <parent>").
+      # @return [String]
+      def self.violation_parent(violation)
+        marker = "which names no row of "
+        at = violation.rindex(marker)
+        return "" if at.nil?
+
+        start = at + marker.size
+        violation[start, violation.size - start].to_s
       end
 
       # After a failure: the rollback, then foreign keys on again, each
@@ -386,7 +417,7 @@ module Cybertrain
 
       def self.foreign_keys_step(c)
         -> {
-          c.execute("PRAGMA foreign_keys = ON")
+          DB::Dialect.foreign_keys_on(c)
           nil
         }
       end

@@ -1,0 +1,9 @@
+ok   the program is built with the MySQL adapter and the jobs feature
+ID  KIND    STATE   ATTEMPTS  RUN AT                   ERROR
+2   record  queued  0         2033-05-18 03:33:20 UTC
+ID  KIND    STATE  ATTEMPTS  RUN AT                   ERROR
+1   record  done   1         1970-01-01 00:16:40 UTC
+ok   a job enqueued on MySQL runs, and ./NAME jobs reads the queue on DATABASE_URL
+jobs failed: DATABASE_URL is not set (mysql://user:password@host:3306/name)
+ok   ./NAME jobs without DATABASE_URL stops before it connects
+3 tests, 7 assertions, 0 failures

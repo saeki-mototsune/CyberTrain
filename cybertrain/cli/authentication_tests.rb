@@ -698,8 +698,45 @@ module Cybertrain
 
       # test/integration/first_run_test.rb (--invite-only): /setup, the
       # boot warning and `./<app> user`.
-      def self.first_run_test(app)
-        first_run_test_body.gsub("@APP@", app).gsub("@SETUP_ENV@", setup_env(app))
+      # `adapter` ("sqlite" or "mysql"): what `reconnect` connects to.
+      # On MySQL it also has first_run_race_test_mysql.
+      def self.first_run_test(app, adapter = "sqlite")
+        text = first_run_test_body.gsub("@APP@", app).gsub("@SETUP_ENV@", setup_env(app))
+        text = text.gsub("@CONNECT_TARGET@", Authentication.connect_target_expression(adapter))
+        return text unless adapter == "mysql"
+
+        Templates.swapped(text, "test/integration/first_run_test.rb", [
+                            ["\n  private\n", "\n#{SourceEdit.margin(first_run_race_test_mysql, 2)}\n  private\n"]
+                          ])
+      end
+
+      # MySQL's SetupController#create checks for a user with a locking
+      # read (Authentication.setup_first_user_mysql). The test holds another
+      # account inserted and not committed, on a thread of its own (so on
+      # another connection), while /setup is posted: the request waits for
+      # that commit, then finds the user and saves nothing. A plain read
+      # would see the table empty and save a second "first" account.
+      def self.first_run_race_test_mysql
+        <<~'RUBY'
+          # Another first run inserts its account and has not committed yet
+          # (a thread, so another connection) when this one is posted: /setup
+          # waits for that commit, then finds the user and creates nobody.
+          test "two first-run setups at once create one account" do
+            holder = Thread.new do
+              Cybertrain::DB.transaction do |c|
+                c.execute("INSERT INTO users (email_address, password_digest, created_at, updated_at) " \
+                          "VALUES ('first@example.com', 'x', NOW(6), NOW(6))")
+                c.execute("SELECT SLEEP(1)")
+              end
+            end
+            sleep 0.3
+            post "/setup", params: setup_form("s3cr3t-s3cr3t", "s3cr3t-s3cr3t")
+            holder.join
+            assert_response :unprocessable_entity
+            assert_equal 1, User.count
+            assert_equal "first@example.com", User.first.email_address
+          end
+        RUBY
       end
 
       def self.first_run_test_body
@@ -893,7 +930,7 @@ module Cybertrain
             end
 
             def reconnect
-              Cybertrain::DB.connect(Cybertrain.config.database_path, size: Cybertrain.config.pool_size)
+              Cybertrain::DB.connect(@CONNECT_TARGET@, size: Cybertrain.config.pool_size)
               nil
             end
           end
@@ -2028,10 +2065,41 @@ module Cybertrain
       end
 
       # test/controllers/accounts_controller_test.rb: the account page.
-      def self.accounts_controller_test(confirmable = false)
+      # `adapter` is "sqlite" or "mysql" (Gen::Dialect.in_source): what the test
+      # checks of the foreign key the database refuses (accounts_fk_check).
+      def self.accounts_controller_test(confirmable = false, adapter = "sqlite")
         text = SourceEdit.splice(accounts_controller_test_body, "@ADDRESS_HELPERS@",
                                  SourceEdit.margin(confirmable ? accounts_test_confirm_helpers : accounts_test_address_helpers, 2))
+        text = SourceEdit.splice(text, "@FK_CHECK@", accounts_fk_check(adapter))
+        text = SourceEdit.splice(text, "@NOTES_TABLE@", accounts_notes_table(adapter))
         SourceEdit.splice(text, "@HELPERS@", with_config_helper)
+      end
+
+      # The lines that check the refused deletion was logged for the reason
+      # the database gives. SQLite words it "FOREIGN KEY constraint failed"
+      # and the check matches that text; MySQL's message differs by version
+      # and locale, so there the check is the error class
+      # (Cybertrain::DB::ForeignKeyViolation) the same deletion raises.
+      def self.accounts_fk_check(adapter)
+        if adapter == "mysql"
+          return "      assert_includes log.string, \"account not deleted: \"\n" \
+                 "      assert_raises(Cybertrain::DB::ForeignKeyViolation) { User.find(ann.id).destroy }\n"
+        end
+
+        "      assert_includes log.string, \"account not deleted: FOREIGN KEY constraint failed\"\n"
+      end
+
+      # The CREATE TABLE of the test's account_notes, a table whose rows
+      # refer to users through a foreign key, in the adapter's DDL: SQLite's
+      # inline REFERENCES, or MySQL's BIGINT columns (users.id is one there)
+      # with a FOREIGN KEY clause on an InnoDB table, which checks it.
+      def self.accounts_notes_table(adapter)
+        if adapter == "mysql"
+          return "      c.execute(\"CREATE TABLE account_notes (id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, " \
+                 "user_id BIGINT NOT NULL, FOREIGN KEY (user_id) REFERENCES users (id)) ENGINE=InnoDB\")\n"
+        end
+
+        "      c.execute(\"CREATE TABLE account_notes (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id))\")\n"
       end
 
       def self.accounts_controller_test_body
@@ -2408,7 +2476,7 @@ module Cybertrain
                 assert signed_in?("ann@example.com")
                 assert browser_signed_in?(phone, "ann@example.com")
                 assert_includes log.string, " ERROR "
-                assert_includes log.string, "account not deleted: FOREIGN KEY constraint failed"
+                @FK_CHECK@
               ensure
                 drop_notes
               end
@@ -2458,7 +2526,7 @@ module Cybertrain
             # then refuses to delete that user.
             def add_note_for(user)
               Cybertrain::DB.with do |c|
-                c.execute("CREATE TABLE account_notes (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id))")
+                @NOTES_TABLE@
                 c.execute("INSERT INTO account_notes (user_id) VALUES (#{user.id})")
               end
               nil
@@ -2534,12 +2602,47 @@ module Cybertrain
       # a new address, the send-again form, and the users that /setup and
       # the user command make. Its first test is the mode's: sign-up's mail,
       # or (--invite-only) /setup's confirmed first user.
-      def self.confirmations_controller_test(app, invite_only = false)
+      #
+      # `adapter` "mysql" gives the racing confirmation's trigger MySQL's
+      # form (confirmations_race_trigger_mysql).
+      def self.confirmations_controller_test(app, invite_only = false, adapter = "sqlite")
         text = confirmations_controller_test_body
         text = SourceEdit.splice(text, "@FIRST_USER_TEST@", SourceEdit.margin(invite_only ? confirmations_setup_test : confirmations_sign_up_test, 2))
         text = SourceEdit.splice(text, "@HELPERS@", with_config_helper)
         text = text.gsub(BASE_URL_ENV_MARK, base_url_env(app))
-        text.gsub("@APP@", app)
+        text = text.gsub("@APP@", app)
+        adapter == "mysql" ? confirmations_race_trigger_mysql(text) : text
+      end
+
+      # The racing confirmation's trigger on MySQL. A MySQL trigger may not
+      # write the table it is defined on (error 1442), so it cannot insert
+      # the other account as SQLite's does; and MySQL has no `UPDATE OF
+      # column` or WHEN clause. It refuses the UPDATE as the unique index
+      # refuses a duplicate, with the index's error (1062, SQLSTATE 23000),
+      # which the adapter raises as Cybertrain::DB::UniqueViolation.
+      def self.confirmations_race_trigger_mysql(text)
+        Templates.swapped(text, "test/controllers/confirmations_controller_test.rb", [
+                            ["    # write (a trigger inserts it just before the UPDATE): the unique index\n" \
+                             "    # refuses the write, and the answer is the taken one, not a 500.\n",
+                             "    # write (a trigger refuses the UPDATE with the unique index's error,\n" \
+                             "    # 1062): the answer is the taken one, not a 500.\n"],
+                            ["  # A trigger that, just before ann's row gets a new address, inserts\n" \
+                             "  # another account with that address: what a sign-up that lands\n" \
+                             "  # between User#confirm's check and its write does.\n",
+                             "  # A trigger that refuses ann's row a new address with the unique\n" \
+                             "  # index's error (1062): what a sign-up that lands between\n" \
+                             "  # User#confirm's check and its write makes the write meet. (A MySQL\n" \
+                             "  # trigger cannot insert into its own table, as SQLite's does.)\n"],
+                            ["      c.execute(\"CREATE TRIGGER confirmation_race BEFORE UPDATE OF email_address ON users \" \\\n" \
+                             "                \"WHEN NEW.email_address <> OLD.email_address BEGIN \" \\\n" \
+                             "                \"INSERT INTO users (email_address, password_digest, created_at, updated_at) \" \\\n" \
+                             "                \"VALUES (NEW.email_address, 'x', NEW.updated_at, NEW.updated_at); END\")\n",
+                             "      c.execute(\"CREATE TRIGGER confirmation_race BEFORE UPDATE ON users FOR EACH ROW \" \\\n" \
+                             "                \"BEGIN IF NEW.email_address <> OLD.email_address THEN \" \\\n" \
+                             "                \"SIGNAL SQLSTATE '23000' SET MYSQL_ERRNO = 1062, \" \\\n" \
+                             "                \"MESSAGE_TEXT = 'Duplicate entry for key users.index_users_on_email_address'; \" \\\n" \
+                             "                \"END IF; END\")\n"]
+                          ])
       end
 
       def self.confirmations_controller_test_body

@@ -1,0 +1,303 @@
+#!/bin/sh
+# Run the MySQL adapter's integration tests, test/mysql/*.rb, against the
+# server CYBERTRAIN_TEST_MYSQL_URL names (script/mysql-dev starts one in
+# Docker and prints the URL). `spin test` and script/test-shard glob
+# test/*.rb only and never see these, and `spin test` takes no file outside
+# test/, so each one is compiled here with the flags `spin flags` prints:
+#
+#   spinel $(spin flags) test/mysql/<name>.rb -o build/test-mysql/<name>
+#
+# then run, and its stdout and stderr, together, are compared with
+# test/mysql/<name>.rb.expected, as `spin test` compares a compiled test;
+# what is printed has spin test's form (`ok   <name>.rb`, or `FAIL
+# <name>.rb` with `--- expected` and `--- actual`, then `N/M passed`). The
+# output is left in build/test-mysql/<name>.out. The compiler's own output is
+# printed as it comes: a compile prints nothing else, so a warning shows.
+# A `run  <name>.rb` line comes before each compile, so a log cut short
+# names the program. A binary that links libsqlite3 fails (ldd, where it
+# exists), and a program still running after CYBERTRAIN_TEST_MYSQL_RUN_LIMIT
+# seconds (600 by default; timeout(1), where it exists) is stopped and
+# fails.
+#
+# The programs drop tables with application names in the database the URL
+# names, so the URL must name a database ending in _test on a loopback or
+# private host (CYBERTRAIN_TEST_MYSQL_ANY_HOST=1 lifts the host rule only);
+# anything else exits 2 before a connection is made.
+#
+# Every program runs with SPINEL_WORKERS=1, the runtime's default made
+# explicit: connection.rb's slow_query_does_not_block_worker checks that a
+# SELECT SLEEP(1) on one green thread leaves another thread of the same OS
+# worker running, which a second worker would hide. A test that needs other
+# settings sets them itself.
+#
+# `--blog` runs examples/blog's tests on MySQL instead (docs/design.md D96):
+# the blog is copied into a temporary directory, its spin.toml pointed at
+# this checkout, the first line of its bin/blog.rb and bin/db.rb, `require
+# "cybertrain"`, replaced by `require "cybertrain/mysql"` (which is how an
+# application picks the adapter: when it is built, never at run time),
+# `cybertrain generate authentication --invite-only --force` run again
+# (below), and `cybertrain test` run there, gen first, with DATABASE_URL
+# set to the URL with the database cybertrain_blog_test (script/mysql-dev
+# and CI's mysql-tests job create it; the test bundle claims it with its
+# marker table and empties it). With no argument after --blog, `cybertrain
+# build` and `cybertrain db status` follow, so the release binary and
+# bin/db.rb are compiled too, and neither may link libsqlite3. Nothing else
+# is changed, and nothing is written in examples/blog. The temporary
+# directory is removed on every exit, an early one or an interrupt
+# included, except when the tests or the builds fail, when its path is
+# printed. The blog's whole test program is compiled, about eight minutes
+# on 4 cores, and the two binaries after it; the whole run took 24 minutes
+# on 4 busy cores.
+#
+# usage: script/test-mysql [file...]           run these files (default: all of test/mysql/*.rb)
+#        script/test-mysql --regen [file...]   rewrite their snapshots from the compiled binaries
+#        script/test-mysql --blog [-n NAME]    examples/blog's tests on MySQL (arguments go to `cybertrain test`)
+#
+# Exit status 2 when the URL is not set or not a test server's, or an
+# argument is bad; 1 when any file fails or differs.
+set -u
+
+regen=false
+blog=false
+if [ "${1:-}" = "--regen" ]; then
+  regen=true
+  shift
+elif [ "${1:-}" = "--blog" ]; then
+  blog=true
+  shift
+fi
+
+if [ -z "${CYBERTRAIN_TEST_MYSQL_URL:-}" ]; then
+  echo "CYBERTRAIN_TEST_MYSQL_URL is not set (script/mysql-dev starts a server)" >&2
+  exit 2
+fi
+
+# The programs drop tables with application names (posts, users, comments,
+# sessions, schema_migrations, cybertrain_jobs, ...) in the database the URL
+# names, foreign key checks off, so a URL that is not clearly a test server
+# is refused before anything connects: the database must end in _test (as
+# `cybertrain test` requires of an application's), and the host must be a
+# loopback or private address. CYBERTRAIN_TEST_MYSQL_ANY_HOST=1 lifts the
+# host rule only (a server reached by a name, such as a CI service); the
+# database rule has no override.
+url_rest=${CYBERTRAIN_TEST_MYSQL_URL#mysql://}
+if [ "$url_rest" = "$CYBERTRAIN_TEST_MYSQL_URL" ]; then
+  echo "test-mysql: CYBERTRAIN_TEST_MYSQL_URL does not start with mysql://" >&2
+  exit 2
+fi
+url_authority=${url_rest%%/*}
+url_hostport=${url_authority##*@}
+case "$url_hostport" in
+  \[*) url_host=${url_hostport#[}; url_host=${url_host%%]*} ;;
+  *) url_host=${url_hostport%%:*} ;;
+esac
+url_db=""
+case "$url_rest" in
+  */*) url_db=${url_rest#*/}; url_db=${url_db%%\?*} ;;
+esac
+case "$url_db" in
+  *_test) ;;
+  *)
+    echo "test-mysql: the database in CYBERTRAIN_TEST_MYSQL_URL is '$url_db'; it must end in _test." >&2
+    echo "  The tests drop tables named posts, users, comments, sessions, schema_migrations," >&2
+    echo "  cybertrain_jobs and others in it. Use script/mysql-dev's cybertrain_test." >&2
+    exit 2
+    ;;
+esac
+test_host=false
+case "$url_host" in
+  localhost | ::1 | 0:0:0:0:0:0:0:1) test_host=true ;;
+  [fF][cCdD]*:*) test_host=true ;;  # IPv6 unique local, fc00::/7
+  *[!0-9.]* | "") ;;
+  127.* | 10.* | 192.168.* | 172.1[6-9].* | 172.2[0-9].* | 172.3[01].*) test_host=true ;;
+esac
+if [ "$test_host" != true ] && [ "${CYBERTRAIN_TEST_MYSQL_ANY_HOST:-}" != 1 ]; then
+  echo "test-mysql: the host in CYBERTRAIN_TEST_MYSQL_URL is '$url_host', not a loopback or private address." >&2
+  echo "  The tests drop tables in the database it names; set CYBERTRAIN_TEST_MYSQL_ANY_HOST=1" >&2
+  echo "  if that server is a test server all the same." >&2
+  exit 2
+fi
+
+cd "$(dirname "$0")/.." || exit 2
+
+# True when the binary $1 links libsqlite3: a MySQL program must link no
+# SQLite (docs/design.md D96), and CI's runners have the library installed,
+# so a program that pulled the SQLite FFI in through a neutral file would
+# otherwise compile, link and pass. Needs ldd (Linux; never true elsewhere).
+links_sqlite() {
+  command -v ldd >/dev/null 2>&1 && ldd "$1" 2>/dev/null | grep -q sqlite
+}
+
+if [ "$blog" = true ]; then
+  repo=$(pwd)
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-mysql-blog.XXXXXX") || exit 2
+  app="$tmp/blog"
+  # Removed on every exit (an early `exit 2` and an interrupt too) unless
+  # keep is set, which is where its path is printed.
+  keep=false
+  trap 'rc=$?; [ "$keep" = true ] || rm -rf "$tmp"; exit $rc' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  cp -a examples/blog "$app" || exit 2
+  rm -rf "$app/build" "$app/tmp/"* "$app/storage/"*.sqlite3*
+  toml=$(cat "$app/spin.toml")
+  # $repo goes into a sed replacement: its \, | and & are escaped.
+  repo_sed=$(printf '%s\n' "$repo" | sed 's/[\\|&]/\\&/g')
+  pinned=$(printf '%s\n' "$toml" | sed "s|^cybertrain = { path = \"../..\" }\$|cybertrain = { path = \"$repo_sed\" }|")
+  if [ "$pinned" = "$toml" ]; then
+    echo "test-mysql: examples/blog/spin.toml has no \`cybertrain = { path = \"../..\" }\` to point at the checkout" >&2
+    exit 2
+  fi
+  printf '%s\n' "$pinned" > "$app/spin.toml"
+  for entry in blog db; do
+    if [ "$(head -n 1 "$app/bin/$entry.rb")" != 'require "cybertrain"' ]; then
+      echo "test-mysql: the first line of examples/blog/bin/$entry.rb is not require \"cybertrain\"" >&2
+      exit 2
+    fi
+  done
+  cli() { ruby -I"$repo" "$repo/exe/cybertrain" "$@"; }
+  # The blog's authentication is what `generate authentication
+  # --invite-only` writes for SQLite, file for file (first check: the
+  # generator, run there, forces nothing); on MySQL it is what the
+  # generator writes for a MySQL application, which differs in four files
+  # (the user command's and the first-run test's connection, the lockout
+  # UPDATE's order, the account test's table and error): the generator
+  # writes those after the switch.
+  forced=$(cd "$app" && cli generate authentication --invite-only --force | grep '^force ')
+  if [ -n "$forced" ]; then
+    echo "test-mysql: examples/blog's authentication is not what generate authentication --invite-only writes:" >&2
+    echo "$forced" >&2
+    exit 2
+  fi
+  # Both entries, as the configuration guide's procedure says.
+  for entry in blog db; do
+    sed -i.orig '1s|.*|require "cybertrain/mysql"|' "$app/bin/$entry.rb" || exit 2
+    rm -f "$app/bin/$entry.rb.orig"
+  done
+  (cd "$app" && cli generate authentication --invite-only --force | grep '^force ') || exit 2
+  # The URL's database name (after the last / and before any ?) swapped.
+  url=$(printf '%s\n' "$CYBERTRAIN_TEST_MYSQL_URL" | sed 's|^\(mysql://[^/]*/\)[^?]*|\1cybertrain_blog_test|')
+  (cd "$app" && DATABASE_URL="$url" cli test "$@")
+  rc=$?
+  # `cybertrain test` compiles gen/tests.rb only. What a MySQL application
+  # ships is compiled too, on a full run: the release binary (`cybertrain
+  # build`, from bin/blog.rb) and bin/db.rb (`cybertrain db status`, which
+  # builds it and reads the database without writing); neither may link
+  # SQLite.
+  if [ "$rc" -eq 0 ] && [ "$#" -eq 0 ]; then
+    if ! (cd "$app" && cli build && DATABASE_URL="$url" cli db status); then
+      echo "test-mysql: the blog's release binary or bin/db.rb did not build or run on MySQL" >&2
+      rc=1
+    fi
+    for built in "$app/build/bin/blog" "$app/build/bin/db"; do
+      if [ "$rc" -eq 0 ] && links_sqlite "$built"; then
+        echo "test-mysql: $built links SQLite" >&2
+        rc=1
+      fi
+    done
+  fi
+  if [ "$rc" -ne 0 ]; then
+    keep=true
+    echo "test-mysql: the blog's MySQL run failed (exit $rc); the copy is kept in $app" >&2
+  fi
+  exit "$rc"
+fi
+
+if [ "$#" -eq 0 ]; then
+  set -- $(printf '%s\n' test/mysql/*.rb | LC_ALL=C sort)
+fi
+
+flags=$(spin flags) || exit 2
+run_limit=${CYBERTRAIN_TEST_MYSQL_RUN_LIMIT:-600}
+mkdir -p build/test-mysql || exit 2
+
+passed=0
+total=0
+status=0
+for file in "$@"; do
+  case "$file" in
+    test/mysql/*.rb) ;;
+    *)
+      echo "test-mysql: $file is not a test/mysql/*.rb" >&2
+      exit 2
+      ;;
+  esac
+  if [ ! -f "$file" ]; then
+    echo "test-mysql: $file does not exist" >&2
+    exit 2
+  fi
+  name=$(basename "$file" .rb)
+  bin="build/test-mysql/$name"
+  out="build/test-mysql/$name.out"
+  snapshot="$file.expected"
+  total=$((total + 1))
+  rm -f "$bin" "$out"
+  # Named before the compile, so a log that stops here says which program
+  # was compiling or running.
+  echo "run  $name.rb"
+  # $flags unquoted: it is several words (-I paths without spaces).
+  # shellcheck disable=SC2086
+  if ! spinel $flags "$file" -o "$bin"; then
+    echo "FAIL $name.rb (did not compile)"
+    status=1
+    continue
+  fi
+  if links_sqlite "$bin"; then
+    echo "FAIL $name.rb (links SQLite)"
+    ldd "$bin" | grep sqlite
+    status=1
+    continue
+  fi
+  # Several programs wait on locks and on the server by design; one that
+  # never returns is stopped after $run_limit seconds (where timeout(1)
+  # exists) and fails with its output so far, rather than holding the CI
+  # job to its own limit with no program named.
+  timed=false
+  if command -v timeout >/dev/null 2>&1; then
+    timed=true
+    SPINEL_WORKERS=1 timeout "$run_limit" "./$bin" > "$out" 2>&1
+  else
+    SPINEL_WORKERS=1 "./$bin" > "$out" 2>&1
+  fi
+  rc=$?
+  if [ "$rc" -eq 124 ] && [ "$timed" = true ]; then
+    echo "test-mysql: $name.rb did not finish within $run_limit s; stopped" >> "$out"
+  fi
+  if [ "$regen" = true ]; then
+    # A failing run is never kept as its own expectation.
+    if [ "$rc" -ne 0 ]; then
+      echo "test-mysql: $bin failed (exit $rc); kept the previous $snapshot" >&2
+      grep -v '^ok   ' "$out" >&2
+      status=1
+      continue
+    fi
+    cp "$out" "$snapshot"
+    echo "test-mysql: wrote $snapshot"
+    passed=$((passed + 1))
+    continue
+  fi
+  if [ -f "$snapshot" ] && [ "$rc" -eq 0 ] && cmp -s "$snapshot" "$out"; then
+    echo "ok   $name.rb"
+    passed=$((passed + 1))
+  else
+    if [ "$rc" -eq 124 ] && [ "$timed" = true ]; then
+      echo "FAIL $name.rb (stopped after $run_limit s)"
+    elif [ "$rc" -ne 0 ]; then
+      echo "FAIL $name.rb (exit $rc)"
+    else
+      echo "FAIL $name.rb"
+    fi
+    echo "--- expected"
+    if [ -f "$snapshot" ]; then
+      cat "$snapshot"
+    else
+      echo "(no $snapshot: script/test-mysql --regen $file)"
+    fi
+    echo "--- actual"
+    cat "$out"
+    status=1
+  fi
+done
+
+echo "$passed/$total passed"
+exit "$status"

@@ -1,0 +1,15 @@
+ok   the adapter is sqlite and connects to the configured database path
+ok   quote_ident wraps a name in backticks and doubles an embedded one
+ok   upsert_tail is ON CONFLICT ... DO UPDATE SET c = excluded.c, DO NOTHING without columns
+ok   table_names lists the tables, not SQLite's own
+ok   health_query is the schema page read
+ok   foreign_keys_off and foreign_keys_on toggle enforcement
+ok   reset_sequences empties sqlite_sequence so ids start again at 1
+ok   foreign_key_violation describes the first dangling row, and the migrator's check lists them
+ok   transactional_ddl? is true and ddl_statements is SqliteDDL's
+ok   now_epoch_usec_sql reads the clock in epoch microseconds
+ok   the aggregate float total is TOTAL
+ok   the schema readers answer SQLite's table_info, index_list, index_info and foreign_key_list rows
+ok   the service statements are the ones the services sent
+ok   the cache and lease writes answer whether a row changed
+14 tests, 69 assertions, 0 failures

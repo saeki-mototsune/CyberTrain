@@ -1,5 +1,5 @@
 require "cybertrain/middleware"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/feature"
 
 module Cybertrain
@@ -31,11 +31,6 @@ module Cybertrain
   # RequestLogger, so each poll is the normal two log lines and nothing more.
   # Any other method on the path, and every other path, go on down the stack.
   class HealthCheck < Middleware
-    # Reads the schema page (page 1): a bare `SELECT 1` never touches the
-    # file, so it would answer for a database that is gone. sqlite_master
-    # rather than its newer alias sqlite_schema (SQLite 3.33+).
-    QUERY = "SELECT count(*) AS n FROM sqlite_master"
-
     def initialize(app, path, worker_stale, feeds, feed_stale)
       super(app)
       @health_path = path
@@ -69,9 +64,12 @@ module Cybertrain
 
     # The rescue sits in this plain method, around a DB.with whose block
     # calls a plain method on the connection (NOTES rules 32/45/67); the
-    # full name in the clause (rule 70).
+    # full name in the clause (rule 70). The query is the adapter's
+    # DB::Dialect.health_query (on SQLite a read of the schema page: a bare
+    # `SELECT 1` never touches the file).
     def self.database_ok?
-      DB.with { |c| c.execute(QUERY) }
+      query = DB::Dialect.health_query
+      DB.with { |c| c.execute(query) }
       true
     rescue Cybertrain::DB::Error, StandardError
       false

@@ -2,7 +2,7 @@ require "json"
 require "cybertrain/cast"
 require "cybertrain/clock"
 require "cybertrain/config"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/params"
 require "cybertrain/feature"
 
@@ -40,57 +40,33 @@ module Cybertrain
   # 1000 rows per write.
   # @api public
   module Cache
-    TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_cache (" \
-                "key TEXT PRIMARY KEY, " \
-                "value TEXT NOT NULL, " \
-                "expires_at INTEGER, " \
-                "updated_at INTEGER NOT NULL);"
+    # The table is the adapter's (DB::Dialect.cache_table_sql), created by
+    # DB::Dialect.framework_table_install.
+    TABLE = "cybertrain_cache"
 
     # The name of the scheduled task that prunes the table.
     PRUNE_TASK = "cybertrain cache prune"
 
     # Cache.prune deletes at most this many rows per statement, so the
-    # writer lock is released between batches.
+    # locks a statement takes (SQLite's write lock, MySQL's row locks) are
+    # released between batches.
     PRUNE_BATCH = 1000
 
+    # The column `key` is written `` `key` ``: a reserved word in MySQL,
+    # which quotes names with backticks, and a name SQLite reads the same
+    # way (its quoting "for compatibility with MySQL").
+
     # A live row: one with no expiry, or whose expiry is now or later.
-    LIVE_SQL = "SELECT value FROM cybertrain_cache WHERE key = ? AND (expires_at IS NULL OR expires_at >= ?)"
-
-    # An expires_at of 0 is stored as NULL (never expires).
-    WRITE_SQL = "INSERT INTO cybertrain_cache (key, value, expires_at, updated_at) " \
-                "VALUES (?, ?, NULLIF(?, 0), ?) " \
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, " \
-                "expires_at = excluded.expires_at, updated_at = excluded.updated_at"
-
-    # write(unless_exist: true): an existing row is replaced only once it
-    # has expired (the DO UPDATE's WHERE is false for a live row, so no row
-    # changes).
-    ADD_SQL = "#{WRITE_SQL} WHERE cybertrain_cache.expires_at IS NOT NULL AND cybertrain_cache.expires_at < ?"
+    LIVE_SQL = "SELECT value FROM cybertrain_cache WHERE `key` = ? AND (expires_at IS NULL OR expires_at >= ?)"
 
     # race_condition_ttl: an expired row is given `n` more seconds; of the
     # callers that see it expired, the one whose UPDATE changed it
     # recomputes.
-    EXTEND_SQL = "UPDATE cybertrain_cache SET expires_at = ? WHERE key = ? " \
+    EXTEND_SQL = "UPDATE cybertrain_cache SET expires_at = ? WHERE `key` = ? " \
                  "AND expires_at IS NOT NULL AND expires_at < ?"
 
-    # ?1 key, ?2 by, ?3 expires_at (0: none given), ?4 now. A missing row
-    # starts at `by`, an expired one too (and loses its old expiry); a live
-    # one adds `by` to its value read as an Integer (text that is not a
-    # number counts as 0). A given expiry replaces the row's.
-    INCREMENT_SQL = "INSERT INTO cybertrain_cache (key, value, expires_at, updated_at) " \
-                    "VALUES (?1, ?2, NULLIF(?3, 0), ?4) " \
-                    "ON CONFLICT(key) DO UPDATE SET " \
-                    "value = CASE WHEN cybertrain_cache.expires_at IS NOT NULL AND cybertrain_cache.expires_at < ?4 " \
-                    "THEN ?2 ELSE CAST(cybertrain_cache.value AS INTEGER) + ?2 END, " \
-                    "expires_at = CASE WHEN cybertrain_cache.expires_at IS NOT NULL AND cybertrain_cache.expires_at < ?4 " \
-                    "THEN NULLIF(?3, 0) " \
-                    "WHEN cybertrain_cache.expires_at IS NULL AND ?3 > 0 THEN ?3 " \
-                    "ELSE cybertrain_cache.expires_at END, " \
-                    "updated_at = ?4 " \
-                    "RETURNING CAST(value AS INTEGER) AS n"
-
-    PRUNE_SQL = "DELETE FROM cybertrain_cache WHERE rowid IN (SELECT rowid FROM cybertrain_cache " \
-                "WHERE expires_at IS NOT NULL AND expires_at < ? LIMIT #{PRUNE_BATCH})"
+    # The write, increment and prune statements are the adapter's
+    # (DB::Dialect.cache_write, cache_increment, cache_prune).
 
     # The DB.generation the table was last ensured for; -1 for never (as
     # Job's and Lease's).
@@ -107,7 +83,7 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.install!
-      DB.with { |c| c.exec_script(TABLE_SQL) }
+      DB.with { |c| DB::Dialect.framework_table_install(c, TABLE, DB::Dialect.cache_table_sql) }
       # A CREATE inside a transaction that rolls back is undone, so only one
       # outside a transaction is remembered (as Job.install! does).
       @installed_generation = DB.generation if DB.outside_transaction?
@@ -290,15 +266,7 @@ module Cybertrain
       now = Cache.now
       prune_if_due(now)
       expires_at = expires_in > 0 ? now + expires_in : 0
-      sql = unless_exist ? ADD_SQL : WRITE_SQL
-      binds = Cast.binds(key, value, expires_at, now)
-      binds << now if unless_exist
-      changed = 0
-      DB.with do |c|
-        c.execute(sql, binds)
-        changed = c.changes
-      end
-      changed > 0
+      DB.with { |c| DB::Dialect.cache_write(c, key, value, expires_at, now, unless_exist) }
     end
 
     # Removes the row of `key`, live or expired.
@@ -310,7 +278,7 @@ module Cybertrain
       ensure_installed
       changed = 0
       DB.with do |c|
-        c.execute("DELETE FROM cybertrain_cache WHERE key = ?", [key])
+        c.execute("DELETE FROM cybertrain_cache WHERE `key` = ?", [key])
         changed = c.changes
       end
       changed > 0
@@ -331,6 +299,15 @@ module Cybertrain
     # new or expired row, and of a live row that has none; a live row that
     # has one keeps it, so the counter's window is fixed from its first
     # increment (as Rails' stores do) and does not slide with every call.
+    # The count is a 64-bit integer on SQLite; on MySQL it must stay within
+    # -2**62 ... 2**62 - 1. Past the top the statement fails with DB::Error
+    # (MySQL 1690) and nothing is written; past the bottom the new count is
+    # written and the call raises DB::ConnectionLost, since the client
+    # cannot read the insert id that carries it back. A stored value beyond
+    # the 64-bit range (a long digit string written with Cache.write) is
+    # read as SQLite reads it, saturated to the end it passed, so adding to
+    # it is outside the counter's range, with the errors above (1690 for a
+    # value past the top).
     # @example A counter for the current minute
     #   Cybertrain::Cache.increment("hits/#{ip}", expires_in: 60)
     # @param key [String]
@@ -346,10 +323,7 @@ module Cybertrain
       now = Cache.now
       prune_if_due(now)
       expires_at = expires_in > 0 ? now + expires_in : 0
-      rows = DB.with { |c| c.execute(INCREMENT_SQL, Cast.binds(key, by, expires_at, now)) }
-      return 0 if rows.empty?
-
-      Cast.int(rows[0]["n"])
+      DB.with { |c| DB::Dialect.cache_increment(c, key, by, expires_at, now) }
     end
 
     # Removes every row.
@@ -363,8 +337,9 @@ module Cybertrain
     end
 
     # Deletes the rows expired at `now` (an `expires_at` before it), at
-    # most 1000 per statement so the writer lock is released between
-    # batches. The scheduled task `"cybertrain cache prune"` calls it with
+    # most 1000 per statement so the locks a statement takes (SQLite's write
+    # lock, MySQL's row locks) are released between batches, outside a
+    # caller's transaction. The scheduled task `"cybertrain cache prune"` calls it with
     # {Cache.now}.
     # @param now [Integer] epoch seconds
     # @return [Integer] how many rows were deleted
@@ -387,12 +362,7 @@ module Cybertrain
     # @return [Integer] how many rows were deleted
     # @api private
     def self.prune_batch(now)
-      deleted = 0
-      DB.with do |c|
-        c.execute(PRUNE_SQL, [now])
-        deleted = c.changes
-      end
-      deleted
+      DB.with { |c| DB::Dialect.cache_prune(c, now, PRUNE_BATCH) }
     end
 
     # Without jobs (no loaded feature runs periodic work:

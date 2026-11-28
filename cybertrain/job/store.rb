@@ -1,15 +1,17 @@
 # Required by cybertrain/job.rb, after the registry it reads.
 module Cybertrain
   module Job
-    # The queue's rows: every SQL statement on `cybertrain_jobs` is here,
-    # and nothing else is. A method is one storage operation (create the
+    # The queue's rows: every SQL statement on `cybertrain_jobs` is here
+    # (or, where the adapters differ, in DB::Dialect's job_* methods), and
+    # nothing else is. A method is one storage operation (create the
     # table, insert a row, claim the oldest due row, write a claimed
     # attempt's outcome, touch heartbeats, requeue stale rows, count,
     # prune), atomic where the queue's guarantees need it: the claim is one
-    # BEGIN IMMEDIATE transaction and the outcome write is one UPDATE
-    # fenced by the claim. It starts no thread, sleeps nowhere, calls no
-    # handler and does not know whether a pool runs: {Job::Executor} and
-    # {Job::Worker} call it, and it reads the registry ({Job::HANDLERS},
+    # BEGIN IMMEDIATE transaction (on MySQL, BEGIN and a SELECT ... FOR
+    # UPDATE of the row: DB::Dialect.job_claim_lock) and the outcome write
+    # is one UPDATE fenced by the claim. It starts no thread, sleeps
+    # nowhere, calls no handler and does not know whether a pool runs:
+    # {Job::Executor} and {Job::Worker} call it, and it reads the registry ({Job::HANDLERS},
     # through Job's lookups) only for what a statement depends on, the
     # concurrency limits and keys. A claim carries its caller's ticket,
     # which the store hands back to {Job.claim_open?} once it holds the
@@ -33,22 +35,9 @@ module Cybertrain
       # job's log lines carry it. A table made before these columns
       # existed gets them from install! (ALTER_COLUMNS), last, so an upgraded
       # table lists the same columns in the same order as a new one.
-      TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_jobs (" \
-                  "id INTEGER PRIMARY KEY AUTOINCREMENT, " \
-                  "kind TEXT NOT NULL, " \
-                  "payload TEXT NOT NULL DEFAULT '', " \
-                  "run_at INTEGER NOT NULL, " \
-                  "attempts INTEGER NOT NULL DEFAULT 0, " \
-                  "last_error TEXT NOT NULL DEFAULT '', " \
-                  "state TEXT NOT NULL DEFAULT 'queued', " \
-                  "created_at INTEGER NOT NULL, " \
-                  "updated_at INTEGER NOT NULL, " \
-                  "claimed_by TEXT, " \
-                  "heartbeat_at INTEGER, " \
-                  "concurrency_key TEXT NOT NULL DEFAULT '', " \
-                  "request_id TEXT NOT NULL DEFAULT ''); " \
-                  "CREATE INDEX IF NOT EXISTS index_cybertrain_jobs_on_state_and_run_at " \
-                  "ON cybertrain_jobs (state, run_at);"
+      # The CREATE TABLE and its (state, run_at) index are the adapter's
+      # (DB::Dialect.job_table_sql), run by
+      # DB::Dialect.framework_table_install.
 
       # The columns added after the table's first release, each with the
       # ALTER TABLE that adds it to an older table.
@@ -58,11 +47,6 @@ module Cybertrain
         ["concurrency_key", "ALTER TABLE cybertrain_jobs ADD COLUMN concurrency_key TEXT NOT NULL DEFAULT ''"],
         ["request_id", "ALTER TABLE cybertrain_jobs ADD COLUMN request_id TEXT NOT NULL DEFAULT ''"]
       ].freeze
-
-      # The index the claim's per-key count and the backfill read, created
-      # once concurrency_key exists (after the ALTERs, for an older table).
-      KEY_INDEX_SQL = "CREATE INDEX IF NOT EXISTS cybertrain_jobs_state_kind_key " \
-                      "ON cybertrain_jobs (state, kind, concurrency_key)"
 
       # Job.backfill_keys reads and keys this many rows at a time.
       BACKFILL_BATCH = 1000
@@ -153,9 +137,11 @@ module Cybertrain
       # {Job.install!}: creates the table and its indexes if they are
       # missing, and adds the columns an earlier release's table lacks.
       def self.install!
-        DB.with { |c| c.exec_script(TABLE_SQL) }
+        DB.with { |c| DB::Dialect.framework_table_install(c, TABLE, DB::Dialect.job_table_sql) }
         add_missing_columns
-        DB.with { |c| c.execute(KEY_INDEX_SQL) }
+        # The index the claim's per-key count and the backfill read, once
+        # concurrency_key exists (after the ALTERs, for an older table).
+        DB.with { |c| DB::Dialect.job_key_index(c) }
         # Only a CREATE outside a transaction is remembered: one inside a
         # transaction that rolls back is gone again
         # ({DB.outside_transaction?}).
@@ -163,16 +149,19 @@ module Cybertrain
         nil
       end
 
-      # The ALTER TABLEs of the ALTER_COLUMNS `PRAGMA table_info` does not
-      # list. Two processes upgrading at once could both see a column missing:
+      # The ALTER TABLEs of the ALTER_COLUMNS DB::Dialect.column_names does
+      # not list. Two processes upgrading at once could both see a column missing:
       # outside a transaction the read and the ALTERs run under the write lock
       # (BEGIN IMMEDIATE), and a "duplicate column name" from a process that
       # still won the race (inside a caller's transaction, or an older
       # release's ALTER) is taken as "already there" and the check runs again.
+      # (MySQL takes no table lock at BEGIN, so there the race is caught only
+      # by this rescue; its message is "Duplicate column name", SQLite's
+      # "duplicate column name", hence the comparison without case.)
       def self.add_missing_columns
         add_columns_once
       rescue Cybertrain::DB::Error => e
-        raise e unless e.message.include?("duplicate column")
+        raise e unless e.message.downcase.include?("duplicate column")
 
         add_columns_once
       end
@@ -187,9 +176,7 @@ module Cybertrain
       end
 
       def self.alter_missing(conn)
-        rows = conn.execute("PRAGMA table_info('cybertrain_jobs')")
-        present = Array.new(0) { "" }
-        rows.each { |r| present << Cast.str(r["name"]) }
+        present = DB::Dialect.column_names(conn, "cybertrain_jobs")
         ALTER_COLUMNS.each do |pair|
           conn.execute(pair[1]) unless present.include?(pair[0])
         end
@@ -404,12 +391,14 @@ module Cybertrain
       # heartbeat, and comes back as the {Job::Run} of that attempt. When
       # nothing is due, or another claimer took the row, the Run's run_id
       # is -1 (a typed "none": NOTES rules 11/56) and nothing was written.
-      # `ticket` is the caller's, opaque here: under the write lock, before
-      # anything is read or written, the claim asks {Job.claim_open?}
-      # whether the caller still wants a row, and takes none when it does
-      # not. The wait for the lock can be long (another process's
-      # transaction), and what the caller checked before the wait may no
-      # longer hold after it.
+      # `ticket` is the caller's, opaque here: the claim asks
+      # {Job.claim_open?} whether the caller still wants a row, and takes
+      # none when it does not, once before it reads and again with the row
+      # locked, before it writes (SQLite waits for its write lock at the
+      # BEGIN IMMEDIATE, before the first question; MySQL at the SELECT,
+      # between the two). The wait for the lock can be long (another
+      # process's transaction), and what the caller checked before the wait
+      # may no longer hold after it.
       def self.claim(now, label, ticket)
         ensure_installed
         # A read outside any transaction first: an idle thread then takes no
@@ -428,8 +417,13 @@ module Cybertrain
         # claimers (threads or processes) can both take the last free slot.
         limited = Job.limits?
         DB.transaction(immediate: true) do |c|
-          # The lock is held from here: the caller's last word on the claim.
+          # On SQLite the write lock is held from here, so this is the
+          # caller's last word on the claim; on MySQL the locks come with the
+          # statements below, and the claim is asked again after them.
           if Job.claim_open?(ticket)
+            # (MySQL takes row locks, not one write lock: the adapter makes
+            # a limited claim wait for another's COMMIT before it counts.)
+            DB::Dialect.job_claim_serialize(c, now) if limited
             pairs = Array.new(0) { "" }
             excluded = limited ? kinds_at_limit(c, pairs) : Array.new(0) { "" }
             # The SELECT leaves out the `excluded` kinds (one bound `?`
@@ -446,7 +440,15 @@ module Cybertrain
               j += 2
             end
             sql << " ORDER BY run_at, id LIMIT 1"
-            run = take_first(c, c.execute(sql, binds), label, now)
+            sql << DB::Dialect.job_claim_lock
+            found = c.execute(sql, binds)
+            # Asked again once the SELECT returned: on MySQL the BEGIN above
+            # took no lock, and the wait for one (job_claim_serialize's, or
+            # the row lock of the SELECT's FOR UPDATE) came after the first
+            # question; a stop requested during that wait is seen here,
+            # before the row is taken. (On SQLite both questions run under
+            # the write lock BEGIN IMMEDIATE took, and answer alike.)
+            run = take_first(c, found, label, now) if Job.claim_open?(ticket)
           end
         end
         run
@@ -473,6 +475,7 @@ module Cybertrain
             binds << kind
           end
           sql << " ORDER BY id LIMIT 1"
+          sql << DB::Dialect.job_claim_lock
           run = take_first(c, c.execute(sql, binds), label, now)
         end
         run
@@ -485,8 +488,9 @@ module Cybertrain
 
       # Claims the first of `rows` (a claim SELECT's result) for `label` and
       # answers its Run, or {no_run} when there is no row or another claimer
-      # took it. Must be called inside the caller's BEGIN IMMEDIATE, on its
-      # connection: the SELECT and this UPDATE are one claim.
+      # took it. Must be called inside the caller's transaction, on its
+      # connection (BEGIN IMMEDIATE on SQLite; on MySQL the claim SELECT's
+      # FOR UPDATE holds the row): the SELECT and this UPDATE are one claim.
       def self.take_first(conn, rows, label, now)
         return no_run(label, now) if rows.empty?
 

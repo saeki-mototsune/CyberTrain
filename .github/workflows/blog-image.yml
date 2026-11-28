@@ -46,6 +46,7 @@ on:
       - "cybertrain/ident.rb"
       - "cybertrain/crypto.rb"
       - "cybertrain/generator/inflector.rb"
+      - "cybertrain/generator/dialect.rb"
   workflow_dispatch:
   # release.yml runs this file on the tag before it creates a release, in
   # the tag's own run: the checkout below takes the commit that run started

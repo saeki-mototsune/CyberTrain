@@ -1,4 +1,6 @@
+require "cybertrain/db"
 require "cybertrain/db/cli"
+require "cybertrain/db/sqlite/cli"
 require "cybertrain/test"
 
 # This program links SQLite through FFI, so it cannot run under CRuby: its

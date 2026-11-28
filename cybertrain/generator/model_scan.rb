@@ -202,6 +202,7 @@ module Cybertrain
         model_concern_insert_at model_concern_insert_done
         insert_all insert_all! upsert_all insert_all_into no_decimal_scales no_column_types no_encrypted_columns bulk_method_name
         bulk_empty_row bulk_column bulk_columns bulk_cells typed_bind bulk_conflict_sql bulk_returned_row
+        bulk_updated_columns bulk_write_and_select bulk_key_rows bulk_key_index bulk_found_row bulk_index_rows bulk_row_key bulk_unique_key
         hash inspect to_s then raise fail
       ]
 

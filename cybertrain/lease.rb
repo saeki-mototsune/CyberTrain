@@ -1,5 +1,5 @@
 require "cybertrain/cast"
-require "cybertrain/db"
+require "cybertrain/db/base"
 
 module Cybertrain
   # Cybertrain::Lease -- a named lock with an expiry, kept in the
@@ -17,17 +17,9 @@ module Cybertrain
   # `db/schema.rb`, like `cybertrain_jobs`.
   # @api public
   module Lease
-    TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_leases (" \
-                "name TEXT PRIMARY KEY, " \
-                "holder TEXT NOT NULL, " \
-                "expires_at INTEGER NOT NULL);"
-
-    # One statement takes a free lease, renews our own, and takes over an
-    # expired one; a lease another holder still has is left alone (the DO
-    # UPDATE's WHERE is false, so no row changes).
-    ACQUIRE_SQL = "INSERT INTO cybertrain_leases (name, holder, expires_at) VALUES (?, ?, ?) " \
-                  "ON CONFLICT(name) DO UPDATE SET holder = excluded.holder, expires_at = excluded.expires_at " \
-                  "WHERE cybertrain_leases.holder = excluded.holder OR cybertrain_leases.expires_at < ?"
+    # The table is the adapter's (DB::Dialect.lease_table_sql), created by
+    # DB::Dialect.framework_table_install.
+    TABLE = "cybertrain_leases"
 
     # The DB.generation the table was last ensured for; -1 for never (as
     # Job's).
@@ -38,7 +30,7 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.install!
-      DB.with { |c| c.exec_script(TABLE_SQL) }
+      DB.with { |c| DB::Dialect.framework_table_install(c, TABLE, DB::Dialect.lease_table_sql) }
       # A CREATE inside a transaction that rolls back is undone, so only one
       # outside a transaction is remembered (as Job.install! does).
       @installed_generation = DB.generation if DB.outside_transaction?
@@ -63,13 +55,11 @@ module Cybertrain
     # @api public
     def self.acquire(name, holder, now, ttl:)
       ensure_installed
-      binds = Cast.binds(name, holder, now + ttl, now)
-      won = false
-      DB.with do |c|
-        c.execute(ACQUIRE_SQL, binds)
-        won = c.changes == 1
-      end
-      won
+      # One statement takes a free lease, renews our own, and takes over an
+      # expired one; a lease another holder still has is left alone
+      # (DB::Dialect.lease_acquire).
+      expires_at = now + ttl
+      DB.with { |c| DB::Dialect.lease_acquire(c, name, holder, expires_at, now) }
     end
 
     # Gives the lease up if `holder` has it (another holder's is left), so

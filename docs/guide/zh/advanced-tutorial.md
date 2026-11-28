@@ -1,5 +1,5 @@
 ---
-source_sha256: 66999cb2e64c8060c3a4cd7100fab0efa7c77701391e63b73ae9b4f068b1db93
+source_sha256: 5b38950394c6e05d1c8ade68057260208b4ecc135960cf4797c10c3a5f3625e2
 title: "进阶教程：把博客继续推进"
 description: "用 CyberTrain 继续推进入门指南中的博客：组件和辅助方法、用 Turbo Streams 实时推送评论、后台作业、JSON、登录、上传的封面图片，以及用 cybertrain build 为部署而构建。"
 og_title: "进阶教程：把 CyberTrain 博客继续推进"
@@ -603,7 +603,7 @@ kamal deploy   # 之后的每次部署
 
 <!-- list: points know -->
 - 会话只能保存 String，存放在加密的 cookie 中。
-- 仅支持 SQLite，通过 Spinel 的 FFI 访问。
+- 数据库是通过 Spinel 的 FFI 访问的 SQLite，或 MySQL 8.0；每次构建一种。
 - 没有回溯（backtrace）：错误只显示类、消息、请求行以及模板名/行号。
 - 视图中拼错的属性会抛出异常（`undefined method 'titel' for Article`）；值为 `nil` 的列则渲染为空。
 - 关联来自外键或一行声明；不支持 `has_many :through`、枚举、STI 或多态关联。

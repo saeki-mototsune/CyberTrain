@@ -1,0 +1,57 @@
+#!/usr/bin/env ruby
+# The database adapter is chosen by an entry's require and nowhere else.
+# Spinel compiles every method of every file a program requires, so a file
+# that requires "cybertrain/db" (the base and the SQLite adapter),
+# "cybertrain/db/sqlite" or "cybertrain/db/mysql" puts that adapter into
+# every program that requires the file, and an application on the other
+# adapter would compile both. Everything else under cybertrain/ requires
+# "cybertrain/db/base", the adapter-independent layer.
+#
+# This reads the source, lexically (CRuby's standard library only): a
+# `require "..."` or `require("...")` of one of ADAPTER_SPECS (either quote,
+# at the start of a line or after a `;`, outside a comment), in a file under
+# cybertrain/ that is not in ALLOWED, fails with the file name and line.
+#
+# usage: script/check-db-adapter
+ROOT = File.expand_path("..", __dir__)
+
+# The requires that name an adapter ("cybertrain/db" is base + SQLite).
+ADAPTER_SPECS = %w[cybertrain/db cybertrain/db/sqlite cybertrain/db/mysql].freeze
+
+# The entries that may name one, relative to cybertrain/: the core and the
+# library entry of each adapter, the compatibility entry db.rb, and the test
+# bundle of each adapter.
+ALLOWED = %w[
+  core.rb db.rb core/mysql.rb mysql.rb test/bundle.rb test/bundle_mysql.rb
+].freeze
+
+REQUIRE = /(?:\A|;)\s*require\s*\(?\s*(["'])([^"']+)\1/
+
+# The specs of the adapter requires on one line (a comment is not code).
+def adapter_requires(line)
+  code = line.sub(/\A\s*#.*/, "")
+  specs = []
+  code.scan(REQUIRE) { |_quote, spec| specs << spec if ADAPTER_SPECS.include?(spec) }
+  specs
+end
+
+failures = []
+files = Dir.glob(File.join(ROOT, "cybertrain", "**", "*.rb")).sort
+files.each do |path|
+  name = path.delete_prefix("#{File.join(ROOT, "cybertrain")}/")
+  next if ALLOWED.include?(name)
+
+  File.foreach(path, encoding: "UTF-8").with_index(1) do |line, n|
+    adapter_requires(line.chomp).each do |spec|
+      failures << "cybertrain/#{name}:#{n}: requires #{spec.inspect}; only #{ALLOWED.join(", ")} may (use \"cybertrain/db/base\")"
+    end
+  end
+end
+
+if failures.empty?
+  puts "check-db-adapter: #{files.size} files under cybertrain/; the adapter is named only by #{ALLOWED.join(", ")}"
+else
+  puts "check-db-adapter: a file names a database adapter (#{failures.size}):"
+  failures.each { |f| puts "  #{f}" }
+  exit 1
+end

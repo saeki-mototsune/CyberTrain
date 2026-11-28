@@ -34,6 +34,8 @@ module Cybertrain
 
     # The line that loads every subsystem.
     EVERYTHING = "cybertrain"
+    # The same with the MySQL adapter (docs/design.md D96).
+    EVERYTHING_MYSQL = "cybertrain/mysql"
 
     # Every subsystem's name, in the table's order.
     # @return [Array<String>]
@@ -79,12 +81,12 @@ module Cybertrain
       out
     end
 
-    # The subsystems `require "LINE"` loads: all of them for "cybertrain",
-    # the line's own and those it loads besides, none for another line.
+    # The subsystems `require "LINE"` loads: all of them for "cybertrain"
+    # and "cybertrain/mysql", the line's own and those it loads besides, none for another line.
     # @param line [String] the require's argument
     # @return [Array<String>]
     def self.loaded_by(line)
-      return subsystem_names if line == EVERYTHING
+      return subsystem_names if line == EVERYTHING || line == EVERYTHING_MYSQL
 
       out = Array.new(0) { "" }
       ROWS.each do |row|

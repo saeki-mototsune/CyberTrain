@@ -1,9 +1,9 @@
 ---
-source_sha256: 9448b08f2105bfebf96da9fa441104f830033615cec5905c22830b88988af371
+source_sha256: 5508f9f060e3e3ca9a9ada2b047e0e7d1ad60bec891c513ebee81baba949fe0d
 ---
 # Modèles et base de données
 
-Ce que fait un modèle au-delà du scaffold&nbsp;: les migrations, les types de colonnes, les requêtes, les associations, les validations, les colonnes chiffrées, la pagination, les transactions, les règles que suivent sous Spinel les noms de colonnes et les clauses `order`, et la reprise d’une base de données créée par Rails.
+Ce que fait un modèle au-delà du scaffold&nbsp;: les migrations, les types de colonnes, les requêtes, les associations, les validations, les colonnes chiffrées, la pagination, les transactions, les règles que suivent sous Spinel les noms de colonnes et les clauses `order`, la reprise d’une base de données créée par Rails, et ce qui change sur MySQL.
 
 ## Migrations
 
@@ -447,7 +447,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1 (by: n for another step)
 Comment.where(article_id: article.id).pluck_int(:id)      # => [3, 7]   (existent aussi : pluck_str, pluck_float)
 Comment.all.count_by(:article_id)                         # => {"1" => 2, "4" => 1}
-Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # regroupement par heure
+Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # regroupement par heure (le strftime de SQLite ; sur MySQL, DATE_FORMAT(created_at, '%Y-%m-%dT%H'))
 Stat.where(project_id: 1).sum_int(:calls)                 # existe aussi : sum_float
 Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%' ESCAPE '\'
 ```
@@ -1008,6 +1008,8 @@ Article.transaction(immediate: true) do |c|
 end
 ```
 
+Sur MySQL, `immediate: true` n’a aucun effet&nbsp;: MySQL n’a pas de verrou d’écriture à prendre au `BEGIN`, les deux formes envoient donc `BEGIN`, et deux tels blocs ne s’exécutent pas l’un après l’autre. Chaque bloc lit un instantané qui ne prend aucun verrou (REPEATABLE READ)&nbsp;: deux blocs qui vérifient quelque chose puis écrivent peuvent passer tous les deux la vérification, et écrire tous les deux. Faites porter la vérification par l’écriture (un index unique&nbsp;; un `UPDATE ... WHERE` qui nomme l’ancienne valeur, et un coup d’œil à `c.changes`), ou verrouillez ce que lit le bloc avec du SQL à vous&nbsp;: `c.execute("SELECT id FROM accounts WHERE id = ? FOR UPDATE", [id])` garde la ligne jusqu’au `COMMIT`. Sur un résultat vide, il verrouille l’intervalle où la ligne irait, si bien que l’insertion d’un second bloc à cet endroit attend&nbsp;; quand deux blocs lisent le même intervalle vide en même temps, MySQL annule l’un d’eux (`Cybertrain::DB::Deadlock`). Le `SetupController` qu’écrit `generate authentication --invite-only` sur MySQL vérifie ainsi l’existence du premier utilisateur.
+
 En quoi elle diffère du `transaction` de Rails, et ce qu’il faut éviter&nbsp;:
 
 - Elle renvoie nil plutôt que la valeur du bloc.
@@ -1168,6 +1170,35 @@ Un fichier SQLite créé par une application Rails 8 se lit tel quel&nbsp;:
 Écrivez ensuite `app/models/*.rb` avec les validations, les associations et
 les scopes qu’avaient les modèles Rails, sous les formes que montre cette
 page.
+
+## MySQL
+
+Une application compilée avec `require "cybertrain/mysql"` ([Configuration, «&nbsp;MySQL&nbsp;»](configuration.md#mysql)) exécute les mêmes modèles, migrations et requêtes sur MySQL 8.0, et ils répondent ce qu’ils répondent sur SQLite&nbsp;; `docs/compatibility.md` liste les différences avec les tests qui les fixent. Ce que rencontre le code d’un modèle&nbsp;:
+
+- **Types de colonnes.** `string` est `VARCHAR(255)` (`limit:` le change), `text` `MEDIUMTEXT`, `integer` `INT` (un `id` et tout `*_id` entier sont `BIGINT`), `boolean` `TINYINT(1)`, `decimal` `DECIMAL(p,s)`, `float` `DOUBLE`, `date` `DATE`, `datetime` `DATETIME(6)` en UTC, `json` `JSON`, `binary` `LONGBLOB`. Les attributs se lisent comme sur SQLite.
+- **Les comparaisons sont exactes.** Les tables utilisent `utf8mb4` avec la collation binaire `utf8mb4_0900_bin`&nbsp;: `where`, `uniqueness` et un index unique distinguent `"A"` de `"a"` et `"a"` de `"a "`, comme SQLite. `LIKE` et `where_like` sont donc sensibles à la casse aussi, là où le LIKE de SQLite ignore la casse ASCII&nbsp;: pour un champ de recherche, comparez `LOWER(title) LIKE ?` à un motif en minuscules.
+- **Le JSON est normalisé.** Le serveur stocke `{"k": [1, 2]}` pour `{"k":[1,2]}`&nbsp;: le Hash que lit l’attribut est le même, le texte stocké (dans `execute`, un dump, un `ORDER BY`) ne l’est pas.
+- **Les décimaux hors limites sont refusés.** Le `sql_mode` strict de la connexion refuse une valeur hors de la précision de la colonne (`Out of range value for column 'price'`, erreur 1264) là où SQLite stocke le Float&nbsp;; cela touche `update_columns`, `update_all` et les écritures en masse, qui sautent la validation que fait `save` ([Les décimaux sont des Floats](#decimals-are-floats)). Un Float non fini (`Infinity`, `NaN`) est refusé comme valeur liée, dans toute colonne, avec `Cybertrain::DB::Error` avant l’envoi de l’instruction&nbsp;; SQLite stocke les infinis, et stocke NaN comme NULL.
+- **Le texte d’un décimal.** Une colonne `DECIMAL(p,s)` lue comme texte (`execute`) porte son échelle sur MySQL, `"9.50"` là où SQLite répond `"9.5"`&nbsp;; l’attribut décimal d’un modèle est le même Float sur les deux.
+- **Erreurs.** Une violation de contrainte lève les mêmes classes sur les deux (`Cybertrain::DB::UniqueViolation`, `ForeignKeyViolation`&nbsp;; sur MySQL aussi `Deadlock`, `LockTimeout` et `ConnectionLost`)&nbsp;; le message est celui du serveur (`Duplicate entry 'x' for key ... (MySQL 1062, 23000)`)&nbsp;: comparez la classe, pas le texte.
+- **Le `update:` de `upsert`.** La nouvelle ligne est `excluded` sur les deux, mais un nom de colonne nu est ambigu sur MySQL (erreur 1052)&nbsp;: qualifiez les colonnes de la table, et utilisez `GREATEST` / `LEAST` pour le `MAX` / `MIN` à deux arguments de SQLite&nbsp;:
+
+```ruby
+# MySQL : INSERT ... AS excluded ON DUPLICATE KEY UPDATE ...
+Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: Time.now },
+            conflict: [:project_id, :key],
+            update: { calls: "stats.calls + excluded.calls", max_ms: "GREATEST(stats.max_ms, excluded.max_ms)",
+                      seen_at: "excluded.seen_at" })
+```
+
+- **La cible du conflit.** Le `conflict:` de `upsert` et le `unique_by:` de `upsert_all` doivent être exactement les colonnes de la clé primaire ou d’un index unique (dans n’importe quel ordre), comme sur SQLite, sinon `Cybertrain::DB::Error` (`upsert: ... is not the primary key or a unique index of ...`) avant que rien ne soit écrit. Une ligne qui entre en conflit sur une autre clé unique lève `Cybertrain::DB::UniqueViolation`, et l’instruction n’écrit rien. Une différence est gardée&nbsp;: une ligne en conflit à la fois sur la cible et sur une autre clé unique lève une erreur, là où SQLite peut mettre à jour la ligne de la cible. `upsert` répond 1 pour une ligne insérée ou mise à jour et 0 pour une ligne qu’un `update:` vide a laissée, comme sur SQLite. Les clés uniques sont lues une fois par table et par connexion&nbsp;: après qu’un autre processus a changé le schéma, redémarrez celui-ci.
+- **`returning:`.** MySQL n’a pas de `RETURNING`&nbsp;: `insert_all` et `upsert_all` relisent les lignes dans la même transaction et répondent les lignes que SQLite répondrait. Sur une table qui a un index unique (en plus de la clé primaire), `insert_all(..., returning:)` demande que les lignes fournissent toutes les colonnes d’un tel index, sinon il lève `Cybertrain::DB::Error` avant d’écrire&nbsp;: un doublon ignoré ne pourrait pas être distingué autrement.
+- **Les migrations ne sont pas annulées.** Le DDL de MySQL est validé à mesure qu’il s’exécute&nbsp;: une migration qui échoue à mi-chemin garde ce qui a tourné avant l’instruction en échec&nbsp;: `migration V failed at statement 2 of 3; statements 1..1 were applied and cannot be rolled back (MySQL DDL commits implicitly): ...`. La version n’est pas enregistrée&nbsp;; défaites la partie appliquée (ou terminez-la à la main) avant de relancer `db migrate`. L’adaptateur MySQL de Rails fait de même. Gardez un changement par migration quand c’est possible.
+- **Pas d’index partiels.** `add_index ..., where:` arrête `spin run gen` avec le fichier et la ligne (`partial indexes (where:) are not supported on MySQL`) avant que rien ne soit écrit&nbsp;; indexez la colonne entière, ou mettez la condition dans une colonne générée.
+- **Index sur une expression.** MySQL n’accepte une expression qu’entre ses propres parenthèses&nbsp;: `execute "CREATE UNIQUE INDEX index_users_on_lower_email ON users ((LOWER(email)))"`. La forme à une seule paire de parenthèses de [Migrations](#migrations) est celle de SQLite, et une erreur de syntaxe (1064) sur MySQL. `db/schema.rb` écrit l’index comme MySQL l’épelle, ``"(lower(`email`))"``.
+- **Le schéma.** `db/schema.rb` est extrait de `information_schema`. Pour les types et les options de colonne qu’utilise examples/blog, les mêmes migrations écrivent le même fichier que sur SQLite&nbsp;; les autres sont écrits tels que MySQL les conserve&nbsp;: le `limit: 255` d’une chaîne disparaît, le `scale: 0` d’un décimal disparaît ou apparaît, un `t.bigint` nommé `*_id` est écrit `t.integer`, la valeur par défaut d’un décimal porte son échelle, une valeur par défaut qui est une expression est écrite entre parenthèses (`(rand())`), un index sur une expression est le texte de MySQL, et une clé étrangère sans index en reçoit un. Un `db/schema.rb` écrit sur SQLite peut donc changer au premier `db migrate` sur MySQL&nbsp;; `docs/compatibility.md` en donne la liste. `db normalize`, `db backup` et `db vacuum` sont propres à SQLite.
+- **`transaction(immediate: true)` est un simple `BEGIN`.** Il ne fait pas s’exécuter l’un après l’autre deux blocs qui lisent puis écrivent, comme le fait le verrou d’écriture de SQLite&nbsp;: verrouillez les lignes que lit le bloc (`SELECT ... FOR UPDATE`), ou laissez un index unique ou un `UPDATE` gardé refuser la seconde écriture ([Transactions](#transactions)).
+- **Un seul processus.** Les jobs, les flux, les baux et les tâches planifiées sont garantis dans un processus&nbsp;; entre plusieurs processus ou hôtes sur une même base, pas avant l’étape 2 de la feuille de route MySQL ([Configuration, «&nbsp;MySQL&nbsp;»](configuration.md#mysql)).
 
 ## Mise à jour
 

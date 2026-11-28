@@ -1,0 +1,23 @@
+ok   lenenc_int encodes each size class
+ok   lenenc_int round trips at the boundaries
+ok   read_lenenc_int reads at an offset and reports the next position
+ok   read_lenenc_int refuses NULL, the error marker and short input
+ok   lenenc_str round trips, with NUL and 4-byte UTF-8
+ok   a long lenenc_str uses the 3-byte length
+ok   read_lenenc_str fails when the string is cut short
+ok   read_lenenc_str_or_nil gives nil for 0xFB and the string otherwise
+ok   int_le and read_int_le agree for 1 to 8 bytes
+ok   null_str reads up to the NUL and steps past it
+ok   a small packet has a 4-byte header and the sequence advances
+ok   reset_sequence starts the next exchange at 0
+ok   the sequence wraps at 256
+ok   a packet written by the client is read back
+ok   split_packet_roundtrip: 0xFFFFFF
+ok   split_packet_roundtrip: 0xFFFFFF + 1
+ok   split_packet_roundtrip: 2 * 0xFFFFFF + 5
+ok   split packets joined past the packet limit are ConnectionLost
+ok   a packet with the wrong sequence number is ConnectionLost
+ok   a continuation packet out of sequence is ConnectionLost
+ok   a stream that ends inside a packet is ConnectionLost
+ok   a failed write is ConnectionLost
+22 tests, 140 assertions, 0 failures

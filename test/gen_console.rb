@@ -1,3 +1,4 @@
+require "cybertrain/db"
 require "cybertrain/test"
 require "cybertrain/generator/console_emitter"
 

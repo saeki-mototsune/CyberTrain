@@ -17,74 +17,12 @@
 #
 # `require "cybertrain"` is the core and every subsystem. No file this one
 # requires may name a subsystem (script/check-core-closure).
-require "cybertrain/version"
-require "cybertrain/logger"
-require "cybertrain/html"
-require "cybertrain/http/parser"
-require "cybertrain/http/request"
-require "cybertrain/http/response"
-require "cybertrain/http/query"
-require "cybertrain/http/uploaded_file"
-require "cybertrain/http/multipart"
-require "cybertrain/http/cookies"
-require "cybertrain/params"
-require "cybertrain/context"
-require "cybertrain/middleware"
-require "cybertrain/middleware/static"
-require "cybertrain/middleware/request_logger"
-require "cybertrain/middleware/method_override"
-require "cybertrain/router"
-require "cybertrain/app"
-require "cybertrain/http/handler"
-require "cybertrain/context_handler"
-require "cybertrain/http/server"
-require "cybertrain/http/gzip_ffi"
+#
+# This entry is the core with the SQLite adapter: cybertrain/core/common
+# (everything but the adapter) and cybertrain/db (cybertrain/db/base plus
+# cybertrain/db/sqlite). cybertrain/core/mysql is the same with MySQL.
+require "cybertrain/core/common"
 require "cybertrain/db"
-require "cybertrain/clock"
-require "cybertrain/time_ext"
-require "cybertrain/zoned_time"
-require "cybertrain/durations"
-require "cybertrain/model"
-require "cybertrain/callback"
-require "cybertrain/active_support"
-require "cybertrain/locales/bundled"
-require "cybertrain/i18n"
-require "cybertrain/controller"
-require "cybertrain/crypto"
-require "cybertrain/encryptor"
-require "cybertrain/cookie_jar"
-require "cybertrain/blob_store"
-require "cybertrain/password"
-require "cybertrain/time_zone"
-require "cybertrain/session"
-require "cybertrain/flash"
-require "cybertrain/middleware/session_store"
-require "cybertrain/middleware/csrf_protection"
-require "cybertrain/middleware/error_pages"
-require "cybertrain/schema"
-require "cybertrain/schema/dumper"
-require "cybertrain/migration"
-require "cybertrain/generator/url_support"
-require "cybertrain/template"
-require "cybertrain/db/sqlite_ddl"
-require "cybertrain/db/migrator"
-require "cybertrain/db/schema_dumper"
-require "cybertrain/db/cli"
-require "cybertrain/views"
-require "cybertrain/number_helper"
-require "cybertrain/template/helpers"
-require "cybertrain/template/form_builder"
-require "cybertrain/config"
-require "cybertrain/error_reporter"
-require "cybertrain/token"
-require "cybertrain/feature"
-require "cybertrain/application"
-require "cybertrain/main"
-
-# The gzip inflater behind Request#decoded_body (system zlib through FFI),
-# spinel-http's spinel-http/gzip.rb, which installs itself when it loads
-# (cybertrain/http/gzip_ffi above requires it); the call states it here as
-# well and installs the same inflater again. It lives in its own file, not
-# in spinel-http/request.rb, because the request file must load under
-# CRuby, where the FFI DSL does not exist.
-Cybertrain::GzipFFI.install!
+# The database commands' SQLite part (cybertrain/db/cli.rb, which the
+# core requires, is what the adapters share).
+require "cybertrain/db/sqlite/cli"

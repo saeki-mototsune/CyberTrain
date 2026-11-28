@@ -1,5 +1,6 @@
 require "stringio"
 require "tmpdir"
+require "cybertrain/db"
 require "cybertrain/test"
 require "cybertrain/controller"
 require "cybertrain/rate_limit"

@@ -1,5 +1,6 @@
 # Cybertrain::Turbo: the Turbo Stream elements, a record as a target, and
 # escaping. No database.
+require "cybertrain/db"
 require "cybertrain/turbo"
 require "cybertrain/test"
 

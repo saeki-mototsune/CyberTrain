@@ -1,4 +1,3 @@
-require "cybertrain/db/connection"
 require "cybertrain/logger"
 
 module Cybertrain
@@ -17,8 +16,17 @@ module Cybertrain
     class Pool
       attr_reader :size
 
-      # The path given to new (DB.connected_path).
+      # The path given to new (DB.connected_path). On MySQL it is the whole
+      # DATABASE_URL, password included: never put it in a message or a log
+      # line; Connection.target_label(pool_path) is the form to show.
       def pool_path = @path
+
+      # Names the target as Connection.target_label shows it, never the
+      # raw path (on MySQL the URL holds the password).
+      # @return [String]
+      def inspect
+        "#<Cybertrain::DB::Pool #{Connection.target_label(@path)} size=#{@size}>"
+      end
 
       def initialize(path, size = 4)
         @path = path
@@ -63,11 +71,18 @@ module Cybertrain
       # anything (the closed connections are still queued; nothing may be
       # reopened or run against them), every time.
       # Otherwise a slot holding a closed connection (check_in closed it after
-      # a failed ROLLBACK) is reopened here, on the checkout that needs it:
-      # should the open fail, its error reaches this caller before the block
-      # runs (no exception of the block's is masked) and the ensure puts the
-      # closed connection back, so the slot survives and the next checkout
-      # tries again.
+      # a failed ROLLBACK, or the connection closed itself when it lost its
+      # session: DB::ConnectionLost) is reopened here, on the checkout that
+      # needs it: should the open fail, its error reaches this caller before
+      # the block runs (no exception of the block's is masked) and the
+      # ensure puts the closed connection back, so the slot survives and the
+      # next checkout tries again. A closed connection is never handed out.
+      # The connection is told it was checked out (Connection#checked_out!)
+      # and is not pinged first: a ping would cost every checkout a round
+      # trip. A MySQL connection whose session the server ended while it
+      # sat here finds out on its first statement, which alone may reopen
+      # the session and run again (outside a transaction only); the SQLite
+      # Connection's checked_out! does nothing.
       # Inside a Cybertrain::DB.transaction on this thread, the block gets
       # that transaction's connection instead (see held_index), with no
       # checkout and no check_in (which would roll the transaction back), so
@@ -84,6 +99,7 @@ module Cybertrain
           conn = @available.pop
           begin
             conn = reopen(conn) if conn.closed?
+            conn.checked_out!
             yield conn
           ensure
             check_in(conn)
@@ -116,6 +132,7 @@ module Cybertrain
           @available << conn
           raise e
         end
+        conn.checked_out!
         Thread.current[TRANSACTION_KEY] = conn
         conn
       end
@@ -184,7 +201,7 @@ module Cybertrain
           elsif outcome == :failed
             if @reopenable
               note(:error, "could not roll back a transaction left open on a pooled connection; " \
-                           "closed it, the next checkout reopens #{@path}")
+                           "closed it, the next checkout reopens #{Connection.target_label(@path)}")
               conn.close
             else
               note(:error, "could not roll back a transaction left open on the in-memory or temporary connection; " \

@@ -1,0 +1,12 @@
+ok   the program is built with the MySQL adapter
+ok   the Sentry sender is linked, as with require "cybertrain"
+ok   boot refuses a database whose name does not end in _test, before anything connects
+ok   boot migrates the test database and boots the application on it
+ok   a second boot empties the database and migrates again
+ok   the test reset's rate-limit clear runs on MySQL (its `key` column is quoted)
+Status  Migration ID    Migration Name
+    up  20261127000000  CreateBootNotes
+db backup is SQLite-only; use mysqldump or your provider's snapshots
+ok   Main's db word runs DB::CLI's MySQL part on DATABASE_URL
+ok   help names MySQL's db commands and client
+8 tests, 19 assertions, 0 failures

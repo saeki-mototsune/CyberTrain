@@ -22,8 +22,8 @@
 #     equals SPINEL_TAG in .github/workflows/ci.yml, and
 #     script/claude-cloud-setup's SPINEL_GIT is Cybertrain::SPINEL_REPOSITORY's
 #     (that script builds the fork's latest release, so it pins no tag);
-#   * script/check-reserved-names, check-client-faults and check-core-closure
-#     pass (they read spinel-http's source from the checkout spin.lock pins,
+#   * script/check-reserved-names, check-client-faults, check-core-closure and
+#     check-db-adapter pass (they read spinel-http's source from the checkout spin.lock pins,
 #     script/spinel_http_path.rb), and script/ci-changes --self-test;
 #   * script/bundle-locales --check passes (cybertrain/locales/bundled.rb is
 #     what cybertrain/locales/*.yml give);
@@ -32,7 +32,7 @@
 #     every file the gemspec lists, and the blog runs `cybertrain setup` on its own;
 #   * the Playground image and Blog image workflows run for a pull request
 #     that changes any of those files, cybertrain.gemspec or spin.toml;
-#   * every test/*.rb and test/cruby/*.rb has its .expected snapshot, and every snapshot its test
+#   * every test/*.rb, test/cruby/*.rb and test/mysql/*.rb has its .expected snapshot, and every snapshot its test
 #     (test/cruby/parity/, the recorded gaps of script/preview-parity, holds
 #     snapshots that are not tests and is not looked into);
 #   * `ruby bin/gen.rb --check` in examples/blog exits 0 under CRuby (the
@@ -261,7 +261,7 @@ else
   pins << "script/claude-cloud-setup SPINEL_GIT #{setup_git.inspect} != Cybertrain::SPINEL_REPOSITORY + \".git\" #{"#{spinel_repo}.git".inspect}" unless setup_git == "#{spinel_repo}.git"
   pins.empty? ? ok("version and Spinel tag pinned in one place", "#{version}, spinel #{spinel_tag}") : fail!("version pins", pins)
 
-  %w[check-reserved-names check-client-faults check-core-closure].each do |script|
+  %w[check-reserved-names check-client-faults check-core-closure check-db-adapter].each do |script|
     run_check("script/#{script}", "script/#{script}", "ruby", "script/#{script}")
   end
 
@@ -372,9 +372,17 @@ else
     uncovered.empty? ? ok("image workflows run for the CLI and the pins", "#{image_inputs.size} files") : fail!("image workflow paths", uncovered)
   end
 
-  tests = Dir["test/*.rb", "test/cruby/*.rb"].map { |f| f.delete_suffix(".rb") }
-  snaps = Dir["test/*.rb.expected", "test/cruby/*.rb.expected"].map { |f| f.delete_suffix(".rb.expected") }
-  orphans = (tests - snaps).map { |t| "#{t}.rb has no #{File.basename(t)}.rb.expected (#{t.start_with?("test/cruby/") ? "script/test-cruby --regen" : "script/regen-snapshot"} #{t}.rb)" } +
+  # test/mysql/*.rb, the MySQL adapter's integration tests (script/test-mysql),
+  # are held to the same rule.
+  tests = Dir["test/*.rb", "test/cruby/*.rb", "test/mysql/*.rb"].map { |f| f.delete_suffix(".rb") }
+  snaps = Dir["test/*.rb.expected", "test/cruby/*.rb.expected", "test/mysql/*.rb.expected"].map { |f| f.delete_suffix(".rb.expected") }
+  regen = lambda do |t|
+    if t.start_with?("test/cruby/") then "script/test-cruby --regen"
+    elsif t.start_with?("test/mysql/") then "script/test-mysql --regen"
+    else "script/regen-snapshot"
+    end
+  end
+  orphans = (tests - snaps).map { |t| "#{t}.rb has no #{File.basename(t)}.rb.expected (#{regen.call(t)} #{t}.rb)" } +
             (snaps - tests).map { |s| "#{s}.rb.expected has no #{File.basename(s)}.rb" }
   orphans.empty? ? ok("every test has its snapshot", "#{tests.size} tests") : fail!("test snapshots", orphans)
 

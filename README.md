@@ -42,7 +42,10 @@ it, in English and Japanese, with an admin user guarding its `/admin` pages.
   Rails' `t` and `l`, dictionaries compiled in, English and Japanese
   bundled.
 - **Models** ([guide](https://www.cybertrain.dev/guide/models.html)):
-  SQLite with migrations; decimal, json, date and datetime columns;
+  SQLite, or MySQL 8.0 chosen when the application is built
+  (`cybertrain new --database=mysql`; one process for now, see the
+  [configuration guide](https://www.cybertrain.dev/guide/configuration.html#mysql)),
+  with migrations; decimal, json, date and datetime columns;
   declared associations, `has_many :through` (read-only) and polymorphic
   ones, with nested `includes`; Rails' validators; model concerns;
   encrypted columns; bulk inserts and typed aggregates.

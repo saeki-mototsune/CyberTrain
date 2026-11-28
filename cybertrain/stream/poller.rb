@@ -102,6 +102,8 @@ module Cybertrain
       # @return [Integer] how many rows it delivered
       # @api public
       def self.run_once(hub)
+        return Poller.run_once_bounded(hub) unless DB::Dialect.stream_ids_in_commit_order?
+
         last = @last_id
         return 0 if Stream.max_id <= last
 
@@ -113,6 +115,41 @@ module Cybertrain
           i += 1
         end
         rows.size
+      end
+
+      # run_once where a lower id can become visible after a higher one
+      # (MySQL): the rows above last_id, delivered only up to
+      # Stream.delivery_bound, so the cursor never passes a broadcast of
+      # this process that may still commit. Pending ids are resolved first
+      # (Stream.resolve_pending). A read held back by an INSERT that has not
+      # answered yet is tried again after 2 ms, at most three times in one
+      # tick; the next tick goes on from there.
+      def self.run_once_bounded(hub)
+        attempt = 0
+        delivered = 0
+        while attempt < 3
+          last = @last_id
+          Stream.ensure_installed
+          Stream.resolve_pending(last)
+          return delivered if Stream.max_id <= last
+
+          rows = Stream.messages_after(last, 1000)
+          bound = Stream.delivery_bound(last)
+          i = 0
+          while i < rows.size
+            msg = rows[i]
+            break if bound >= 0 && msg.message_id >= bound
+
+            hub.deliver_polled(msg.message_id, msg.message_stream, msg.message_payload)
+            delivered += 1
+            i += 1
+          end
+          return delivered unless bound == 0
+
+          attempt += 1
+          sleep 0.002 if attempt < 3
+        end
+        delivered
       end
 
       # Through a method, so the closure captures the parameters

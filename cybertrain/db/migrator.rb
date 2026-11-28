@@ -1,5 +1,5 @@
 require "cybertrain/db/error"
-require "cybertrain/db/sqlite_ddl"
+require "cybertrain/schema"
 require "cybertrain/db/schema_dumper"
 require "cybertrain/migration"
 
@@ -15,7 +15,19 @@ module Cybertrain
       def initialize(connection)
         @connection = connection
         @quiet = false
-        @connection.exec_script("CREATE TABLE IF NOT EXISTS schema_migrations (version TEXT PRIMARY KEY)")
+        # The statement a version without a transaction is at, and how
+        # many it has (run_version_in_steps).
+        @statement_at = 0
+        @statement_total = 0
+        # Whether the statement at @statement_at is a script of several
+        # statements (an `execute` without binds), which may stop part way.
+        @statement_script = false
+        # Only when missing: on MySQL a CREATE TABLE, even IF NOT EXISTS on
+        # a table that is there, commits an open transaction and needs the
+        # CREATE privilege, which `db status` or `db rollback` should not.
+        unless Dialect.table_exists?(@connection, "schema_migrations")
+          @connection.exec_script(Dialect.migrator_schema_migrations_sql)
+        end
       end
 
       # Stops the progress lines (`== <version> <Class>: migrating`,
@@ -47,7 +59,9 @@ module Cybertrain
 
       # Runs every pending migration's forward operations (recorded by
       # `up`) inside one transaction per migration, then records its
-      # version. Returns the number of migrations applied.
+      # version (where DDL does not roll back, MySQL, statement after
+      # statement: run_version_in_steps). Returns the number of migrations
+      # applied.
       def migrate(migrations)
         count = 0
         pending(migrations).each do |entry|
@@ -149,36 +163,61 @@ module Cybertrain
       # A version with an operation that rebuilds a table runs with foreign
       # key enforcement off, as SQLite's procedure requires: dropping the old
       # table would otherwise fire ON DELETE CASCADE on its children.
-      # `PRAGMA foreign_keys = OFF` does nothing inside a transaction, so it
-      # is issued before BEGIN, and enforcement is restored after the
-      # version, whether it committed or not.
+      # Turning it off (DB::Dialect.foreign_keys_off) does nothing inside a
+      # transaction on SQLite, so it is issued before BEGIN, and enforcement
+      # is restored after the version, whether it committed or not. Where a
+      # rebuild is one ALTER TABLE in place (DB::Dialect.
+      # migrator_rebuild_foreign_keys_off? false: MySQL), neither the switch
+      # nor the check after the rebuild runs: no table is dropped, the
+      # server checks foreign keys itself, and a check after DDL that has
+      # committed could only leave the version applied and unrecorded.
+      #
+      # Afterwards, whether the version ran or failed, what the Dialect read
+      # of the schema is forgotten (DB::Dialect.forget_schema_cache: MySQL's
+      # unique keys for the upserts).
       def apply_version(version, ops, forward, sql)
+        run_version_switched(version, ops, forward, sql)
+        puts "done" unless @quiet
+        nil
+      ensure
+        Dialect.forget_schema_cache
+      end
+
+      # apply_version's work, foreign keys switched off around a rebuild
+      # where the adapter needs it.
+      def run_version_switched(version, ops, forward, sql)
         rebuilt = rebuilt_tables(ops)
-        if rebuilt == ""
-          run_version(version, ops, forward, sql, rebuilt)
+        if rebuilt == "" || !Dialect.migrator_rebuild_foreign_keys_off?
+          run_version(version, ops, forward, sql, "")
         else
-          enforced = foreign_keys_enforced?
-          @connection.exec_script("PRAGMA foreign_keys = OFF")
+          enforced = Dialect.migrator_foreign_keys_enforced?(@connection)
+          Dialect.foreign_keys_off(@connection)
           begin
-            if foreign_keys_enforced?
+            if Dialect.migrator_foreign_keys_enforced?(@connection)
               message = "cannot rebuild #{rebuilt}: foreign key enforcement stayed on (is a transaction open?)"
               raise Error, message
             end
             run_version(version, ops, forward, sql, rebuilt)
           ensure
-            @connection.exec_script("PRAGMA foreign_keys = ON") if enforced
+            Dialect.foreign_keys_on(@connection) if enforced
           end
         end
-        puts "done" unless @quiet
         nil
       end
 
       # The version's transaction. With `rebuilt` (the rebuilt tables'
-      # names) non-empty, `PRAGMA foreign_key_check` runs before the commit
-      # and a violation raises, which rolls the version back. Called from a
+      # names) non-empty, DB::Dialect.migrator_foreign_key_check runs before
+      # the commit and a violation raises, which rolls the version back. Called from a
       # method body so the transaction (a yielding method with rescue) is
-      # never inside a nested block (spikes/NOTES.md rule 45).
+      # never inside a nested block (spikes/NOTES.md rule 45). Where DDL
+      # does not roll back (DB::Dialect.transactional_ddl? false: MySQL,
+      # whose every DDL statement commits), there is no transaction to run
+      # it in: run_version_in_steps.
       def run_version(version, ops, forward, sql, rebuilt)
+        unless Dialect.transactional_ddl?
+          run_version_in_steps(version, ops, forward, sql, rebuilt)
+          return nil
+        end
         @connection.transaction do
           run_operations(ops, forward)
           check_foreign_keys(rebuilt) if rebuilt != ""
@@ -187,9 +226,127 @@ module Cybertrain
         nil
       end
 
-      def foreign_keys_enforced?
-        rows = @connection.execute("PRAGMA foreign_keys")
-        !rows.empty? && Cybertrain::Cast.int(rows[0]["foreign_keys"]) != 0
+      # A version where DDL commits as it runs (MySQL): its statements run
+      # one by one, counted, and `sql` (the schema_migrations INSERT or
+      # DELETE) only after the last. When one fails, those before it stay
+      # applied, and the error says so (DB::Error "migration <version>
+      # failed at statement <n> of <m>; statements 1..<n-1> were applied
+      # and cannot be rolled back (MySQL DDL commits implicitly):
+      # <message>", or "...; nothing was applied: <message>" when the first
+      # fails); the version is not recorded. Every statement is
+      # counted before the first runs, so an operation the DDL refuses (a
+      # partial index) raises before anything is applied.
+      def run_version_in_steps(version, ops, forward, sql, rebuilt)
+        @statement_total = statement_count(ops)
+        @statement_at = 0
+        run_steps(version, ops, forward)
+        check_foreign_keys(rebuilt) if rebuilt != ""
+        @connection.execute(sql, [version])
+        nil
+      end
+
+      # run_operations_in_steps, with a failure reported as
+      # run_version_in_steps says. A non-yielding method holding the rescue
+      # (spikes/NOTES.md rules 32/45).
+      def run_steps(version, ops, forward)
+        run_operations_in_steps(ops, forward)
+        nil
+      rescue StandardError => e
+        at = @statement_at
+        total = @statement_total
+        # A local first (spikes/NOTES.md rule 58).
+        applied = if at <= 1
+                    "nothing was applied"
+                  else
+                    "statements 1..#{at - 1} were applied and cannot be rolled back (MySQL DDL commits implicitly)"
+                  end
+        if @statement_script
+          applied = if at <= 1
+                      "statement 1 is a script of several statements, which may be partly applied"
+                    else
+                      "#{applied}; statement #{at} is a script of several statements, which may be partly applied"
+                    end
+        end
+        message = "migration #{version} failed at statement #{at} of #{total}; #{applied}: #{e.message}"
+        raise Error, message
+      end
+
+      # Whether an `execute` runs `sql` as a script of several statements:
+      # it has no binds and a `;` before its end (DB::Connection#exec_script
+      # runs the statements one by one, and stops at the first that fails).
+      def script_of_several?(op)
+        return false unless op.exec_binds.empty?
+
+        text = op.exec_sql.to_s.strip
+        text = text[0, text.size - 1].to_s while text.end_with?(";")
+        text.include?(";")
+      end
+
+      # How many statements run_operations_in_steps runs for `ops`.
+      def statement_count(ops)
+        count = 0
+        ops.each do |op|
+          if op.kind == :execute || op.kind == :reversible_up
+            count += 1
+          elsif op.kind == :reversible_down
+            nil
+          elsif op.rebuilds?
+            count += backfills?(op) ? 2 : 1
+          elsif op.kind == :remove_index
+            count += 1
+          else
+            count += Dialect.ddl_statements(op).size
+          end
+        end
+        count
+      end
+
+      # Whether a rebuild operation first writes a default into the NULL
+      # cells (change_column_null to NOT NULL with a default).
+      def backfills?(op)
+        op.kind == :change_column_null && !op.null && op.exec_sql != ""
+      end
+
+      # run_operations for a version without a transaction: each statement
+      # counted in @statement_at before it runs. An :add_reference and its
+      # :add_foreign_key run as their own statements (MySQL adds a foreign
+      # key to an existing table); a rebuild operation is
+      # DB::Dialect.migrator_rebuild's one statement, after its backfill;
+      # a :remove_index drops the index run_operations would.
+      def run_operations_in_steps(ops, forward)
+        ops.each do |op|
+          @statement_script = false
+          if op.kind == :execute || op.kind == :reversible_up
+            @statement_at += 1
+            @statement_script = script_of_several?(op)
+            run_data_statement(op)
+          elsif op.kind == :reversible_down
+            nil
+          elsif op.rebuilds?
+            if backfills?(op)
+              @statement_at += 1
+              @connection.execute(op.exec_sql, op.exec_binds)
+            end
+            @statement_at += 1
+            run_rebuild(op)
+          elsif op.kind == :remove_index
+            @statement_at += 1
+            name = index_to_remove(op, forward)
+            named = Cybertrain::Migration::Operation.new(:remove_index, op.table_text, name, :string, true, nil, 0, "",
+                                                         op.columns, false, "")
+            Dialect.ddl_statements(named).each { |stmt| @connection.exec_script(stmt) }
+          else
+            # MySQL: a NOT NULL column without a default on a table with
+            # rows is refused here, before its first statement, as SQLite
+            # refuses it (DB::Dialect.migrator_check_operation).
+            Dialect.migrator_check_operation(@connection, op)
+            Dialect.ddl_statements(op).each do |stmt|
+              @statement_at += 1
+              @connection.exec_script(stmt)
+            end
+          end
+        end
+        nil
       end
 
       # "posts, comments": the tables `ops` rebuild, each once, "" for none.
@@ -204,87 +361,19 @@ module Cybertrain
       end
 
       def check_foreign_keys(rebuilt)
-        rows = @connection.execute("PRAGMA foreign_key_check")
-        return nil if rows.empty?
-        found = Array.new(0) { "" }
-        rows.each { |r| found << "#{r["table"]} row #{r["rowid"]} -> #{r["parent"]}" }
-        message = "foreign key check failed after rebuilding #{rebuilt}: #{found.join(", ")}"
+        found = Dialect.migrator_foreign_key_check(@connection)
+        return nil if found == ""
+        message = "foreign key check failed after rebuilding #{rebuilt}: #{found}"
         raise Error, message
       end
 
-      # One rebuild operation: the live schema dumped now (after the
-      # version's earlier operations), the operation applied to it in
-      # memory, and the table rebuilt from the result with its triggers and
-      # its sqlite_sequence value as they were. A change_column_null to NOT
-      # NULL with a default first backfills the NULL cells.
+      # One rebuild operation, from the live schema dumped now (after the
+      # version's earlier operations): DB::Dialect.migrator_rebuild (on
+      # SQLite the table rebuilt by its procedure, with its triggers and
+      # its sqlite_sequence value as they were).
       def run_rebuild(op)
-        table_name = op.table_text
         definition = Cybertrain::DB::SchemaDumper.dump(@connection)
-        table = definition.table(table_name)
-        if table.nil?
-          message = "cannot #{op.kind} on #{table_name}: no such table"
-          raise Error, message
-        end
-        refused = Cybertrain::DB::SqliteDDL.rebuild_refusal(table_sql(table_name))
-        if refused != ""
-          message = "rebuilding #{table_name} would drop #{refused}: rewrite the migration with execute"
-          raise Error, message
-        end
-        definition.replace_table(Cybertrain::DB::SqliteDDL.table_after(table, op))
-        triggers = table_triggers(table_name)
-        sequence = table_sequence(table_name)
-        @connection.execute(op.exec_sql, op.exec_binds) if op.kind == :change_column_null && !op.null && op.exec_sql != ""
-        rename = Cybertrain::DB::SqliteDDL.rename_new_sql(table_name)
-        Cybertrain::DB::SqliteDDL.rebuild_table(definition, table_name, triggers, sequence).each do |sql|
-          if sql == rename
-            run_legacy_rename(sql)
-          else
-            @connection.exec_script(sql)
-          end
-        end
-        nil
-      end
-
-      # The rebuild's RENAME with legacy_alter_table on, so the views and
-      # the other tables' triggers that name the table are not checked
-      # while it does not exist (they would refuse the RENAME). The pragma
-      # is not transactional, so it is turned off again whatever happens.
-      # Never used for a plain rename_table, which needs it off for the
-      # references to follow the new name.
-      def run_legacy_rename(sql)
-        @connection.exec_script("PRAGMA legacy_alter_table = ON")
-        begin
-          @connection.exec_script(sql)
-        ensure
-          @connection.exec_script("PRAGMA legacy_alter_table = OFF")
-        end
-        nil
-      end
-
-      def table_sql(table_name)
-        rows = @connection.execute("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?", [table_name])
-        return "" if rows.empty?
-        Cybertrain::Cast.str_or_nil(rows[0]["sql"]).to_s
-      end
-
-      def table_triggers(table_name)
-        rows = @connection.execute("SELECT sql FROM sqlite_master WHERE type = 'trigger' AND tbl_name = ? ORDER BY name", [table_name])
-        result = Array.new(0) { "" }
-        rows.each do |r|
-          sql = Cybertrain::Cast.str_or_nil(r["sql"])
-          result << sql.to_s unless sql.nil?
-        end
-        result
-      end
-
-      # The table's sqlite_sequence value, -1 when it has none (or the
-      # database has no AUTOINCREMENT table at all).
-      def table_sequence(table_name)
-        exists = @connection.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'sqlite_sequence'")
-        return -1 if exists.empty?
-        rows = @connection.execute("SELECT seq FROM sqlite_sequence WHERE name = ?", [table_name])
-        return -1 if rows.empty?
-        Cybertrain::Cast.int(rows[0]["seq"])
+        Dialect.migrator_rebuild(@connection, op, definition)
       end
 
       # Base#up/#down start from an empty operation list, but a migration
@@ -321,8 +410,9 @@ module Cybertrain
       # (the other direction's statement) is skipped. A rebuild operation
       # goes through `run_rebuild`. Two other operations get special handling:
       # - an :add_reference directly followed by its :add_foreign_key
-      #   (Base#add_reference's default) runs as one ADD COLUMN ... REFERENCES,
-      #   since SQLite cannot add a foreign key on its own;
+      #   (Base#add_reference's default) runs as one ADD COLUMN ... REFERENCES
+      #   where the adapter folds them (DB::Dialect.migrator_folds_reference?:
+      #   SQLite, which cannot add a foreign key on its own);
       # - a :remove_index drops the index `forward` (the
       #   migration's forward operations, when rolling back) created on those
       #   columns, else the derived index_<table>_on_<cols> when it exists,
@@ -331,8 +421,8 @@ module Cybertrain
         i = 0
         while i < ops.size
           op = ops[i]
-          if i + 1 < ops.size && Cybertrain::DB::SqliteDDL.folds_foreign_key?(op, ops[i + 1])
-            run_sql(Cybertrain::DB::SqliteDDL.add_reference_statements(op, ops[i + 1].to_table))
+          if i + 1 < ops.size && Dialect.migrator_folds_reference?(op, ops[i + 1])
+            run_sql(Dialect.migrator_reference_statements(op, ops[i + 1].to_table))
             i += 2
           else
             if op.kind == :execute || op.kind == :reversible_up
@@ -342,9 +432,9 @@ module Cybertrain
             elsif op.rebuilds?
               run_rebuild(op)
             elsif op.kind == :remove_index
-              @connection.exec_script(Cybertrain::DB::SqliteDDL.drop_index_sql(index_to_remove(op, forward)))
+              @connection.exec_script(Dialect.migrator_drop_index_sql(op.table_text, index_to_remove(op, forward)))
             else
-              run_sql(Cybertrain::DB::SqliteDDL.statements(op))
+              run_sql(Dialect.ddl_statements(op))
             end
             i += 1
           end
@@ -372,7 +462,7 @@ module Cybertrain
           next unless f.kind == :add_index && f.name != ""
           return f.name if f.table_text == table && f.columns == op.columns
         end
-        derived = Cybertrain::DB::SqliteDDL.derived_index_name(table, op.columns)
+        derived = Cybertrain::Schema::Index.derived_name(table, op.columns)
         names = index_names_on(table, op.columns)
         return derived if names.empty? || names.include?(derived)
         names[0]
@@ -381,9 +471,9 @@ module Cybertrain
       # Names of the indexes on `table` whose columns are exactly `columns`.
       def index_names_on(table, columns)
         result = Array.new(0) { "" }
-        @connection.execute("PRAGMA index_list(#{table})").each do |row|
+        Dialect.schema_index_rows(@connection, table).each do |row|
           name = row["name"].to_s
-          cols = @connection.execute("PRAGMA index_info(#{name})").map { |r| r["name"].to_s }
+          cols = Dialect.schema_index_columns(@connection, table, name)
           result << name if cols == columns
         end
         result

@@ -2,8 +2,8 @@
 
 What a model does beyond the scaffold: migrations, column types, queries,
 associations, validations, encrypted columns, paging, transactions, the rules
-column names and `order` clauses follow under Spinel, and taking over a
-database that Rails created.
+column names and `order` clauses follow under Spinel, taking over a
+database that Rails created, and what changes on MySQL.
 
 ## Migrations
 
@@ -417,7 +417,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1 (by: n for another step)
 Comment.where(article_id: article.id).pluck_int(:id)      # => [3, 7]   (also pluck_str, pluck_float)
 Comment.all.count_by(:article_id)                         # => {"1" => 2, "4" => 1}
-Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # hour buckets
+Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # hour buckets (SQLite's strftime; MySQL: DATE_FORMAT(created_at, '%Y-%m-%dT%H'))
 Stat.where(project_id: 1).sum_int(:calls)                 # also sum_float
 Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%' ESCAPE '\'
 ```
@@ -941,6 +941,21 @@ Article.transaction(immediate: true) do |c|
 end
 ```
 
+On MySQL `immediate: true` has no effect: MySQL has no write lock to take
+at `BEGIN`, so both forms send `BEGIN`, and two such blocks are not run one
+after the other. Each block reads a snapshot that takes no lock
+(REPEATABLE READ), so two blocks that check something and then write can
+both pass the check, and both write. Make the write carry the check (a
+unique index; an `UPDATE ... WHERE` that names the old value, and a look
+at `c.changes`), or lock what the block reads with SQL of its own:
+`c.execute("SELECT id FROM accounts WHERE id = ? FOR UPDATE", [id])`
+holds the row until the `COMMIT`. On an empty result it locks the gap the
+row would go in, so a second block's insert there waits; when two blocks
+read the same empty gap at once, MySQL rolls one of them back
+(`Cybertrain::DB::Deadlock`). The `SetupController` that
+`generate authentication --invite-only` writes on MySQL checks for the
+first user this way.
+
 Where it differs from Rails' `transaction`, and what to avoid:
 
 - It returns nil rather than the block's value.
@@ -1133,6 +1148,112 @@ A SQLite file that a Rails 8 application created can be read as it is:
 
 Then write `app/models/*.rb` with the validations, associations and scopes
 the Rails models had, in the shapes this page shows.
+
+## MySQL
+
+An application built with `require "cybertrain/mysql"`
+([Configuration, "MySQL"](configuration.md#mysql)) runs the same models,
+migrations and queries on MySQL 8.0, and they answer what they answer on
+SQLite; `docs/compatibility.md` lists the differences with the tests that
+pin them. What a model's code meets:
+
+- **Column types.** `string` is `VARCHAR(255)` (`limit:` changes it),
+  `text` `MEDIUMTEXT`, `integer` `INT` (an `id` and every integer `*_id`
+  are `BIGINT`), `boolean` `TINYINT(1)`, `decimal` `DECIMAL(p,s)`, `float`
+  `DOUBLE`, `date` `DATE`, `datetime` `DATETIME(6)` in UTC, `json` `JSON`,
+  `binary` `LONGBLOB`. The attributes read as on SQLite.
+- **Comparisons are exact.** Tables use `utf8mb4` with the binary
+  collation `utf8mb4_0900_bin`, so `where`, `uniqueness` and a unique index
+  tell `"A"` from `"a"` and `"a"` from `"a "`, as SQLite does. `LIKE` and
+  `where_like` are therefore case-sensitive too, where SQLite's fold ASCII
+  case: compare `LOWER(title) LIKE ?` with a lowercased pattern for a
+  search box.
+- **JSON is normalised.** The server stores `{"k": [1, 2]}` for
+  `{"k":[1,2]}`: the Hash an attribute reads is the same, the stored text
+  (in `execute`, a dump, an `ORDER BY`) is not.
+- **Decimals out of range are refused.** The connection's strict
+  `sql_mode` refuses a value outside the column's precision (`Out of range
+  value for column 'price'`, error 1264) where SQLite stores the Float;
+  this reaches `update_columns`, `update_all` and the bulk writes, which
+  skip the validation `save` runs ([Decimals are Floats](#decimals-are-floats)).
+  A Float that is not finite (`Infinity`, `NaN`) is refused as a bound
+  value, in any column, with `Cybertrain::DB::Error` before the statement
+  is sent; SQLite stores the infinities and stores NaN as NULL.
+- **Decimal text.** A `DECIMAL(p,s)` column read as text (`execute`)
+  carries its scale on MySQL, `"9.50"` where SQLite answers `"9.5"`; a
+  model's decimal attribute is the same Float on both.
+- **Errors.** A constraint failure raises the same classes on both
+  (`Cybertrain::DB::UniqueViolation`, `ForeignKeyViolation`; `Deadlock`,
+  `LockTimeout` and `ConnectionLost` on MySQL); the message is the
+  server's (`Duplicate entry 'x' for key ... (MySQL 1062, 23000)`), so
+  match the class, not the text.
+- **`upsert`'s `update:`.** The new row is `excluded` on both, but a bare
+  column name is ambiguous on MySQL (error 1052): qualify the table's own
+  columns, and use `GREATEST` / `LEAST` for SQLite's two-argument `MAX` /
+  `MIN`:
+
+```ruby
+# MySQL: INSERT ... AS excluded ON DUPLICATE KEY UPDATE ...
+Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: Time.now },
+            conflict: [:project_id, :key],
+            update: { calls: "stats.calls + excluded.calls", max_ms: "GREATEST(stats.max_ms, excluded.max_ms)",
+                      seen_at: "excluded.seen_at" })
+```
+
+- **The conflict target.** `upsert`'s `conflict:` and `upsert_all`'s
+  `unique_by:` must be exactly the columns of the primary key or of one
+  unique index (in any order), as on SQLite, or `Cybertrain::DB::Error`
+  (`upsert: ... is not the primary key or a unique index of ...`) before
+  anything is written. A row that collides on another unique key raises
+  `Cybertrain::DB::UniqueViolation`, and the statement writes nothing. One
+  difference is kept: a row that collides on the target and on another
+  unique key at once raises, where SQLite may update the target's row.
+  `upsert` answers 1 for a row inserted or updated and 0 for one an empty
+  `update:` left, as on SQLite. The unique keys are read once per table
+  and connection, so after another process changes the schema, restart
+  this one.
+- **`returning:`.** MySQL has no `RETURNING`: `insert_all` and
+  `upsert_all` read the rows back in the same transaction and answer the
+  rows SQLite would. On a table with a unique index (besides the primary
+  key), `insert_all(..., returning:)` needs the rows to supply every
+  column of one such index, or it raises `Cybertrain::DB::Error` before
+  writing: a skipped duplicate could not be told apart otherwise.
+- **Migrations are not rolled back.** MySQL's DDL commits as it runs, so a
+  migration that fails half way keeps what ran before the failing
+  statement: `migration V failed at statement 2 of 3; statements 1..1 were
+  applied and cannot be rolled back (MySQL DDL commits implicitly): ...`.
+  The version is not recorded; undo the applied part (or finish it by
+  hand) before running `db migrate` again. Rails' MySQL adapter behaves the
+  same. Keep one change per migration where you can.
+- **No partial indexes.** `add_index ..., where:` stops `spin run gen`
+  with the file and line (`partial indexes (where:) are not supported on
+  MySQL`) before anything is written; index the column whole, or put the
+  condition in a generated column.
+- **Expression indexes.** MySQL takes an expression only in parentheses of
+  its own: `execute "CREATE UNIQUE INDEX index_users_on_lower_email ON
+  users ((LOWER(email)))"`. The single-parenthesis form of
+  [Migrations](#migrations) is SQLite's and a syntax error (1064) on MySQL.
+  `db/schema.rb` dumps the index as MySQL spells it,
+  ``"(lower(`email`))"``.
+- **The schema.** `db/schema.rb` is dumped from `information_schema`. For
+  the column types and options examples/blog uses, the same migrations
+  write the same file as on SQLite; others dump as MySQL holds them: a
+  string's `limit: 255` is dropped, a decimal's `scale: 0` is dropped or
+  added, a `t.bigint` named `*_id` dumps as `t.integer`, a decimal's
+  default carries its scale, an expression default dumps in parentheses
+  (`(rand())`), an expression index is MySQL's text, and a foreign key
+  without an index gains one. A `db/schema.rb` written on SQLite can therefore change on the
+  first `db migrate` on MySQL; `docs/compatibility.md` lists these.
+  `db normalize`, `db backup` and `db vacuum` are SQLite's.
+- **`transaction(immediate: true)` is a plain `BEGIN`.** It does not make
+  two read-then-write blocks run one after the other as SQLite's write
+  lock does: lock the rows the block reads (`SELECT ... FOR UPDATE`), or
+  let a unique index or a guarded `UPDATE` refuse the second write
+  ([Transactions](#transactions)).
+- **One process.** Jobs, streams, leases and scheduled tasks are
+  guaranteed within one process; across several processes or hosts on one
+  database they are not until step 2 of the MySQL roadmap
+  ([Configuration, "MySQL"](configuration.md#mysql)).
 
 ## Upgrading
 
