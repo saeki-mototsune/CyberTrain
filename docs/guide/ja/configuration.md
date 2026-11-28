@@ -1,5 +1,5 @@
 ---
-source_sha256: db6754f97853479d284f99e9a9ccc0e17475b0356fef72e72187be7e5b34606a
+source_sha256: 38b2745b3e9c1e93575660937aec807790dc13d9a4938710a2328faeae6eaf6f
 ---
 # 設定
 
@@ -160,11 +160,11 @@ end
 require "cybertrain/mysql"   # すべてのサブシステム。"cybertrain/core/mysql" はコアだけ
 ```
 
-`cybertrain new NAME --database=mysql` はこの行を書き、`config/app.rb` と `.env.example` で `DATABASE_URL` を説明し、`config/deploy.yml` と `.kamal/secrets` でそれをシークレットとして渡し、テストを MySQL のサービスに対して実行する CI のワークフローを書きます。モデル、マイグレーション、テストはどちらでも同じです。MySQL で答えが変わるところは[モデルとデータベース](models.md#mysql)にまとめてあります。
+`cybertrain new NAME --database=mysql` はこの行を書き、`config/app.rb` と `.env.example` で `DATABASE_URL` を説明し（`.env.example` にはコメントにした行が 2 つあります。開発用のデータベースと、`cybertrain test` が必要とする `_test` のもので、どちらもローカルのサーバー向けに `?ssl_mode=disabled` が付いています）、`config/deploy.yml` と `.kamal/secrets` でそれをシークレットとして渡し、テストを MySQL のサービスに対して実行する CI のワークフローを書きます。表示する次の手順は、開発用の `DATABASE_URL` を export し、`cybertrain db migrate` の前に `cybertrain db create` を実行します。`--database` を 2 回指定したときと、持っていないオプション（`-d mysql`、`--databse=mysql`）は、何も書く前に拒否します。モデル、マイグレーション、テストはどちらでも同じです。MySQL で答えが変わるところは[モデルとデータベース](models.md#mysql)にまとめてあります。
 
 SQLite 向けに作ったアプリケーションは、2 つのファイルのこの行を変え（データは SQLite のファイルに残ります）、さらに次のようにして移ります：
 
-- 認証があれば、生成したときのフラグ（`--invite-only`、`--confirmable`）と `--force` を付けて `cybertrain generate authentication` をもう一度実行します。MySQL の形が違う 4 つのファイルが書き直されます：`app/commands/user_command.rb` と `test/integration/first_run_test.rb`（`database_path` ではなく `database_url` に接続する）、`app/models/user.rb`（ロックアウトの UPDATE を MySQL の代入順で）、`test/controllers/accounts_controller_test.rb`（テーブルの DDL と、拒否された削除のエラークラス）。その後に手を入れたファイルは差分を読んでください。
+- 認証があれば、生成したときのフラグ（`--invite-only`、`--confirmable`）と `--force` を付けて `cybertrain generate authentication` をもう一度実行します。MySQL の形が違うファイルが書き直されます：`app/commands/user_command.rb` と `test/integration/first_run_test.rb`（`database_path` ではなく `database_url` に接続する）、`app/models/user.rb`（ロックアウトの UPDATE を MySQL の代入順で。`--confirmable` では、確認の重複をクラス `Cybertrain::DB::UniqueViolation` で rescue する）、`test/controllers/accounts_controller_test.rb`（テーブルの DDL と、拒否された削除のエラークラス）、`--invite-only` では `app/controllers/setup_controller.rb`（最初のユーザーの確認をロックする読み取りで行う：[モデルとデータベース](models.md#mysql)）、`--confirmable` では `test/controllers/confirmations_controller_test.rb`（競合を起こすトリガー）。その後に手を入れたファイルは差分を読んでください。
 - `Dockerfile`、`config/deploy.yml`、`.kamal/secrets`、`.github/workflows/ci.yml` に、`new --database=mysql` と同じ変更を加えます：`DATABASE_URL` をシークレットとして渡す、CI に MySQL のサービスを置く、worker のロールをコメントのままにする（後述）。
 
 データベースは `DATABASE_URL` が指すものです（`database_url`。`config/app.rb` が実行される前に読まれます）：
@@ -173,11 +173,14 @@ SQLite 向けに作ったアプリケーションは、2 つのファイルの�
 export DATABASE_URL='mysql://app:PASSWORD@db.internal:3306/shop_production'
 ```
 
-- `USER`、`PASSWORD`、データベース名はパーセントデコードされます（`%40` は `@`）。`?` の後のパラメータは `ssl_mode`、`connect_timeout`（既定は 5 秒）、`read_timeout` と `write_timeout`（それぞれ 30 秒。クエリ全体ではなく、サーバーを 1 回待つ時間）です。それ以外の名前があると起動が止まります。パスワードは、どのメッセージ、ログの行、`inspect` にも出ません。
+- `USER`、`PASSWORD`、データベース名はパーセントデコードされます（`%40` は `@`）。`?` の後のパラメータは `ssl_mode`、`connect_timeout`（既定は 5 秒）、`read_timeout` と `write_timeout`（それぞれ 30 秒。クエリ全体ではなく、サーバーを 1 回待つ時間）です。それ以外の名前があると起動が止まります。パスワードは、どのメッセージ、ログの行、`inspect` にも出ません。プールのログの行と `inspect` は、データベースをパスワードを除いた URL で示します。
+- 終わるまで何も送ってこない文（大きなテーブルへの `ALTER TABLE` や `CREATE INDEX`、大きなソート）は、実行全体を 1 回で待つので、そのときは `read_timeout` が文全体の上限になります。それを過ぎると接続は `Cybertrain::DB::ConnectionLost` で閉じられますが、サーバーには止めるよう伝わらず、サーバーは文を最後まで実行します。そのため `db migrate`、`rollback`、`status`、スキーマのダンプは、`DATABASE_URL` が `read_timeout` を指定していなければ、最大 1 日（`read_timeout=86400`、許される最大の値）待ちます。MySQL の DDL はロールバックされないので、こうして途中で切られたマイグレーションは、変更が残ったままバージョンが記録されず、次の `db migrate` が失敗します（`Duplicate key name`）。
+- 接続を開くとき（起動時と、接続が失われた後にプールが開き直すとき）は、まずシステムのリゾルバでホスト名を引きます。リゾルバが答えるまで、その OS ワーカーはブロックされます。その時間は `connect_timeout` に数えられますが、遅いリゾルバが途中で打ち切られることはなく、`SPINEL_WORKERS=1` ではサーバー全体がそれを待ちます。IP アドレスで書いたホストは引きません。
+- プールにある間にサーバーが終わらせた接続（再起動、`wait_timeout`、フェイルオーバー）は、チェックアウト後の最初の文で見つかり、開き直されます。その文はトランザクションの外であれば、答えの最初のバイトより前に接続が終わったとき、もう一度送られます。文を実行してからセッションを失ったサーバーも同じに見え、ネットワークの経路上にいる誰かがわざと切った接続も、`ssl_mode=verify` でも同じに見えます（TLS が隠すのはバイトで、接続の終わりではありません）。そのため、その最初の文は 2 回実行されることがあります。2 回実行されてはいけない文（一意キーのない `INSERT`、`UPDATE ... SET n = n + 1`）は、もう一度送られることのない `DB.transaction` の中に置いてください。タイムアウトの後は、文のものでも、トランザクションの中のエラーに続く ping のものでも、接続は閉じられ、二度と使われません（遅れて届いた答えが次の文の答えとして読まれてしまうからです）。接続とともに失われたトランザクションは、ロールバックされたものとして扱います。
 - パスワードは環境変数かデプロイのシークレット（`.kamal/secrets`）に置き、`config/app.rb` やリポジトリには書かないでください。バイナリはパスワードを持ちません。
 - 既定の `ssl_mode=verify` は TLS で接続し、サーバーの証明書とホスト名を確かめます。`ssl_mode=disabled` は TLS なしで接続し、URL に書かれた `localhost`、ループバックアドレス、プライベートアドレス（10/8、172.16/12、192.168/16）、ユニークローカルの IPv6 アドレスにだけ使えます。ほかのホストは拒否されます。暗号化だけして証明書を確かめないモードはありません。
-- TLS なしでは、MySQL 8.0 の既定の `caching_sha2_password` は、サーバーがまだキャッシュしていないパスワードを確かめられず、接続はその旨のメッセージで拒否されます。TLS を使うか、開発用のユーザーを `mysql_native_password` にしてください（MySQL 8.0 の場合です。8.4 ではこのプラグインが既定で無効になり、9.0 では削除されています）。
-- 証明書は、システムの CA ストア、または設定されていれば `SSL_CERT_FILE`（バンドル）か `SSL_CERT_DIR` に対して確かめます。フレームワークのすべての TLS 接続と同じです。マネージドなサーバーの CA はそこに置きます。Amazon RDS や Aurora MySQL では、グローバルバンドルをダウンロードして指定します（`SSL_CERT_FILE` は、HTTP クライアントやメールを含むプロセスのすべての TLS 接続で、システムのバンドルファイルの代わりになります。アプリケーションがほかのサービスも呼ぶなら、2 つをつなげてください）：
+- TLS なしでは、MySQL 8.0 の既定の `caching_sha2_password` は、サーバーがまだキャッシュしていないパスワードを確かめられず、接続はその旨のメッセージで拒否されます（`caching_sha2_password full authentication needs TLS (ssl_mode=verify)` に続けて、よくある原因として、サーバーの起動後、またはパスワードの変更や権限のフラッシュの後で、そのアカウントが初めてログインしたことを示します）。TLS を使うか、サーバーを再起動するたびに一度 TLS で（または `mysql` クライアントで）ログインするか、開発用のユーザーを `mysql_native_password` にしてください（MySQL 8.0 の場合です。8.4 ではこのプラグインが既定で無効になり、9.0 では削除されています）。
+- 証明書は、システムの CA ストア、または設定されていれば `SSL_CERT_FILE`（バンドル）か `SSL_CERT_DIR` に対して確かめます。フレームワークのすべての TLS 接続と同じです。マネージドなサーバーの CA はそこに置きます。`new --database=mysql` が書く `Dockerfile` は、このために実行ステージで `ca-certificates` をインストールします（`libsqlite3-0` は入れません。MySQL のバイナリはリンクしないからです）。プライベートな CA が署名した証明書のサーバーには、その CA のファイルをイメージに入れ、`SSL_CERT_FILE` で指定する必要があります。Amazon RDS や Aurora MySQL では、グローバルバンドルをダウンロードして指定します（`SSL_CERT_FILE` は、HTTP クライアントやメールを含むプロセスのすべての TLS 接続で、システムのバンドルファイルの代わりになります。アプリケーションがほかのサービスも呼ぶなら、2 つをつなげてください）：
 
 ```shell
 curl -fsSLo /etc/ssl/certs/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
@@ -186,9 +189,9 @@ export SSL_CERT_FILE=/etc/ssl/certs/app-ca.pem
 export DATABASE_URL='mysql://app:PASSWORD@shop.abc123.ap-northeast-1.rds.amazonaws.com:3306/shop_production'
 ```
 
-`db` コマンドも同じデータベースを使います。`db create` と `db drop` はそれを作り、削除します（`utf8mb4`、照合順序 `utf8mb4_0900_bin`）。`migrate`、`rollback`、`status`、`schema`、`schema:dump` は SQLite と同じように動きます。`dbconsole` は `mysql` クライアントを TCP で、同じ TLS モードと CA で開き、パスワードはクライアントの環境変数で渡します。`db backup`、`vacuum`、`normalize` は SQLite のもので、ステータス 2 で終わります。`mysqldump` かプロバイダーのスナップショットを使ってください。
+`db` コマンドも同じデータベースを使います。`db create` と `db drop` はそれを作り、削除します（`utf8mb4`、照合順序 `utf8mb4_0900_bin`）。`migrate`、`rollback`、`status`、`schema`、`schema:dump` は SQLite と同じように動きます。`dbconsole` は `mysql` クライアントを TCP で、同じ TLS モードと CA で開き、パスワードはクライアントの環境変数で渡し、アプリケーションのセッション設定（`utf8mb4`、`time_zone '+00:00'`、厳格な `sql_mode`。`--init-command` で渡します）を使います。そのため、そこで入力した `NOW()` は、アプリケーションが読むのと同じ UTC です。確かめてあるのは Oracle の `mysql` クライアントだけです。`db backup`、`vacuum`、`normalize` は SQLite のもので、ステータス 2 で終わります。`mysqldump` かプロバイダーのスナップショットを使ってください。
 
-`cybertrain test` はテストの前に `DATABASE_URL` が指すデータベースを空にしてマイグレーションし直します。そのため、名前が `_test` で終わらないデータベース、`test` 以外の環境、テーブルはあるのに目印のテーブル `cybertrain_test_marker` がないデータベースは拒否します（目印は空のデータベースに作ります）。データベースを作ったり削除したりはしません。`NAME_test` を一度作り（その URL で `db create`、またはプロバイダーのコンソール）、テストの実行時にその URL を export してください。テストの合間にテーブルを空にしてフィクスチャを入れ直します。MySQL では、空にする処理がフィクスチャを入れる前にコミットされる（id のリセットが DDL だから）ので、読み込みに失敗したフィクスチャはテーブルを空のまま残します。
+`cybertrain test` はテストの前に `DATABASE_URL` が指すデータベースを空にしてマイグレーションし直します。そのため、名前が `_test` で終わらないデータベース、`test` 以外の環境、テーブルはあるのに目印のテーブル `cybertrain_test_marker` がないデータベースは拒否します（目印は空のデータベースに作ります）。データベースを作ったり削除したりはしません。`NAME_test` を一度作り（その URL で `db create`、またはプロバイダーのコンソール）、テストの実行時にその URL を export してください。テストの合間にテーブルを空にしてフィクスチャを入れ直します。MySQL では、空にする処理がフィクスチャを入れる前にコミットされる（id のリセットが DDL だから）ので、読み込みに失敗したフィクスチャはテーブルを空のまま残します。`generate authentication --confirmable` を使うと、テスト用データベースのユーザーには `TRIGGER` 権限が必要です。確認のテストがトリガーを作るからです。
 
 フレームワークのテーブル（ジョブ、ストリーム、キャッシュ、リース、スケジューラの時刻表、フィードの状態）は `db/schema.rb` になく、`db migrate` も作りません。SQLite と同じく、それぞれの機能を最初に使ったときに作られます。MySQL ではトランザクションの中の CREATE TABLE がトランザクションを途中でコミットしてしまうので、`DB.transaction` の中での最初の使用（そのテーブルがまだないデータベースでの、トランザクション内の `Job.enqueue` や `broadcast_*`）は、代わりに `Cybertrain::DB::Error` を投げ、何もコミットしません。ジョブを実行するプロセスは起動時に `cybertrain_jobs` を作ります。ほかのテーブル（またはそのプロセスが初めて起動する前に登録されるジョブ）のために、最初の `migrate` の後、トランザクションの外で一度テーブルを作ってください。たとえば運用コマンドで：
 
@@ -200,6 +203,8 @@ Cybertrain::Main.command("install_tables", "create the framework's tables") do |
   0
 end
 ```
+
+`Cache` のキー（つまり `rate_limit` のキー）とジョブの並行実行キーは、SQLite と同じ長さまで使えます。MySQL アダプタの以前のビルドが作ったテーブルでは 255 文字までのままで（超えるとエラー 1406）、それ以外は以前と同じに動きます。制限をなくす文は `docs/compatibility.md` にあります。
 
 > [!NOTE]
 > 当面は 1 プロセスです。MySQL では、ジョブ、ストリーム、リース、スケジュールされたタスクは 1 プロセスの中で保証されます（SQLite と同じに答えます）が、同じデータベースを共有する複数のプロセスやホストでは、まだ保証されません。それは MySQL のロードマップの第 2 段（ジョブの取り出し、ストリームの順序、リースの時計）で、まだ済んでいません。リリースがそうでないと言うまで、コンテナは 1 つ、web のロールだけで動かしてください。MySQL では、`generate job` と `generate authentication` は `config/deploy.yml` の worker のロールをコメントのままにします。
