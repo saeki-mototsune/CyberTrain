@@ -6,6 +6,9 @@ ok   detect reads the first require of cybertrain in bin/NAME.rb
 ok   detect takes the core entries of a cybertrain new application as the same adapters
 ok   detect reads the require in every spelling ViewRequires reads
 ok   detect skips the subsystem requires before the entry
+ok   an entry line inside a heredoc, an =begin block or after __END__ is text, not a require
+bin/shop.rb:1: requires both a SQLite entry (line 1) and a MySQL one (line 3); keep one of them, the first line of the file
+ok   an entry of each adapter is refused, naming both lines; gen writes nothing
 ok   detect is SQLite when bin/NAME.rb names no MySQL entry
 ok   a tree with no spin.toml name or no bin/NAME.rb is SQLite
 ok   a model's counter_cache SELECT quotes with the adapter's identifier quote
@@ -45,6 +48,7 @@ wrote gen/console.rb
 wrote gen/app.rb
 ok   gen builds a SQLite app whose bin/NAME.rb spells the require another way
 ok   partial_index_lines finds the add_index calls with a where:, across lines
+ok   partial_index_lines reads the call, not the text of its strings; where: nil is no condition
 db/migrate/20270101000000_add_index.rb:4: partial indexes (where:) are not supported on MySQL
 wrote gen/routes.rb
 wrote gen/assets.rb
@@ -63,4 +67,4 @@ wrote gen/app.rb
 ok   gen on a MySQL app stops at a partial index, writing nothing; on SQLite it goes on
 ok   the generated account test makes its notes table in the adapter's DDL
 ok   the generated lockout UPDATE sets the lock first on MySQL, which assigns left to right
-22 tests, 89 assertions, 0 failures
+25 tests, 109 assertions, 0 failures
