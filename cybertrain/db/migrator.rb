@@ -19,7 +19,15 @@ module Cybertrain
         # many it has (run_version_in_steps).
         @statement_at = 0
         @statement_total = 0
-        @connection.exec_script(Dialect.migrator_schema_migrations_sql)
+        # Whether the statement at @statement_at is a script of several
+        # statements (an `execute` without binds), which may stop part way.
+        @statement_script = false
+        # Only when missing: on MySQL a CREATE TABLE, even IF NOT EXISTS on
+        # a table that is there, commits an open transaction and needs the
+        # CREATE privilege, which `db status` or `db rollback` should not.
+        unless Dialect.table_exists?(@connection, "schema_migrations")
+          @connection.exec_script(Dialect.migrator_schema_migrations_sql)
+        end
       end
 
       # Stops the progress lines (`== <version> <Class>: migrating`,
@@ -157,11 +165,30 @@ module Cybertrain
       # table would otherwise fire ON DELETE CASCADE on its children.
       # Turning it off (DB::Dialect.foreign_keys_off) does nothing inside a
       # transaction on SQLite, so it is issued before BEGIN, and enforcement
-      # is restored after the version, whether it committed or not.
+      # is restored after the version, whether it committed or not. Where a
+      # rebuild is one ALTER TABLE in place (DB::Dialect.
+      # migrator_rebuild_foreign_keys_off? false: MySQL), neither the switch
+      # nor the check after the rebuild runs: no table is dropped, the
+      # server checks foreign keys itself, and a check after DDL that has
+      # committed could only leave the version applied and unrecorded.
+      #
+      # Afterwards, whether the version ran or failed, what the Dialect read
+      # of the schema is forgotten (DB::Dialect.forget_schema_cache: MySQL's
+      # unique keys for the upserts).
       def apply_version(version, ops, forward, sql)
+        run_version_switched(version, ops, forward, sql)
+        puts "done" unless @quiet
+        nil
+      ensure
+        Dialect.forget_schema_cache
+      end
+
+      # apply_version's work, foreign keys switched off around a rebuild
+      # where the adapter needs it.
+      def run_version_switched(version, ops, forward, sql)
         rebuilt = rebuilt_tables(ops)
-        if rebuilt == ""
-          run_version(version, ops, forward, sql, rebuilt)
+        if rebuilt == "" || !Dialect.migrator_rebuild_foreign_keys_off?
+          run_version(version, ops, forward, sql, "")
         else
           enforced = Dialect.migrator_foreign_keys_enforced?(@connection)
           Dialect.foreign_keys_off(@connection)
@@ -175,7 +202,6 @@ module Cybertrain
             Dialect.foreign_keys_on(@connection) if enforced
           end
         end
-        puts "done" unless @quiet
         nil
       end
 
@@ -234,8 +260,26 @@ module Cybertrain
                   else
                     "statements 1..#{at - 1} were applied and cannot be rolled back (MySQL DDL commits implicitly)"
                   end
+        if @statement_script
+          applied = if at <= 1
+                      "statement 1 is a script of several statements, which may be partly applied"
+                    else
+                      "#{applied}; statement #{at} is a script of several statements, which may be partly applied"
+                    end
+        end
         message = "migration #{version} failed at statement #{at} of #{total}; #{applied}: #{e.message}"
         raise Error, message
+      end
+
+      # Whether an `execute` runs `sql` as a script of several statements:
+      # it has no binds and a `;` before its end (DB::Connection#exec_script
+      # runs the statements one by one, and stops at the first that fails).
+      def script_of_several?(op)
+        return false unless op.exec_binds.empty?
+
+        text = op.exec_sql.to_s.strip
+        text = text[0, text.size - 1].to_s while text.end_with?(";")
+        text.include?(";")
       end
 
       # How many statements run_operations_in_steps runs for `ops`.
@@ -271,8 +315,10 @@ module Cybertrain
       # a :remove_index drops the index run_operations would.
       def run_operations_in_steps(ops, forward)
         ops.each do |op|
+          @statement_script = false
           if op.kind == :execute || op.kind == :reversible_up
             @statement_at += 1
+            @statement_script = script_of_several?(op)
             run_data_statement(op)
           elsif op.kind == :reversible_down
             nil
@@ -290,6 +336,10 @@ module Cybertrain
                                                          op.columns, false, "")
             Dialect.ddl_statements(named).each { |stmt| @connection.exec_script(stmt) }
           else
+            # MySQL: a NOT NULL column without a default on a table with
+            # rows is refused here, before its first statement, as SQLite
+            # refuses it (DB::Dialect.migrator_check_operation).
+            Dialect.migrator_check_operation(@connection, op)
             Dialect.ddl_statements(op).each do |stmt|
               @statement_at += 1
               @connection.exec_script(stmt)

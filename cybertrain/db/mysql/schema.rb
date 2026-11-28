@@ -7,8 +7,10 @@ module Cybertrain
       # information_schema in the shape SQLite's PRAGMAs answer it, for the
       # DB::Dialect schema readers (SchemaDumper, the Migrator). The point
       # is that SchemaDumper turns the same migrations into the same
-      # db/schema.rb on both adapters, so the column type and default are
-      # given as SqliteDDL declares them:
+      # db/schema.rb on both adapters, as far as MySQL keeps what they
+      # declared (test/mysql/migrations.rb's header lists where it does
+      # not), so the column type and default are given as SqliteDDL
+      # declares them:
       #
       # - type: VARCHAR for varchar(255) (MySQL's VARCHAR without a limit),
       #   VARCHAR(n) otherwise; TEXT for every text type; BOOLEAN for
@@ -21,7 +23,11 @@ module Cybertrain
       # - dflt_value: NULL for none; false / true for a boolean's 0 / 1; a
       #   quoted '...' literal for a string, date or time type (MySQL keeps
       #   the bare text); an expression default (DEFAULT_GENERATED) as
-      #   MySQL spells it; any other as it is (a number).
+      #   SQLite reports one, its text without the parentheses around it
+      #   (SchemaDumper.default_sql adds them to what is not a plain
+      #   literal), with information_schema's extra escaping undone and the
+      #   _utf8mb4 introducer dropped (expression_text): DEFAULT ('{}')
+      #   reads '{}'; any other as it is (a number).
       module SchemaReader
         STRING_TYPES = "'char', 'varchar', 'tinytext', 'text', 'mediumtext', 'longtext', " \
                        "'date', 'datetime', 'timestamp', 'time', 'year', 'enum', 'set'"
@@ -51,6 +57,7 @@ module Cybertrain
 
         COLUMNS_SQL = "SELECT c.column_name AS name, #{COLUMN_TYPE} AS type, " \
                       "IF(c.is_nullable = 'NO', 1, 0) AS notnull, #{COLUMN_DEFAULT} AS dflt_value, " \
+                      "IF(c.extra LIKE '%DEFAULT_GENERATED%', 1, 0) AS expr_default, " \
                       "COALESCE((SELECT k.ordinal_position FROM information_schema.key_column_usage k " \
                       "WHERE k.table_schema = c.table_schema AND k.table_name = c.table_name " \
                       "AND k.column_name = c.column_name AND k.constraint_name = 'PRIMARY'), 0) AS pk " \
@@ -59,12 +66,19 @@ module Cybertrain
 
         # The table's columns (see the module notes), one row each in
         # declaration order: "name", "type", "notnull" (0/1), "dflt_value"
-        # and "pk" (0, or the column's place in the primary key).
+        # and "pk" (0, or the column's place in the primary key); and
+        # "expr_default" (1 for a DEFAULT_GENERATED one).
         # @param conn [Cybertrain::DB::Connection]
         # @param table [String]
         # @return [Array<Hash{String => Object}>]
         def self.column_rows(conn, table)
-          conn.execute(COLUMNS_SQL, [table])
+          rows = conn.execute(COLUMNS_SQL, [table])
+          rows.each do |r|
+            next unless Cybertrain::Cast.int(r["expr_default"]) == 1
+
+            r["dflt_value"] = SchemaReader.expression_text(Cybertrain::Cast.str(r["dflt_value"]))
+          end
+          rows
         end
 
         # A CREATE INDEX text for an index with an expression among its key
@@ -90,7 +104,8 @@ module Cybertrain
             if expr.nil?
               parts << Cybertrain::DB::Dialect.quote_ident(Cybertrain::Cast.str(r["name"]))
             else
-              parts << "(#{expr})"
+              text = SchemaReader.expression_text(expr)
+              parts << "(#{text})"
               expressions += 1
             end
           end
@@ -98,6 +113,68 @@ module Cybertrain
 
           "CREATE INDEX #{Cybertrain::DB::Dialect.quote_ident(index)} ON " \
             "#{Cybertrain::DB::Dialect.quote_ident(table)} (#{parts.join(", ")})"
+        end
+
+        # An expression as SQL text from the text information_schema holds
+        # for it (columns.column_default of a DEFAULT_GENERATED default,
+        # statistics.expression): the server stores it escaped once more,
+        # each quote as \' and each backslash as \\ ("_utf8mb4\'{}\'" for
+        # `DEFAULT ('{}')`), which is undone; a string literal's own
+        # backslash-escaped quote (\') is then written doubled (''), the
+        # form SQLite reads too and SchemaDumper's quote tracking expects,
+        # and the connection's _utf8mb4 introducer before a literal is
+        # dropped (the column's own character set is that one).
+        # @param raw [String]
+        # @return [String]
+        def self.expression_text(raw)
+          s = raw.to_s
+          plain = +""
+          n = s.bytesize
+          i = 0
+          while i < n
+            i += 1 if s.getbyte(i) == 92 && i + 1 < n
+            plain << s.byteslice(i, 1)
+            i += 1
+          end
+          out = +""
+          n = plain.bytesize
+          i = 0
+          quoted = false
+          while i < n
+            b = plain.getbyte(i)
+            if quoted
+              if b == 92 && i + 1 < n
+                if plain.getbyte(i + 1) == 39
+                  out << "''"
+                else
+                  out << plain.byteslice(i, 2)
+                end
+                i += 2
+                next
+              end
+              if b == 39
+                if i + 1 < n && plain.getbyte(i + 1) == 39
+                  out << "''"
+                  i += 2
+                  next
+                end
+                quoted = false
+              end
+            elsif b == 39
+              quoted = true
+            elsif b == 95 && plain.byteslice(i, 9) == "_utf8mb4'" && (i == 0 || !SchemaReader.word_byte?(plain.getbyte(i - 1)))
+              i += 8
+              next
+            end
+            out << plain.byteslice(i, 1)
+            i += 1
+          end
+          out
+        end
+
+        # Whether byte `b` can be part of an unquoted name.
+        def self.word_byte?(b)
+          (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95 || b == 36 || b >= 128
         end
       end
     end

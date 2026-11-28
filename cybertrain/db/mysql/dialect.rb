@@ -1261,7 +1261,8 @@ module Cybertrain
       # @param name [String]
       # @return [String]
       def self.migrator_drop_index_sql(table, name)
-        "DROP INDEX #{Dialect.quote_ident(name)} ON #{Dialect.quote_ident(table)}"
+        short = Cybertrain::DB::MySQL::DDL.index_name(name)
+        "DROP INDEX #{Dialect.quote_ident(short)} ON #{Dialect.quote_ident(table)}"
       end
 
       # Runs one operation SQLite rebuilds its table for (op.rebuilds?):

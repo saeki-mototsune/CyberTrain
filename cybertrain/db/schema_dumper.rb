@@ -9,7 +9,12 @@ module Cybertrain
     # is read through DB::Dialect's schema readers: on SQLite its PRAGMAs,
     # on MySQL information_schema answered in the same shape, the types and
     # defaults as SQLite declares them (DB::MySQL::SchemaReader), so the
-    # same migrations dump the same db/schema.rb on both.
+    # same migrations dump the same db/schema.rb on both, but for what
+    # MySQL keeps otherwise: a string's limit 255, a decimal(10,0), a
+    # bigint `*_id`, the defaults MySQL keeps as expressions, an expression
+    # index's text and the index MySQL adds for a foreign key without one
+    # (test/mysql/migrations.rb's header lists them; docs/compatibility.md
+    # too).
     #
     # SqliteDDL declares one SQL type name per schema type (VARCHAR, TEXT,
     # INTEGER, BIGINT, REAL, DECIMAL, BOOLEAN, DATETIME, DATE, BLOB, JSON) and
@@ -39,7 +44,10 @@ module Cybertrain
       end
 
       # Every user table, excluding schema_migrations and Rails'
-      # ar_internal_metadata, the framework's own
+      # ar_internal_metadata, `cybertrain test`'s marker
+      # cybertrain_test_marker (MySQL: the table that says a database may be
+      # emptied; never on SQLite, which marks the file instead), the
+      # framework's own
       # cybertrain_jobs, cybertrain_leases, cybertrain_messages,
       # cybertrain_schedules, cybertrain_cache and cybertrain_feeds (Job,
       # Lease, Stream, Scheduler::Timetable, Cache and WebSocket::FeedTable
@@ -50,7 +58,7 @@ module Cybertrain
       def self.table_names(connection)
         names = Array.new(0) { "" }
         Dialect.table_names(connection).each do |name|
-          next if name == "schema_migrations" || name == "ar_internal_metadata"
+          next if name == "schema_migrations" || name == "ar_internal_metadata" || name == "cybertrain_test_marker"
           next if name == "cybertrain_jobs" || name == "cybertrain_leases" || name == "cybertrain_messages"
           next if name == "cybertrain_schedules" || name == "cybertrain_cache" || name == "cybertrain_feeds"
           names << name
