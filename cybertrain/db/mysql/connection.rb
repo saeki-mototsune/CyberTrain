@@ -305,6 +305,16 @@ module Cybertrain
         @last_insert_id
       end
 
+      # Forgets the kept insert id, so that last_insert_id answers 0 after a
+      # statement that reports none, not an earlier statement's id
+      # (Dialect.cache_increment: its counter at -2**62 is insert id 0).
+      # @return [nil]
+      def forget_last_insert_id
+        raise Error, "connection closed (forget_last_insert_id)" if @closed
+        @last_insert_id = 0
+        nil
+      end
+
       # The most `?` binds one statement may carry (65535).
       # @return [Integer]
       # @raise [Cybertrain::DB::Error] when the connection is closed

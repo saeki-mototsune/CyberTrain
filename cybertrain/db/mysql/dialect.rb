@@ -558,9 +558,13 @@ module Cybertrain
       # LAST_INSERT_ID(expr), and takes off again: LAST_INSERT_ID is
       # BIGINT UNSIGNED, so a negative count would come back as 2**64 - n
       # (and the OK packet's insert id is read only up to 2**63 - 1). With
-      # 2**62 added, every counter in -2**62 ... 2**62 - 1 passes as a
-      # positive id, never 0 (which the Connection does not take as an id).
-      # A counter outside that range is MySQL's BIGINT out-of-range error.
+      # 2**62 added, every counter in -2**62 ... 2**62 - 1 passes as an id
+      # in 0 ... 2**63 - 1. The lowest, -2**62, is id 0, which the
+      # Connection does not take as an id, so cache_increment has it forget
+      # the kept one first. A counter above that range is MySQL's BIGINT
+      # out-of-range error; one below it is written, and its id (2**64 - n
+      # as UNSIGNED) is past what the client reads, so the call raises
+      # ConnectionLost (Cache.increment's doc).
       # (CACHE_INCREMENT_SQL writes it as a literal.)
       CACHE_COUNTER_OFFSET = 4_611_686_018_427_387_904
 
@@ -613,6 +617,7 @@ module Cybertrain
       # @return [Integer]
       def self.cache_increment(conn, key, by, expires_at, now)
         binds = Cybertrain::Cast.binds(key, by, expires_at, now, now, by, now, now, expires_at)
+        conn.forget_last_insert_id
         conn.execute(CACHE_INCREMENT_SQL, binds)
         conn.last_insert_id - CACHE_COUNTER_OFFSET
       end

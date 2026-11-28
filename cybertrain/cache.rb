@@ -298,6 +298,11 @@ module Cybertrain
     # new or expired row, and of a live row that has none; a live row that
     # has one keeps it, so the counter's window is fixed from its first
     # increment (as Rails' stores do) and does not slide with every call.
+    # The count is a 64-bit integer on SQLite; on MySQL it must stay within
+    # -2**62 ... 2**62 - 1. Past the top the statement fails with DB::Error
+    # and nothing is written; past the bottom the new count is written and
+    # the call raises DB::ConnectionLost, since the client cannot read the
+    # insert id that carries it back.
     # @example A counter for the current minute
     #   Cybertrain::Cache.increment("hits/#{ip}", expires_in: 60)
     # @param key [String]

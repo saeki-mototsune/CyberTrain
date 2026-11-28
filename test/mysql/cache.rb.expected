@@ -12,4 +12,4 @@ ok   increment_is_atomic
 ok   the loser of two concurrent adds of one key answers false
 ok   two transactional adds of one expired key: one answers true, the other false, no deadlock
 ok   a counter goes below zero and back, and by: 0 answers it unchanged
-14 tests, 140 assertions, 0 failures
+14 tests, 146 assertions, 0 failures

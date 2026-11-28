@@ -487,6 +487,17 @@ test "a counter goes below zero and back, and by: 0 answers it unchanged" do
   # 2**62 - 1, the largest count the insert id carries back.
   big = 4_611_686_018_427_387_903
   assert_equal big, Cache.increment("big", by: big)
+  # -2**62, the smallest: its insert id is 0, which the statement before
+  # (the count above) must not stand in for.
+  floor = -4_611_686_018_427_387_904
+  assert_equal floor, Cache.increment("floor", by: floor)
+  assert_equal floor.to_s, Cache.read("floor")
+  assert_equal floor + 1, Cache.increment("floor")
+  assert_equal floor, Cache.increment("floor", by: -1)
+  # One past either end raises: above, MySQL's out-of-range error; below,
+  # an insert id the client cannot read (Cache.increment's doc).
+  assert_raises { Cache.increment("big") }
+  assert_raises { Cache.increment("below", by: floor - 1) }
 end
 
 Cybertrain::Test.run!
