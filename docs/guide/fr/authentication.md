@@ -1,5 +1,5 @@
 ---
-source_sha256: 8eee615f131af513a326deaed48ebbd9806241fcc18f5f4993103cf38b59c5db
+source_sha256: 0949ea9f7b5309187c8e36797c312be87f337f90198a89473d0af15ffa61a97e
 ---
 # Authentification
 
@@ -72,6 +72,7 @@ Chaque adresse que le code généré enregistre, depuis la page d’inscription,
 - Le jeton fait 32 caractères hexadécimaux aléatoires, créés au démarrage du programme (`SetupController.setup_token`), comparés en temps constant. Il garde la page fermée là où le contrôle d’adresse ne le peut pas, derrière un proxy qui n’ajoute pas `X-Forwarded-For`. Le journal des requêtes l’affiche comme `[FILTERED]`.
 - Tant qu’aucun utilisateur n’existe, le serveur journalise `WARN no user exists yet: run ./<app> user EMAIL, or open /setup?token=<token> from this machine` avant de démarrer&nbsp;; c’est le seul endroit où le jeton est affiché.
 - `<APP>_SETUP_OPEN=1` (le réglage `setup_open` dans `config/app.rb`) lève le contrôle d’adresse, jamais celui du jeton, pour un premier lancement derrière un proxy sur un autre hôte. Retirez-le une fois l’utilisateur créé.
+- Deux requêtes de premier lancement au même moment créent un seul compte. La vérification d’un utilisateur et l’insertion forment une transaction&nbsp;: sur SQLite un `BEGIN IMMEDIATE`, sur MySQL une lecture verrouillante (`SELECT ... FOR UPDATE`) dans la transaction de l’insertion, où une requête que MySQL annule comme interblocage n’enregistre rien et affiche à nouveau le formulaire.
 
 ## La commande utilisateur
 

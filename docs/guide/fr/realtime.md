@@ -1,5 +1,5 @@
 ---
-source_sha256: 0ac92df8f2d3d6ae1a67b27813f027a53e1ada3527cc73bb34c9baad2db17ab7
+source_sha256: 378b47d92698d347661a11952915575f88a7711c7b02f125056c81f95d0055a0
 ---
 # Temps réel : des flux vers le navigateur
 
@@ -22,7 +22,10 @@ reçoit le message en un dixième de seconde environ.
   `DB.transaction`, le message ne part que si la transaction est validée.
   Parce que c’est une ligne, une diffusion fonctionne depuis tout processus
   qui partage la base&nbsp;: une requête, un job dans un processus `worker`,
-  un callback de flux, une `Main.command`.
+  un callback de flux, une `Main.command`. Sur MySQL, c’est garanti dans un
+  processus, comme sur SQLite&nbsp;; entre plusieurs processus, un message
+  peut encore être perdu, jusqu’à l’étape 2 de la feuille de route MySQL
+  ([Configuration, «&nbsp;MySQL&nbsp;»](configuration.md#mysql)).
 - **Chaque processus web interroge la table.** Un thread par processus
   `server` (le poller des flux) lit les nouvelles lignes toutes les
   `stream_poll_ms` (100&nbsp;ms) et remet chacune aux navigateurs que ce
