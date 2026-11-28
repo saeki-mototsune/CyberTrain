@@ -214,4 +214,14 @@ test "gen on a MySQL app stops at a partial index, writing nothing; on SQLite it
   assert File.exist?("#{sqlite}/gen/migrations.rb")
 end
 
+test "the generated account test makes its notes table in the adapter's DDL" do
+  sqlite = Cybertrain::CLI::Authentication.accounts_controller_test(false)
+  assert_includes sqlite, "      c.execute(\"CREATE TABLE account_notes (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id))\")\n"
+  mysql = Cybertrain::CLI::Authentication.accounts_controller_test(true, "mysql")
+  assert_includes mysql, "      c.execute(\"CREATE TABLE account_notes (id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, " \
+                         "user_id BIGINT NOT NULL, FOREIGN KEY (user_id) REFERENCES users (id)) ENGINE=InnoDB\")\n"
+  assert_nil mysql.index("INTEGER PRIMARY KEY")
+  assert_nil mysql.index("@NOTES_TABLE@")
+end
+
 Cybertrain::Test.run!

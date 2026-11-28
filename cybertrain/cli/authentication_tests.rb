@@ -2034,6 +2034,7 @@ module Cybertrain
         text = SourceEdit.splice(accounts_controller_test_body, "@ADDRESS_HELPERS@",
                                  SourceEdit.margin(confirmable ? accounts_test_confirm_helpers : accounts_test_address_helpers, 2))
         text = SourceEdit.splice(text, "@FK_CHECK@", accounts_fk_check(adapter))
+        text = SourceEdit.splice(text, "@NOTES_TABLE@", accounts_notes_table(adapter))
         SourceEdit.splice(text, "@HELPERS@", with_config_helper)
       end
 
@@ -2049,6 +2050,19 @@ module Cybertrain
         end
 
         "      assert_includes log.string, \"account not deleted: FOREIGN KEY constraint failed\"\n"
+      end
+
+      # The CREATE TABLE of the test's account_notes, a table whose rows
+      # refer to users through a foreign key, in the adapter's DDL: SQLite's
+      # inline REFERENCES, or MySQL's BIGINT columns (users.id is one there)
+      # with a FOREIGN KEY clause on an InnoDB table, which checks it.
+      def self.accounts_notes_table(adapter)
+        if adapter == "mysql"
+          return "      c.execute(\"CREATE TABLE account_notes (id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, " \
+                 "user_id BIGINT NOT NULL, FOREIGN KEY (user_id) REFERENCES users (id)) ENGINE=InnoDB\")\n"
+        end
+
+        "      c.execute(\"CREATE TABLE account_notes (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id))\")\n"
       end
 
       def self.accounts_controller_test_body
@@ -2475,7 +2489,7 @@ module Cybertrain
             # then refuses to delete that user.
             def add_note_for(user)
               Cybertrain::DB.with do |c|
-                c.execute("CREATE TABLE account_notes (id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users (id))")
+                @NOTES_TABLE@
                 c.execute("INSERT INTO account_notes (user_id) VALUES (#{user.id})")
               end
               nil

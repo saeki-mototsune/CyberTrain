@@ -209,9 +209,10 @@ module Cybertrain
       raise InvalidArgument, "'#{File.basename(dir)}' is not a valid app name (lowercase letters, digits and _)" unless Templates.identifier?(File.basename(dir))
       raise InvalidArgument, "#{dir} already exists" if File.exist?(dir)
 
+      database = database_option(argv)
       dep = framework_dep(argv)
       note = version_note(option(argv, "--version"))
-      NewApp.create(dir, dep)
+      NewApp.create(dir, dep, database)
       puts note unless note == ""
       return 0 if argv.include?("--skip-spin")
       return 1 unless NewApp.bootstrap(dir)
@@ -261,6 +262,28 @@ module Cybertrain
 
       "note: spin selects the lowest release that satisfies \"#{version}\" and spin.lock pins it, " \
         "so a range does not follow new releases; name one release (--version X.Y.Z) to choose it"
+    end
+
+    # The adapter `new` writes the app for: "sqlite" unless `--database=NAME`
+    # or `--database NAME` says "mysql" (or "sqlite"); any other value, or
+    # none, is refused before anything is written.
+    def self.database_option(argv)
+      value = ""
+      given = false
+      argv.each do |arg|
+        if arg.start_with?("--database=")
+          given = true
+          value = arg["--database=".size, arg.size - "--database=".size].to_s
+        end
+      end
+      unless given
+        return "sqlite" unless argv.include?("--database")
+
+        value = option(argv, "--database")
+      end
+      return value if value == "sqlite" || value == "mysql"
+
+      raise InvalidArgument, "--database must be sqlite or mysql, got #{value.inspect}"
     end
 
     # `value` as a TOML basic string: `\` and `"` escaped. Control

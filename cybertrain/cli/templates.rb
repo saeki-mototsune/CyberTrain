@@ -57,6 +57,10 @@ module Cybertrain
       # The line that loads every subsystem.
       EVERYTHING_REQUIRE = "require \"cybertrain\""
 
+      # The lines that load every subsystem: SQLite's, and MySQL's entry
+      # (what `new --database=mysql` writes).
+      EVERYTHING_REQUIRES = [EVERYTHING_REQUIRE, "require \"cybertrain/mysql\""].freeze
+
       # Adds `require "FEATURE"` to bin/<app>.rb and to bin/db.rb (which
       # loads config/app.rb, so it requires the same subsystems: a
       # Scheduler.cron there would not compile in a core-only db binary),
@@ -84,8 +88,10 @@ module Cybertrain
           lines = File.read(path).split("\n", -1)
           stripped = Array.new(0) { "" }
           lines.each { |line| stripped << line.strip }
-          if stripped.include?(EVERYTHING_REQUIRE)
-            puts "identical #{rel} (#{EVERYTHING_REQUIRE} loads #{features.join(", ")})"
+          everything = ""
+          EVERYTHING_REQUIRES.each { |line| everything = line if everything.empty? && stripped.include?(line) }
+          unless everything.empty?
+            puts "identical #{rel} (#{everything} loads #{features.join(", ")})"
             next
           end
 
@@ -181,7 +187,23 @@ module Cybertrain
 
       # The secrets the application reads from its environment, commented:
       # a template to copy from, committed, so it never holds a value.
-      def self.env_example
+      # database "mysql" adds DATABASE_URL, the development database
+      # (NAME_development on a local server), after SQLite's lines.
+      def self.env_example(package = "", database = "sqlite")
+        return sqlite_env_example unless database == "mysql"
+
+        sqlite_env_example + <<~TEXT
+
+          # The MySQL database (config/app.rb): mysql://USER:PASSWORD@HOST:3306/NAME.
+          # The connection uses TLS and checks the server's certificate; add
+          # ?ssl_mode=disabled for a local server without TLS. Production's
+          # holds a password: set it in the environment or your deploy's
+          # secrets, never here.
+          DATABASE_URL=mysql://root@127.0.0.1:3306/#{package}_development
+        TEXT
+      end
+
+      def self.sqlite_env_example
         <<~TEXT
           # The secrets this application reads from its environment. This file
           # is committed: copy a line into the environment (or your deploy's
@@ -565,7 +587,27 @@ module Cybertrain
         YAML
       end
 
-      def self.config_app
+      # database "mysql" explains DATABASE_URL under the first line.
+      def self.config_app(package = "", database = "sqlite")
+        return sqlite_config_app unless database == "mysql"
+
+        first = "# Application settings; see Cybertrain::Config for every option.\n"
+        text = sqlite_config_app
+        first + <<~RUBY + text[first.size, text.size - first.size]
+          #
+          # The database is MySQL (bin/#{package}.rb requires cybertrain/mysql): the one
+          # DATABASE_URL names, read from the environment before this block runs,
+          #   mysql://USER:PASSWORD@HOST:3306/NAME
+          # (.env.example has development's). The connection uses TLS and checks
+          # the server's certificate (the CA from SSL_CERT_FILE or SSL_CERT_DIR);
+          # ?ssl_mode=disabled turns TLS off, for a server on localhost or a
+          # private address only. `cybertrain db create` creates NAME, `db drop`
+          # drops it. Keep the password in the environment (or your deploy's
+          # secrets), never in this file or the repository.
+        RUBY
+      end
+
+      def self.sqlite_config_app
         <<~RUBY
           # Application settings; see Cybertrain::Config for every option.
           # Environment variables (PORT, CYBERTRAIN_ENV, CYBERTRAIN_DATABASE,
@@ -758,7 +800,22 @@ module Cybertrain
         RUBY
       end
 
-      def self.bin_app(package)
+      # The comment and the require line bin/<app>.rb starts with: the core
+      # alone on SQLite; on MySQL cybertrain/mysql, the MySQL adapter and
+      # every subsystem.
+      def self.bin_app_head(database)
+        if database == "mysql"
+          return <<~RUBY
+            # The whole framework with the MySQL adapter: the database is the one
+            # DATABASE_URL names (config/app.rb). cybertrain/mysql loads every
+            # subsystem (jobs, streams, feeds, mailer, cache, rate_limit), so
+            # `generate job` and `generate authentication` add no line here.
+            # cybertrain/error_reporter/sentry (error reports to Sentry or
+            # GlitchTip) goes here only.
+            require "cybertrain/mysql"
+          RUBY
+        end
+
         <<~RUBY
           # The framework without its optional subsystems. Add the ones the
           # application uses after it, here and in bin/db.rb: cybertrain/jobs,
@@ -769,6 +826,11 @@ module Cybertrain
           # line a view's helper needs. cybertrain/error_reporter/sentry
           # (error reports to Sentry or GlitchTip) goes here only.
           require "cybertrain/core"
+        RUBY
+      end
+
+      def self.bin_app(package, database = "sqlite")
+        bin_app_head(database) + <<~RUBY
           require_relative "../gen/views"      # embedded build: sets CYBERTRAIN_ENV=production by default
           require_relative "../config/app"     # so it comes before the config
           require_relative "../gen/app"
@@ -800,11 +862,20 @@ module Cybertrain
       end
 
       # Development only, so migrations run before gen/models exist; production uses `./NAME migrate`.
-      def self.bin_db
-        <<~RUBY
-          # The same subsystem lines as bin/<app>.rb: config/app.rb may name
-          # them (a Scheduler.cron task needs cybertrain/jobs).
-          require "cybertrain/core"
+      def self.bin_db(database = "sqlite")
+        head = if database == "mysql"
+                 <<~RUBY
+                   # The same entry as bin/<app>.rb: the MySQL adapter and every subsystem.
+                   require "cybertrain/mysql"
+                 RUBY
+               else
+                 <<~RUBY
+                   # The same subsystem lines as bin/<app>.rb: config/app.rb may name
+                   # them (a Scheduler.cron task needs cybertrain/jobs).
+                   require "cybertrain/core"
+                 RUBY
+               end
+        head + <<~RUBY
           require_relative "../config/app"
           require_relative "../gen/migrations"
 

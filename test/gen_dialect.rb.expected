@@ -45,4 +45,5 @@ wrote gen/models/post.rb
 wrote gen/console.rb
 wrote gen/app.rb
 ok   gen on a MySQL app stops at a partial index, writing nothing; on SQLite it goes on
-16 tests, 59 assertions, 0 failures
+ok   the generated account test makes its notes table in the adapter's DDL
+17 tests, 63 assertions, 0 failures
