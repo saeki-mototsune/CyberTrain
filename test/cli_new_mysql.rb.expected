@@ -118,6 +118,10 @@ ok   bin/db.rb requires cybertrain/mysql
 ok   gen reads the app as MySQL, and the SQLite app as SQLite
 ok   config/app.rb explains DATABASE_URL
 ok   .env.example names the development database
+ok   the Dockerfile's run example passes DATABASE_URL; storage/ keeps the uploads
+ok   config/deploy.yml takes DATABASE_URL as a secret and says what one process guarantees
+ok   .kamal/secrets reads DATABASE_URL from the environment
+ok   the CI workflow runs the tests against a MySQL service
 ok   every other file is SQLite's
 identical bin/shop.rb (require "cybertrain/mysql" loads cybertrain/jobs)
 identical bin/db.rb (require "cybertrain/mysql" loads cybertrain/jobs)
@@ -240,4 +244,4 @@ ok   CLI new --database=mysql and --database mysql
 error: --database must be sqlite or mysql, got "postgresql"
 error: --database needs a value
 ok   CLI new refuses another --database, writing nothing
-10 tests, 58 assertions, 0 failures
+14 tests, 67 assertions, 0 failures

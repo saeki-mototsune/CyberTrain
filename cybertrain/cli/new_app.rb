@@ -15,7 +15,9 @@ module Cybertrain
       # relative to dir. database is the adapter, "sqlite" (the default) or
       # "mysql" (`--database=mysql`): bin/NAME.rb and bin/db.rb then require
       # "cybertrain/mysql", config/app.rb explains DATABASE_URL and
-      # .env.example has development's; every other file is the same.
+      # .env.example has development's; the Dockerfile, config/deploy.yml,
+      # .kamal/secrets and the CI workflow pass DATABASE_URL (the workflow
+      # with a MySQL service); every other file is the same.
       def self.create(dir, framework_dep, database = "sqlite")
         package = File.basename(dir)
         # Before anything is written: `public`, `storage` and `tmp` are valid
@@ -51,11 +53,11 @@ module Cybertrain
           ["bin/#{package}.rb", Templates.bin_app(package, database)],
           ["bin/gen.rb", Templates.bin_gen],
           ["bin/db.rb", Templates.bin_db(database)],
-          ["Dockerfile", Templates.dockerfile(package)],
+          ["Dockerfile", Templates.dockerfile(package, database)],
           [".dockerignore", Templates.dockerignore],
-          ["config/deploy.yml", Templates.deploy_yml(package)],
-          [".kamal/secrets", Templates.kamal_secrets],
-          [".github/workflows/ci.yml", Templates.ci_workflow],
+          ["config/deploy.yml", Templates.deploy_yml(package, database)],
+          [".kamal/secrets", Templates.kamal_secrets(database)],
+          [".github/workflows/ci.yml", Templates.ci_workflow(package, database)],
           ["gen/.keep", ""],
           ["storage/.keep", ""],
           ["tmp/.keep", ""],

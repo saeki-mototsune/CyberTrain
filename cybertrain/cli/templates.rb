@@ -808,10 +808,10 @@ module Cybertrain
           return <<~RUBY
             # The whole framework with the MySQL adapter: the database is the one
             # DATABASE_URL names (config/app.rb). cybertrain/mysql loads every
-            # subsystem (jobs, streams, feeds, mailer, cache, rate_limit), so
-            # `generate job` and `generate authentication` add no line here.
-            # cybertrain/error_reporter/sentry (error reports to Sentry or
-            # GlitchTip) goes here only.
+            # subsystem (jobs, streams, feeds, mailer, cache, rate_limit) and the
+            # Sentry sender (error reports to Sentry or GlitchTip, once
+            # CYBERTRAIN_SENTRY_DSN is set), so `generate job` and `generate
+            # authentication` add no line here.
             require "cybertrain/mysql"
           RUBY
         end
@@ -892,7 +892,41 @@ module Cybertrain
       # spin.toml, so the generator that runs in the image matches the
       # framework spin.lock fixes.
 
-      def self.dockerfile(package)
+      # database "mysql": the run example passes DATABASE_URL, and storage/
+      # holds the uploads only (the database is the MySQL server's).
+      def self.dockerfile(package, database = "sqlite")
+        text = sqlite_dockerfile(package)
+        return text unless database == "mysql"
+
+        swapped(text, "Dockerfile", [
+                  ["-e CYBERTRAIN_SECRET_KEY_BASE=$(openssl rand -hex 32) \\\n",
+                   "-e CYBERTRAIN_SECRET_KEY_BASE=$(openssl rand -hex 32) \\\n" \
+                   "#     -e DATABASE_URL='mysql://USER:PASSWORD@HOST:3306/#{package}_production' \\\n"],
+                  ["# storage/ holds the SQLite database (storage/production.sqlite3); mount\n" \
+                   "# a volume there so it outlives the container.\n",
+                   "# The database is the MySQL server DATABASE_URL names; storage/ holds the\n" \
+                   "# uploaded files (storage/uploads/): mount a volume there so they outlive\n" \
+                   "# the container.\n"]
+                ])
+      end
+
+      # `text` (the SQLite form of `file`) with each [from, to] of `pairs`
+      # replaced once; raises when a `from` is not there, so that a change
+      # to the SQLite template that a MySQL edit no longer finds fails
+      # test/cli_new_mysql.rb rather than writing the SQLite text.
+      def self.swapped(text, file, pairs)
+        out = text
+        pairs.each do |pair|
+          at = out.index(pair[0])
+          raise ArgumentError, "#{file}: the MySQL edit finds no #{pair[0].inspect}" if at.nil?
+
+          # Sliced rather than sub: the replacement holds backslashes.
+          out = out[0, at] + pair[1] + out[at + pair[0].size, out.size - at - pair[0].size]
+        end
+        out
+      end
+
+      def self.sqlite_dockerfile(package)
         <<~DOCKERFILE
           # syntax=docker/dockerfile:1
           # The production image `kamal deploy` builds and runs (config/deploy.yml).
@@ -1043,7 +1077,32 @@ module Cybertrain
         nil
       end
 
-      def self.deploy_yml(package)
+      # database "mysql": DATABASE_URL is a secret, and the comments say
+      # where the database is and what several hosts do not yet share
+      # safely (docs/design.md D96).
+      def self.deploy_yml(package, database = "sqlite")
+        text = sqlite_deploy_yml(package)
+        return text unless database == "mysql"
+
+        swapped(text, "config/deploy.yml", [
+                  ["# CHANGE ME: the server's address. One server: the database is a\n" \
+                   "# SQLite file on that server's volume, which every role shares.\n",
+                   "# CHANGE ME: the server's address. The database is the MySQL server\n" \
+                   "# DATABASE_URL names (a secret, below). On MySQL, jobs, streams, leases\n" \
+                   "# and scheduled tasks are guaranteed within one process only for now\n" \
+                   "# (the configuration guide, \"MySQL\"): run the web role alone, and\n" \
+                   "# comment the worker role out again if a generator turned it on.\n"],
+                  ["  secret:\n    - CYBERTRAIN_SECRET_KEY_BASE\n",
+                   "  secret:\n    # mysql://USER:PASSWORD@HOST:3306/#{package}_production (config/app.rb);\n" \
+                   "    # also listed in .kamal/secrets.\n    - DATABASE_URL\n    - CYBERTRAIN_SECRET_KEY_BASE\n"],
+                  ["# The SQLite database lives in storage/: keep it on the server across\n" \
+                   "# deploys. Back it up from there (docs/deploy.md).\n",
+                   "# Uploaded files live in storage/uploads/: keep them on the server across\n" \
+                   "# deploys. The database is MySQL's: back it up there.\n"]
+                ])
+      end
+
+      def self.sqlite_deploy_yml(package)
         <<~YAML
           # Kamal 2 (https://kamal-deploy.org): `kamal setup` the first time,
           # `kamal deploy` after that. Replace every value marked CHANGE ME.
@@ -1152,7 +1211,18 @@ module Cybertrain
         YAML
       end
 
-      def self.kamal_secrets
+      # database "mysql" adds DATABASE_URL, which holds the password.
+      def self.kamal_secrets(database = "sqlite")
+        return sqlite_kamal_secrets unless database == "mysql"
+
+        sqlite_kamal_secrets + <<~TEXT
+
+          # The MySQL database, mysql://USER:PASSWORD@HOST:3306/NAME (config/app.rb).
+          DATABASE_URL=$DATABASE_URL
+        TEXT
+      end
+
+      def self.sqlite_kamal_secrets
         <<~TEXT
           # Secrets for config/deploy.yml, read from the environment of the
           # machine running kamal (or a password manager:
@@ -1192,7 +1262,68 @@ module Cybertrain
       # .github/workflows/ci.yml: the toolchain from the setup-cybertrain
       # action, then the checks an app's CI needs: spin.lock and gen/ are
       # committed and current, and the tests pass.
-      def self.ci_workflow
+      # database "mysql": a MySQL 8.0 service container, NAME_test, and
+      # DATABASE_URL on the tests (docs/design.md D96). The password is
+      # this throwaway server's, not a secret.
+      def self.ci_workflow(package = "", database = "sqlite")
+        text = sqlite_ci_workflow
+        return text unless database == "mysql"
+
+        url = "mysql://root:cybertrain@127.0.0.1:3306/#{package}_test?ssl_mode=disabled"
+        swapped(text, ".github/workflows/ci.yml", [
+                  ["    runs-on: ubuntu-latest\n", "    runs-on: ubuntu-latest\n" + ci_mysql_service(package)],
+                  ["      - uses: actions/checkout@v4\n", "      - uses: actions/checkout@v4\n" + ci_mysql_user_step],
+                  ["        env:\n          CYBERTRAIN_PATH:",
+                   "        env:\n          DATABASE_URL: \"#{url}\"\n          CYBERTRAIN_PATH:"]
+                ])
+      end
+
+      # `text` with `pad` before each line that is not empty.
+      def self.indented(text, pad)
+        out = +""
+        text.split("\n").each { |line| out << (line.empty? ? "\n" : "#{pad}#{line}\n") }
+        out
+      end
+
+      # The `services:` block of a MySQL application's CI.
+      def self.ci_mysql_service(package)
+        indented(<<~YAML, "    ")
+          # The MySQL server the tests run against (DATABASE_URL, below). The
+          # test bundle empties #{package}_test and migrates it again for each
+          # run: its name must end in _test.
+          services:
+            mysql:
+              image: mysql:8.0
+              env:
+                MYSQL_ROOT_PASSWORD: cybertrain
+                MYSQL_DATABASE: #{package}_test
+              ports:
+                - 3306:3306
+              options: >-
+                --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pcybertrain --silent"
+                --health-interval 5s
+                --health-timeout 5s
+                --health-retries 40
+        YAML
+      end
+
+      # The step of a MySQL application's CI before the toolchain's.
+      def self.ci_mysql_user_step
+        indented(<<~YAML, "      ")
+
+        # The URL is ssl_mode=disabled (the server is on this runner), and
+        # without TLS MySQL 8.0's caching_sha2_password cannot check a
+        # password it has not cached: root takes mysql_native_password.
+        - name: MySQL accepts root without TLS
+          env:
+            MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+          run: >-
+            docker exec "$MYSQL_CONTAINER" mysql -h 127.0.0.1 -uroot -pcybertrain -e
+            "ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY 'cybertrain';"
+        YAML
+      end
+
+      def self.sqlite_ci_workflow
         action = setup_action_ref
         <<~YAML
           name: CI

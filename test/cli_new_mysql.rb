@@ -5,7 +5,9 @@ require_relative "support/file_tree"
 
 # `cybertrain new NAME --database=mysql`: the files that name the adapter
 # (bin/NAME.rb and bin/db.rb require "cybertrain/mysql", config/app.rb
-# explains DATABASE_URL, .env.example has its line), every other file as
+# explains DATABASE_URL, .env.example has its line; the Dockerfile,
+# config/deploy.yml, .kamal/secrets and the CI workflow pass DATABASE_URL,
+# the workflow with a MySQL service), every other file as
 # `cybertrain new` writes it for SQLite, and gen reading the app as MySQL
 # (Gen::Dialect.in_source). The CLI runs under CRuby; nothing here touches a
 # database.
@@ -25,7 +27,16 @@ Cybertrain::CLI::NewApp.create("zebra", "{ path = \"../cybertrain\" }")
 CREATED = Cybertrain::CLI::NewApp.create("shop", "{ path = \"../cybertrain\" }", "mysql")
 
 # The files whose text differs from a SQLite app's.
-MYSQL_FILES = ["bin/shop.rb", "bin/db.rb", "config/app.rb", ".env.example"]
+MYSQL_FILES = ["bin/shop.rb", "bin/db.rb", "config/app.rb", ".env.example", "Dockerfile", "config/deploy.yml",
+               ".kamal/secrets", ".github/workflows/ci.yml"]
+
+# The lines of the MySQL app's `path` that the SQLite app's (with the name
+# swapped) lacks, and the other way round, each in file order.
+def line_diff(path)
+  sqlite = read("zebra/#{path}").gsub("zebra", "shop").split("\n")
+  mysql = read("shop/#{path}").split("\n")
+  [mysql.reject { |l| sqlite.include?(l) }, sqlite.reject { |l| mysql.include?(l) }]
+end
 
 test "new --database=mysql writes the files new writes" do
   created = Cybertrain::CLI::NewApp.create("other", "{ path = \"../cybertrain\" }")
@@ -36,10 +47,10 @@ test "bin/shop.rb requires cybertrain/mysql first" do
   assert_equal <<~RUBY, read("shop/bin/shop.rb")
     # The whole framework with the MySQL adapter: the database is the one
     # DATABASE_URL names (config/app.rb). cybertrain/mysql loads every
-    # subsystem (jobs, streams, feeds, mailer, cache, rate_limit), so
-    # `generate job` and `generate authentication` add no line here.
-    # cybertrain/error_reporter/sentry (error reports to Sentry or
-    # GlitchTip) goes here only.
+    # subsystem (jobs, streams, feeds, mailer, cache, rate_limit) and the
+    # Sentry sender (error reports to Sentry or GlitchTip, once
+    # CYBERTRAIN_SENTRY_DSN is set), so `generate job` and `generate
+    # authentication` add no line here.
     require "cybertrain/mysql"
     require_relative "../gen/views"      # embedded build: sets CYBERTRAIN_ENV=production by default
     require_relative "../config/app"     # so it comes before the config
@@ -103,6 +114,53 @@ test ".env.example names the development database" do
   assert_includes text, "\nDATABASE_URL=mysql://root@127.0.0.1:3306/shop_development\n"
   assert text.start_with?(read("zebra/.env.example")), "SQLite's lines first"
   assert_nil read("zebra/.env.example").index("DATABASE_URL")
+end
+
+test "the Dockerfile's run example passes DATABASE_URL; storage/ keeps the uploads" do
+  added, gone = line_diff("Dockerfile")
+  assert_equal ["#     -e DATABASE_URL='mysql://USER:PASSWORD@HOST:3306/shop_production' \\",
+                "# The database is the MySQL server DATABASE_URL names; storage/ holds the",
+                "# uploaded files (storage/uploads/): mount a volume there so they outlive",
+                "# the container."], added
+  assert_equal ["# storage/ holds the SQLite database (storage/production.sqlite3); mount",
+                "# a volume there so it outlives the container."], gone
+end
+
+test "config/deploy.yml takes DATABASE_URL as a secret and says what one process guarantees" do
+  added, gone = line_diff("config/deploy.yml")
+  assert_equal ["# CHANGE ME: the server's address. The database is the MySQL server",
+                "# DATABASE_URL names (a secret, below). On MySQL, jobs, streams, leases",
+                "# and scheduled tasks are guaranteed within one process only for now",
+                "# (the configuration guide, \"MySQL\"): run the web role alone, and",
+                "# comment the worker role out again if a generator turned it on.",
+                "    # mysql://USER:PASSWORD@HOST:3306/shop_production (config/app.rb);",
+                "    # also listed in .kamal/secrets.",
+                "    - DATABASE_URL",
+                "# Uploaded files live in storage/uploads/: keep them on the server across",
+                "# deploys. The database is MySQL's: back it up there."], added
+  assert_equal ["# CHANGE ME: the server's address. One server: the database is a",
+                "# SQLite file on that server's volume, which every role shares.",
+                "# The SQLite database lives in storage/: keep it on the server across",
+                "# deploys. Back it up from there (docs/deploy.md)."], gone
+  assert_includes read("shop/config/deploy.yml"), Cybertrain::CLI::Templates.worker_role("shop", false)
+end
+
+test ".kamal/secrets reads DATABASE_URL from the environment" do
+  text = read("shop/.kamal/secrets")
+  assert text.start_with?(read("zebra/.kamal/secrets")), "SQLite's lines first"
+  assert text.end_with?("\nDATABASE_URL=$DATABASE_URL\n"), text
+end
+
+test "the CI workflow runs the tests against a MySQL service" do
+  added, gone = line_diff(".github/workflows/ci.yml")
+  assert_equal [], gone
+  assert_includes added, "    services:"
+  assert_includes added, "          MYSQL_DATABASE: shop_test"
+  assert_includes added, "      - name: MySQL accepts root without TLS"
+  assert_includes added, "          DATABASE_URL: \"mysql://root:cybertrain@127.0.0.1:3306/shop_test?ssl_mode=disabled\""
+  text = read("shop/.github/workflows/ci.yml")
+  assert text.index("      - name: MySQL accepts root without TLS") < text.index("      - uses: saeki-mototsune/"),
+         "the user is switched before the toolchain step"
 end
 
 test "every other file is SQLite's" do
