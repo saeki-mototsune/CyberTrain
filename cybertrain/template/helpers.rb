@@ -923,7 +923,9 @@ module Cybertrain
         record = arg(args, 0, "dom_id")
         prefix = args.size > 1 ? text_arg(args, 1, "dom_id") : ""
         case record
-        when Cybertrain::Model then return Html.dom_id(record, prefix)
+        # The model's key as model_key remembers it for the request, not
+        # underscored again for every record of a list.
+        when Cybertrain::Model then return Html.dom_id_of(Html.dom_key(model_key(record)), record.id, prefix)
         end
         raise ArgumentError, "dom_id expects a record, got #{FormBuilder.value_text(record)}"
       end
@@ -1500,7 +1502,7 @@ module Cybertrain
         target = args[0]
         out = +"<turbo-frame"
         case target
-        when Cybertrain::Model then out << FormBuilder.attr_html("id", Html.dom_id(target, ""))
+        when Cybertrain::Model then out << FormBuilder.attr_html("id", Html.dom_id_of(Html.dom_key(model_key(target)), target.id, ""))
         else out << FormBuilder.attr_html("id", target)
         end
         kwargs.each_key { |key| out << FormBuilder.attr_html(key, kwargs[key]) }
