@@ -48,7 +48,8 @@ db create failed: DATABASE_URL is not set (mysql://user:password@host:3306/name)
 db migrate failed: DATABASE_URL is not set (mysql://user:password@host:3306/name)
 ok   a refused name stops create and drop before anything runs; the message has no password
 ok   server_url drops the database and keeps the password and the parameters
+ok   db migrate, rollback, status and schema wait as long as an ALTER takes
 ok   dbconsole runs mysql over TCP with the server, the user and the database, and the password in MYSQL_PWD
 ok   dbconsole's CA for ssl_mode=verify: SSL_CERT_FILE and SSL_CERT_DIR, else the system bundle
 ok   help's db and dbconsole lines are MySQL's
-16 tests, 98 assertions, 0 failures
+17 tests, 106 assertions, 0 failures

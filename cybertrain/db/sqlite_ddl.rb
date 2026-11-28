@@ -29,7 +29,8 @@ module Cybertrain
           parts << column_def(c.name, c.type, c.null, c.default, c.limit, c.precision, c.scale)
         end
         table.foreign_keys.each do |fk|
-          parts << "FOREIGN KEY (#{fk.column}) REFERENCES #{fk.to_table}(id)" + on_delete_clause(fk.on_delete)
+          parts << "FOREIGN KEY (#{fk.column}) REFERENCES #{fk.to_table}(id)" +
+                   Cybertrain::DB::DDLText.on_delete_clause(fk.on_delete)
         end
         buf = +"CREATE TABLE #{table_name} ("
         buf << parts.join(", ")
@@ -341,7 +342,8 @@ module Cybertrain
       def self.add_reference_statements(op, to_table = "")
         table = op.table_text
         column = add_column_sql(op)
-        column = "#{column} REFERENCES #{to_table}(id)#{on_delete_clause(op.on_delete)}" if to_table != ""
+        on_delete = Cybertrain::DB::DDLText.on_delete_clause(op.on_delete)
+        column = "#{column} REFERENCES #{to_table}(id)#{on_delete}" if to_table != ""
         [column, index_sql(table, [op.name], false, "")]
       end
 
@@ -392,22 +394,12 @@ module Cybertrain
       # `expression` non-empty is the key of an expression index and
       # replaces the column list; `where` non-empty makes it partial.
       def self.index_sql(table, columns, unique, name, where = "", expression = "")
-        index_name = name == "" ? derived_index_name(table, columns) : name
+        index_name = name == "" ? Cybertrain::Schema::Index.derived_name(table, columns) : name
         kind = unique ? "CREATE UNIQUE INDEX" : "CREATE INDEX"
         key = expression == "" ? columns.join(", ") : expression
         sql = "#{kind} #{index_name} ON #{table}(#{key})"
         sql = "#{sql} WHERE #{where}" if where != ""
         sql
-      end
-
-      # The ON DELETE clause for a foreign key's action, with its leading
-      # space; "" for :no_action (DDLText.on_delete_clause).
-      def self.on_delete_clause(action)
-        Cybertrain::DB::DDLText.on_delete_clause(action)
-      end
-
-      def self.derived_index_name(table, columns)
-        Cybertrain::Schema::Index.derived_name(table, columns)
       end
     end
   end

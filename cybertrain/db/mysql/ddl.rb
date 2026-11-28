@@ -1,3 +1,4 @@
+require "digest"
 require "cybertrain/cast"
 require "cybertrain/schema"
 require "cybertrain/migration"
@@ -28,11 +29,17 @@ module Cybertrain
       # are declared in the CREATE TABLE, before its foreign keys, so a
       # foreign key finds its index there and MySQL makes none of its own.
       # A partial index (`where:`) does not exist in MySQL and is refused
-      # with PARTIAL_INDEX (gen refuses it first: Gen::Dialect).
+      # with PARTIAL_INDEX (gen refuses it first: Gen::Dialect). An index
+      # name longer than MySQL's 64 characters (a derived
+      # index_<table>_on_<a>_and_<b> can be) is shortened the same way
+      # wherever one is written (index_name).
       module DDL
         TABLE_OPTIONS = " ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_bin"
 
         PARTIAL_INDEX = "partial indexes (where:) are not supported on MySQL"
+
+        # MySQL's longest identifier, in characters (error 1059 past it).
+        MAX_NAME = 64
 
         # "posts" -> "`posts`" (DB::Dialect.quote_ident).
         # @param name [String]
@@ -66,7 +73,7 @@ module Cybertrain
             [create_index_sql(table, op.columns, op.unique, op.name, op.where, "")]
           when :remove_index
             name = op.name == "" ? Cybertrain::Schema::Index.derived_name(table, op.columns) : op.name
-            ["DROP INDEX #{q(name)} ON #{q(table)}"]
+            ["DROP INDEX #{q(index_name(name))} ON #{q(table)}"]
           when :add_reference
             ["ALTER TABLE #{q(table)} ADD COLUMN " + column_sql(op.name, :integer, op.null, nil, 0),
              create_index_sql(table, [op.name], false, "", "", "")]
@@ -170,19 +177,42 @@ module Cybertrain
         # CREATE [UNIQUE] INDEX for a table that exists.
         # @return [String]
         def self.create_index_sql(table, columns, unique, name, where, expression)
-          refuse_partial(where)
-          index_name = name == "" ? Cybertrain::Schema::Index.derived_name(table, columns) : name
+          quoted = q(checked_index_name(table, columns, name, where))
           kind = unique ? "CREATE UNIQUE INDEX" : "CREATE INDEX"
-          "#{kind} #{q(index_name)} ON #{q(table)} (#{key_sql(columns, expression)})"
+          "#{kind} #{quoted} ON #{q(table)} (#{key_sql(columns, expression)})"
         end
 
         # The index in a CREATE TABLE: [UNIQUE] KEY name (key).
         # @return [String]
         def self.index_clause(table, columns, unique, name, where, expression)
-          refuse_partial(where)
-          index_name = name == "" ? Cybertrain::Schema::Index.derived_name(table, columns) : name
+          quoted = q(checked_index_name(table, columns, name, where))
           kind = unique ? "UNIQUE KEY" : "KEY"
-          "#{kind} #{q(index_name)} (#{key_sql(columns, expression)})"
+          "#{kind} #{quoted} (#{key_sql(columns, expression)})"
+        end
+
+        # The name an index is created with: `name`, or the derived one when
+        # it is "", as index_name writes it; a partial index is refused.
+        # @return [String]
+        def self.checked_index_name(table, columns, name, where)
+          refuse_partial(where)
+          given = name == "" ? Cybertrain::Schema::Index.derived_name(table, columns) : name
+          index_name(given)
+        end
+
+        # `name` as MySQL can hold it: itself up to MAX_NAME characters,
+        # else its first 53 and "_" and the first 10 hex digits of its
+        # SHA-256, so that the same long name is always the same short one
+        # (a remove_index finds the index add_index made). The short name
+        # is what the schema dump then reads.
+        # @param name [String]
+        # @return [String]
+        def self.index_name(name)
+          text = name.to_s
+          return text if text.size <= MAX_NAME
+
+          digest = Digest::SHA256.hexdigest(text)[0, 10].to_s
+          head = text[0, MAX_NAME - 11].to_s
+          "#{head}_#{digest}"
         end
 
         # The quoted columns, or an expression index's key as MySQL's
@@ -213,9 +243,13 @@ module Cybertrain
 
         # The one ALTER TABLE a rebuild operation (op.rebuilds?) is on
         # MySQL, which changes a table in place. `definition` is the live
-        # schema dumped just before (SchemaDumper): a changed column is that
+        # schema dumped just before (SchemaDumper): a change_column is that
         # column with the operation applied (DDLText.table_after, the same
-        # in-memory step SQLite rebuilds from), MODIFY'd. A removed foreign
+        # in-memory step SQLite rebuilds from), MODIFY'd with the type the
+        # migration states. A change_column_default or change_column_null
+        # changes only the default or the nullability of the column as the
+        # server has it (column_change_sql): the dump does not carry every
+        # type (BIGINT UNSIGNED, ENUM), a collation or a comment. A removed foreign
         # key is found by its column and parent (`conn`); a removed
         # reference drops its foreign keys, every index on the column and
         # the column, in the one statement. change_column_null's backfill
@@ -250,6 +284,9 @@ module Cybertrain
             drops << "DROP COLUMN #{q(op.name)}"
             return "ALTER TABLE #{q(table_name)} " + drops.join(", ")
           end
+          if op.kind == :change_column_default || op.kind == :change_column_null
+            return column_change_sql(conn, table_name, op)
+          end
           column = after.column(op.name)
           if column.nil?
             message = "#{op.kind}: no column #{table_name}.#{op.name}"
@@ -257,6 +294,188 @@ module Cybertrain
           end
           "ALTER TABLE #{q(table_name)} MODIFY COLUMN " +
             column_sql(column.name, column.type, column.null, column.default, column.limit, column.precision, column.scale)
+        end
+
+        # The data types whose default MySQL takes only as an expression,
+        # and only in a column definition (ALTER COLUMN ... SET DEFAULT
+        # refuses them, error 1101).
+        EXPRESSION_DEFAULT_TYPES = ["tinytext", "text", "mediumtext", "longtext", "json", "tinyblob", "blob",
+                                    "mediumblob", "longblob", "geometry", "point", "linestring", "polygon",
+                                    "multipoint", "multilinestring", "multipolygon", "geometrycollection"].freeze
+
+        # The statement of a change_column_default or change_column_null,
+        # from the column as the server has it, so that nothing but its
+        # default or its nullability changes (a type the schema dump does
+        # not carry, BIGINT UNSIGNED or ENUM(...), its character set,
+        # collation, comment, ON UPDATE and AUTO_INCREMENT stay as they
+        # are):
+        # - a default dropped: ALTER COLUMN ... DROP DEFAULT;
+        # - a default set to a literal or a parenthesized expression, on a
+        #   type that takes one there: ALTER COLUMN ... SET DEFAULT <to>;
+        # - any other default (CURRENT_TIMESTAMP, or one on a text, blob,
+        #   json or geometry column), and a nullability: MODIFY COLUMN with
+        #   the column's definition as SHOW CREATE TABLE prints it, its
+        #   DEFAULT clause or its NULL / NOT NULL replaced. A NOT NULL drops
+        #   a DEFAULT NULL, which MySQL refuses beside it (SQLite's rebuild
+        #   leaves such a column with no default).
+        # A generated column is refused (DB::Error): its NULL / NOT NULL
+        # follows its expression.
+        # @param conn [Cybertrain::DB::Connection]
+        # @param table [String]
+        # @param op [Cybertrain::Migration::Operation]
+        # @return [String]
+        def self.column_change_sql(conn, table, op)
+          info = conn.execute("SELECT column_type AS t, data_type AS d, generation_expression AS g " \
+                              "FROM information_schema.columns WHERE table_schema = DATABASE() " \
+                              "AND table_name = ? AND column_name = ?", [table, op.name])
+          if info.empty?
+            message = "#{op.kind}: no column #{table}.#{op.name}"
+            raise ArgumentError, message
+          end
+          column_type = Cybertrain::Cast.str(info[0]["t"])
+          data_type = Cybertrain::Cast.str(info[0]["d"]).downcase
+          if Cybertrain::Cast.str(info[0]["g"]) != ""
+            message = "#{op.kind}: #{table}.#{op.name} is a generated column (MySQL)"
+            raise Cybertrain::DB::Error, message
+          end
+          head = "ALTER TABLE #{q(table)}"
+          col = q(op.name)
+          expression_type = EXPRESSION_DEFAULT_TYPES.include?(data_type)
+          if op.kind == :change_column_default
+            return "#{head} ALTER COLUMN #{col} DROP DEFAULT" if op.default.nil?
+
+            to = op.default.to_s
+            return "#{head} ALTER COLUMN #{col} SET DEFAULT #{to}" if !expression_type && literal_default?(to)
+          end
+          line = live_column_definition(conn, table, op.name, column_type)
+          unless line.start_with?(column_type)
+            message = "#{op.kind}: cannot read the definition of #{table}.#{op.name} from SHOW CREATE TABLE"
+            raise Cybertrain::DB::Error, message
+          end
+          at = after_charset(line, column_type.size)
+          type_part = line[0, at]
+          null_part = ""
+          rest = line[at, line.size - at]
+          if rest.start_with?(" NOT NULL")
+            null_part = " NOT NULL"
+          elsif rest.start_with?(" NULL")
+            null_part = " NULL"
+          end
+          rest = rest[null_part.size, rest.size - null_part.size]
+          invisible = ""
+          if rest.start_with?(" /*!80023 INVISIBLE */")
+            invisible = " /*!80023 INVISIBLE */"
+            rest = rest[invisible.size, rest.size - invisible.size]
+          end
+          default_part = ""
+          if rest.start_with?(" DEFAULT ")
+            stop = default_token_end(rest, 9)
+            default_part = rest[0, stop]
+            rest = rest[stop, rest.size - stop]
+          end
+          if op.kind == :change_column_null
+            null_part = op.null ? " NULL" : " NOT NULL"
+            default_part = "" if !op.null && default_part == " DEFAULT NULL"
+          else
+            to = op.default.to_s
+            to = "(#{to})" if expression_type && !to.start_with?("(")
+            default_part = " DEFAULT #{to}"
+          end
+          "#{head} MODIFY COLUMN #{col} #{type_part}#{null_part}#{invisible}#{default_part}#{rest}"
+        end
+
+        # Whether ALTER COLUMN ... SET DEFAULT takes `to` as it is: a quoted
+        # or numeric literal, NULL, TRUE, FALSE, a bit or hex literal, or an
+        # expression in parentheses (not CURRENT_TIMESTAMP and the like,
+        # which only a column definition takes bare).
+        def self.literal_default?(to)
+          return false if to.empty?
+          return true if ["NULL", "TRUE", "FALSE"].include?(to.upcase)
+
+          first = to[0]
+          return true if "'(-+.0123456789".include?(first)
+
+          to.start_with?("b'") || to.start_with?("B'") || to.start_with?("x'") || to.start_with?("X'")
+        end
+
+        # The definition of `table`'s column `column` (of type
+        # `column_type`) as SHOW CREATE TABLE prints it, after its quoted
+        # name: "bigint unsigned NOT NULL DEFAULT '0' COMMENT 'x'"; "" when
+        # the table has no such line. A bare COLLATE that is the table's
+        # own (which MySQL 8.0 prints on every text column) is left out, so
+        # that the MODIFY does not pin the column's character set where
+        # the table's applied.
+        # @return [String]
+        def self.live_column_definition(conn, table, column, column_type)
+          rows = conn.execute("SHOW CREATE TABLE #{q(table)}")
+          return "" if rows.empty?
+
+          text = Cybertrain::Cast.str(rows[0]["Create Table"])
+          want = "  #{q(column)} "
+          found = ""
+          options = ""
+          text.split("\n").each do |line|
+            found = line[want.size, line.size - want.size] if found.empty? && line.start_with?(want)
+            options = line if line.start_with?(") ")
+          end
+          found = found[0, found.size - 1] if found.end_with?(",")
+          at = options.index(" COLLATE=")
+          return found if at.nil?
+
+          start = at + 9
+          stop = options.index(" ", start)
+          stop = options.size if stop.nil?
+          own = "#{column_type} COLLATE #{options[start, stop - start]}"
+          return found unless found.start_with?(own)
+          return found if found.size > own.size && found[own.size] != " "
+
+          column_type + found[own.size, found.size - own.size].to_s
+        end
+
+        # The offset in `line` past its type (`at`) and the CHARACTER SET
+        # and COLLATE clauses that may follow it.
+        # @return [Integer]
+        def self.after_charset(line, at)
+          pos = at
+          ["CHARACTER SET", "COLLATE"].each do |word|
+            lead = " #{word} "
+            if line[pos, line.size - pos].start_with?(lead)
+              pos += lead.size
+              pos += 1 while pos < line.size && line[pos] != " "
+            end
+          end
+          pos
+        end
+
+        # The offset in `text` where the value that starts at `from` ends: at
+        # the first space outside quotes and parentheses (a quoted literal
+        # with its '' and backslash escapes, an expression in parentheses,
+        # a word such as CURRENT_TIMESTAMP(6)).
+        # @return [Integer]
+        def self.default_token_end(text, from)
+          pos = from
+          depth = 0
+          quote = ""
+          while pos < text.size
+            ch = text[pos]
+            if quote != ""
+              if ch == "\\"
+                pos += 1
+              elsif ch == quote
+                quote = ""
+              end
+            elsif ch == "'" || ch == "\""
+              quote = ch
+            elsif ch == "("
+              depth += 1
+            elsif ch == ")"
+              depth -= 1
+            elsif ch == " " && depth == 0
+              return pos
+            end
+            pos += 1
+          end
+          pos
         end
 
         # The names of the foreign keys from `table`.`column` (to `parent`,

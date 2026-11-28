@@ -31,8 +31,10 @@ require_relative "../../examples/blog/db/migrate/20261112174320_add_cover_to_art
 # - an integer column named `*_id` is a BIGINT (a reference's type) and
 #   dumps as a plain integer, a `t.bigint "*_id"` included;
 # - a default on a text, json or binary column is an expression on MySQL
-#   (`DEFAULT ('{}')`) and dumps as MySQL spells the expression
-#   (`(_utf8mb4'{}')`); so does any expression default (CURRENT_TIMESTAMP(6));
+#   (`DEFAULT ('{}')`), which dumps as SQLite's does (`'{}'`: MySQL's
+#   text with information_schema's escaping undone and the _utf8mb4
+#   introducer dropped), but an expression default dumps in parentheses
+#   (`(CURRENT_TIMESTAMP(6))`, `(rand())`);
 #   a decimal's default dumps with its scale ("0.00" for "0");
 # - an expression index dumps with MySQL's text of the expression, each
 #   key part in its parentheses (`(lower(`email`))` for `LOWER(email)`);
