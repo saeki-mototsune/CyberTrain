@@ -64,6 +64,7 @@ Gem::Specification.new do |spec|
     "cybertrain/test/args.rb",
     "cybertrain/generator/inflector.rb",
     "cybertrain/generator/dialect.rb",
+    "cybertrain/generator/code_view.rb",
     "cybertrain/ident.rb",
     "exe/cybertrain",
     "README.md"

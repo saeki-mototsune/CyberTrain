@@ -1,3 +1,5 @@
+require "cybertrain/generator/code_view"
+
 module Cybertrain
   module Gen
     # Cybertrain::Gen::Dialect -- which DB adapter the application is built
@@ -84,8 +86,8 @@ module Cybertrain
       # The adapter the application at `root` is built with: "sqlite" or
       # "mysql", from bin/NAME.rb's entry require. NAME is read by
       # ViewRequires.package_name, which the caller has loaded (Runner and the
-      # tests do; this file requires nothing, since the CLI loads it too and
-      # the gem ships only the files the CLI needs).
+      # tests do; this file requires only CodeView, since the CLI loads it too
+      # and the gem ships only the files the CLI needs: view_requires.rb is not one).
       # @param root [String]
       # @return [String]
       def self.detect(root)
@@ -100,16 +102,87 @@ module Cybertrain
 
       # The adapter bin/NAME.rb's `source` is built with, as detect says it:
       # the first entry it requires, SQLite when it requires neither MySQL
-      # entry.
+      # entry. Only a line that begins as code counts (entry_lines): one
+      # inside a heredoc or an =begin block is text.
       # @param source [String] the text of bin/NAME.rb
       # @return [String]
       def self.in_source(source)
-        source.split("\n").each do |raw|
-          spec = required_spec(raw.strip)
-          return SQLITE if spec == "cybertrain" || spec == "cybertrain/core"
-          return MYSQL if spec == "cybertrain/mysql" || spec == "cybertrain/core/mysql"
+        numbers = entry_lines(source)
+        return SQLITE if numbers.empty?
+
+        entry_adapter(required_spec(source.lines[numbers[0] - 1].strip))
+      end
+
+      # The SQLite entries and the MySQL ones.
+      SQLITE_ENTRIES = ["cybertrain", "cybertrain/core"].freeze
+      MYSQL_ENTRIES = ["cybertrain/mysql", "cybertrain/core/mysql"].freeze
+
+      # "mysql" for a MySQL entry, else "sqlite".
+      # @param spec [String]
+      # @return [String]
+      def self.entry_adapter(spec)
+        MYSQL_ENTRIES.include?(spec) ? MYSQL : SQLITE
+      end
+
+      # The 1-based numbers of the lines of `source` that require an entry
+      # (SQLITE_ENTRIES, MYSQL_ENTRIES), among the lines that begin as code
+      # (CodeView): a heredoc's body, an =begin ... =end block or the text
+      # after __END__ that holds such a line (a command's help text) is not
+      # a require.
+      # @param source [String]
+      # @return [Array<Integer>]
+      def self.entry_lines(source)
+        view = CodeView.new(source)
+        raws = source.lines
+        found = Array.new(0) { 0 }
+        i = 0
+        while i < raws.size && i < view.code_start.size
+          if view.code_start[i] && !view.commented[i]
+            spec = required_spec(raws[i].strip)
+            found << i + 1 if SQLITE_ENTRIES.include?(spec) || MYSQL_ENTRIES.include?(spec)
+          end
+          i += 1
         end
-        SQLITE
+        found
+      end
+
+      # Why `source` (bin/NAME.rb, `rel` its path) names no single adapter:
+      # "<rel>:<n>: ..." when it requires both a SQLite entry and a MySQL
+      # one (the program would hold both adapters, and the generator could
+      # not tell which it is built with); "" otherwise.
+      # @param source [String]
+      # @param rel [String]
+      # @return [String]
+      def self.entry_conflict(source, rel)
+        raws = source.lines
+        sqlite_at = 0
+        mysql_at = 0
+        entry_lines(source).each do |n|
+          if entry_adapter(required_spec(raws[n - 1].strip)) == MYSQL
+            mysql_at = n if mysql_at == 0
+          elsif sqlite_at == 0
+            sqlite_at = n
+          end
+        end
+        return "" if sqlite_at == 0 || mysql_at == 0
+
+        first = sqlite_at < mysql_at ? sqlite_at : mysql_at
+        "#{rel}:#{first}: requires both a SQLite entry (line #{sqlite_at}) and a MySQL one (line #{mysql_at}); " \
+          "keep one of them, the first line of the file"
+      end
+
+      # entry_conflict of the application at `root`'s bin/NAME.rb ("" when
+      # there is no such file).
+      # @param root [String]
+      # @return [String]
+      def self.entry_conflict_of(root)
+        name = ViewRequires.package_name(root)
+        return "" if name.empty?
+
+        rel = "bin/#{name}.rb"
+        return "" unless File.file?("#{root}/#{rel}")
+
+        entry_conflict(File.read("#{root}/#{rel}"), rel)
       end
 
       # The argument of a `require "x"`, `require 'x'` or `require("x")`
@@ -140,9 +213,14 @@ module Cybertrain
       PARTIAL_INDEX = "partial indexes (where:) are not supported on MySQL".freeze
 
       # The 1-based lines of `source` (a migration, db/schema.rb) where an
-      # `add_index` call with a `where:` other than "" starts. A call
-      # continues on the next line while its parentheses or brackets are
-      # open or its line ends in a comma; comments are skipped.
+      # `add_index` call with a `where:` (or `:where =>`) other than "", ''
+      # or nil starts. Only the code counts, not the text of its string
+      # literals or its comments, so a name or a message holding "where:"
+      # or "add_index" is none. A call continues on the next line while its
+      # parentheses, brackets or braces are open, its line ends in a comma
+      # or a backslash, or the next line starts with a comma. A `**opts`
+      # that holds a where: is not seen here; the DDL refuses it at `db
+      # migrate`.
       # @param source [String]
       # @return [Array<Integer>]
       def self.partial_index_lines(source)
@@ -151,19 +229,50 @@ module Cybertrain
         i = 0
         while i < lines.size
           code = code_of(lines[i])
-          if code.include?("add_index")
+          if without_strings(code).include?("add_index")
             text = +code
             j = i
-            while j + 1 < lines.size && continues?(text)
+            while j + 1 < lines.size && (continues?(text) || code_of(lines[j + 1]).lstrip.start_with?(","))
               j += 1
               text << " " << code_of(lines[j])
             end
-            found << i + 1 if where_given?(text)
+            found << i + 1 if where_given?(without_strings(text))
             i = j
           end
           i += 1
         end
         found
+      end
+
+      # `code` with the inside of each "..." or '...' literal turned into
+      # spaces, one per byte (the quotes are kept): `"where: x"` reads as
+      # `"        "`, and `""` stays `""`.
+      def self.without_strings(code)
+        out = +""
+        quote = 0
+        start = 0
+        k = 0
+        n = code.bytesize
+        while k < n
+          b = code.getbyte(k)
+          if quote != 0
+            if b == quote
+              out << (" " * (k - start)) << code.byteslice(k, 1)
+              quote = 0
+              start = k + 1
+            elsif b == 92
+              k += 1
+            end
+          elsif b == 34 || b == 39
+            out << code.byteslice(start, k + 1 - start)
+            quote = b
+            start = k + 1
+          end
+          k += 1
+        end
+        stop = k > n ? n : k
+        out << (quote != 0 ? " " * (stop - start) : code.byteslice(start, stop - start))
+        out
       end
 
       # `line` up to a `#` outside a string literal.
@@ -189,8 +298,8 @@ module Cybertrain
         line
       end
 
-      # Whether a call's text goes on: an open ( or [ outside a string, or
-      # a last character that is a comma.
+      # Whether a call's text goes on: an open (, [ or { outside a string,
+      # or a last character that is a comma or a backslash.
       def self.continues?(text)
         depth = 0
         quote = 0
@@ -206,32 +315,53 @@ module Cybertrain
             end
           elsif b == 34 || b == 39
             quote = b
-          elsif b == 40 || b == 91
+          elsif b == 40 || b == 91 || b == 123
             depth += 1
-          elsif b == 41 || b == 93
+          elsif b == 41 || b == 93 || b == 125
             depth -= 1
           end
           k += 1
         end
-        depth > 0 || text.rstrip.end_with?(",")
+        last = text.rstrip
+        depth > 0 || last.end_with?(",") || last.end_with?("\\")
       end
 
-      # Whether the text has a `where:` key (not the end of a longer name)
-      # with a value other than "" or ''.
+      # Whether `text` (a call, its string literals blanked) has a `where:`
+      # key (not the end of a longer name) or a `:where =>` one, with a
+      # value other than "", '' or nil.
       def self.where_given?(text)
         from = 0
         while from < text.size
-          at = text.index("where:", from)
+          at = text.index("where", from)
           return false if at.nil?
 
           before = at == 0 ? " " : text[at - 1, 1]
-          unless word_char?(before)
-            rest = text[at + 6, text.size - at - 6].lstrip
-            return !(rest.start_with?("\"\"") || rest.start_with?("''"))
+          after = at + 5
+          value = ""
+          keyed = false
+          if !word_char?(before) && before != ":" && text[after, 1] == ":"
+            value = text[after + 1, text.size - after - 1].to_s.lstrip
+            keyed = true
+          elsif before == ":" && (at < 2 || !word_char?(text[at - 2, 1]))
+            arrow = text[after, text.size - after].to_s.lstrip
+            if arrow.start_with?("=>")
+              value = arrow[2, arrow.size - 2].to_s.lstrip
+              keyed = true
+            end
           end
-          from = at + 6
+          return !no_condition?(value) if keyed
+
+          from = after
         end
         false
+      end
+
+      # A where: value that makes no partial index: "", '' or nil.
+      def self.no_condition?(value)
+        return true if value.start_with?("\"\"") || value.start_with?("''")
+        return false unless value.start_with?("nil")
+
+        value.size == 3 || !word_char?(value[3, 1])
       end
 
       def self.word_char?(char)
