@@ -224,4 +224,13 @@ test "the generated account test makes its notes table in the adapter's DDL" do
   assert_nil mysql.index("@NOTES_TABLE@")
 end
 
+test "the generated lockout UPDATE sets the lock first on MySQL, which assigns left to right" do
+  sqlite = Cybertrain::CLI::Authentication.user_model("shop")
+  assert_equal sqlite, Cybertrain::CLI::Authentication.user_model("shop", false, "sqlite")
+  assert_includes sqlite, "    User.where(id: id).update_all_sql(count + \", \" + lock, [limit, limit, ends])\n"
+  mysql = Cybertrain::CLI::Authentication.user_model("shop", true, "mysql")
+  assert_includes mysql, "    User.where(id: id).update_all_sql(lock + \", \" + count, [limit, ends, limit])\n"
+  assert_nil mysql.index("@COUNT_UPDATE@")
+end
+
 Cybertrain::Test.run!

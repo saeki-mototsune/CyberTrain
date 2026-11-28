@@ -395,7 +395,7 @@ module Cybertrain
         # above lean on, then arrives only as this diff.
         unconfirmed_concern = confirmable ? "this diff holds the check that refuses an unconfirmed account a session; until it is applied, unconfirmed accounts sign in (whatever the other diffs say)" : ""
         unconfirmed_setup = confirmable ? "until this diff is applied, the first user /setup creates is not confirmed and cannot sign in (a password reset confirms it)" : ""
-        record_file(result, root, "app/models/user.rb", user_model(app, confirmable), force)
+        record_file(result, root, "app/models/user.rb", user_model(app, confirmable, adapter), force)
         record_file(result, root, "app/models/session.rb", session_model, force)
         record_file(result, root, "app/controllers/concerns/authentication.rb", authentication_concern(app, confirmable), force, unconfirmed_concern)
         record_file(result, root, "app/controllers/sessions_controller.rb", sessions_controller(confirmable), force, unconfirmed_sign_in)
@@ -1100,10 +1100,27 @@ module Cybertrain
         RUBY
       end
 
+      # The UPDATE of count_failed_attempt!. SQLite evaluates every SET
+      # expression on the row as it was; MySQL assigns left to right, each
+      # expression reading what the ones before it wrote, so there the lock
+      # comes first and reads the count before it is reset.
+      def self.count_update_line(adapter)
+        if adapter == "mysql"
+          return "    # MySQL assigns left to right (each SET reads what the ones before it\n" \
+                 "    # wrote), so the lock comes first and reads the count as it was.\n" \
+                 "    User.where(id: id).update_all_sql(lock + \", \" + count, [limit, ends, limit])\n"
+        end
+
+        "    User.where(id: id).update_all_sql(count + \", \" + lock, [limit, limit, ends])\n"
+      end
+
       # With `confirmable`, what --confirmable adds: confirmed?, the
       # confirmation token and confirm, and the check of a new address
       # waiting for its confirmation.
-      def self.user_model(app, confirmable = false)
+      #
+      # `adapter` ("sqlite" or "mysql", Gen::Dialect.in_source) orders the
+      # lockout's UPDATE (count_update_line).
+      def self.user_model(app, confirmable = false, adapter = "sqlite")
         text = <<~RUBY
           # Columns (email_address, password_digest, admin, failed_attempts,
           # locked_until@CONFIRMABLE_COLUMN_NAMES@), the Cybertrain::Model superclass and `sessions` (from
@@ -1270,7 +1287,7 @@ module Cybertrain
               count = "failed_attempts = CASE WHEN failed_attempts + 1 >= ? THEN 0 ELSE failed_attempts + 1 END"
               lock = "locked_until = CASE WHEN failed_attempts + 1 >= ? THEN ? ELSE locked_until END"
               ends = Time.current + Cybertrain.config.auth_lockout_period
-              User.where(id: id).update_all_sql(count + ", " + lock, [limit, limit, ends])
+              @COUNT_UPDATE@
               nil
             end
 
@@ -1351,6 +1368,7 @@ module Cybertrain
         text = SourceEdit.splice(text, "@VALIDATE_UNCONFIRMED_EMAIL@", confirmable ? "    user.validate_unconfirmed_email\n" : "")
         text = SourceEdit.splice(text, "@FIND_BY_CONFIRMATION_TOKEN@", confirmable ? find_by_confirmation_token_method : "")
         text = SourceEdit.splice(text, "@CONFIRMATION_METHODS@", confirmable ? confirmation_methods : "")
+        text = SourceEdit.splice(text, "@COUNT_UPDATE@", count_update_line(adapter))
         SourceEdit.splice(text, "@VALIDATE_UNCONFIRMED_EMAIL_METHOD@", confirmable ? validate_unconfirmed_email_method : "")
       end
 

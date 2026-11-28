@@ -46,4 +46,5 @@ wrote gen/console.rb
 wrote gen/app.rb
 ok   gen on a MySQL app stops at a partial index, writing nothing; on SQLite it goes on
 ok   the generated account test makes its notes table in the adapter's DDL
-17 tests, 63 assertions, 0 failures
+ok   the generated lockout UPDATE sets the lock first on MySQL, which assigns left to right
+18 tests, 67 assertions, 0 failures
