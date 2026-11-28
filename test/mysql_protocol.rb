@@ -49,6 +49,7 @@ require "cybertrain/db/mysql/wire"
 require "cybertrain/db/mysql/packet"
 require "cybertrain/db/mysql/result"
 require "cybertrain/db/mysql/protocol"
+require "cybertrain/db/mysql/statement_cache"
 require "cybertrain/test"
 
 Wire = Cybertrain::DB::MySQL::Wire
@@ -1062,6 +1063,115 @@ test "zero dates decode as zeros in both protocols" do
   id = proto.prepare("SELECT * FROM t_zero")
   binary = proto.execute_statement(id, [])
   assert_equal [["0000-00-00", "0000-00-00 00:00:00.000000"]], binary.result_rows
+end
+
+# A peer whose answers come in chunks, one per read, where a chunk marked
+# as a stall raises Net::TimeoutError instead (the read_timeout passed);
+# the chunks after it are what the server sends once it recovers.
+class StallStream < Cybertrain::Net::Stream
+  def initialize
+    @chunks = Array.new(0) { "" }
+    @stalls = Array.new(0) { false }
+    @next_chunk = 0
+    @sent = String.new
+  end
+
+  def answer(bytes)
+    @chunks << bytes
+    @stalls << false
+    nil
+  end
+
+  def stall
+    @chunks << ""
+    @stalls << true
+    nil
+  end
+
+  def stream_read(max, timer)
+    return "" if @next_chunk >= @chunks.size
+
+    i = @next_chunk
+    @next_chunk += 1
+    raise Cybertrain::Net::TimeoutError, "fake:3306: reading timed out after 30s" if @stalls[i]
+
+    @chunks[i]
+  end
+
+  def stream_write(data, timer)
+    @sent << data
+    nil
+  end
+
+  def stream_label
+    "fake:3306"
+  end
+
+  def stall_sent
+    @sent
+  end
+end
+
+# What a query on proto raised ("nothing raised" when it did not).
+def stalled_query_failure(proto)
+  got = "nothing raised"
+  begin
+    proto.query("SELECT 1")
+  rescue Cybertrain::DB::Error => e
+    got = "#{e.class.name}: #{e.message}"
+  end
+  got
+end
+
+test "a ping whose answer timed out leaves the exchange pending, and no command starts on that stream" do
+  stream = StallStream.new
+  stream.stall
+  # The ping's OK, late: it carries sequence 1, as a next command's answer would.
+  stream.answer(unhex(PING_RESP))
+  proto = protocol_for(stream)
+  assert_equal false, proto.ping
+  assert_equal true, proto.exchange_pending?
+  assert_equal "Cybertrain::DB::ConnectionLost: fake:3306: the MySQL connection is out of step after an exchange " \
+               "that did not finish; it can only be closed",
+               stalled_query_failure(proto)
+  # Nothing was sent after the ping: the late OK is never read as an answer.
+  assert_equal PING_REQ, hex(stream.stall_sent)
+  assert_equal false, proto.ping
+  assert_equal PING_REQ, hex(stream.stall_sent)
+  # COM_QUIT still goes out: the server reads it whatever answer is unread.
+  assert_nil proto.quit
+  assert_equal PING_REQ + QUIT_REQ, hex(stream.stall_sent)
+end
+
+# What cached_statement_id raised ("nothing raised" when it did not).
+def cache_failure(cache, sql)
+  got = "nothing raised"
+  begin
+    cache.cached_statement_id(sql)
+  rescue Cybertrain::DB::Error => e
+    got = "#{e.class.name}: #{e.message}"
+  end
+  got
+end
+
+test "a prepare the server refuses at a full statement cache closes nothing" do
+  stream = stream_of(BINDS_PREPARE_RESP + PREPARE_ERR_RESP + UNSIGNED_PREPARE_RESP)
+  cache = Cybertrain::DB::MySQL::StatementCache.new(protocol_for(stream), 1)
+  insert = "INSERT INTO t_binds (i, f, s, n, b) VALUES (?, ?, ?, ?, ?)"
+  assert_equal 5, cache.cached_statement_id(insert)
+  assert_equal true, cache_failure(cache, "SELEC 1").start_with?("Cybertrain::DB::Error: You have an error in your SQL syntax")
+  assert_equal 1, cache.cached_statement_count
+  assert_equal false, hex(stream.script_sent).include?(CLOSE_REQ)
+  # Still kept: a hit, nothing sent.
+  sent = stream.script_sent.bytesize
+  assert_equal 5, cache.cached_statement_id(insert)
+  assert_equal sent, stream.script_sent.bytesize
+  # A prepare that succeeds at the limit closes the least recently used one
+  # after it.
+  assert_equal 6, cache.cached_statement_id("SELECT CAST(18446744073709551615 AS UNSIGNED) AS big")
+  assert_equal 1, cache.cached_statement_count
+  assert_equal true, hex(stream.script_sent).end_with?(UNSIGNED_PREPARE_REQ + CLOSE_REQ)
+  assert_equal 0, stream.script_left
 end
 
 Cybertrain::Test.run!

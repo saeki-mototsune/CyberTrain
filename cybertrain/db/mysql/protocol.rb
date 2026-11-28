@@ -181,6 +181,11 @@ module Cybertrain
               types << Wire.int_le(BIND_LONGLONG, 1)
               values << Wire.int_le(value, 8)
             when Float
+              # MySQL takes an infinite or NaN DOUBLE into a DECIMAL column
+              # as 0.00 without an error: refused here, before anything is
+              # sent, so the exchange never starts and the connection goes on.
+              raise Cybertrain::DB::Error, "MySQL: cannot bind the non-finite Float #{value}" unless value.finite?
+
               types << Wire.int_le(BIND_DOUBLE, 1)
               values << Wire.bytes([value].pack("E"))
             when String
@@ -216,6 +221,9 @@ module Cybertrain
         # COM_PING: true when the server answers OK (whose status flags
         # are kept, see {#server_in_transaction?}), false for anything
         # else: an ERR, a lost connection, no answer in time. Never raises.
+        # False with {#exchange_pending?} true means the answer is still
+        # unread (a timeout, a lost stream): the caller must close the
+        # connection, and no other command starts on it (#start_command).
         # @return [Boolean]
         def ping
           start_command(COM_PING, "")
@@ -240,7 +248,20 @@ module Cybertrain
           nil
         end
 
+        # Every command starts here. One that would start while the last
+        # command's answer is still unread is refused (ConnectionLost,
+        # nothing sent): after a timeout the stream stays open and the
+        # late answer still arrives, carrying the sequence number the next
+        # command's answer would, so that command would read it as its own
+        # and every later one the answer before it. COM_QUIT is let
+        # through: the server reads it whatever answer is unread, and the
+        # stream is closed after it.
         def start_command(command, body)
+          if @pending && command != COM_QUIT
+            raise Cybertrain::DB::ConnectionLost, "#{@io.packet_stream.stream_label}: the MySQL connection is out of step " \
+                                                  "after an exchange that did not finish; it can only be closed"
+          end
+
           @pending = true
           @io.reset_sequence
           payload = Wire.int_le(command, 1)

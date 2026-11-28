@@ -219,7 +219,8 @@ test "datetime_utc_on_non_utc_server" do
   assert_equal 1_772_368_496_123_456, epoch_us_of(time_value(other.execute_models("SELECT ts FROM ct_times WHERE id = 2")[0]["ts"]))
   other.close
   assert_equal 1_772_368_496_123_456, DB::Connection.epoch_us("2026-03-01 12:34:56.123456")
-  assert_equal [0, -1, -1], [DB::Connection.epoch_us("1970-01-01 00:00:00.000000"),
+  not_datetime = DB::Connection::NOT_DATETIME
+  assert_equal [0, not_datetime, not_datetime], [DB::Connection.epoch_us("1970-01-01 00:00:00.000000"),
                              DB::Connection.epoch_us("0000-00-00 00:00:00.000000"), DB::Connection.epoch_us("2026-03-01")]
   conn.close
 end

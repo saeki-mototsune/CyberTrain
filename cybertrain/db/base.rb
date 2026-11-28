@@ -53,7 +53,9 @@ module Cybertrain
     end
 
     # The path the pool was connected to ("" before {DB.connect}): what
-    # Test::Database checks before it empties anything.
+    # Test::Database checks before it empties anything. On MySQL it is the
+    # whole URL, password included: not for messages or log lines
+    # (Connection.target_label gives the printable form).
     # @return [String]
     # @api private
     def self.connected_path

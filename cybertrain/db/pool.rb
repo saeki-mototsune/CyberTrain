@@ -16,8 +16,17 @@ module Cybertrain
     class Pool
       attr_reader :size
 
-      # The path given to new (DB.connected_path).
+      # The path given to new (DB.connected_path). On MySQL it is the whole
+      # DATABASE_URL, password included: never put it in a message or a log
+      # line; Connection.target_label(pool_path) is the form to show.
       def pool_path = @path
+
+      # Names the target as Connection.target_label shows it, never the
+      # raw path (on MySQL the URL holds the password).
+      # @return [String]
+      def inspect
+        "#<Cybertrain::DB::Pool #{Connection.target_label(@path)} size=#{@size}>"
+      end
 
       def initialize(path, size = 4)
         @path = path
@@ -192,7 +201,7 @@ module Cybertrain
           elsif outcome == :failed
             if @reopenable
               note(:error, "could not roll back a transaction left open on a pooled connection; " \
-                           "closed it, the next checkout reopens #{@path}")
+                           "closed it, the next checkout reopens #{Connection.target_label(@path)}")
               conn.close
             else
               note(:error, "could not roll back a transaction left open on the in-memory or temporary connection; " \

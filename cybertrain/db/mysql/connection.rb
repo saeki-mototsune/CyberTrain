@@ -1,7 +1,13 @@
 # Cybertrain::DB::Connection for MySQL: one session with a MySQL 8.0 server,
 # over the pure-Ruby protocol beside this file (packet, auth, protocol,
-# result) on Cybertrain::Net, so every wait is a green-thread wait on a
-# socket and never an OS worker parked in a C call.
+# result) on Cybertrain::Net, so every wait on the server is a
+# green-thread wait on a socket and never an OS worker parked in a C call.
+# One exception: opening a session (#initialize, a reopen) resolves the
+# host name with getaddrinfo, which has no non-blocking form in the runtime
+# (Net.resolve), so a slow resolver parks its OS worker for as long as the
+# resolver takes. That time counts against connect_timeout, which ends the
+# open once the resolve returns, but it cannot cut the resolve short. A
+# host given as an IP address is not looked up.
 #
 # Its public methods are the SQLite Connection's (cybertrain/db/sqlite/
 # connection.rb), with the same names and return types, so that the pool,
@@ -46,6 +52,7 @@
 # No message holds the password: the URL's parts are named by host:port
 # only (Url#server_label), and Url#to_s / #inspect leave it out.
 require "cybertrain/cast"
+require "cybertrain/time_zone"
 require "cybertrain/db/blob"
 require "cybertrain/db/error"
 require "cybertrain/net/socket"
@@ -125,6 +132,20 @@ module Cybertrain
         false
       end
 
+      # The target as a message or log line may show it: the URL without
+      # its password (Url#to_s, "mysql://app@db.internal:3306/shop"), or
+      # "the MySQL database" for a URL that does not parse (its text could
+      # hold the password anywhere). Pool's log lines name the target
+      # through this, never the raw DATABASE_URL.
+      # @param target [String]
+      # @return [String]
+      # @api private
+      def self.target_label(target)
+        MySQL::Url.parse(target.to_s).to_s
+      rescue ArgumentError
+        "the MySQL database"
+      end
+
       # Connects to the server the URL names, authenticates and sets the
       # session.
       # @param target [String] mysql://USER[:PASSWORD]@HOST[:PORT][/DATABASE][?...]
@@ -152,7 +173,7 @@ module Cybertrain
         # Kept to reopen the session (#reopen_session); its to_s and
         # inspect leave the password out.
         @url = url
-        io = Connection.open_session(url)
+        io = open_packet_io(url)
         @stream = io.packet_stream
         @protocol = MySQL::Protocol.new(io)
         @statements = MySQL::StatementCache.new(@protocol)
@@ -176,10 +197,20 @@ module Cybertrain
         raise Error, e.message
       end
 
+      # The PacketIO of a new session to url (Connection.open_session):
+      # #initialize and #reopen_session open every session here, so a test
+      # can run a Connection over a scripted stream (test/db_mysql_driver.rb).
+      # @api private
+      def open_packet_io(url)
+        Connection.open_session(url)
+      end
+
       # TCP, the handshake and authentication (TLS for ssl_mode=verify):
       # the PacketIO the session runs on, its timeouts set from the URL.
       # Each wait of the connect and the handshake is bounded by
-      # connect_timeout; a Net failure is ConnectionLost.
+      # connect_timeout, and the resolve and the connect together by it as
+      # a deadline (the Timer starts before Net.resolve, which blocks its
+      # OS worker: see the header); a Net failure is ConnectionLost.
       def self.open_session(url)
         label = url.server_label
         seconds = url.connect_timeout
@@ -232,8 +263,8 @@ module Cybertrain
 
       # execute for the ORM: a DATETIME or TIMESTAMP column comes back as a
       # UTC Time (with microseconds; Cast.time_or_nil takes it as is)
-      # instead of its text; a value that does not read as one (a zero
-      # date) stays text. Relation reads its rows through this; execute
+      # instead of its text, before 1970 too; a value that does not read as
+      # one (a zero date) stays text. Relation reads its rows through this; execute
       # keeps returning the text.
       def execute_models(sql, binds = [])
         run_statement(sql, binds, true)
@@ -260,7 +291,7 @@ module Cybertrain
               case value
               when String
                 us = Connection.epoch_us(value)
-                if us >= 0
+                if us != NOT_DATETIME
                   row[names[column]] = Time.at(us / 1_000_000, us % 1_000_000).utc
                 else
                   row[names[column]] = value
@@ -453,6 +484,13 @@ module Cybertrain
         @transaction_depth = 0
         @transaction_lost = false
         return :clean if @closed
+        # An answer still unread (Protocol#exchange_pending?): the status
+        # flags are stale and the stream out of step. Closed, as a lost
+        # connection is; the server rolls back what the session left open.
+        if @protocol.exchange_pending?
+          lose_connection
+          return :clean
+        end
         return :clean unless @protocol.server_in_transaction?
 
         send_rollback
@@ -492,13 +530,19 @@ module Cybertrain
         nil
       end
 
+      # What #epoch_us answers for text that is not a datetime: below any
+      # DATETIME (year 1 is about -6.2e16 microseconds), so every value
+      # before 1970, which is negative, is still a value.
+      NOT_DATETIME = -(2**62)
+
       # epoch microseconds of "YYYY-MM-DD HH:MM:SS.ffffff" read as UTC (the
-      # text result.rb decodes every DATETIME and TIMESTAMP to), or -1 for
-      # text of another shape or a zero date.
+      # text result.rb decodes every DATETIME and TIMESTAMP to), negative
+      # before 1970, or NOT_DATETIME for text of another shape or a zero
+      # date.
       # @return [Integer]
       def self.epoch_us(text)
         s = text.to_s # NOTES rule 62
-        return -1 unless s.bytesize == 26
+        return NOT_DATETIME unless s.bytesize == 26
 
         year = Connection.digits(s, 0, 4)
         month = Connection.digits(s, 5, 2)
@@ -507,10 +551,10 @@ module Cybertrain
         minute = Connection.digits(s, 14, 2)
         second = Connection.digits(s, 17, 2)
         micro = Connection.digits(s, 20, 6)
-        return -1 if year < 1 || month < 1 || month > 12 || day < 1 || day > 31
-        return -1 if hour < 0 || minute < 0 || second < 0 || micro < 0
+        return NOT_DATETIME if year < 1 || month < 1 || month > 12 || day < 1 || day > 31
+        return NOT_DATETIME if hour < 0 || minute < 0 || second < 0 || micro < 0
 
-        days = Connection.days_from_civil(year, month, day)
+        days = Cybertrain::TimeZone.days_from_civil(year, month, day)
         ((days * 86_400) + (hour * 3600) + (minute * 60) + second) * 1_000_000 + micro
       end
 
@@ -526,18 +570,6 @@ module Cybertrain
           i += 1
         end
         value
-      end
-
-      # Days since 1970-01-01 of a proleptic Gregorian date, year 1 or later
-      # (Howard Hinnant's days_from_civil).
-      def self.days_from_civil(year, month, day)
-        y = month <= 2 ? year - 1 : year
-        era = y / 400
-        yoe = y - era * 400
-        mp = month > 2 ? month - 3 : month + 9
-        doy = (153 * mp + 2) / 5 + day - 1
-        doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
-        era * 146_097 + doe - 719_468
       end
 
       # An empty bind list of the type #wire_binds answers.
@@ -619,7 +651,7 @@ module Cybertrain
       # #initialize sets it; a failure leaves the connection closed and
       # raises (a server still unreachable is ConnectionLost).
       def reopen_session
-        io = Connection.open_session(@url)
+        io = open_packet_io(@url)
         @stream = io.packet_stream
         @protocol = MySQL::Protocol.new(io)
         @statements = MySQL::StatementCache.new(@protocol)
@@ -737,8 +769,11 @@ module Cybertrain
       # * @transaction_lost: a statement that started inside a transaction
       #   failed and the server rolled the transaction back
       #   (#note_lost_transaction). COMMIT and ROLLBACK end the lost
-      #   transaction and are let through; true is returned for a ROLLBACK,
-      #   which has nothing left to do.
+      #   transaction. A bare ROLLBACK has nothing left to do (true is
+      #   returned); a ROLLBACK followed by more statements runs. A COMMIT
+      #   is refused, after the flag is cleared: MySQL answers a COMMIT with
+      #   nothing open with OK (SQLite refuses it), and the caller would be
+      #   told its writes were committed, as #commit! explains.
       # * a depth above 0 while the server has no transaction open: the
       #   transaction #begin! opened is gone, however it went.
       #
@@ -747,7 +782,7 @@ module Cybertrain
         if @transaction_lost
           if Connection.ends_transaction?(sql)
             @transaction_lost = false
-            return Connection.rollback_statement?(sql)
+            return Connection.rollback_statement?(sql) unless Connection.commit_statement?(sql)
           end
           raise Error, Connection.transaction_gone_message(sql)
         end
@@ -763,12 +798,17 @@ module Cybertrain
       # own statement). The ERR packet carries no status flags, so a
       # COM_PING asks (errors are rare; a ping is one round trip). A failed
       # COMMIT or ROLLBACK is the application ending the transaction itself
-      # and marks nothing; so does a ping that fails (the connection is
-      # then lost and closed by the next command).
+      # and marks nothing. A ping that fails marks nothing either, and one
+      # that left its answer unread (a timeout: the stream stays open, and
+      # the late OK would be read as the next command's answer) closes the
+      # connection here; the server rolls the transaction back with it.
       def note_lost_transaction(in_transaction, sql)
         return nil unless in_transaction
         return nil if Connection.ends_transaction?(sql)
-        return nil unless @protocol.ping
+        unless @protocol.ping
+          lose_connection if @protocol.exchange_pending?
+          return nil
+        end
         return nil if @protocol.server_in_transaction?
 
         @transaction_lost = true
@@ -794,6 +834,11 @@ module Cybertrain
       def self.ends_transaction?(sql)
         words = Connection.statement_words(sql)
         Connection.bare_keyword?(words, "COMMIT") || Connection.bare_keyword?(words, "ROLLBACK")
+      end
+
+      # Whether the first statement of sql is COMMIT [WORK].
+      def self.commit_statement?(sql)
+        Connection.bare_keyword?(Connection.statement_words(sql), "COMMIT")
       end
 
       # A ROLLBACK and nothing else (comments, empty statements and a

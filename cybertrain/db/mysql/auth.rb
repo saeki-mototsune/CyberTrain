@@ -68,7 +68,7 @@ module Cybertrain
         CLIENT_MULTI_STATEMENTS = 0x10000
         CLIENT_MULTI_RESULTS = 0x20000
         CLIENT_PS_MULTI_RESULTS = 0x40000
-        CLIENT_PLUGIN_AUTH = 0x80000
+        CLIENT_PLUGIN_AUTH = Handshake::CLIENT_PLUGIN_AUTH
         CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA = 0x200000
         CLIENT_DEPRECATE_EOF = 0x1000000
 
@@ -196,7 +196,13 @@ module Cybertrain
         def self.await_ok(conn, url, first_plugin, secure)
           label = url.server_label
           plugin = first_plugin
+          # Each step the server may take once: a plugin switch, the
+          # fast-path result, the request for full authentication (which
+          # sends the password). A server that repeats one is refused, so
+          # the loop ends and the password goes out at most once.
           switched = false
+          fast_seen = false
+          full_sent = false
           while true
             packet = conn.read_packet
             raise Cybertrain::DB::Error, "#{label}: the MySQL server sent an empty packet during authentication" if packet.empty?
@@ -221,9 +227,19 @@ module Cybertrain
               data = data.byteslice(0, data.bytesize - 1) if data.bytesize > 0 && data.getbyte(data.bytesize - 1) == 0
               conn.write_packet(Auth.scrambled(plugin, url.url_password, data))
             elsif kind == 0x01 && plugin == CACHING_SHA2 && packet.bytesize == 2 && packet.getbyte(1) == 0x03
-              nil # fast authentication succeeded; the OK follows
+              # fast authentication succeeded; the OK follows
+              raise Cybertrain::DB::Error, "#{label}: MySQL sent caching_sha2_password's fast authentication result twice" if fast_seen
+
+              fast_seen = true
             elsif kind == 0x01 && plugin == CACHING_SHA2 && packet.bytesize == 2 && packet.getbyte(1) == 0x04
-              raise Cybertrain::DB::Error, "caching_sha2_password full authentication needs TLS (ssl_mode=verify)" unless secure
+              raise Cybertrain::DB::Error, "#{label}: MySQL asked for caching_sha2_password full authentication twice" if full_sent
+              unless secure
+                raise Cybertrain::DB::Error, "#{label}: caching_sha2_password full authentication needs TLS (ssl_mode=verify): " \
+                                             "the server holds no cached login for this account yet (its first login since " \
+                                             "the server started, or since its password changed or the privileges were flushed)"
+              end
+
+              full_sent = true
 
               clear = Wire.bytes(url.url_password)
               clear << Wire.zeros(1)

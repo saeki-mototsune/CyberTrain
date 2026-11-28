@@ -15,8 +15,9 @@ ok   a packet written by the client is read back
 ok   split_packet_roundtrip: 0xFFFFFF
 ok   split_packet_roundtrip: 0xFFFFFF + 1
 ok   split_packet_roundtrip: 2 * 0xFFFFFF + 5
+ok   split packets joined past the packet limit are ConnectionLost
 ok   a packet with the wrong sequence number is ConnectionLost
 ok   a continuation packet out of sequence is ConnectionLost
 ok   a stream that ends inside a packet is ConnectionLost
 ok   a failed write is ConnectionLost
-21 tests, 137 assertions, 0 failures
+22 tests, 140 assertions, 0 failures

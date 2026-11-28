@@ -42,6 +42,15 @@ module Cybertrain
         path.include?(":memory:") || path.include?("mode=memory")
       end
 
+      # The target as a message or log line shows it: the path as given
+      # (MySQL's leaves the URL's password out). Pool's log lines name the
+      # target through this.
+      # @return [String]
+      # @api private
+      def self.target_label(path)
+        path.to_s
+      end
+
       # path is a file name, ":memory:" or a "file:" URI (OPEN_URI makes
       # SQLite read the URI form whether or not the library was compiled
       # with SQLITE_USE_URI). With create: false a missing file is refused
@@ -278,6 +287,16 @@ module Cybertrain
       def last_insert_id
         raise Error, "connection closed (last_insert_id)" if @closed
         SQLite3.sqlite3_last_insert_rowid(@db)
+      end
+
+      # The MySQL Connection's method, here so that code above the adapter
+      # can call it on either: a no-op. SQLite keeps its own last rowid
+      # (sqlite3_last_insert_rowid), which every INSERT into a rowid table
+      # sets; nothing is kept here to forget.
+      # @return [nil]
+      def forget_last_insert_id
+        raise Error, "connection closed (forget_last_insert_id)" if @closed
+        nil
       end
 
       # The most `?` binds one statement may carry

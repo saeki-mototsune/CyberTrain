@@ -146,10 +146,12 @@ module Cybertrain
         LONGLONG_MAX = "9223372036854775807"
 
         # Server ERR codes that mean the session is gone: 1053 server
-        # shutdown, 1927 connection killed, 4031 disconnected for
-        # inactivity (wait_timeout). A stream that ends or resets is
-        # ConnectionLost in PacketIO already (what a client library calls
-        # 2006 / 2013).
+        # shutdown, 4031 disconnected for inactivity (wait_timeout), and
+        # 1927 connection killed, which is MariaDB's code (MySQL 8.0 sends
+        # no ERR to a killed session, it closes the stream: kept for a
+        # server that speaks the protocol and sends it). A stream that ends
+        # or resets is ConnectionLost in PacketIO already (what a client
+        # library calls 2006 / 2013).
         CONNECTION_LOST_CODES = [1053, 1927, 4031].freeze
         FOREIGN_KEY_CODES = [1451, 1452, 1216, 1217].freeze
 
@@ -267,14 +269,24 @@ module Cybertrain
           s = payload.to_s
           return "MySQL: the server sent a short error packet" if s.bytesize < 3
 
-          state = "HY000"
+          parts = Decode.error_parts(s)
+          state = parts[1].empty? ? "HY000" : parts[1]
+          "#{parts[2]} (MySQL #{parts[0]}, #{state})"
+        end
+
+        # An ERR packet's [code, SQLSTATE ("" when the packet has none, as
+        # before the handshake), text marked UTF-8], for a payload of 3
+        # bytes or more. The one reader of the ERR layout: a statement's
+        # error and a login's (Handshake.error_text) are read the same way.
+        # @return [Array<String>] the code as its decimal text
+        def self.error_parts(s)
+          state = ""
           start = 3
           if s.bytesize >= 9 && s.getbyte(3) == 35 # "#"
-            state = s.byteslice(4, 5)
+            state = Decode.utf8(s.byteslice(4, 5))
             start = 9
           end
-          text = Decode.utf8(s.byteslice(start, s.bytesize - start))
-          "#{text} (MySQL #{Decode.error_code(s)}, #{state})"
+          [Decode.error_code(s).to_s, state, Decode.utf8(s.byteslice(start, s.bytesize - start))]
         end
 
         # A copy of `bytes` marked UTF-8 (a socket's bytes are binary, and
