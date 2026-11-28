@@ -1,0 +1,3 @@
+ok   a ping that times out after an error inside a transaction closes the connection
+ok   a ping that answers OK after an error inside a transaction keeps the connection
+2 tests, 12 assertions, 0 failures

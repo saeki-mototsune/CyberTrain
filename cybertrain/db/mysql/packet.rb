@@ -5,9 +5,12 @@
 #
 # Every wait is Net's: reads go through Net::Reader and writes through
 # stream_write, each bounded by a Net::Timer, so a stalled server is a
-# timeout (Net::TimeoutError, which leaves the stream unusable for the next
-# packet) and not a parked worker. A stream that ends mid-packet, resets, or
-# frames out of sequence is DB::ConnectionLost.
+# timeout (Net::TimeoutError) and not a parked worker. A timeout leaves the
+# stream open with the answer unread, and the answer may still arrive: the
+# stream is out of step, and Protocol refuses to start another command on
+# it (Protocol#exchange_pending?), so the connection closes it. A stream
+# that ends mid-packet, resets, or frames out of sequence is
+# DB::ConnectionLost.
 require "cybertrain/net/socket"
 require "cybertrain/db/error"
 require "cybertrain/db/mysql/wire"

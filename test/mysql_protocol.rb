@@ -1064,4 +1064,82 @@ test "zero dates decode as zeros in both protocols" do
   assert_equal [["0000-00-00", "0000-00-00 00:00:00.000000"]], binary.result_rows
 end
 
+# A peer whose answers come in chunks, one per read, where a chunk marked
+# as a stall raises Net::TimeoutError instead (the read_timeout passed);
+# the chunks after it are what the server sends once it recovers.
+class StallStream < Cybertrain::Net::Stream
+  def initialize
+    @chunks = Array.new(0) { "" }
+    @stalls = Array.new(0) { false }
+    @next_chunk = 0
+    @sent = String.new
+  end
+
+  def answer(bytes)
+    @chunks << bytes
+    @stalls << false
+    nil
+  end
+
+  def stall
+    @chunks << ""
+    @stalls << true
+    nil
+  end
+
+  def stream_read(max, timer)
+    return "" if @next_chunk >= @chunks.size
+
+    i = @next_chunk
+    @next_chunk += 1
+    raise Cybertrain::Net::TimeoutError, "fake:3306: reading timed out after 30s" if @stalls[i]
+
+    @chunks[i]
+  end
+
+  def stream_write(data, timer)
+    @sent << data
+    nil
+  end
+
+  def stream_label
+    "fake:3306"
+  end
+
+  def stall_sent
+    @sent
+  end
+end
+
+# What a query on proto raised ("nothing raised" when it did not).
+def stalled_query_failure(proto)
+  got = "nothing raised"
+  begin
+    proto.query("SELECT 1")
+  rescue Cybertrain::DB::Error => e
+    got = "#{e.class.name}: #{e.message}"
+  end
+  got
+end
+
+test "a ping whose answer timed out leaves the exchange pending, and no command starts on that stream" do
+  stream = StallStream.new
+  stream.stall
+  # The ping's OK, late: it carries sequence 1, as a next command's answer would.
+  stream.answer(unhex(PING_RESP))
+  proto = protocol_for(stream)
+  assert_equal false, proto.ping
+  assert_equal true, proto.exchange_pending?
+  assert_equal "Cybertrain::DB::ConnectionLost: fake:3306: the MySQL connection is out of step after an exchange " \
+               "that did not finish; it can only be closed",
+               stalled_query_failure(proto)
+  # Nothing was sent after the ping: the late OK is never read as an answer.
+  assert_equal PING_REQ, hex(stream.stall_sent)
+  assert_equal false, proto.ping
+  assert_equal PING_REQ, hex(stream.stall_sent)
+  # COM_QUIT still goes out: the server reads it whatever answer is unread.
+  assert_nil proto.quit
+  assert_equal PING_REQ + QUIT_REQ, hex(stream.stall_sent)
+end
+
 Cybertrain::Test.run!

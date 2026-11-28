@@ -152,7 +152,7 @@ module Cybertrain
         # Kept to reopen the session (#reopen_session); its to_s and
         # inspect leave the password out.
         @url = url
-        io = Connection.open_session(url)
+        io = open_packet_io(url)
         @stream = io.packet_stream
         @protocol = MySQL::Protocol.new(io)
         @statements = MySQL::StatementCache.new(@protocol)
@@ -174,6 +174,14 @@ module Cybertrain
         MySQL::Url.parse(target.to_s)
       rescue ArgumentError => e
         raise Error, e.message
+      end
+
+      # The PacketIO of a new session to url (Connection.open_session):
+      # #initialize and #reopen_session open every session here, so a test
+      # can run a Connection over a scripted stream (test/db_mysql_driver.rb).
+      # @api private
+      def open_packet_io(url)
+        Connection.open_session(url)
       end
 
       # TCP, the handshake and authentication (TLS for ssl_mode=verify):
@@ -453,6 +461,13 @@ module Cybertrain
         @transaction_depth = 0
         @transaction_lost = false
         return :clean if @closed
+        # An answer still unread (Protocol#exchange_pending?): the status
+        # flags are stale and the stream out of step. Closed, as a lost
+        # connection is; the server rolls back what the session left open.
+        if @protocol.exchange_pending?
+          lose_connection
+          return :clean
+        end
         return :clean unless @protocol.server_in_transaction?
 
         send_rollback
@@ -619,7 +634,7 @@ module Cybertrain
       # #initialize sets it; a failure leaves the connection closed and
       # raises (a server still unreachable is ConnectionLost).
       def reopen_session
-        io = Connection.open_session(@url)
+        io = open_packet_io(@url)
         @stream = io.packet_stream
         @protocol = MySQL::Protocol.new(io)
         @statements = MySQL::StatementCache.new(@protocol)
@@ -763,12 +778,17 @@ module Cybertrain
       # own statement). The ERR packet carries no status flags, so a
       # COM_PING asks (errors are rare; a ping is one round trip). A failed
       # COMMIT or ROLLBACK is the application ending the transaction itself
-      # and marks nothing; so does a ping that fails (the connection is
-      # then lost and closed by the next command).
+      # and marks nothing. A ping that fails marks nothing either, and one
+      # that left its answer unread (a timeout: the stream stays open, and
+      # the late OK would be read as the next command's answer) closes the
+      # connection here; the server rolls the transaction back with it.
       def note_lost_transaction(in_transaction, sql)
         return nil unless in_transaction
         return nil if Connection.ends_transaction?(sql)
-        return nil unless @protocol.ping
+        unless @protocol.ping
+          lose_connection if @protocol.exchange_pending?
+          return nil
+        end
         return nil if @protocol.server_in_transaction?
 
         @transaction_lost = true
