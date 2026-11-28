@@ -121,6 +121,13 @@ unless left.empty?
   puts "cybertrain_tdb_test holds tables this program did not make: #{left.join(", ")}"
   exit 1
 end
+# ... and emptied of them again at the end, for the next program that
+# needs it empty (test/mysql/bundle_boot.rb boots on it).
+at_exit do
+  conn = DB::Connection.new(TEST_URL)
+  MySQLTestTables.drop(conn, OWN_TABLES)
+  conn.close
+end
 
 test "a database whose name does not end in _test is refused, by its URL without the password" do
   CONFIG.database_url = OTHER_URL

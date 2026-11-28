@@ -296,9 +296,11 @@ module Cybertrain
 
     # Deletes the cache's rate-limit rows: the keys from "rate-limit:" up
     # to "rate-limit;" (";" follows ":"), so no LIKE pattern is needed.
+    # `` `key` `` is quoted: a reserved word in MySQL (Cache's SQL quotes it
+    # the same way; SQLite takes the backticks too).
     def self.clear_shared_counts
       Cache.install!
-      DB.with { |c| c.execute("DELETE FROM cybertrain_cache WHERE key >= 'rate-limit:' AND key < 'rate-limit;'") }
+      DB.with { |c| c.execute("DELETE FROM cybertrain_cache WHERE `key` >= 'rate-limit:' AND `key` < 'rate-limit;'") }
       nil
     end
 

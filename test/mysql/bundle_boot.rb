@@ -123,6 +123,18 @@ test "a second boot empties the database and migrates again" do
   Cybertrain::Runtime.reset!
 end
 
+test "the test reset's rate-limit clear runs on MySQL (its `key` column is quoted)" do
+  bundle_config("test", TEST_URL)
+  app = bundle_boot
+  Cybertrain::Cache.write("rate-limit:x", "1")
+  Cybertrain::Cache.write("other", "2")
+  Cybertrain::RateLimit.clear_shared_counts
+  assert_nil Cybertrain::Cache.read("rate-limit:x")
+  assert_equal "2", Cybertrain::Cache.read("other")
+  app.shutdown
+  Cybertrain::Runtime.reset!
+end
+
 test "Main's db word runs DB::CLI's MySQL part on DATABASE_URL" do
   bundle_config("test", TEST_URL)
   status = Cybertrain::Main.run("shop", ["db", "status"], router: Cybertrain::Router.new,
