@@ -14,7 +14,9 @@
 # some other way is not mistaken for this one. Its character set and
 # collation default to utf8mb4 / utf8mb4_0900_bin, the adapter's. Besides
 # cybertrain_test (the URL's), it holds the databases cybertrain_tdb_test and
-# cybertrain_tdb, which test/mysql/test_database.rb uses.
+# cybertrain_tdb, which test/mysql/test_database.rb uses, and
+# cybertrain_blog_test, which `script/test-mysql --blog` runs examples/blog's
+# tests on.
 #
 # The image is pinned to one release (the same tag as the mysql-tests job of
 # .github/workflows/ci.yml), so a new 8.0 release changes nothing until the
@@ -88,8 +90,10 @@ docker exec "$name" mysql -h 127.0.0.1 -uroot -p"$password" -e \
 # The two databases test/mysql/test_database.rb uses besides cybertrain_test
 # (a test program never creates a database): cybertrain_tdb_test, which it
 # needs empty but for its own tables, and cybertrain_tdb, a name without
-# _test, which it only sees refused.
+# _test, which it only sees refused. And examples/blog's
+# (`script/test-mysql --blog`), which its test bundle empties.
 docker exec "$name" mysql -h 127.0.0.1 -uroot -p"$password" -e \
-  "CREATE DATABASE IF NOT EXISTS cybertrain_tdb_test; CREATE DATABASE IF NOT EXISTS cybertrain_tdb;" 2>/dev/null
+  "CREATE DATABASE IF NOT EXISTS cybertrain_tdb_test; CREATE DATABASE IF NOT EXISTS cybertrain_tdb;
+   CREATE DATABASE IF NOT EXISTS cybertrain_blog_test;" 2>/dev/null
 
 echo "CYBERTRAIN_TEST_MYSQL_URL=$url"

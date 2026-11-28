@@ -200,6 +200,7 @@ export "$(script/mysql-dev)"         # starts or reuses the server; sets CYBERTR
 script/test-mysql                    # every test/mysql/*.rb
 script/test-mysql test/mysql/connection.rb
 script/test-mysql --regen test/mysql/connection.rb   # rewrites its snapshot from the binary
+script/test-mysql --blog             # examples/blog's tests on MySQL (about eight minutes)
 script/mysql-dev stop                # removes the container
 ```
 
@@ -218,7 +219,16 @@ names and never create or drop a database. `test/mysql/test_database.rb`
 also uses two databases of the same server, `cybertrain_tdb_test` and
 `cybertrain_tdb` (the URL with the name swapped), which `script/mysql-dev`
 and CI's `mysql-tests` job create when the server starts. CI's `mysql-tests` job runs
-`script/test-mysql` against a service container of the same image.
+`script/test-mysql` against a service container of the same image, in three
+shards.
+
+`script/test-mysql --blog` runs examples/blog's tests on MySQL: it copies the
+blog into a temporary directory, makes its `bin/blog.rb` require
+`cybertrain/mysql`, runs `generate authentication --invite-only --force` there
+(after checking that the generator forces nothing on the SQLite copy) and then
+`cybertrain test`, on the database `cybertrain_blog_test` of the same server,
+which `script/mysql-dev` creates. CI runs it in the `mysql-blog` job. Run it
+after a change that can reach what a MySQL application compiles.
 
 If the Docker daemon is not running (a fresh cloud container), start it
 first (`sudo dockerd &`) and stop it when you are done.
@@ -343,8 +353,9 @@ run the one you changed. Each line they print carries the seconds elapsed
 (progress lines, failures, the CLI, the server) is in `script/e2e.d/`,
 which they source.
 
-Its `mysql-tests` job runs the MySQL integration tests (`script/test-mysql`,
-[above](#the-mysql-tests)) against a MySQL server in a service container.
+Its `mysql-tests` jobs run the MySQL integration tests (`script/test-mysql`,
+[above](#the-mysql-tests)) against a MySQL server in a service container, and
+its `mysql-blog` job examples/blog's tests on MySQL (`script/test-mysql --blog`).
 
 CI also builds the API reference with YARD (any warning fails it:
 `script/api-docs`, the `api-docs` job). A change to nothing but

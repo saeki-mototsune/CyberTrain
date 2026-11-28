@@ -20,16 +20,35 @@
 # worker running, which a second worker would hide. A test that needs other
 # settings sets them itself.
 #
+# `--blog` runs examples/blog's tests on MySQL instead (docs/design.md D96):
+# the blog is copied into a temporary directory, its spin.toml pointed at
+# this checkout, the first line of its bin/blog.rb, `require "cybertrain"`,
+# replaced by `require "cybertrain/mysql"` (which is how an application
+# picks the adapter: when it is built, never at run time), `cybertrain
+# generate authentication --invite-only --force` run again (below), and
+# `cybertrain test` run there, gen first, with DATABASE_URL set to the URL
+# with the database cybertrain_blog_test (script/mysql-dev and CI's
+# mysql-tests job create it; the test bundle claims it with its marker
+# table and empties it). Nothing else is changed, and nothing is written in
+# examples/blog. The temporary directory is removed unless the run fails,
+# when its path is printed. The blog's whole test program is compiled,
+# about eight minutes on 4 cores.
+#
 # usage: script/test-mysql [file...]           run these files (default: all of test/mysql/*.rb)
 #        script/test-mysql --regen [file...]   rewrite their snapshots from the compiled binaries
+#        script/test-mysql --blog [-n NAME]    examples/blog's tests on MySQL (arguments go to `cybertrain test`)
 #
 # Exit status 2 when the URL is not set or an argument is bad; 1 when any
 # file fails or differs.
 set -u
 
 regen=false
+blog=false
 if [ "${1:-}" = "--regen" ]; then
   regen=true
+  shift
+elif [ "${1:-}" = "--blog" ]; then
+  blog=true
   shift
 fi
 
@@ -39,6 +58,51 @@ if [ -z "${CYBERTRAIN_TEST_MYSQL_URL:-}" ]; then
 fi
 
 cd "$(dirname "$0")/.." || exit 2
+
+if [ "$blog" = true ]; then
+  repo=$(pwd)
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-mysql-blog.XXXXXX") || exit 2
+  app="$tmp/blog"
+  cp -a examples/blog "$app" || exit 2
+  rm -rf "$app/build" "$app/tmp/"* "$app/storage/"*.sqlite3*
+  toml=$(cat "$app/spin.toml")
+  pinned=$(printf '%s\n' "$toml" | sed "s|^cybertrain = { path = \"../..\" }\$|cybertrain = { path = \"$repo\" }|")
+  if [ "$pinned" = "$toml" ]; then
+    echo "test-mysql: examples/blog/spin.toml has no \`cybertrain = { path = \"../..\" }\` to point at the checkout" >&2
+    exit 2
+  fi
+  printf '%s\n' "$pinned" > "$app/spin.toml"
+  if [ "$(head -n 1 "$app/bin/blog.rb")" != 'require "cybertrain"' ]; then
+    echo "test-mysql: the first line of examples/blog/bin/blog.rb is not require \"cybertrain\"" >&2
+    exit 2
+  fi
+  cli="ruby -I$repo $repo/exe/cybertrain"
+  # The blog's authentication is what `generate authentication
+  # --invite-only` writes for SQLite, file for file (first check: the
+  # generator, run there, forces nothing); on MySQL it is what the
+  # generator writes for a MySQL application, which differs in four files
+  # (the user command's and the first-run test's connection, the lockout
+  # UPDATE's order, the account test's table and error): the generator
+  # writes those after the switch.
+  forced=$(cd "$app" && $cli generate authentication --invite-only --force | grep '^force ')
+  if [ -n "$forced" ]; then
+    echo "test-mysql: examples/blog's authentication is not what generate authentication --invite-only writes:" >&2
+    echo "$forced" >&2
+    exit 2
+  fi
+  sed -i.orig '1s|.*|require "cybertrain/mysql"|' "$app/bin/blog.rb" && rm -f "$app/bin/blog.rb.orig"
+  (cd "$app" && $cli generate authentication --invite-only --force | grep '^force ') || exit 2
+  # The URL's database name (after the last / and before any ?) swapped.
+  url=$(printf '%s\n' "$CYBERTRAIN_TEST_MYSQL_URL" | sed 's|^\(mysql://[^/]*/\)[^?]*|\1cybertrain_blog_test|')
+  (cd "$app" && DATABASE_URL="$url" $cli test "$@")
+  rc=$?
+  if [ "$rc" -eq 0 ]; then
+    rm -rf "$tmp"
+  else
+    echo "test-mysql: the blog's tests failed (exit $rc); the copy is kept in $app" >&2
+  fi
+  exit "$rc"
+fi
 
 if [ "$#" -eq 0 ]; then
   set -- $(printf '%s\n' test/mysql/*.rb | LC_ALL=C sort)
