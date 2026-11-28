@@ -522,8 +522,8 @@ end
 # value is stored as SQLite stores a Float (NaN as NULL).
 # Not on MySQL: test/decimal_contract.rb's "the writers without
 # validations store a value outside the range" (123456789012.5, Infinity,
-# NaN through insert_all): MySQL refuses each (error 1264; a DECIMAL holds
-# no Infinity or NaN).
+# NaN through insert_all): MySQL refuses 123456789012.5 (error 1264), which
+# test/mysql/decimal_range.rb pins; it says what Infinity and NaN do.
 
 # ---- aggregates and JSON ----------------------------------------------------
 
