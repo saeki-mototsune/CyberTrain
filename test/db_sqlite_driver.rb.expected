@@ -1,0 +1,2 @@
+ok   forget_last_insert_id is a no-op on SQLite, and refused once closed
+1 tests, 6 assertions, 0 failures

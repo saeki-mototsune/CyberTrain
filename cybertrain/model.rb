@@ -1,6 +1,6 @@
 require "json"
 require "cybertrain/cast"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/errors"
 require "cybertrain/validator"
 require "cybertrain/relation"
@@ -456,7 +456,9 @@ module Cybertrain
     # Unlike ActiveRecord it returns nil rather than the block's value, a
     # `save` returning false does not roll anything back (raise, or use
     # `save!`), and there is no `ActiveRecord::Rollback`.
-    # @param immediate [Boolean] BEGIN IMMEDIATE instead of BEGIN
+    # @param immediate [Boolean] BEGIN IMMEDIATE instead of BEGIN (SQLite;
+    #   ignored on MySQL, where it does not serialize a read-then-write
+    #   block: see {Cybertrain::DB.transaction})
     # @yieldparam conn [Cybertrain::DB::Connection]
     # @return [nil]
     # @api public
@@ -707,12 +709,12 @@ module Cybertrain
       sets = Array.new(0) { "" }
       binds = Cast.empty_binds
       names.each do |name|
-        sets << "#{Relation.quote_ident(name)} = ?"
+        sets << "#{Cybertrain::DB::Dialect.quote_ident(name)} = ?"
         binds << row[name]
       end
       binds << @id
-      table = Relation.quote_ident(self.class.table_name)
-      id_column = Relation.quote_ident("id")
+      table = Cybertrain::DB::Dialect.quote_ident(self.class.table_name)
+      id_column = Cybertrain::DB::Dialect.quote_ident("id")
       set_list = sets.join(", ")
       sql = "UPDATE #{table} SET #{set_list} WHERE #{id_column} = ?"
       Cybertrain::DB.with { |c| c.execute(sql, binds) }
@@ -751,7 +753,7 @@ module Cybertrain
     # @raise [RecordNotFound] when the row is gone
     # @api public
     def reload
-      sql = "SELECT * FROM #{Relation.quote_ident(self.class.table_name)} WHERE #{Relation.quote_ident("id")} = ?"
+      sql = "SELECT * FROM #{Cybertrain::DB::Dialect.quote_ident(self.class.table_name)} WHERE #{Cybertrain::DB::Dialect.quote_ident("id")} = ?"
       id = @id
       found = Cybertrain::DB.with { |c| c.execute_models(sql, [id]) }
       raise RecordNotFound, "Couldn't find #{model_name} with id=#{id}" if found.empty?
@@ -835,7 +837,7 @@ module Cybertrain
     def destroy_with_callbacks
       run_callbacks("before_destroy")
       destroy_dependents
-      sql = "DELETE FROM #{Relation.quote_ident(self.class.table_name)} WHERE #{Relation.quote_ident("id")} = ?"
+      sql = "DELETE FROM #{Cybertrain::DB::Dialect.quote_ident(self.class.table_name)} WHERE #{Cybertrain::DB::Dialect.quote_ident("id")} = ?"
       id = @id
       Cybertrain::DB.with { |c| c.execute(sql, [id]) }
       @persisted = false
@@ -851,10 +853,17 @@ module Cybertrain
       write_attribute(:updated_at, now) if column?("updated_at") && read_attribute(:updated_at).nil?
       row = to_row
       marks = Array.new(row.size) { "?" }
-      columns = row.keys.map { |k| Relation.quote_ident(k) }
-      sql = "INSERT INTO #{Relation.quote_ident(self.class.table_name)} (#{columns.join(", ")}) VALUES (#{marks.join(", ")})"
+      columns = row.keys.map { |k| Cybertrain::DB::Dialect.quote_ident(k) }
+      sql = "INSERT INTO #{Cybertrain::DB::Dialect.quote_ident(self.class.table_name)} (#{columns.join(", ")}) VALUES (#{marks.join(", ")})"
       binds = row.values
+      # Forgotten first: MySQL's OK packet reports insert id 0 for an INSERT
+      # that generates none (an id that is a default expression, not
+      # AUTO_INCREMENT), and the connection would otherwise answer the id
+      # of its previous INSERT, so that a later update wrote WHERE id = that
+      # row's. The record then keeps 0, no id. A no-op on SQLite, where
+      # every rowid INSERT sets the id.
       new_id = Cybertrain::DB.with do |c|
+        c.forget_last_insert_id
         c.execute(sql, binds)
         c.last_insert_id
       end
@@ -875,10 +884,10 @@ module Cybertrain
       row.each do |k, v|
         next if skipped.include?(k)
 
-        sets << "#{Relation.quote_ident(k)} = ?"
+        sets << "#{Cybertrain::DB::Dialect.quote_ident(k)} = ?"
         binds << v
       end
-      sql = "UPDATE #{Relation.quote_ident(self.class.table_name)} SET #{sets.join(", ")} WHERE #{Relation.quote_ident("id")} = ?"
+      sql = "UPDATE #{Cybertrain::DB::Dialect.quote_ident(self.class.table_name)} SET #{sets.join(", ")} WHERE #{Cybertrain::DB::Dialect.quote_ident("id")} = ?"
       binds << @id
       Cybertrain::DB.with { |c| c.execute(sql, binds) }
       nil

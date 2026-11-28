@@ -1,0 +1,26 @@
+ok   a text result set decodes every column type
+ok   text values have the Ruby classes of their column types, strings UTF-8 except binary columns
+ok   a prepared statement's binary rows decode to the same values as the text protocol
+ok   COM_STMT_EXECUTE lays out the NULL bitmap, the types and each bind's value
+ok   binds of mixed encodings and high bytes go out byte for byte
+ok   nine parameters with the eighth NULL and a Float, statement id 200
+ok   PacketIO frames a payload with high bytes behind a header with high bytes
+ok   what the bound row holds, read back
+ok   binary rows of 7, 8 and 9 columns place each NULL bit after the two reserved bits
+ok   a text row of 9 columns with NULLs
+ok   OK packets give affected_rows and last_insert_id in each length encoding
+ok   a multi-statement query answers its last result
+ok   an ERR in the second statement raises, and the connection carries on
+ok   each recorded ERR maps to its DB::Error class with the server's message, code and state
+ok   the codes MySQL 8 did not send map too
+ok   a lost connection is ConnectionLost
+ok   KILL QUERY interrupts SLEEP, which answers 1
+ok   a failed prepare raises the mapped error
+ok   execute refuses a wrong bind count and an unknown statement before sending anything
+ok   close_statement sends COM_STMT_CLOSE and forgets the statement
+ok   ping answers true for OK and false when the connection is gone; quit sends COM_QUIT
+ok   a BIGINT UNSIGNED past 2**63 - 1 is refused once the result is read, in both protocols
+ok   zero dates decode as zeros in both protocols
+ok   a ping whose answer timed out leaves the exchange pending, and no command starts on that stream
+ok   a prepare the server refuses at a full statement cache closes nothing
+25 tests, 432 assertions, 0 failures

@@ -1,0 +1,6 @@
+ok   rescue_from Cybertrain::DB::Error handles a unique violation
+ok   rescue_from Cybertrain::DB::Error handles a foreign key violation
+ok   assert_raises(Cybertrain::DB::Error) accepts a unique violation
+ok   assert_raises with a name accepts the subclasses of DB::Error and names them
+ok   a job with retry_on Cybertrain::DB::Error is requeued on a foreign key violation
+5 tests, 16 assertions, 0 failures

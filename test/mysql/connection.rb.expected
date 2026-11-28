@@ -1,0 +1,11 @@
+ok   crud_roundtrip
+ok   types_roundtrip
+ok   datetime_utc_on_non_utc_server
+ok   transaction_rollback
+ok   a deadlock leaves the transaction gone until it is ended
+ok   unique_violation_class
+ok   slow_query_does_not_block_worker
+ok   statement_cache_evicts
+ok   a lost session is ConnectionLost, closes the connection and keeps the server's message
+ok   a refused login or an unreachable server never shows the password
+10 tests, 2164 assertions, 0 failures

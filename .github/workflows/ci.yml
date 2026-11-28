@@ -9,8 +9,8 @@ name: CI
 # reads them except script/api-docs, script/test-shard, script/ci-changes,
 # script/auth-e2e, script/test-command-e2e, script/generators-e2e,
 # script/e2e-legs, script/e2e.d/ (what the end-to-end scripts source),
-# script/preview-parity, script/test-cruby and script/preview-e2e, which are
-# brought back in. Nor do the other workflows (release, images, pages, gate): only this
+# script/preview-parity, script/test-cruby, script/preview-e2e and
+# script/test-mysql, which are brought back in. Nor do the other workflows (release, images, pages, gate): only this
 # file is brought back in (the local actions under .github/actions/ were never
 # left out). A change that also touches anything else runs the tests. `paths`
 # with negations rather than `paths-ignore`, since only `paths` can bring
@@ -45,6 +45,7 @@ on:
       - "script/test-cruby"
       - "script/spinel_http_path.rb"
       - "script/preview-e2e"
+      - "script/test-mysql"
   # A draft pull request starts the workflow and runs no job (the `changes`
   # and `api-docs` jobs skip it, and every other job needs `changes`): the
   # runners are shared by every open pull request, and a draft is pushed
@@ -72,6 +73,7 @@ on:
       - "script/test-cruby"
       - "script/spinel_http_path.rb"
       - "script/preview-e2e"
+      - "script/test-mysql"
   # For a merge queue on main, which is not turned on (docs/design.md, D34,
   # the status of 2026-11-11, has what turning it on takes): the queue waits
   # for the required checks on a `merge_group` event, and a workflow without
@@ -403,6 +405,158 @@ jobs:
           spinel --version
           script/test-shard --list --macos ${{ matrix.shard }} ${{ strategy.job-total }}
           script/test-shard --macos ${{ matrix.shard }} ${{ strategy.job-total }}
+
+  # The MySQL adapter's integration tests, test/mysql/*.rb, against a MySQL
+  # server in a service container: script/test-mysql compiles each program
+  # and compares its output with its snapshot (`spin test` and the shards
+  # above glob test/*.rb only; the MySQL unit tests, test/mysql_*.rb, need
+  # no server and run there). The server is the one script/mysql-dev starts
+  # (the same image tag), with one difference in how: a service container
+  # takes no command-line arguments, so the server's options
+  # (--default-time-zone=+09:00 --character-set-server=utf8mb4
+  # --collation-server=utf8mb4_0900_bin) are set by the first step with SET
+  # PERSIST, before any test connects. The zone is +09:00 on purpose: the
+  # adapter must keep datetimes in UTC on a server whose zone is not UTC.
+  # root@'%' is switched to mysql_native_password, as script/mysql-dev does:
+  # the URL is ssl_mode=disabled (a loopback address), where
+  # caching_sha2_password's full authentication cannot run. The password
+  # is not a secret: the server lives for this job only. The same step
+  # creates the two databases test/mysql/test_database.rb uses besides
+  # cybertrain_test (cybertrain_tdb_test and cybertrain_tdb; only
+  # test/mysql/db_cli.rb creates and drops a database, its own
+  # cybertrain_cli_test, through the CLI), and cybertrain_blog_test, as
+  # script/mysql-dev does.
+  # Three shards, each with its own server (the programs share the tables
+  # of the database they run on, so one server runs them one at a time):
+  # on 96b5508 the twenty programs in one job passed its 30 minutes on a
+  # ubuntu-26.04 runner, compiling. A shard takes the sorted programs at
+  # positions shard, shard + job-total, ... The `mysql-blog` job beside it
+  # runs examples/blog's tests on MySQL (`script/test-mysql --blog`: a copy
+  # whose bin/blog.rb and bin/db.rb require cybertrain/mysql, its test
+  # program of about eight minutes to compile on 4 cores, then its tests,
+  # then `cybertrain build` and `cybertrain db status` there, so the release
+  # binary and bin/db.rb of a MySQL application are compiled too, and
+  # neither may link libsqlite3) with the same server setup, as a job of its
+  # own rather than a step after the programs. script/test-mysql refuses a
+  # URL whose database does not end in _test or whose host is not loopback
+  # or private.
+  mysql-tests:
+    needs: changes
+    if: needs.changes.outputs.framework == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    services:
+      mysql:
+        image: mysql:8.0.46
+        env:
+          MYSQL_ROOT_PASSWORD: cybertrain
+          MYSQL_DATABASE: cybertrain_test
+        ports:
+          - 33306:3306
+        # Over TCP, not the socket: the image's first-start initialisation
+        # runs a temporary server without networking, which must not count
+        # as healthy.
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pcybertrain --silent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 40
+    env:
+      CYBERTRAIN_TEST_MYSQL_URL: "mysql://root:cybertrain@127.0.0.1:33306/cybertrain_test?ssl_mode=disabled"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the server up as script/mysql-dev starts it
+        env:
+          MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+        run: |
+          docker exec "$MYSQL_CONTAINER" mysql -h 127.0.0.1 -uroot -pcybertrain -e \
+            "SET PERSIST time_zone = '+09:00'; SET PERSIST character_set_server = 'utf8mb4';
+             SET PERSIST collation_server = 'utf8mb4_0900_bin';
+             ALTER DATABASE cybertrain_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+             CREATE DATABASE IF NOT EXISTS cybertrain_tdb_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+             CREATE DATABASE IF NOT EXISTS cybertrain_tdb CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+             CREATE DATABASE IF NOT EXISTS cybertrain_blog_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+             ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY 'cybertrain';"
+          zone=$(docker exec "$MYSQL_CONTAINER" mysql -h 127.0.0.1 -uroot -pcybertrain -N -B -e "SELECT VERSION(), @@global.time_zone")
+          echo "server: $zone"
+          test "${zone##*[[:space:]]}" = "+09:00"
+
+      - uses: ./.github/actions/setup-spinel
+
+      - name: MySQL tests
+        env:
+          SHARD: ${{ matrix.shard }}
+          TOTAL: ${{ strategy.job-total }}
+        run: |
+          spinel --version
+          files=$(printf '%s\n' test/mysql/*.rb | LC_ALL=C sort | awk -v s="$SHARD" -v t="$TOTAL" '(NR - 1) % t == s')
+          # script/test-mysql with no file runs every program, which is not
+          # what an empty shard means (script/test-shard guards the same).
+          if [ -z "$files" ]; then
+            echo "shard $SHARD of $TOTAL has no programs"
+            exit 0
+          fi
+          echo "$files"
+          # shellcheck disable=SC2086
+          script/test-mysql $files
+
+  mysql-blog:
+    needs: changes
+    if: needs.changes.outputs.framework == 'true'
+    runs-on: ubuntu-26.04
+    timeout-minutes: 45
+    services:
+      mysql:
+        image: mysql:8.0.46
+        env:
+          MYSQL_ROOT_PASSWORD: cybertrain
+          MYSQL_DATABASE: cybertrain_test
+        ports:
+          - 33306:3306
+        # Over TCP, not the socket: the image's first-start initialisation
+        # runs a temporary server without networking, which must not count
+        # as healthy.
+        options: >-
+          --health-cmd "mysqladmin ping -h 127.0.0.1 -uroot -pcybertrain --silent"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 40
+    env:
+      CYBERTRAIN_TEST_MYSQL_URL: "mysql://root:cybertrain@127.0.0.1:33306/cybertrain_test?ssl_mode=disabled"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set the server up as script/mysql-dev starts it
+        env:
+          MYSQL_CONTAINER: ${{ job.services.mysql.id }}
+        run: |
+          docker exec "$MYSQL_CONTAINER" mysql -h 127.0.0.1 -uroot -pcybertrain -e \
+            "SET PERSIST time_zone = '+09:00'; SET PERSIST character_set_server = 'utf8mb4';
+             SET PERSIST collation_server = 'utf8mb4_0900_bin';
+             ALTER DATABASE cybertrain_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+             CREATE DATABASE IF NOT EXISTS cybertrain_tdb_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+             CREATE DATABASE IF NOT EXISTS cybertrain_tdb CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+             CREATE DATABASE IF NOT EXISTS cybertrain_blog_test CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_bin;
+             ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY 'cybertrain';"
+          zone=$(docker exec "$MYSQL_CONTAINER" mysql -h 127.0.0.1 -uroot -pcybertrain -N -B -e "SELECT VERSION(), @@global.time_zone")
+          echo "server: $zone"
+          test "${zone##*[[:space:]]}" = "+09:00"
+
+      - uses: ./.github/actions/setup-spinel
+
+      - name: examples/blog's tests on MySQL
+        run: |
+          spinel --version
+          script/test-mysql --blog
 
   # Generated applications and the example end to end, on Ubuntu: one
   # runner per leg, since every leg is one or a few compiles of a whole

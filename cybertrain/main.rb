@@ -23,7 +23,7 @@ module Cybertrain
   #   ./blog feeds [NAME...]  the WebSocket subscriptions (all, or the named ones)
   #   ./blog feeds status     each feed's health, from the status rows
   #   ./blog console      the expression console over the models (Console.run)
-  #   ./blog dbconsole    the sqlite3 shell on the configured database
+  #   ./blog dbconsole    the database's client (sqlite3, or mysql) on the configured database
   #   ./blog user a@b.c   a command the application registered with Main.command
   #
   # `gen` stays a separate bin/gen.rb: it needs the generator and the
@@ -59,7 +59,7 @@ module Cybertrain
     # `Cybertrain::Main.run` (or in a file bin/<name>.rb requires).
     #
     # Before the block runs, `Cybertrain::DB` is connected to
-    # `Cybertrain.config.database_path` with a pool of one connection (and
+    # `Cybertrain.config.database_path` (on MySQL, `DATABASE_URL`) with a pool of one connection (and
     # disconnected afterwards), the way `./<name> db ...` works, and the
     # views and the URL resolver are configured as the server's boot does,
     # so `Cybertrain::Views.render_partial`, `render_component` and the
@@ -75,9 +75,10 @@ module Cybertrain
     # @example bin/blog.rb, before `exit(Cybertrain::Main.run(...))`
     #   Cybertrain::Main.command("prune", "delete comments older than DAYS") do |argv|
     #     days = argv.empty? ? 30 : argv[0].to_i
-    #     Cybertrain::DB.with do |c|
-    #       c.execute("DELETE FROM comments WHERE created_at < datetime('now', ?)", ["-#{days} days"])
-    #     end
+    #     # The cut-off is computed here, not in SQL: SQLite's datetime('now', ...)
+    #     # is not MySQL's, and a bound timestamp reads the same on both.
+    #     cutoff = Cybertrain::Cast.sql_datetime(Cybertrain::Clock.now - days * 86_400)
+    #     Cybertrain::DB.with { |c| c.execute("DELETE FROM comments WHERE created_at < ?", [cutoff]) }
     #     puts "pruned"
     #     0
     #   end
@@ -226,7 +227,7 @@ module Cybertrain
       return Roles.refuse(problem) unless problem.empty?
 
       begin
-        DB.connect(Cybertrain.config.database_path, size: 1)
+        DB.connect(DB::Adapter.connect_target(Cybertrain.config), size: 1)
         Application.configure_views(Cybertrain.config, views, url_resolver, eager: false)
         command.command_block.call(args)
       rescue DB::Error => e
@@ -252,7 +253,7 @@ module Cybertrain
 
       status = 0
       begin
-        DB.connect(Cybertrain.config.database_path, size: 1)
+        DB.connect(DB::Adapter.connect_target(Cybertrain.config), size: 1)
         status = Console.run(STDIN, STDOUT, Cybertrain.config)
       rescue DB::Error => e
         puts "console failed: #{e.message}"
@@ -264,27 +265,41 @@ module Cybertrain
       status
     end
 
-    # `./<name> dbconsole`: the sqlite3 shell on the configured database
-    # (Rails' dbconsole), its exit status passed through (1 when a signal
-    # ended it). Process.spawn and Process.wait compile and reap under the
-    # pinned Spinel (NOTES rule 75); a missing binary is Errno::ENOENT from
-    # the spawn. Ctrl-C at the sqlite3 prompt reaches this process too (the
+    # `./<name> dbconsole`: the adapter's own client on the configured
+    # database (Rails' dbconsole), its exit status passed through (1 when a
+    # signal ended it): sqlite3 on the file, or MySQL's mysql client on
+    # DATABASE_URL's server, with the password in its environment
+    # (MYSQL_PWD), never on its command line. DB::CLI.console_program,
+    # console_args and console_env say what is run, and with what.
+    # Process.spawn and Process.wait compile and reap under the pinned
+    # Spinel (NOTES rule 75); a missing binary is Errno::ENOENT from the
+    # spawn. Ctrl-C at the client's prompt reaches this process too (the
     # terminal signals the whole foreground group), so INT is trapped here
-    # first: without it this process died with 130 and left sqlite3 reading
-    # the terminal. The child's exec resets a handled signal to its default,
-    # so sqlite3 still answers Ctrl-C itself. A path starting with "-" is
-    # given as "./-...", so sqlite3 does not take it for an option.
+    # first: without it this process died with 130 and left the client
+    # reading the terminal. The child's exec resets a handled signal to its
+    # default, so the client still answers Ctrl-C itself. A configuration
+    # the client cannot be given (MySQL: no DATABASE_URL, or a bad one) is
+    # `dbconsole failed: <message>` and 1, before anything is run.
     def self.run_dbconsole
-      path = Main.dbconsole_path(Cybertrain.config.database_path)
+      config = Cybertrain.config
+      program = DB::CLI.console_program
+      args = Array.new(0) { "" }
+      begin
+        args = DB::CLI.console_args(config)
+      rescue DB::Error => e
+        puts "dbconsole failed: #{e.message}"
+        return 1
+      end
+      env = DB::CLI.console_env(config)
       trap("INT") { nil }
       pid = 0
       begin
-        pid = Process.spawn("sqlite3", path)
+        pid = Process.spawn(env, program, *args)
       rescue Errno::ENOENT
-        puts "sqlite3 not found: install the sqlite3 CLI"
+        puts "#{program} not found: install the #{program} CLI"
         return 1
       rescue SystemCallError => e
-        puts "sqlite3 could not be started: #{e.class.name}: #{e.message}"
+        puts "#{program} could not be started: #{e.class.name}: #{e.message}"
         return 1
       end
       Process.wait(pid)
@@ -371,14 +386,12 @@ module Cybertrain
       # feeds).
       text << Features.usage_text(name, "roles")
       text << "  ./#{name} migrate           apply pending migrations\n"
-      text << "  ./#{name} db COMMAND        migrate | rollback [N] | status | schema | schema:dump | create\n"
-      # The continuation lines up under "migrate" whatever the name.
-      indent = "".ljust(name.size + 23)
-      text << "#{indent}backup PATH [--force] | backup DIR/ [--keep N] | vacuum | normalize\n"
+      # The adapter's db commands (DB::CLI.usage_lines).
+      text << DB::CLI.usage_lines(name)
       # A loaded subsystem's commands (cybertrain/jobs: jobs).
       text << Features.usage_text(name, "commands")
       text << "  ./#{name} #{"console".ljust(17)} evaluate expressions over the models (help inside)\n"
-      text << "  ./#{name} #{"dbconsole".ljust(17)} open the sqlite3 shell on the database\n"
+      text << "  ./#{name} #{"dbconsole".ljust(17)} #{DB::CLI.console_description}\n"
       COMMANDS.each do |command|
         word = command.command_name.ljust(17)
         text << "  ./#{name} #{word} #{command.command_description}\n"

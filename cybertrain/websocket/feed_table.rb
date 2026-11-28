@@ -1,5 +1,5 @@
 require "cybertrain/cast"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/logger"
 require "cybertrain/websocket/status_writer"
 
@@ -18,23 +18,9 @@ module Cybertrain
     # {StatusWriter} this file registers. Times are epoch seconds.
     # @api public
     module FeedTable
-      TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_feeds (" \
-                  "name TEXT PRIMARY KEY, " \
-                  "process TEXT, " \
-                  "connected INTEGER, " \
-                  "started_at INTEGER NOT NULL, " \
-                  "last_activity_at INTEGER, " \
-                  "restarts INTEGER, " \
-                  "updated_at INTEGER NOT NULL);"
-
-      # A last activity of 0 is stored as NULL (none yet).
-      WRITE_SQL = "INSERT INTO cybertrain_feeds " \
-                  "(name, process, connected, started_at, last_activity_at, restarts, updated_at) " \
-                  "VALUES (?, ?, ?, ?, NULLIF(?, 0), ?, ?) " \
-                  "ON CONFLICT(name) DO UPDATE SET process = excluded.process, " \
-                  "connected = excluded.connected, started_at = excluded.started_at, " \
-                  "last_activity_at = excluded.last_activity_at, restarts = excluded.restarts, " \
-                  "updated_at = excluded.updated_at"
+      # The table is the adapter's (DB::Dialect.feed_table_table_sql), created by
+      # DB::Dialect.framework_table_install.
+      TABLE = "cybertrain_feeds"
 
       # The DB.generation the table was last ensured for; -1 for never (as
       # Scheduler::Timetable's).
@@ -45,7 +31,7 @@ module Cybertrain
       # @return [nil]
       # @api public
       def self.install!
-        DB.with { |c| c.exec_script(TABLE_SQL) }
+        DB.with { |c| DB::Dialect.framework_table_install(c, TABLE, DB::Dialect.feed_table_table_sql) }
         # A CREATE inside a transaction that rolls back is undone, so only
         # one outside a transaction is remembered (as Job.install! does).
         @installed_generation = DB.generation if DB.outside_transaction?
@@ -99,7 +85,10 @@ module Cybertrain
       def self.upsert_feed(name, process, connected, started_at, last_activity_at, restarts, now)
         ensure_installed
         binds = Cast.binds(name, process, connected ? 1 : 0, started_at, last_activity_at, restarts, now)
-        DB.with { |c| c.execute(WRITE_SQL, binds) }
+        # The adapter's upsert; a last activity of 0 is stored as NULL (none
+        # yet).
+        sql = DB::Dialect.feed_table_write_sql
+        DB.with { |c| c.execute(sql, binds) }
         nil
       end
 

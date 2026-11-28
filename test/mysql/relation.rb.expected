@@ -1,0 +1,22 @@
+ok   where with an Integer Range and open ranges
+ok   where with a SQL string and binds, and where_sql still works
+ok   where.not negates equality, nil, arrays and ranges
+ok   where_between on a datetime column, inclusive, exclusive and open-ended
+ok   or joins two relations and refuses a different order
+ok   order with a Hash, distinct pluck and count
+ok   update_all, update_columns, destroy_all, none, ids, find_each
+ok   find_or_create_by, find_or_initialize_by, find_by!, create!
+ok   pluck: a Time and a Float per row, in the relation's order
+ok   pluck: every column type cast, NULL as nil
+ok   pluck: honours where, limit, offset and String column names
+ok   pluck: one column or none raises, naming the typed readers
+ok   distinct.pluck dedupes the rows
+ok   pick: the first row's cells, nil when nothing matches
+ok   minimum, maximum and average over a column
+ok   an empty relation answers nil, never 0
+ok   grouped forms: a Hash keyed by the group's cell
+ok   expression forms take trusted SQL
+ok   having_sql narrows a grouped reader
+ok   distinct puts DISTINCT inside the function
+ok   where_like is case-sensitive, and escapes % _ and \
+21 tests, 236 assertions, 0 failures

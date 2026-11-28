@@ -22,7 +22,7 @@
 #   Console.model_names     Array<String>                    for errors and `help`
 require "json"
 require "cybertrain/config"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/model"
 require "cybertrain/relation"
 require "cybertrain/template/parser"

@@ -12,8 +12,13 @@ module Cybertrain
       # component names the package). framework_dep is the TOML value that
       # spin.toml's `cybertrain =` line gets: `{ path = "/abs/cybertrain" }` or
       # a version constraint such as `"~> 0.1"`. Returns the created paths,
-      # relative to dir.
-      def self.create(dir, framework_dep)
+      # relative to dir. database is the adapter, "sqlite" (the default) or
+      # "mysql" (`--database=mysql`): bin/NAME.rb and bin/db.rb then require
+      # "cybertrain/mysql", config/app.rb explains DATABASE_URL and
+      # .env.example has development's; the Dockerfile, config/deploy.yml,
+      # .kamal/secrets and the CI workflow pass DATABASE_URL (the workflow
+      # with a MySQL service); every other file is the same.
+      def self.create(dir, framework_dep, database = "sqlite")
         package = File.basename(dir)
         # Before anything is written: `public`, `storage` and `tmp` are valid
         # identifiers but collide with dist/ entries (Build.dist_name_problem).
@@ -24,11 +29,11 @@ module Cybertrain
         files = [
           ["spin.toml", Templates.spin_toml(package, framework_dep)],
           [".gitignore", Templates.gitignore],
-          [".env.example", Templates.env_example],
-          ["README.md", Templates.readme(title, package)],
-          ["AGENTS.md", Templates.agents_md(title, package)],
+          [".env.example", Templates.env_example(package, database)],
+          ["README.md", Templates.readme(title, package, database)],
+          ["AGENTS.md", Templates.agents_md(title, package, database)],
           ["CLAUDE.md", Templates.claude_md],
-          ["config/app.rb", Templates.config_app],
+          ["config/app.rb", Templates.config_app(package, database)],
           ["config/routes.rb", Templates.routes],
           ["config/locales/en.yml", Templates.locales_en_yml],
           ["db/schema.rb", Templates.schema],
@@ -45,14 +50,14 @@ module Cybertrain
           ["public/404.html", Templates.error_page("404", "Not Found")],
           ["public/500.html", Templates.error_page("500", "Internal Server Error")],
           ["public/up.html", Templates.up_html],
-          ["bin/#{package}.rb", Templates.bin_app(package)],
+          ["bin/#{package}.rb", Templates.bin_app(package, database)],
           ["bin/gen.rb", Templates.bin_gen],
-          ["bin/db.rb", Templates.bin_db],
-          ["Dockerfile", Templates.dockerfile(package)],
+          ["bin/db.rb", Templates.bin_db(database)],
+          ["Dockerfile", Templates.dockerfile(package, database)],
           [".dockerignore", Templates.dockerignore],
-          ["config/deploy.yml", Templates.deploy_yml(package)],
-          [".kamal/secrets", Templates.kamal_secrets],
-          [".github/workflows/ci.yml", Templates.ci_workflow],
+          ["config/deploy.yml", Templates.deploy_yml(package, database)],
+          [".kamal/secrets", Templates.kamal_secrets(database)],
+          [".github/workflows/ci.yml", Templates.ci_workflow(package, database)],
           ["gen/.keep", ""],
           ["storage/.keep", ""],
           ["tmp/.keep", ""],

@@ -1,6 +1,8 @@
 require "tmpdir"
+require "cybertrain/db"
 require "cybertrain/test"
 require "cybertrain/main"
+require "cybertrain/db/sqlite/cli"
 require_relative "support/file_tree"
 
 # Cybertrain::Main.run dispatches bin/<name>.rb's argv. The server branch

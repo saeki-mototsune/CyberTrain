@@ -209,6 +209,10 @@ module Cybertrain
       ffi_const :BUSY, 5
       ffi_const :ROW, 100
       ffi_const :DONE, 101
+      # Extended result codes of SQLITE_CONSTRAINT (19): code | (n << 8).
+      ffi_const :CONSTRAINT_FOREIGNKEY, 787
+      ffi_const :CONSTRAINT_PRIMARYKEY, 1555
+      ffi_const :CONSTRAINT_UNIQUE, 2067
 
       ffi_const :OPEN_READWRITE, 0x00000002
       ffi_const :OPEN_CREATE, 0x00000004
@@ -227,6 +231,9 @@ module Cybertrain
       ffi_func :sqlite3_close, [:ptr], :int
       ffi_func :sqlite3_exec, [:ptr, :str, :ptr, :ptr, :ptr], :int, blocking: true
       ffi_func :sqlite3_errmsg, [:ptr], :str
+      # The extended result code of the last failed call, whether or not the
+      # connection asked for extended codes (Connection#raise_failure).
+      ffi_func :sqlite3_extended_errcode, [:ptr], :int
       ffi_func :sqlite3_get_autocommit, [:ptr], :int
       # sqlite3_limit(db, id, -1) reads a limit without changing it
       # (Connection#variable_limit asks SQLITE_LIMIT_VARIABLE_NUMBER, 9).

@@ -10,6 +10,7 @@
 #
 # cybertrain/template/interpreter.rb requires cybertrain/model -> the SQLite
 # FFI, so this runs compiled only (spikes/NOTES.md rule 23).
+require "cybertrain/db"
 require "cybertrain/test"
 require "cybertrain/template"
 require "cybertrain/template/helpers"

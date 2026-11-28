@@ -1,0 +1,7 @@
+ok   the subclasses of DB::Error exist
+ok   a unique index violation is a UniqueViolation with SQLite's message
+ok   a primary key violation is a UniqueViolation
+ok   a foreign key violation is a ForeignKeyViolation with SQLite's message
+ok   a script's constraint failure is classified too
+ok   other failures stay plain DB::Error
+6 tests, 22 assertions, 0 failures

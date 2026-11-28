@@ -1,5 +1,5 @@
 ---
-source_sha256: e32d060026ee89e81d8d10cb10d7b869f44492533353eb0ab56b1584ab7c5317
+source_sha256: 10b0cff3a80b6e424cec763df2291df1a35c30b8320c8da9041fe5711dcf8362
 ---
 # 配置
 
@@ -20,6 +20,7 @@ end
 | `CYBERTRAIN_ENV` | `env` | `"development"`；在 `cybertrain build` 构建的二进制文件中为 `"production"`（还有 `"test"`）。请设置变量，而不是 `c.env`：`database_path`、`session_secure` 和 `mail_delivery_method` 的默认值在 `config/app.rb` 运行之前就由它推出 |
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
+| `DATABASE_URL` | `database_url` | `""`。仅限 MySQL：用 `cybertrain/mysql` 构建的应用程序所连接的数据库，`mysql://USER:PASSWORD@HOST:3306/NAME`（参见 [MySQL](#mysql)）；为空或格式错误时启动失败 |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | 生产环境中必需；开发和测试环境会自动生成一个，写入 `tmp/secret_key` |
 | `CYBERTRAIN_ENCRYPTION_KEY` | `encryption_key` | `""`；64 个十六进制字符（`cybertrain secret --hex`），模型用 `encrypts` 加密的列的密钥。格式不对，或模型声明了 `encrypts` 而它为空时，启动失败（见[加密列](models.md#encrypted-columns)） |
 | `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS` | `encryption_keys_previous` | `[]`；以逗号分隔的旧密钥，只用于解密，因此重新保存记录即可轮换密钥；格式错误的条目会让启动停止 |
@@ -150,6 +151,63 @@ end
 ### 认证设置
 
 `cybertrain generate authentication` 写出的代码读取四个设置（变量见上表）：用于 [锁定](authentication.md#lockout) 的 `auth_lockout_attempts`（10）和 `auth_lockout_period`（3600 秒），用于“保持登录”的 `auth_remember_for`（30 天），以及用于未被使用的登录的 `auth_idle_timeout`（7 天）（[保持登录](authentication.md#remember-me-and-session-limits)）；不勾选的登录持续 `session_absolute_max_age`（两周）。超出范围的值会使启动停止。生成器还声明应用设置 `base_url`，取自 `<APP>_BASE_URL`，邮件中的链接以它开头；在提供应用的每个地方都用 https 设置它（[邮件中的链接](authentication.md#links-in-mails)）。
+
+## MySQL
+
+应用程序只为一种数据库构建：默认的 SQLite，或 MySQL 8.0（`docs/design.md` 的 D96；CI 在 8.0.46 上测试，尚未测试更新的版本）。选择哪一种，由 `bin/<app>.rb` 和 `bin/db.rb` 所 require 的 `cybertrain` 入口在构建应用程序时决定（gen 读取的是 `bin/<app>.rb` 中的那个；请让两者保持一致）；运行时没有任何东西会切换它：
+
+```ruby bin/<app>.rb (excerpt)
+require "cybertrain/mysql"   # 所有子系统；"cybertrain/core/mysql" 只有核心
+```
+
+`cybertrain new NAME --database=mysql` 会写入这一行，在 `config/app.rb` 和 `.env.example` 中说明 `DATABASE_URL`（`.env.example` 中有两行被注释的配置：开发用的数据库，以及 `cybertrain test` 需要的 `_test` 数据库，两者都带有面向本地服务器的 `?ssl_mode=disabled`），在 `config/deploy.yml` 和 `.kamal/secrets` 中把它作为密钥传入，并写一个针对 MySQL 服务运行测试的 CI 工作流。它打印的后续步骤会 export 开发用的 `DATABASE_URL`，并在 `cybertrain db migrate` 之前运行 `cybertrain db create`。`--database` 给出两次，以及它没有的选项（`-d mysql`、`--databse=mysql`），会在写入任何东西之前被拒绝。模型、迁移和测试在两者上相同；[模型与数据库](models.md#mysql)列出了 MySQL 回答不同的地方。
+
+为 SQLite 创建的应用程序，改掉两个文件中的这一行（数据留在 SQLite 文件中），然后：
+
+- 如果有认证，用生成时的标志（`--invite-only`、`--confirmable`）加上 `--force` 再运行一次 `cybertrain generate authentication`。它会重写 MySQL 形式不同的文件：`app/commands/user_command.rb` 和 `test/integration/first_run_test.rb`（它们连接 `database_url` 而不是 `database_path`）、`app/models/user.rb`（锁定的 UPDATE，按 MySQL 的赋值顺序；使用 `--confirmable` 时，确认的重复按其类 `Cybertrain::DB::UniqueViolation` 来 rescue）、`test/controllers/accounts_controller_test.rb`（其表的 DDL 和被拒绝删除的错误类）、使用 `--invite-only` 时的 `app/controllers/setup_controller.rb`（对第一个用户的检查是一次加锁读取：[模型与数据库](models.md#mysql)），以及使用 `--confirmable` 时的 `test/controllers/confirmations_controller_test.rb`（其制造竞争的触发器）。之后改过的文件请阅读差异。
+- 在 `Dockerfile`、`config/deploy.yml`、`.kamal/secrets` 和 `.github/workflows/ci.yml` 中做 `new --database=mysql` 所做的修改：把 `DATABASE_URL` 作为密钥传入、在 CI 中加入 MySQL 服务、让 worker 角色保持注释（见下文）。
+
+数据库是 `DATABASE_URL` 指定的那个（`database_url`，在 `config/app.rb` 运行之前读取）：
+
+```shell
+export DATABASE_URL='mysql://app:PASSWORD@db.internal:3306/shop_production'
+```
+
+- `USER`、`PASSWORD` 和数据库名会做百分号解码（`%40` 是 `@`）。`?` 之后的参数是 `ssl_mode`、`connect_timeout`（默认 5 秒）、`read_timeout` 和 `write_timeout`（各 30 秒，指等待服务器一次的时间，而不是整个查询）；其他名称会使启动失败。任何消息、日志行或 `inspect` 都不会显示密码：连接池的日志行和 `inspect` 用去掉密码的 URL 来指明数据库。
+- 一条直到结束才发送任何东西的语句（大表上的 `ALTER TABLE` 或 `CREATE INDEX`、一次大的排序）会为它的整个运行只等待一次，所以此时 `read_timeout` 就是整条语句的上限。超过之后，连接以 `Cybertrain::DB::ConnectionLost` 关闭，但服务器不会被告知停止，而是把语句执行完。因此，除非 `DATABASE_URL` 指定了 `read_timeout`，`db migrate`、`rollback`、`status` 和 schema 导出最多等待一天（`read_timeout=86400`，允许的最大值）：MySQL 的 DDL 不会回滚，这样被切断的迁移会保留其更改而不记录版本，下一次 `db migrate` 就会失败（`Duplicate key name`）。
+- 打开连接时（启动时，以及连接丢失后连接池重新打开时）会先用系统的解析器查询主机名，在它回答之前会阻塞所在的 OS worker：这段时间计入 `connect_timeout`，但慢的解析器不会被中途打断，而在 `SPINEL_WORKERS=1` 下整个服务器都要等它。以 IP 地址给出的主机不做查询。
+- 在连接池中闲置时被服务器结束的连接（重启、`wait_timeout`、故障切换）会被签出后的第一条语句发现并重新打开；如果该语句在事务之外，并且连接在其回答的第一个字节之前就结束了，它会被再发送一次。执行了语句之后才丢失会话的服务器看起来也是一样，网络路径上有人故意切断的连接也一样，`ssl_mode=verify` 下也是如此（TLS 隐藏的是字节，而不是连接的结束），所以这第一条语句可能会执行两次：不能执行两次的语句（没有唯一键的 `INSERT`、`UPDATE ... SET n = n + 1`）请放在 `DB.transaction` 中，它从不会被再次发送。超时之后，无论是语句的超时还是事务中出错后那次 ping 的超时，连接都会被关闭且不再使用（迟到的回答会被当作下一条语句的回答读取），随连接一起丢失的事务按已回滚处理。
+- 把密码放在环境变量或部署的密钥（`.kamal/secrets`）中，绝不要写进 `config/app.rb` 或仓库：二进制文件不包含密码。
+- 默认的 `ssl_mode=verify` 通过 TLS 连接，并检查服务器的证书和主机名。`ssl_mode=disabled` 不使用 TLS 连接，且只用于 URL 中写明的 `localhost`、回环地址、私有地址（10/8、172.16/12、192.168/16）或唯一本地 IPv6 地址；其他主机会被拒绝。没有只加密而不检查证书的模式。
+- 没有 TLS 时，MySQL 8.0 默认的 `caching_sha2_password` 无法检查服务器尚未缓存的密码，连接会被拒绝并给出说明（`caching_sha2_password full authentication needs TLS (ssl_mode=verify)`，后面写着常见的原因：该账户在服务器启动之后、或在其密码更改或权限刷新之后的第一次登录）。请使用 TLS，在每次服务器重启后通过 TLS（或用 `mysql` 客户端）登录一次，或让开发用的用户使用 `mysql_native_password`（限 MySQL 8.0：8.4 默认关闭该插件，9.0 已将其移除）。
+- 证书根据系统的 CA 存储检查，若设置了 `SSL_CERT_FILE`（证书包）或 `SSL_CERT_DIR` 则根据它们检查，框架的所有 TLS 连接都是如此。托管服务器的 CA 放在那里。`new --database=mysql` 写出的 `Dockerfile` 为此在运行阶段安装 `ca-certificates`（不安装 `libsqlite3-0`，MySQL 的二进制文件不链接它）；证书由私有 CA 签发的服务器，需要把该 CA 的文件放进镜像，并用 `SSL_CERT_FILE` 指定。对于 Amazon RDS 或 Aurora MySQL，下载全局证书包并指定它（`SSL_CERT_FILE` 会在进程的所有 TLS 连接中取代系统的证书包文件，包括 HTTP 客户端和邮件，所以当应用程序还调用其他服务时，请把两者合并）：
+
+```shell
+curl -fsSLo /etc/ssl/certs/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+cat /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/rds-global-bundle.pem > /etc/ssl/certs/app-ca.pem
+export SSL_CERT_FILE=/etc/ssl/certs/app-ca.pem
+export DATABASE_URL='mysql://app:PASSWORD@shop.abc123.ap-northeast-1.rds.amazonaws.com:3306/shop_production'
+```
+
+`db` 命令使用同一个数据库：`db create` 和 `db drop` 创建和删除它（`utf8mb4`，排序规则 `utf8mb4_0900_bin`）；`migrate`、`rollback`、`status`、`schema` 和 `schema:dump` 与 SQLite 上一样工作；`dbconsole` 通过 TCP、以相同的 TLS 模式和 CA 打开 `mysql` 客户端，密码放在客户端的环境中，并使用应用程序的会话设置（`utf8mb4`、`time_zone '+00:00'`、严格的 `sql_mode`，通过 `--init-command` 传入），所以在那里输入的 `NOW()` 与应用程序读到的一样是 UTC；这只在 Oracle 的 `mysql` 客户端上检查过。`db backup`、`vacuum` 和 `normalize` 是 SQLite 的命令，以状态 2 退出：请使用 `mysqldump` 或服务商的快照。
+
+`cybertrain test` 在测试之前清空 `DATABASE_URL` 指定的数据库并重新迁移，因此它会拒绝名称不以 `_test` 结尾的数据库、`test` 以外的环境，以及有表却没有标记表 `cybertrain_test_marker` 的数据库（它在空数据库中创建该标记表）。它从不创建或删除数据库：请先创建一次 `NAME_test`（用那个 URL 执行 `db create`，或在服务商的控制台中），并在运行测试时 export 它的 URL。在测试之间，表会被清空并重新插入 fixture；在 MySQL 上，清空会在插入 fixture 之前提交（重置 id 是 DDL），所以加载失败的 fixture 会让表保持为空。使用 `generate authentication --confirmable` 时，测试数据库的用户需要 `TRIGGER` 权限：确认的测试会创建一个触发器。
+
+框架的表（作业、流、缓存、租约、调度器的时刻表、feed 的状态）不在 `db/schema.rb` 中，`db migrate` 也不创建它们：与 SQLite 一样，每张表在其功能第一次使用时创建。在 MySQL 上，事务中的 CREATE TABLE 会把事务提交到一半，所以在 `DB.transaction` 中的第一次使用（在从未有过该表的数据库上，于事务中调用 `Job.enqueue` 或 `broadcast_*`）会改为抛出 `Cybertrain::DB::Error`，并且什么都不提交。运行作业的进程在启动时创建 `cybertrain_jobs`；对于其他表（或该进程首次启动之前就入队的作业），请在第一次 `migrate` 之后、在事务之外创建一次，例如用一个运维命令：
+
+```ruby bin/<app>.rb (excerpt)
+Cybertrain::Main.command("install_tables", "create the framework's tables") do |argv|
+  Cybertrain::Job.install!
+  Cybertrain::Stream.install!
+  Cybertrain::Cache.install!
+  0
+end
+```
+
+`Cache` 的键（因而 `rate_limit` 的键）和作业的并发键可以与 SQLite 上一样长。由 MySQL 适配器较早的构建创建的表仍限制为 255 个字符（超过时为错误 1406），其他方面照旧工作；解除该限制的语句见 `docs/compatibility.md`。
+
+> [!NOTE]
+> 目前只保证一个进程。在 MySQL 上，作业、流、租约和计划任务在一个进程内得到保证（与 SQLite 的回答相同），但在共享同一数据库的多个进程或主机之间尚未得到保证：那是 MySQL 路线图的第 2 步（作业的领取、流的顺序、租约的时钟），尚未完成。在某个版本另有说明之前，请只运行一个容器，即单独的 web 角色；在 MySQL 上，`generate job` 和 `generate authentication` 会让 `config/deploy.yml` 的 worker 角色保持注释。跨进程时，一个进程在事务中发出的流广播，在 id 更大的广播先提交时，可能被另一个进程的轮询器跳过；多个进程共享一个 MySQL 数据库时，请在 COMMIT 之后广播。
 
 ## 时区
 

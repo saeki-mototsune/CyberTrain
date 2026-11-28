@@ -1,5 +1,5 @@
 ---
-source_sha256: 1cb9b3e64fe318d289c631fe4208fe60ad0804f122583b822b2149454db538f6
+source_sha256: aa94573d5fa5de921b4a7702820ac9633b05893e95b333b7050af1f3ae74bf0a
 ---
 # Mise à jour
 
@@ -286,6 +286,15 @@ Deux valeurs par défaut ont changé après 0.4
   changement.
 - `require "cybertrain"` lie maintenant `HttpClient` et la couche TLS, à
   travers l’envoyeur Sentry.
+- Une violation de contrainte lève `Cybertrain::DB::UniqueViolation` ou
+  `Cybertrain::DB::ForeignKeyViolation`, des sous-classes de
+  `Cybertrain::DB::Error`&nbsp;: `rescue`, `rescue_from`, `retry_on` et
+  `discard_on` sur `DB::Error` les attrapent toujours, mais le `last_error`
+  d’un job en échec, sa ligne de journal et le type d’un rapport d’erreur
+  nomment désormais la sous-classe (`Cybertrain::DB::UniqueViolation: UNIQUE constraint failed:
+  ...`). Une alerte, un tableau de bord ou un test qui comparait le texte
+  `Cybertrain::DB::Error:` ne trouve plus une violation de contrainte&nbsp;:
+  comparez `Cybertrain::DB::` ou le nom de la sous-classe.
 
 ### Depuis 0.4&nbsp;: tests
 

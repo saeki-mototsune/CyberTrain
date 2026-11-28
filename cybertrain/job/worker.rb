@@ -229,8 +229,10 @@ module Cybertrain
       # One `rescue Exception` arm takes both.
       #
       # The generation goes with the claim as its ticket: a claim that
-      # waited for the write lock is asked again under it ({Job.claim_open?}),
-      # so a stop requested during the wait is seen before a row is taken.
+      # waited for its lock (SQLite's write lock at BEGIN IMMEDIATE, MySQL's
+      # row lock at the claim's SELECT) is asked again under it
+      # ({Job.claim_open?}), so a stop requested during the wait is seen
+      # before a row is taken.
       #
       # Both are reported too, `where` "job thread": the job's Scope (its
       # kind) was put back before the exception got here, and the line runs

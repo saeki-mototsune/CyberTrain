@@ -736,7 +736,7 @@ module Cybertrain
       # instance of the same child, an unsaved reassignment or a rolled-back
       # save leaves no stale key; a row already gone, or a nil key, counts
       # nothing. "" without counter_cache.
-      def self.emit_counter_cache(table, plans)
+      def self.emit_counter_cache(table, plans, dialect)
         cached = plans.select { |plan| plan.counter_cache }
         return "" if cached.empty?
 
@@ -752,11 +752,11 @@ module Cybertrain
           src << "    #{counter_update(plan, key, -1)}#{guard}\n"
         end
         src << "    nil\n  end\n\n"
-        columns = cached.map { |plan| "\\\"#{plan.foreign_key}\\\"" }.join(", ")
-        sql = "SELECT #{columns} FROM \\\"#{table.name}\\\" WHERE \\\"id\\\" = ?"
+        columns = cached.map { |plan| dialect.quote_ident(plan.foreign_key) }.join(", ")
+        sql = "SELECT #{columns} FROM #{dialect.quote_ident(table.name)} WHERE #{dialect.quote_ident("id")} = ?"
         src << "  def counter_cache_was\n"
         src << "    id = @id\n"
-        src << "    found = Cybertrain::DB.with { |c| c.execute(\"#{sql}\", [id]) }\n"
+        src << "    found = Cybertrain::DB.with { |c| c.execute(#{ruby_string(sql)}, [id]) }\n"
         src << "    @counter_cache_found = !found.empty?\n"
         cached.each do |plan|
           cast = plan.fk_null ? "int_or_nil" : "int"

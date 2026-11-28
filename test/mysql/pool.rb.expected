@@ -1,0 +1,6 @@
+ok   pool_reconnects_after_kill
+ok   an idle session the server timed out is reopened
+ok   a timeout is not retried
+ok   transaction_lost_on_kill
+ok   missing_database_url
+5 tests, 26 assertions, 0 failures

@@ -1,5 +1,5 @@
 ---
-source_sha256: e32d060026ee89e81d8d10cb10d7b869f44492533353eb0ab56b1584ab7c5317
+source_sha256: 10b0cff3a80b6e424cec763df2291df1a35c30b8320c8da9041fe5711dcf8362
 ---
 # Configuration
 
@@ -21,6 +21,7 @@ dernier mot&nbsp;:
 | `CYBERTRAIN_ENV` | `env` | `"development"`&nbsp;; `"production"` dans un binaire issu de `cybertrain build` (aussi `"test"`). Définissez la variable, pas `c.env`&nbsp;: `database_path`, `session_secure` et la valeur par défaut de `mail_delivery_method` en sont dérivés avant que `config/app.rb` s’exécute |
 | `PORT` | `port` | `3000` |
 | `CYBERTRAIN_DATABASE` | `database_path` | `storage/#{env}.sqlite3` |
+| `DATABASE_URL` | `database_url` | `""`&nbsp;; MySQL seulement&nbsp;: la base à laquelle se connecte une application compilée avec `cybertrain/mysql`, `mysql://USER:PASSWORD@HOST:3306/NAME` (voir [MySQL](#mysql))&nbsp;; le démarrage échoue si elle est vide ou mal formée |
 | `CYBERTRAIN_SECRET_KEY_BASE` | `secret_key_base` | requis en production&nbsp;; en dev/test, un secret est généré automatiquement dans `tmp/secret_key` |
 | `CYBERTRAIN_ENCRYPTION_KEY` | `encryption_key` | `""`&nbsp;; 64 caractères hexadécimaux (`cybertrain secret --hex`), la clé des colonnes qu’un modèle chiffre avec `encrypts`. Le démarrage échoue si elle est mal formée, ou vide dès qu’un modèle déclare `encrypts` (voir [Colonnes chiffrées](models.md#encrypted-columns)) |
 | `CYBERTRAIN_ENCRYPTION_KEY_PREVIOUS` | `encryption_keys_previous` | `[]`&nbsp;; d’anciennes clés séparées par des virgules, essayées pour le déchiffrement seulement, pour changer de clé en réenregistrant les enregistrements&nbsp;; une entrée mal formée arrête le démarrage |
@@ -295,6 +296,63 @@ end
 ### Réglages de l’authentification
 
 Le code qu’écrit `cybertrain generate authentication` lit quatre réglages (les variables sont dans le tableau ci-dessus)&nbsp;: `auth_lockout_attempts` (10) et `auth_lockout_period` (3600&nbsp;s) pour le [verrouillage](authentication.md#lockout), `auth_remember_for` (30 jours) pour une connexion «&nbsp;rester connecté&nbsp;», et `auth_idle_timeout` (7 jours) pour une connexion inutilisée ([Rester connecté](authentication.md#remember-me-and-session-limits))&nbsp;; une connexion non mémorisée dure `session_absolute_max_age` (deux semaines). Une valeur hors limites arrête le démarrage. Le générateur déclare aussi le réglage d’application `base_url`, issu de `<APP>_BASE_URL`, par lequel commencent les liens des courriels&nbsp;; définissez-le, en https, partout où l’application est servie ([Liens dans les courriels](authentication.md#links-in-mails)).
+
+## MySQL
+
+Une application est compilée pour une seule base de données&nbsp;: SQLite, par défaut, ou MySQL 8.0 (`docs/design.md`, D96&nbsp;; la CI teste la 8.0.46, et encore aucune version plus récente). L’entrée `cybertrain` que requièrent `bin/<app>.rb` et `bin/db.rb` la choisit à la compilation de l’application (gen lit celle de `bin/<app>.rb`&nbsp;; gardez les deux identiques)&nbsp;; rien ne la change à l’exécution&nbsp;:
+
+```ruby bin/<app>.rb (excerpt)
+require "cybertrain/mysql"   # tous les sous-systèmes ; "cybertrain/core/mysql" est le cœur seul
+```
+
+`cybertrain new NAME --database=mysql` écrit cette ligne, explique `DATABASE_URL` dans `config/app.rb` et `.env.example` (qui en contient deux lignes en commentaire, la base de développement et la base `_test` dont `cybertrain test` a besoin, chacune avec `?ssl_mode=disabled` pour un serveur local), la passe comme secret dans `config/deploy.yml` et `.kamal/secrets`, et écrit un workflow de CI qui lance les tests contre un service MySQL. Les étapes suivantes que la commande affiche exportent la `DATABASE_URL` de développement et lancent `cybertrain db create` avant `cybertrain db migrate`. Elle refuse `--database` donné deux fois et toute option qu’elle n’a pas (`-d mysql`, `--databse=mysql`) avant d’écrire quoi que ce soit. Les modèles, les migrations et les tests sont les mêmes sur les deux&nbsp;; [Modèles et base de données](models.md#mysql) liste ce que MySQL répond autrement.
+
+Une application créée pour SQLite passe à MySQL en changeant cette ligne dans les deux fichiers (ses données restent dans le fichier SQLite), puis&nbsp;:
+
+- avec l’authentification, en relançant `cybertrain generate authentication` avec les options de sa génération (`--invite-only`, `--confirmable`) et `--force`. Il réécrit les fichiers dont la forme MySQL diffère&nbsp;: `app/commands/user_command.rb` et `test/integration/first_run_test.rb` (ils se connectent à `database_url`, pas à `database_path`), `app/models/user.rb` (l’UPDATE du verrouillage, dans l’ordre d’affectation de MySQL, et avec `--confirmable` le doublon de la confirmation, rattrapé par sa classe, `Cybertrain::DB::UniqueViolation`), `test/controllers/accounts_controller_test.rb` (le DDL de sa table et la classe d’erreur de la suppression refusée), avec `--invite-only` `app/controllers/setup_controller.rb` (la vérification du premier utilisateur, une lecture verrouillante&nbsp;: [Modèles et base de données](models.md#mysql)), et avec `--confirmable` `test/controllers/confirmations_controller_test.rb` (son déclencheur de course). Lisez le diff de ceux que vous avez modifiés depuis&nbsp;;
+- en faisant dans le `Dockerfile`, `config/deploy.yml`, `.kamal/secrets` et `.github/workflows/ci.yml` les modifications que fait `new --database=mysql`&nbsp;: `DATABASE_URL` passée comme secret, un service MySQL dans la CI, et le rôle worker laissé en commentaire (plus bas).
+
+La base de données est celle que nomme `DATABASE_URL` (`database_url`, lue avant l’exécution de `config/app.rb`)&nbsp;:
+
+```shell
+export DATABASE_URL='mysql://app:PASSWORD@db.internal:3306/shop_production'
+```
+
+- `USER`, `PASSWORD` et le nom de la base sont décodés (`%40` est `@`). Les paramètres après `?` sont `ssl_mode`, `connect_timeout` (5 secondes par défaut), `read_timeout` et `write_timeout` (30 secondes chacun, pour une attente du serveur, pas pour une requête entière)&nbsp;; tout autre nom arrête le démarrage. Aucun message, aucune ligne de journal ni aucun `inspect` ne montre le mot de passe&nbsp;: les lignes de journal du pool et `inspect` nomment la base par l’URL sans lui.
+- Une instruction qui n’envoie rien avant d’avoir fini (un `ALTER TABLE` ou un `CREATE INDEX` sur une grande table, un gros tri) attend une seule fois pour toute son exécution&nbsp;: `read_timeout` est alors la limite de l’instruction entière. Une fois passé, la connexion est fermée avec `Cybertrain::DB::ConnectionLost`, mais le serveur n’est pas prié de s’arrêter et termine l’instruction. `db migrate`, `rollback`, `status` et le dump du schéma attendent donc jusqu’à un jour (`read_timeout=86400`, la plus grande valeur) sauf si `DATABASE_URL` nomme un `read_timeout`&nbsp;: le DDL de MySQL n’est pas annulé, si bien qu’une migration coupée ainsi garderait son changement sans que sa version soit enregistrée, et le `db migrate` suivant échouerait (`Duplicate key name`).
+- Ouvrir une connexion (au démarrage, et quand le pool en rouvre une après une connexion perdue) commence par chercher le nom d’hôte avec le résolveur du système, qui bloque son worker du système jusqu’à sa réponse&nbsp;: ce temps compte dans `connect_timeout`, mais un résolveur lent n’est pas interrompu, et avec `SPINEL_WORKERS=1` tout le serveur l’attend. Un hôte donné par son adresse IP n’est pas cherché.
+- Une connexion que le serveur a terminée pendant qu’elle attendait dans le pool (un redémarrage, `wait_timeout`, une bascule) est découverte par la première instruction après sa sortie du pool et rouverte, et cette instruction, hors transaction, est renvoyée quand la connexion s’est terminée avant le premier octet de sa réponse. Un serveur qui l’a exécutée puis a perdu la session se présente de la même façon, tout comme une connexion que quelqu’un sur le chemin réseau coupe exprès, avec `ssl_mode=verify` aussi (TLS cache les octets, pas la fin de la connexion)&nbsp;: cette première instruction peut donc s’exécuter deux fois. Mettez une instruction qui ne doit pas s’exécuter deux fois (un `INSERT` sans clé unique, `UPDATE ... SET n = n + 1`) dans `DB.transaction`, qui n’est jamais renvoyé. Après une expiration, d’une instruction ou du ping qui suit une erreur dans une transaction, la connexion est fermée et plus jamais utilisée (sa réponse tardive serait lue comme celle de l’instruction suivante), et une transaction perdue avec sa connexion compte comme annulée.
+- Gardez le mot de passe dans l’environnement ou les secrets du déploiement (`.kamal/secrets`), jamais dans `config/app.rb` ni dans le dépôt&nbsp;: le binaire ne contient aucun mot de passe.
+- `ssl_mode=verify`, par défaut, se connecte en TLS et vérifie le certificat du serveur et son nom d’hôte. `ssl_mode=disabled` se connecte sans TLS, et seulement à `localhost`, une adresse de boucle locale, une adresse privée (10/8, 172.16/12, 192.168/16) ou une adresse IPv6 locale unique écrite dans l’URL&nbsp;; tout autre hôte est refusé. Aucun mode ne chiffre sans vérifier le certificat.
+- Sans TLS, le `caching_sha2_password` par défaut de MySQL 8.0 ne peut pas vérifier un mot de passe que le serveur n’a pas encore en cache, et la connexion est refusée avec un message qui le dit (`caching_sha2_password full authentication needs TLS (ssl_mode=verify)`, suivi de la cause habituelle&nbsp;: la première connexion du compte depuis le démarrage du serveur, ou depuis le changement de son mot de passe ou le vidage des privilèges). Utilisez TLS, connectez-vous une fois en TLS (ou avec le client `mysql`) après chaque redémarrage du serveur, ou donnez `mysql_native_password` à un utilisateur de développement (sur MySQL 8.0&nbsp;: la 8.4 désactive ce plugin par défaut et la 9.0 le supprime).
+- Les certificats sont vérifiés avec le magasin de CA du système, ou avec `SSL_CERT_FILE` (un paquet) ou `SSL_CERT_DIR` s’ils sont définis, comme toute connexion TLS du framework. Le CA d’un serveur géré va là. Le `Dockerfile` qu’écrit `new --database=mysql` installe pour cela `ca-certificates` dans son étape d’exécution (et pas `libsqlite3-0`, qu’un binaire MySQL ne lie pas)&nbsp;; un serveur dont un CA privé a signé le certificat demande le fichier de ce CA dans l’image, nommé par `SSL_CERT_FILE`. Pour Amazon RDS ou Aurora MySQL, téléchargez le paquet global et nommez-le (`SSL_CERT_FILE` remplace le fichier de paquet du système pour toutes les connexions TLS du processus, client HTTP et courrier compris&nbsp;: réunissez les deux si l’application appelle aussi d’autres services)&nbsp;:
+
+```shell
+curl -fsSLo /etc/ssl/certs/rds-global-bundle.pem https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem
+cat /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/rds-global-bundle.pem > /etc/ssl/certs/app-ca.pem
+export SSL_CERT_FILE=/etc/ssl/certs/app-ca.pem
+export DATABASE_URL='mysql://app:PASSWORD@shop.abc123.ap-northeast-1.rds.amazonaws.com:3306/shop_production'
+```
+
+Les commandes `db` prennent la même base&nbsp;: `db create` et `db drop` la créent et la suppriment (`utf8mb4`, collation `utf8mb4_0900_bin`)&nbsp;; `migrate`, `rollback`, `status`, `schema` et `schema:dump` fonctionnent comme sur SQLite&nbsp;; `dbconsole` ouvre le client `mysql` dessus, en TCP, avec le même mode TLS et le même CA, le mot de passe dans l’environnement du client, et les réglages de session de l’application (`utf8mb4`, `time_zone '+00:00'`, le `sql_mode` strict, passés par `--init-command`), si bien que `NOW()` tapé là est en UTC, comme l’application le lit&nbsp;; ce n’est vérifié qu’avec le client `mysql` d’Oracle. `db backup`, `vacuum` et `normalize` sont propres à SQLite et sortent avec le statut 2&nbsp;: utilisez `mysqldump` ou les instantanés du fournisseur.
+
+`cybertrain test` vide et migre à nouveau la base que nomme `DATABASE_URL` avant les tests&nbsp;; il refuse donc une base dont le nom ne finit pas par `_test`, un environnement autre que `test`, et une base qui a des tables mais pas la table repère `cybertrain_test_marker`, qu’il crée dans une base vide. Il ne crée ni ne supprime jamais de base&nbsp;: créez `NAME_test` une fois (`db create` avec cette URL, ou la console du fournisseur) et exportez son URL pour les tests. Entre les tests, les tables sont vidées et les fixtures insérées à nouveau&nbsp;; sur MySQL, le vidage est validé avant l’insertion des fixtures (remettre les id à zéro est du DDL), si bien qu’une fixture qui ne se charge pas laisse les tables vides. Avec `generate authentication --confirmable`, l’utilisateur de la base de test a besoin du privilège `TRIGGER`&nbsp;: le test de confirmation crée un déclencheur.
+
+Les tables du framework (jobs, flux, cache, baux, calendrier du planificateur, état des flux WebSocket) ne sont pas dans `db/schema.rb`, et `db migrate` ne les crée pas&nbsp;: chacune est créée à la première utilisation de sa fonctionnalité, comme sur SQLite. Sur MySQL, un CREATE TABLE dans une transaction validerait la transaction à mi-chemin&nbsp;; une première utilisation dans `DB.transaction` (un `Job.enqueue` ou un `broadcast_*` dans une transaction, sur une base qui n’a jamais eu la table) lève donc `Cybertrain::DB::Error` à la place et ne valide rien. Le processus qui exécute les jobs crée `cybertrain_jobs` à son démarrage&nbsp;; pour les autres (ou pour des jobs mis en file avant le premier démarrage de ce processus), créez les tables une fois hors transaction après le premier `migrate`, par exemple avec une commande d’exploitation&nbsp;:
+
+```ruby bin/<app>.rb (excerpt)
+Cybertrain::Main.command("install_tables", "create the framework's tables") do |argv|
+  Cybertrain::Job.install!
+  Cybertrain::Stream.install!
+  Cybertrain::Cache.install!
+  0
+end
+```
+
+Une clé de `Cache` (et donc de `rate_limit`) et la clé de concurrence d’un job peuvent être aussi longues que sur SQLite. Une table qu’une version antérieure de l’adaptateur MySQL a créée les limite toujours à 255 caractères (erreur 1406 au-delà) et fonctionne sinon comme avant&nbsp;; `docs/compatibility.md` donne les instructions qui lèvent la limite.
+
+> [!NOTE]
+> Un seul processus, pour l’instant. Sur MySQL, les jobs, les flux, les baux et les tâches planifiées sont garantis dans un processus (ils répondent comme sur SQLite), pas encore entre plusieurs processus ou hôtes qui partagent la base&nbsp;: c’est l’étape 2 de la feuille de route MySQL (la prise d’un job, l’ordre d’un flux, l’horloge d’un bail), pas encore faite. Faites tourner un seul conteneur, le rôle web seul, jusqu’à ce qu’une version dise autre chose&nbsp;; sur MySQL, `generate job` et `generate authentication` laissent en commentaire le rôle worker de `config/deploy.yml`. Entre processus, une diffusion faite dans une transaction d’un processus peut être sautée par le poller d’un autre processus quand une diffusion d’id plus élevé est validée avant elle&nbsp;; diffusez après le COMMIT quand plusieurs processus partagent une base MySQL.
 
 ## Fuseaux horaires
 

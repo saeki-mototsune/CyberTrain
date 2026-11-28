@@ -1,5 +1,5 @@
 ---
-source_sha256: 66999cb2e64c8060c3a4cd7100fab0efa7c77701391e63b73ae9b4f068b1db93
+source_sha256: 5b38950394c6e05d1c8ade68057260208b4ecc135960cf4797c10c3a5f3625e2
 title: "Tutoriel avancé&nbsp;: pousser le blog plus loin"
 description: "Poursuivez le blog du Getting Started avec CyberTrain&nbsp;: un composant et un helper, des commentaires en direct avec Turbo Streams, un job d’arrière-plan, JSON, la connexion, une image de couverture envoyée et un build pour le déploiement avec cybertrain build."
 og_title: "Tutoriel avancé&nbsp;: pousser plus loin le blog CyberTrain"
@@ -900,7 +900,7 @@ et charge `config/deploy.yml` avec Kamal.
 
 <!-- list: points know -->
 - Les sessions ne contiennent que des String, dans un cookie chiffré.
-- SQLite uniquement, via la FFI de Spinel.
+- SQLite via la FFI de Spinel, ou MySQL 8.0&nbsp;; une seule par build.
 - Pas de backtraces&nbsp;: les erreurs affichent la classe, le message, la
   ligne de requête et le nom/la ligne du template.
 - Un attribut mal orthographié dans une vue lève une erreur
