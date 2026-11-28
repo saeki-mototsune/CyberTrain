@@ -8,4 +8,4 @@ ok   refusals: splats, reserved names, a default that is not from: alone, a layo
 ok   private and protected methods are not actions; public after them is
 ok   no mailer class: nothing to write, and the manifest requires no gen/mailers
 ok   the manifest loads application_mailer first, then the others, then gen/mailers
-10 tests, 47 assertions, 0 failures
+10 tests, 48 assertions, 0 failures

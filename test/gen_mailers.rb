@@ -92,6 +92,8 @@ test "a parameter list without parentheses ends at the semicolon of a one-line d
   assert_equal "to, subject", infos[1].mailer_actions[0].action_args
   escaped = scan(one_mailer("  def note to, subject = \"a\\\";b\"; mail(to: to, subject: subject); end\n"))
   assert_equal "to, subject = \"a\\\";b\"", escaped[1].mailer_actions[0].action_params
+  comma = scan(one_mailer("  def note to, subject = \"a\\\",b\"; mail(to: to, subject: subject); end\n"))
+  assert_equal "to, subject", comma[1].mailer_actions[0].action_args
 end
 
 test "a subclass dispatches its ancestors' actions through itself, its own first" do
