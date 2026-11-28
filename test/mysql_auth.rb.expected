@@ -24,4 +24,6 @@ ok   an auth switch to an unknown plugin, or a second switch, is a DB::Error
 ok   an ERR during authentication is a DB::Error with the server's message and no password
 ok   an unexpected packet during authentication is a DB::Error
 ok   the TlsUpgrade base refuses
-26 tests, 223 assertions, 0 failures
+ok   an ERR with non-ASCII text, before or during authentication, reads as UTF-8
+ok   caching_sha2_password: a fast-path result or a full-authentication request sent twice is a DB::Error
+28 tests, 235 assertions, 0 failures

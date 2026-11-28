@@ -10,6 +10,7 @@
 # scramble is part 1 and the first 12 bytes of part 2: 20 bytes.
 require "cybertrain/db/error"
 require "cybertrain/db/mysql/wire"
+require "cybertrain/db/mysql/result"
 
 module Cybertrain
   module DB
@@ -76,19 +77,19 @@ module Cybertrain
 
         # "MySQL error CODE (SQLSTATE): message" for an ERR packet's
         # payload; the SQLSTATE is left out when the packet has none (an
-        # ERR sent before the handshake).
+        # ERR sent before the handshake). The packet is read as every ERR
+        # is (Decode.error_parts, the text marked UTF-8); the shape is the
+        # login's own, which `db` commands print as they are, while a
+        # statement's error is "text (MySQL CODE, SQLSTATE)"
+        # (Decode.server_error_text).
         def self.error_text(payload)
           s = payload.to_s
           return "MySQL: the server sent a short error packet" if s.bytesize < 3
 
-          code = Wire.read_int_le(s, 1, 2)
-          if s.bytesize >= 9 && s.getbyte(3) == 35 # "#"
-            state = s.byteslice(4, 5)
-            message = s.byteslice(9, s.bytesize - 9)
-            return "MySQL error #{code} (#{state}): #{message}"
-          end
+          parts = Decode.error_parts(s)
+          return "MySQL error #{parts[0]}: #{parts[2]}" if parts[1].empty?
 
-          "MySQL error #{code}: #{s.byteslice(3, s.bytesize - 3)}"
+          "MySQL error #{parts[0]} (#{parts[1]}): #{parts[2]}"
         end
       end
     end

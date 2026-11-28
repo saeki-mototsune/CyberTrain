@@ -337,7 +337,9 @@ test "caching_sha2_password: full authentication without TLS is refused" do
   message = assert_raises("Cybertrain::DB::Error") do
     connect(stream, "mysql://cybertrain:secret@10.0.0.5/cybertrain_test?ssl_mode=disabled", FakeTls.new(ScriptStream.new("")))
   end
-  assert_equal "caching_sha2_password full authentication needs TLS (ssl_mode=verify)", message
+  assert_equal "10.0.0.5:3306: caching_sha2_password full authentication needs TLS (ssl_mode=verify): the server " \
+               "holds no cached login for this account yet (its first login since the server started, or since " \
+               "its password changed or the privileges were flushed)", message
   # Nothing but the scramble went out: never the password.
   assert_equal 1, sent_packets(stream.script_sent).size
   assert_equal false, stream.script_sent.include?("secret")
@@ -440,6 +442,44 @@ test "the TlsUpgrade base refuses" do
     Cybertrain::DB::MySQL::TlsUpgrade.new.mysql_tls_upgrade(PacketIO.new(ScriptStream.new("")))
   end
   assert_equal "MySQL: no TLS upgrade was given for ssl_mode=verify", message
+end
+
+test "an ERR with non-ASCII text, before or during authentication, reads as UTF-8" do
+  accented = "Acc\u00e8s refus\u00e9 pour l'utilisateur 'h\u00e9l\u00e8ne'@'10.0.0.1' (using password: YES)"
+  server = String.new
+  server << frame(0, unhex(RECORDED_HEAD + RECORDED_PLUGIN))
+  server << frame(2, unhex("ff1504233238303030" + hex(accented)))
+  message = assert_raises("Cybertrain::DB::Error") do
+    connect(ScriptStream.new(server), "mysql://cybertrain:secret@10.0.0.5/cybertrain_test?ssl_mode=disabled", FakeTls.new(ScriptStream.new("")))
+  end
+  assert_equal "10.0.0.5:3306: MySQL error 1045 (28000): #{accented}", message
+  assert_equal true, message.valid_encoding?
+  assert_equal "UTF-8", message.encoding.to_s
+  early = assert_raises("Cybertrain::DB::Error") { Handshake.parse(unhex("ff1004" + hex("Trop de connexions \u00e0 la fois"))) }
+  assert_equal "MySQL error 1040: Trop de connexions \u00e0 la fois", early
+  assert_equal "UTF-8", early.encoding.to_s
+end
+
+test "caching_sha2_password: a fast-path result or a full-authentication request sent twice is a DB::Error" do
+  server = String.new
+  server << frame(0, unhex(RECORDED_HEAD + RECORDED_PLUGIN))
+  server << frame(2, unhex("0103"))
+  server << frame(3, unhex("0103"))
+  message = assert_raises("Cybertrain::DB::Error") do
+    connect(ScriptStream.new(server), "mysql://cybertrain:secret@10.0.0.5/cybertrain_test?ssl_mode=disabled", FakeTls.new(ScriptStream.new("")))
+  end
+  assert_equal "10.0.0.5:3306: MySQL sent caching_sha2_password's fast authentication result twice", message
+  plain = ScriptStream.new(frame(0, unhex(RECORDED_HEAD + RECORDED_PLUGIN)))
+  over_tls = String.new
+  over_tls << frame(3, unhex("0104"))
+  over_tls << frame(5, unhex("0104"))
+  secure = ScriptStream.new(over_tls)
+  message = assert_raises("Cybertrain::DB::Error") do
+    connect(plain, "mysql://cybertrain:secret@db.internal/cybertrain_test", FakeTls.new(secure))
+  end
+  assert_equal "db.internal:3306: MySQL asked for caching_sha2_password full authentication twice", message
+  # The password went out once.
+  assert_equal 2, sent_packets(secure.script_sent).size
 end
 
 Cybertrain::Test.run!
