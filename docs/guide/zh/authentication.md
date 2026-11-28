@@ -1,5 +1,5 @@
 ---
-source_sha256: 8eee615f131af513a326deaed48ebbd9806241fcc18f5f4993103cf38b59c5db
+source_sha256: 0949ea9f7b5309187c8e36797c312be87f337f90198a89473d0af15ffa61a97e
 ---
 # 认证
 
@@ -72,6 +72,7 @@ class ArticlesController < ApplicationController
 - 令牌是程序启动时生成的 32 个随机十六进制字符（`SetupController.setup_token`），以常数时间比较。在地址检查无效的场合，例如在不添加 `X-Forwarded-For` 的代理之后，它让页面保持关闭。请求日志中显示为 `[FILTERED]`。
 - 在没有用户期间，服务器在启动前记录 `WARN no user exists yet: run ./<app> user EMAIL, or open /setup?token=<token> from this machine`；只有这一行会打印令牌。
 - `<APP>_SETUP_OPEN=1`（`config/app.rb` 中的 `setup_open` 设置）为在另一台主机上的代理之后首次运行而取消地址检查，但从不取消令牌检查。用户创建后请取消它。
+- 同时到达的两个首次运行请求只创建一个账户。检查用户与插入是同一个事务：在 SQLite 上是 `BEGIN IMMEDIATE`，在 MySQL 上是插入所在事务中的一次加锁读取（`SELECT ... FOR UPDATE`），被 MySQL 作为死锁回滚的请求什么都不保存，并再次显示表单。
 
 ## 用户命令
 

@@ -145,6 +145,11 @@ signs them in:
 - `<APP>_SETUP_OPEN=1` (the `setup_open` setting in `config/app.rb`) lifts
   the address check, never the token, for a first run behind a proxy on
   another host. Unset it once the user exists.
+- Two first-run requests at the same moment create one account. The
+  check for a user and the insert are one transaction: on SQLite a
+  `BEGIN IMMEDIATE`, on MySQL a locking read (`SELECT ... FOR UPDATE`) in
+  the insert's transaction, where a request MySQL rolls back as a deadlock
+  saves nothing and shows the form again.
 
 ## The user command
 

@@ -18,7 +18,10 @@ message within about a tenth of a second.
   itself in the application's database. Inside a `DB.transaction` the
   message goes out only if the transaction commits. Because it is a row, a
   broadcast works from any process that shares the database: a request, a
-  job in a `worker` process, a feed callback, a `Main.command`.
+  job in a `worker` process, a feed callback, a `Main.command`. On MySQL
+  this is guaranteed within one process, as on SQLite; across several
+  processes a message can still be missed until step 2 of the MySQL
+  roadmap ([Configuration, "MySQL"](configuration.md#mysql)).
 - **Each web process polls the table.** One thread per `server` process (the
   stream poller) reads the new rows every `stream_poll_ms` (100 ms) and hands
   each one to the browsers that process holds. It deletes rows older than
