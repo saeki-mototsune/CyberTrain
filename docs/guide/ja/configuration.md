@@ -1,5 +1,5 @@
 ---
-source_sha256: bddbbec46f6a57a5845cdebf839f0b70c986951a99b83eeedb3932075048c4d6
+source_sha256: db6754f97853479d284f99e9a9ccc0e17475b0356fef72e72187be7e5b34606a
 ---
 # 設定
 
@@ -154,7 +154,7 @@ end
 
 ## MySQL
 
-アプリケーションは 1 つのデータベース向けにビルドされます。既定の SQLite か、MySQL 8.0 以降です（`docs/design.md` の D96）。どちらになるかは、`bin/<app>.rb` と `bin/db.rb` の最初の `require` で、アプリケーションをビルドするときに決まります。実行時に切り替えるものはありません：
+アプリケーションは 1 つのデータベース向けにビルドされます。既定の SQLite か、MySQL 8.0 です（`docs/design.md` の D96。CI は 8.0.46 でテストしており、それより新しいリリースはまだテストしていません）。どちらになるかは、`bin/<app>.rb` と `bin/db.rb` が require する `cybertrain` のエントリで、アプリケーションをビルドするときに決まります（gen が読むのは `bin/<app>.rb` のものです。2 つは同じにしてください）。実行時に切り替えるものはありません：
 
 ```ruby bin/<app>.rb (excerpt)
 require "cybertrain/mysql"   # すべてのサブシステム。"cybertrain/core/mysql" はコアだけ
@@ -176,7 +176,7 @@ export DATABASE_URL='mysql://app:PASSWORD@db.internal:3306/shop_production'
 - `USER`、`PASSWORD`、データベース名はパーセントデコードされます（`%40` は `@`）。`?` の後のパラメータは `ssl_mode`、`connect_timeout`（既定は 5 秒）、`read_timeout` と `write_timeout`（それぞれ 30 秒。クエリ全体ではなく、サーバーを 1 回待つ時間）です。それ以外の名前があると起動が止まります。パスワードは、どのメッセージ、ログの行、`inspect` にも出ません。
 - パスワードは環境変数かデプロイのシークレット（`.kamal/secrets`）に置き、`config/app.rb` やリポジトリには書かないでください。バイナリはパスワードを持ちません。
 - 既定の `ssl_mode=verify` は TLS で接続し、サーバーの証明書とホスト名を確かめます。`ssl_mode=disabled` は TLS なしで接続し、URL に書かれた `localhost`、ループバックアドレス、プライベートアドレス（10/8、172.16/12、192.168/16）、ユニークローカルの IPv6 アドレスにだけ使えます。ほかのホストは拒否されます。暗号化だけして証明書を確かめないモードはありません。
-- TLS なしでは、MySQL 8.0 の既定の `caching_sha2_password` は、サーバーがまだキャッシュしていないパスワードを確かめられず、接続はその旨のメッセージで拒否されます。TLS を使うか、開発用のユーザーを `mysql_native_password` にしてください。
+- TLS なしでは、MySQL 8.0 の既定の `caching_sha2_password` は、サーバーがまだキャッシュしていないパスワードを確かめられず、接続はその旨のメッセージで拒否されます。TLS を使うか、開発用のユーザーを `mysql_native_password` にしてください（MySQL 8.0 の場合です。8.4 ではこのプラグインが既定で無効になり、9.0 では削除されています）。
 - 証明書は、システムの CA ストア、または設定されていれば `SSL_CERT_FILE`（バンドル）か `SSL_CERT_DIR` に対して確かめます。フレームワークのすべての TLS 接続と同じです。マネージドなサーバーの CA はそこに置きます。Amazon RDS や Aurora MySQL では、グローバルバンドルをダウンロードして指定します（`SSL_CERT_FILE` は、HTTP クライアントやメールを含むプロセスのすべての TLS 接続で、システムのバンドルファイルの代わりになります。アプリケーションがほかのサービスも呼ぶなら、2 つをつなげてください）：
 
 ```shell

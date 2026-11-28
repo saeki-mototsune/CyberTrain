@@ -1,5 +1,5 @@
 ---
-source_sha256: bddbbec46f6a57a5845cdebf839f0b70c986951a99b83eeedb3932075048c4d6
+source_sha256: db6754f97853479d284f99e9a9ccc0e17475b0356fef72e72187be7e5b34606a
 ---
 # Configuration
 
@@ -299,7 +299,7 @@ Le code qu’écrit `cybertrain generate authentication` lit quatre réglages (l
 
 ## MySQL
 
-Une application est compilée pour une seule base de données&nbsp;: SQLite, par défaut, ou MySQL 8.0 et plus récent (`docs/design.md`, D96). Le premier `require` de `bin/<app>.rb` et de `bin/db.rb` la choisit à la compilation de l’application&nbsp;; rien ne la change à l’exécution&nbsp;:
+Une application est compilée pour une seule base de données&nbsp;: SQLite, par défaut, ou MySQL 8.0 (`docs/design.md`, D96&nbsp;; la CI teste la 8.0.46, et encore aucune version plus récente). L’entrée `cybertrain` que requièrent `bin/<app>.rb` et `bin/db.rb` la choisit à la compilation de l’application (gen lit celle de `bin/<app>.rb`&nbsp;; gardez les deux identiques)&nbsp;; rien ne la change à l’exécution&nbsp;:
 
 ```ruby bin/<app>.rb (excerpt)
 require "cybertrain/mysql"   # tous les sous-systèmes ; "cybertrain/core/mysql" est le cœur seul
@@ -321,7 +321,7 @@ export DATABASE_URL='mysql://app:PASSWORD@db.internal:3306/shop_production'
 - `USER`, `PASSWORD` et le nom de la base sont décodés (`%40` est `@`). Les paramètres après `?` sont `ssl_mode`, `connect_timeout` (5 secondes par défaut), `read_timeout` et `write_timeout` (30 secondes chacun, pour une attente du serveur, pas pour une requête entière)&nbsp;; tout autre nom arrête le démarrage. Aucun message, aucune ligne de journal ni aucun `inspect` ne montre le mot de passe.
 - Gardez le mot de passe dans l’environnement ou les secrets du déploiement (`.kamal/secrets`), jamais dans `config/app.rb` ni dans le dépôt&nbsp;: le binaire ne contient aucun mot de passe.
 - `ssl_mode=verify`, par défaut, se connecte en TLS et vérifie le certificat du serveur et son nom d’hôte. `ssl_mode=disabled` se connecte sans TLS, et seulement à `localhost`, une adresse de boucle locale, une adresse privée (10/8, 172.16/12, 192.168/16) ou une adresse IPv6 locale unique écrite dans l’URL&nbsp;; tout autre hôte est refusé. Aucun mode ne chiffre sans vérifier le certificat.
-- Sans TLS, le `caching_sha2_password` par défaut de MySQL 8.0 ne peut pas vérifier un mot de passe que le serveur n’a pas encore en cache, et la connexion est refusée avec un message qui le dit&nbsp;: utilisez TLS, ou donnez `mysql_native_password` à un utilisateur de développement.
+- Sans TLS, le `caching_sha2_password` par défaut de MySQL 8.0 ne peut pas vérifier un mot de passe que le serveur n’a pas encore en cache, et la connexion est refusée avec un message qui le dit&nbsp;: utilisez TLS, ou donnez `mysql_native_password` à un utilisateur de développement (sur MySQL 8.0&nbsp;: la 8.4 désactive ce plugin par défaut et la 9.0 le supprime).
 - Les certificats sont vérifiés avec le magasin de CA du système, ou avec `SSL_CERT_FILE` (un paquet) ou `SSL_CERT_DIR` s’ils sont définis, comme toute connexion TLS du framework. Le CA d’un serveur géré va là. Pour Amazon RDS ou Aurora MySQL, téléchargez le paquet global et nommez-le (`SSL_CERT_FILE` remplace le fichier de paquet du système pour toutes les connexions TLS du processus, client HTTP et courrier compris&nbsp;: réunissez les deux si l’application appelle aussi d’autres services)&nbsp;:
 
 ```shell

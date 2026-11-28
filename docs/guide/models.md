@@ -1196,9 +1196,22 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
   with the file and line (`partial indexes (where:) are not supported on
   MySQL`) before anything is written; index the column whole, or put the
   condition in a generated column.
-- **The schema.** `db/schema.rb` is dumped from `information_schema`; the
-  same migrations write the same file as on SQLite. `db normalize`,
-  `db backup` and `db vacuum` are SQLite's.
+- **Expression indexes.** MySQL takes an expression only in parentheses of
+  its own: `execute "CREATE UNIQUE INDEX index_users_on_lower_email ON
+  users ((LOWER(email)))"`. The single-parenthesis form of
+  [Migrations](#migrations) is SQLite's and a syntax error (1064) on MySQL.
+  `db/schema.rb` dumps the index as MySQL spells it,
+  ``"(lower(`email`))"``.
+- **The schema.** `db/schema.rb` is dumped from `information_schema`. For
+  the column types and options examples/blog uses, the same migrations
+  write the same file as on SQLite; others dump as MySQL holds them: a
+  string's `limit: 255` is dropped, a decimal's `scale: 0` is dropped or
+  added, a `t.bigint` named `*_id` dumps as `t.integer`, a decimal's
+  default carries its scale, a default on a text or json column and an
+  expression index are MySQL's text, and a foreign key without an index
+  gains one. A `db/schema.rb` written on SQLite can therefore change on the
+  first `db migrate` on MySQL; `docs/compatibility.md` lists these.
+  `db normalize`, `db backup` and `db vacuum` are SQLite's.
 - **One process.** Jobs, streams, leases and scheduled tasks are
   guaranteed within one process; across several processes or hosts on one
   database they are not until step 2 of the MySQL roadmap

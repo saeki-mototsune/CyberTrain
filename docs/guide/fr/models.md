@@ -1,5 +1,5 @@
 ---
-source_sha256: b40bfa6c7fc2b8082236e6ccd7d093bf6e0daa289f26af1371789b9cf724cca8
+source_sha256: f5c73b275f1fdf56c1574b71501412b09d25246ca9bcfe16c4ae1ec94896c4d5
 ---
 # Modèles et base de données
 
@@ -1191,7 +1191,8 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 - **`returning:`.** MySQL n’a pas de `RETURNING`&nbsp;: `insert_all` et `upsert_all` relisent les lignes dans la même transaction et répondent les lignes que SQLite répondrait. Sur une table qui a un index unique (en plus de la clé primaire), `insert_all(..., returning:)` demande que les lignes fournissent toutes les colonnes d’un tel index, sinon il lève `Cybertrain::DB::Error` avant d’écrire&nbsp;: un doublon ignoré ne pourrait pas être distingué autrement.
 - **Les migrations ne sont pas annulées.** Le DDL de MySQL est validé à mesure qu’il s’exécute&nbsp;: une migration qui échoue à mi-chemin garde ce qui a tourné avant l’instruction en échec&nbsp;: `migration V failed at statement 2 of 3; statements 1..1 were applied and cannot be rolled back (MySQL DDL commits implicitly): ...`. La version n’est pas enregistrée&nbsp;; défaites la partie appliquée (ou terminez-la à la main) avant de relancer `db migrate`. L’adaptateur MySQL de Rails fait de même. Gardez un changement par migration quand c’est possible.
 - **Pas d’index partiels.** `add_index ..., where:` arrête `spin run gen` avec le fichier et la ligne (`partial indexes (where:) are not supported on MySQL`) avant que rien ne soit écrit&nbsp;; indexez la colonne entière, ou mettez la condition dans une colonne générée.
-- **Le schéma.** `db/schema.rb` est extrait de `information_schema`&nbsp;; les mêmes migrations écrivent le même fichier que sur SQLite. `db normalize`, `db backup` et `db vacuum` sont propres à SQLite.
+- **Index sur une expression.** MySQL n’accepte une expression qu’entre ses propres parenthèses&nbsp;: `execute "CREATE UNIQUE INDEX index_users_on_lower_email ON users ((LOWER(email)))"`. La forme à une seule paire de parenthèses de [Migrations](#migrations) est celle de SQLite, et une erreur de syntaxe (1064) sur MySQL. `db/schema.rb` écrit l’index comme MySQL l’épelle, ``"(lower(`email`))"``.
+- **Le schéma.** `db/schema.rb` est extrait de `information_schema`. Pour les types et les options de colonne qu’utilise examples/blog, les mêmes migrations écrivent le même fichier que sur SQLite&nbsp;; les autres sont écrits tels que MySQL les conserve&nbsp;: le `limit: 255` d’une chaîne disparaît, le `scale: 0` d’un décimal disparaît ou apparaît, un `t.bigint` nommé `*_id` est écrit `t.integer`, la valeur par défaut d’un décimal porte son échelle, une valeur par défaut sur une colonne text ou json et un index sur une expression sont le texte de MySQL, et une clé étrangère sans index en reçoit un. Un `db/schema.rb` écrit sur SQLite peut donc changer au premier `db migrate` sur MySQL&nbsp;; `docs/compatibility.md` en donne la liste. `db normalize`, `db backup` et `db vacuum` sont propres à SQLite.
 - **Un seul processus.** Les jobs, les flux, les baux et les tâches planifiées sont garantis dans un processus&nbsp;; entre plusieurs processus ou hôtes sur une même base, pas avant l’étape 2 de la feuille de route MySQL ([Configuration, «&nbsp;MySQL&nbsp;»](configuration.md#mysql)).
 
 ## Mise à jour

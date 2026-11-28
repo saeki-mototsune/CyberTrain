@@ -290,9 +290,10 @@ it, with https, wherever the application is served
 ## MySQL
 
 An application is built for one database: SQLite, the default, or MySQL
-8.0 or newer (`docs/design.md` D96). The first `require` of
-`bin/<app>.rb` and `bin/db.rb` chooses it when the application is built;
-nothing switches it at run time:
+8.0 (`docs/design.md` D96; CI tests 8.0.46, and no newer release yet). The
+`cybertrain` entry that `bin/<app>.rb` and `bin/db.rb` require chooses it
+when the application is built (gen reads the one in `bin/<app>.rb`; keep
+the two the same); nothing switches it at run time:
 
 ```ruby bin/<app>.rb (excerpt)
 require "cybertrain/mysql"   # every subsystem; "cybertrain/core/mysql" is the core alone
@@ -348,7 +349,8 @@ export DATABASE_URL='mysql://app:PASSWORD@db.internal:3306/shop_production'
 - Without TLS, MySQL 8.0's default `caching_sha2_password` cannot check a
   password the server has not cached yet, and the connection is refused
   with a message saying so: use TLS, or give a development user
-  `mysql_native_password`.
+  `mysql_native_password` (on MySQL 8.0: 8.4 turns that plugin off by
+  default and 9.0 removes it).
 - The certificates are checked against the system's CA store, or against
   `SSL_CERT_FILE` (a bundle) or `SSL_CERT_DIR` when they are set, as every
   TLS connection of the framework is. A managed server's CA goes there.

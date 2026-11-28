@@ -1,5 +1,5 @@
 ---
-source_sha256: bddbbec46f6a57a5845cdebf839f0b70c986951a99b83eeedb3932075048c4d6
+source_sha256: db6754f97853479d284f99e9a9ccc0e17475b0356fef72e72187be7e5b34606a
 ---
 # 配置
 
@@ -154,7 +154,7 @@ end
 
 ## MySQL
 
-应用程序只为一种数据库构建：默认的 SQLite，或 MySQL 8.0 及更新版本（`docs/design.md` 的 D96）。选择哪一种，由 `bin/<app>.rb` 和 `bin/db.rb` 的第一个 `require` 在构建应用程序时决定；运行时没有任何东西会切换它：
+应用程序只为一种数据库构建：默认的 SQLite，或 MySQL 8.0（`docs/design.md` 的 D96；CI 在 8.0.46 上测试，尚未测试更新的版本）。选择哪一种，由 `bin/<app>.rb` 和 `bin/db.rb` 所 require 的 `cybertrain` 入口在构建应用程序时决定（gen 读取的是 `bin/<app>.rb` 中的那个；请让两者保持一致）；运行时没有任何东西会切换它：
 
 ```ruby bin/<app>.rb (excerpt)
 require "cybertrain/mysql"   # 所有子系统；"cybertrain/core/mysql" 只有核心
@@ -176,7 +176,7 @@ export DATABASE_URL='mysql://app:PASSWORD@db.internal:3306/shop_production'
 - `USER`、`PASSWORD` 和数据库名会做百分号解码（`%40` 是 `@`）。`?` 之后的参数是 `ssl_mode`、`connect_timeout`（默认 5 秒）、`read_timeout` 和 `write_timeout`（各 30 秒，指等待服务器一次的时间，而不是整个查询）；其他名称会使启动失败。任何消息、日志行或 `inspect` 都不会显示密码。
 - 把密码放在环境变量或部署的密钥（`.kamal/secrets`）中，绝不要写进 `config/app.rb` 或仓库：二进制文件不包含密码。
 - 默认的 `ssl_mode=verify` 通过 TLS 连接，并检查服务器的证书和主机名。`ssl_mode=disabled` 不使用 TLS 连接，且只用于 URL 中写明的 `localhost`、回环地址、私有地址（10/8、172.16/12、192.168/16）或唯一本地 IPv6 地址；其他主机会被拒绝。没有只加密而不检查证书的模式。
-- 没有 TLS 时，MySQL 8.0 默认的 `caching_sha2_password` 无法检查服务器尚未缓存的密码，连接会被拒绝并给出说明：请使用 TLS，或让开发用的用户使用 `mysql_native_password`。
+- 没有 TLS 时，MySQL 8.0 默认的 `caching_sha2_password` 无法检查服务器尚未缓存的密码，连接会被拒绝并给出说明：请使用 TLS，或让开发用的用户使用 `mysql_native_password`（限 MySQL 8.0：8.4 默认关闭该插件，9.0 已将其移除）。
 - 证书根据系统的 CA 存储检查，若设置了 `SSL_CERT_FILE`（证书包）或 `SSL_CERT_DIR` 则根据它们检查，框架的所有 TLS 连接都是如此。托管服务器的 CA 放在那里。对于 Amazon RDS 或 Aurora MySQL，下载全局证书包并指定它（`SSL_CERT_FILE` 会在进程的所有 TLS 连接中取代系统的证书包文件，包括 HTTP 客户端和邮件，所以当应用程序还调用其他服务时，请把两者合并）：
 
 ```shell
