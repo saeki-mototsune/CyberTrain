@@ -46,7 +46,8 @@ it, in English and Japanese, with an admin user guarding its `/admin` pages.
   (`cybertrain new --database=mysql`; one process for now, see the
   [configuration guide](https://www.cybertrain.dev/guide/configuration.html#mysql)),
   with migrations; decimal, json, date and datetime columns;
-  declared associations with `includes`; Rails' validators; model concerns;
+  declared associations, `has_many :through` (read-only) and polymorphic
+  ones, with nested `includes`; Rails' validators; model concerns;
   encrypted columns; bulk inserts and typed aggregates.
 - **Authentication** ([guide](https://www.cybertrain.dev/guide/authentication.html)):
   `cybertrain generate authentication` writes sign-in, sign-up or
