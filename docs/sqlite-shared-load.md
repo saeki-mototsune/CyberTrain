@@ -167,13 +167,17 @@ broadcast_ms=5`: 16 threads writing as fast as they can, on 4 connections.
    does.
 2. **Nothing failed; the interference is waiting.** No run reached the 5 s
    limit, so there was no `database is locked`. A writer that finds the lock
-   taken sleeps 0.1 to 1 ms and tries again (`Connection#step_waiting`), so
+   taken sleeps 0.1 to 1 ms and tries again (`Connection#step_waiting` in
+   these runs; since 2026-11-27 the busy handler retries every 0.1 ms inside
+   an offloaded call, spikes/NOTES.md rule 80), so
    the queue for the lock is not fair: the tails grow (B's business write
    p99 from 8 ms to 64 ms, C's to 0.7 s) while the medians barely move.
 3. **Reads wait too, for a worker and for a connection.** WAL readers do
    not wait for the writer, and a read costs 0.02 to 0.04 ms at the median
-   in every run. But an FFI call holds its OS worker (spikes/NOTES.md rule
-   80): on one worker every thread stands still while one commit syncs, so
+   in every run. But an FFI call held its OS worker in these runs
+   (spikes/NOTES.md rule 80; COMMIT and a statement's first step are
+   offloaded since 2026-11-27, not re-measured here): on one worker every
+   thread stood still while one commit synced, so
    in A the readers ran at the writers' pace (916 reads a second alone, 153
    mixed) at an unchanged latency. And a writer waiting for the lock keeps
    its pooled connection while it sleeps: with 16 writing threads on 4
@@ -302,9 +306,10 @@ What exists today (each read from the code):
 - **`bench/mixed`** against the production volume, for the ceiling.
 
 What does not exist, and is proposed rather than built here: the framework
-counts neither lock waits nor the time spent in them. `Connection#step_waiting`
-and `#exec_waiting` already know both (they loop on `SQLITE_BUSY`); two
-counters there (waits, microseconds waited), read through the pool and
+counts neither lock waits nor the time spent in them. The busy handler
+(`cybertrain_sqlite_busy` in cybertrain/db/sqlite_ffi.rb) already knows both
+(SQLite calls it once per retry); two counters in its per-connection slot
+(waits, microseconds waited), read through the pool and
 written to the log once a minute when they moved, would turn "the tail
 grew" into "writers waited 3.1 s in total over 412 waits this minute". It
 is left out of this change because it adds state to the per-statement path

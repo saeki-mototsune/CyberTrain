@@ -203,11 +203,13 @@ class Module
     nil
   end
 
-  def ffi_func(name, arg_types, return_type, blocking: false)
+  def ffi_func(name, arg_types, return_type, blocking: false, offload: false)
     ffi = __cybertrain_ffi
     ffi.check_types(name, arg_types, return_type)
-    # `blocking:` tells Spinel to release its GVL around the call; Fiddle
-    # always releases CRuby's, so there is nothing to do.
+    # `blocking:` tells Spinel to let a collection run during the call, and
+    # `offload:` to run it on another OS thread while the caller's worker
+    # runs other threads; Fiddle always releases CRuby's GVL, and CRuby's
+    # threads are OS threads, so there is nothing to do for either.
     define_singleton_method(name) { |*values| ffi.call(name, arg_types, return_type, values) }
     nil
   end

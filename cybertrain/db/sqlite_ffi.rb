@@ -11,65 +11,84 @@
 #   as their destructor argument: that is SQLITE_TRANSIENT, so SQLite copies
 #   the bytes.
 #
-# `blocking: true` marks the calls that can wait on disk or on another
-# connection's lock. It does not free the OS worker: Spinel 2026.09.12
-# accepted and ignored the option, and 2026.11.04.7026 only takes the
-# worker out of the collector's stop for the call (a collection raised
-# meanwhile does not wait for it), so the worker's other green threads
-# still wait for as long as the call runs (spikes/NOTES.md rule 80,
-# docs/spinel-feedback.md AB). A lock wait inside such a call is why the
-# busy handler below can report instead of sleeping.
+# `offload: true` marks the calls that can wait for another connection's
+# lock (and so for the busy handler below): preparing, sqlite3_exec and
+# the first step of a statement. Spinel runs such a call on a pool thread
+# of its own while the calling green thread waits as for I/O, so the
+# worker runs its other green threads meanwhile, the lock holder among
+# them (docs/FFI.md, "`offload: true` (Spinel's own)"; spikes/NOTES.md
+# rule 80, docs/spinel-feedback.md AB). `blocking: true` alone does not
+# do that: the worker's other green threads wait for as long as the call
+# runs, which stalled a one-worker server for 5 s
+# (saeki-mototsune/CyberTrain#134). What offload asks, and why it holds
+# here:
+#
+# * the C function may run on a different OS thread at each call. The
+#   SQLite this links is built multi-thread (`sqlite3_threadsafe()` = 2 on
+#   macOS 3.54.0; distribution builds are 1, serialized): a connection
+#   and its statements may move between threads as long as two never use
+#   them at once, and Pool hands each Connection to one thread at a time.
+#   sqlite3_errmsg is the connection's, not the thread's.
+# * no `ffi_callback` anywhere in the program (offload refuses one): the
+#   busy handler is C, and sqlite3_exec gets no callback.
+# * out-parameters are malloc'd per call (above), never a shared buffer.
+#
+# Each offloaded call costs a hand-off to the pool and back (about 7 us),
+# so a statement's later steps, which only read rows (a statement takes
+# its locks in its first step), go through the plain `sqlite3_step`.
 module Cybertrain
   module DB
     module SQLite3
       ffi_lib "sqlite3"
 
-      # The busy handler, with two modes kept in a per-connection slot of two
-      # ints (malloc(8), owned by the Connection): slot[0] the mode, slot[1]
-      # set when SQLite asked to wait.
-      #
-      # * Report (slot[0] = 1, the default): note that SQLite asked and
-      #   return 0 at once, so the call returns SQLITE_BUSY and the
-      #   Connection waits in Ruby, where `sleep` parks the green thread and
-      #   the lock holder can run on the same OS worker
-      #   (saeki-mototsune/CyberTrain#134). SQLite calls the handler only
-      #   when waiting can help, so "asked" also tells a retriable BUSY from
-      #   one that is not (a stale WAL snapshot).
-      # * Wait here (slot[0] = 0): retry every 100 microseconds for about
-      #   five seconds, inside the call. For scripts (several statements:
-      #   one that stops at a lock half way cannot be re-run from the top)
-      #   and ROLLBACK. SQLite's own busy_timeout slept 1, 2, 5 ... 100 ms
-      #   between tries; with SPINEL_WORKERS > 1 the loser of two inserts
-      #   slept a millisecond or more for a lock held for microseconds.
+      # The busy handler: retry every 100 microseconds, inside the call,
+      # until limit_ms have passed since SQLite first asked for this lock;
+      # then SQLite returns SQLITE_BUSY ("database is locked"). The call is
+      # offloaded, so the sleep holds a pool thread, not the worker. The
+      # per-connection slot (malloc(16), owned by the Connection) holds the
+      # limit and when the current wait started, in nanoseconds on the
+      # monotonic clock (milliseconds rounded a 5 s wait down to 4.999 s
+      # as Ruby's clock saw it). SQLite's
+      # own busy_timeout slept 1, 2, 5 ... 100 ms between tries; with
+      # SPINEL_WORKERS > 1 the loser of two inserts slept a millisecond or
+      # more for a lock held for microseconds. SQLite calls the handler
+      # only when waiting can help: a stale WAL snapshot still fails at
+      # once.
       ffi_source <<~C
         #include <time.h>
         extern int sqlite3_busy_handler(void *db, int (*cb)(void *, int), void *arg);
+        static long long cybertrain_now_ns(void) {
+          struct timespec ts;
+          clock_gettime(CLOCK_MONOTONIC, &ts);
+          return (long long)ts.tv_sec * 1000000000LL + ts.tv_nsec;
+        }
         static int cybertrain_sqlite_busy(void *arg, int count) {
-          int *slot = (int *)arg;
-          if (slot[0]) { slot[1] = 1; return 0; }
-          if (count >= 50000) return 0;
+          long long *slot = (long long *)arg;
+          long long now = cybertrain_now_ns();
+          if (count == 0) slot[1] = now;
+          if (now - slot[1] >= slot[0]) return 0;
           struct timespec ts = { 0, 100000 };
           nanosleep(&ts, NULL);
           return 1;
         }
-        int cybertrain_sqlite_set_busy_handler(void *db, void *slot) {
-          ((int *)slot)[0] = 1;
-          ((int *)slot)[1] = 0;
+        int cybertrain_sqlite_set_busy_handler(void *db, void *slot, long limit_ms) {
+          ((long long *)slot)[0] = (long long)limit_ms * 1000000LL;
+          ((long long *)slot)[1] = 0;
           return sqlite3_busy_handler(db, cybertrain_sqlite_busy, slot);
         }
-        /* 1: report (the default), 0: wait inside the call. Clears "asked". */
-        void cybertrain_sqlite_busy_report(void *slot, int on) {
-          ((int *)slot)[0] = on;
-          ((int *)slot)[1] = 0;
-        }
-        /* 1 when SQLite asked to wait since the last call; clears it. */
-        int cybertrain_sqlite_busy_asked(void *slot) {
-          int asked = ((int *)slot)[1];
-          ((int *)slot)[1] = 0;
-          return asked;
+      C
+      ffi_func :cybertrain_sqlite_set_busy_handler, [:ptr, :ptr, :long], :int
+
+      # The first sqlite3_step of a statement, offloaded: the step that
+      # takes the statement's locks and may wait in the busy handler. Later
+      # steps use the plain binding of sqlite3_step below.
+      ffi_source <<~C
+        extern int sqlite3_step(void *);
+        int cybertrain_sqlite_step_first(void *stmt) {
+          return sqlite3_step(stmt);
         }
       C
-      ffi_func :cybertrain_sqlite_set_busy_handler, [:ptr, :ptr], :int
+      ffi_func :cybertrain_sqlite_step_first, [:ptr], :int, offload: true
 
       # The next statement of a script, prepared from byte offset `offset` of
       # sql: Connection#exec_script runs a script one statement at a time
@@ -97,10 +116,8 @@ module Cybertrain
           return -1000000;
         }
       C
-      ffi_func :cybertrain_sqlite_prepare_at, [:ptr, :str, :long, :ptr], :long, blocking: true
+      ffi_func :cybertrain_sqlite_prepare_at, [:ptr, :str, :long, :ptr], :long, offload: true
       ffi_const :NO_STATEMENT, -1000000
-      ffi_func :cybertrain_sqlite_busy_report, [:ptr, :int], :void
-      ffi_func :cybertrain_sqlite_busy_asked, [:ptr], :int
 
       # A DATETIME column read straight into UTC epoch microseconds, with no
       # Ruby String in between: the text SQLite already holds is parsed in
@@ -229,7 +246,7 @@ module Cybertrain
 
       ffi_func :sqlite3_open_v2, [:str, :ptr, :int, :ptr], :int
       ffi_func :sqlite3_close, [:ptr], :int
-      ffi_func :sqlite3_exec, [:ptr, :str, :ptr, :ptr, :ptr], :int, blocking: true
+      ffi_func :sqlite3_exec, [:ptr, :str, :ptr, :ptr, :ptr], :int, offload: true
       ffi_func :sqlite3_errmsg, [:ptr], :str
       # The extended result code of the last failed call, whether or not the
       # connection asked for extended codes (Connection#raise_failure).
@@ -239,7 +256,7 @@ module Cybertrain
       # (Connection#variable_limit asks SQLITE_LIMIT_VARIABLE_NUMBER, 9).
       ffi_func :sqlite3_limit, [:ptr, :int, :int], :int
 
-      ffi_func :sqlite3_prepare_v2, [:ptr, :str, :int, :ptr, :ptr], :int, blocking: true
+      ffi_func :sqlite3_prepare_v2, [:ptr, :str, :int, :ptr, :ptr], :int, offload: true
       ffi_func :sqlite3_bind_int64, [:ptr, :int, :long], :int
       ffi_func :sqlite3_bind_double, [:ptr, :int, :double], :int
       ffi_func :sqlite3_bind_text, [:ptr, :int, :str, :int, :ptr], :int
@@ -248,6 +265,9 @@ module Cybertrain
       # many bytes from the pointer, so a NUL inside does not end them.
       ffi_func :sqlite3_bind_blob, [:ptr, :int, :str, :int, :ptr], :int
       ffi_func :sqlite3_bind_null, [:ptr, :int], :int
+      # Row steps after the first (cybertrain_sqlite_step_first): they read
+      # pages, and wait for no lock. `blocking: true` lets a collection run
+      # meanwhile.
       ffi_func :sqlite3_step, [:ptr], :int, blocking: true
       ffi_func :sqlite3_finalize, [:ptr], :int
       ffi_func :sqlite3_reset, [:ptr], :int

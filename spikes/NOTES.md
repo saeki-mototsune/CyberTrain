@@ -111,8 +111,9 @@ the title; the row in SQLite holds the title's UTF-8 bytes.
   compared with `== 0`, the statement cache's `stmt.nil?` is a Hash
   lookup, and a NULL `:str` (`sqlite3_column_text`) comes back as `nil`,
   which `read_row` turns into `""` as it does compiled.
-- **`static` functions**: no `ffi_func` names one. sqlite_ffi.rb's two
-  `static` helpers (`cybertrain_sqlite_busy`, `cybertrain_digits`) are
+- **`static` functions**: no `ffi_func` names one. sqlite_ffi.rb's three
+  `static` helpers (`cybertrain_sqlite_busy`, `cybertrain_now_ns`,
+  `cybertrain_digits`) are
   called only from its C; looking them up raises the shim's "no exported
   symbol" error, and all 44 `ffi_func` symbols of the three files resolve
   (the compiled unit first, then the `ffi_lib`, then the process). The
@@ -593,7 +594,7 @@ decision, and 77 explicitly retires a workaround.
     49% to a static file. The POST used to lose a quarter: SQLite's
     busy_timeout slept a millisecond or more holding the worker, until a
     busy handler retrying every 100 us replaced it (cybertrain/db/sqlite_ffi.rb;
-    since rule 80 the wait is a green-thread `sleep` starting at 100 us). 1 stays
+    since rule 80 it waits inside an offloaded call, off the worker). 1 stays
     the default (a one-core server); set it to the core count otherwise.
     **Since Spinel #9840 (in 2026.11.04.7026, not in 2026.09.12) an explicit
     `SPINEL_WORKERS=N` counts main among the N** and starts N-1 helpers
@@ -1474,10 +1475,10 @@ decision, and 77 explicitly retires a workaround.
     rescuing-caller case are written the plain way; the typed value after
     a `raise` in cybertrain/console.rb is rule 124's, not this rule's.
     Closed (docs/spinel-feedback.md rule 79): kept for its number.
-80. Never wait for another connection's SQLite lock inside the SQLite call
-    on the request path: an FFI call holds its OS worker for as long as it
-    runs, with or without `blocking: true`, and with one worker
-    every green thread is on that OS thread. (2026.09.12 accepted and
+80. Wait for another connection's SQLite lock (or anything else long) only
+    inside an `ffi_func` declared `offload: true`: any other FFI call holds
+    its OS worker for as long as it runs, with or without `blocking: true`,
+    and with one worker every green thread is on that OS thread. (2026.09.12 accepted and
     ignored the option. On 2026.11.04.7026 it brackets the call with
     `sp_native_enter` / `sp_native_leave`, lib/sp_sched.h, so that a
     collection raised meanwhile does not wait for it; the worker's other
@@ -1491,17 +1492,27 @@ decision, and 77 explicitly retires a workaround.
     handler, which slept 100 us at a time inside `sqlite3_step` for about
     5 s: every request stalled for those 5 s and the second write failed
     with "database is locked" (reproduced by test/db_busy_wait.rb,
-    saeki-mototsune/CyberTrain#134, 2026-11-05). The busy handler now only
-    records that SQLite asked to wait and returns 0, and
-    `Connection#step_waiting` / `#exec_waiting` retry after a green-thread
-    `sleep` (100 us doubling to 1 ms, 5 s in all), which lets the holder
-    run. "Asked" is the retry signal: SQLite calls the handler only when
-    waiting can help, so a BUSY it was not asked about (a stale WAL
-    snapshot) still fails at once. Only the first step waits (a statement
-    takes its locks before it changes or returns anything), and only
-    single statements are retried: a multi-statement `exec_script` (schema,
-    migrations, the WAL switch at open) and ROLLBACK still wait in C,
-    since a script refused half way cannot be re-run from the top.
+    saeki-mototsune/CyberTrain#134, 2026-11-05). Until 2026-11-27 the busy
+    handler only recorded that SQLite asked to wait, and
+    `Connection#step_waiting` / `#exec_waiting` retried after a
+    green-thread `sleep` (100 us doubling to 1 ms, 5 s in all), while
+    multi-statement scripts and ROLLBACK still waited in C. Since the pin
+    2026.11.27.7037 the calls that can wait for a lock are declared
+    `offload: true` (docs/FFI.md: the C function runs on a pool thread
+    while the caller waits as for I/O, so its worker runs the other green
+    threads): `sqlite3_prepare_v2`, `cybertrain_sqlite_prepare_at`,
+    `sqlite3_exec` and a statement's first step
+    (`cybertrain_sqlite_step_first`); the busy handler sleeps 100 us at a
+    time inside the call until `Connection::BUSY_WAIT_LIMIT` (5 s), and
+    the Ruby retry is gone. Later row steps stay on the plain
+    `sqlite3_step` (`blocking: true`): an offloaded call costs about 7 us,
+    and a statement takes its locks in its first step. At
+    `SPINEL_WORKERS=1` test/db_busy_wait.rb passes in most runs, but in about
+    one in five (2026-11-27, 2026.11.27.7037) the holder's `sleep` came back
+    only when the waiter's offloaded call gave up after 5 s: not reduced
+    yet, see docs/spinel-feedback.md AB. `blocking: true` without offload
+    still holds the worker (matz's 94a7a8fb6 keeps the option's meaning),
+    so any other FFI call that can wait long needs `offload: true` too.
     A statement in a transaction SQLite already rolled back on its own
     (FULL / IOERR / BUSY / NOMEM, rescued by the application inside the
     block) is refused rather than run in autocommit, where it would commit by
