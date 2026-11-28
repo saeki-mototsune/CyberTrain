@@ -42,6 +42,15 @@ module Cybertrain
         path.include?(":memory:") || path.include?("mode=memory")
       end
 
+      # The target as a message or log line shows it: the path as given
+      # (MySQL's leaves the URL's password out). Pool's log lines name the
+      # target through this.
+      # @return [String]
+      # @api private
+      def self.target_label(path)
+        path.to_s
+      end
+
       # path is a file name, ":memory:" or a "file:" URI (OPEN_URI makes
       # SQLite read the URI form whether or not the library was compiled
       # with SQLITE_USE_URI). With create: false a missing file is refused

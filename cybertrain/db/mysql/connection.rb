@@ -125,6 +125,20 @@ module Cybertrain
         false
       end
 
+      # The target as a message or log line may show it: the URL without
+      # its password (Url#to_s, "mysql://app@db.internal:3306/shop"), or
+      # "the MySQL database" for a URL that does not parse (its text could
+      # hold the password anywhere). Pool's log lines name the target
+      # through this, never the raw DATABASE_URL.
+      # @param target [String]
+      # @return [String]
+      # @api private
+      def self.target_label(target)
+        MySQL::Url.parse(target.to_s).to_s
+      rescue ArgumentError
+        "the MySQL database"
+      end
+
       # Connects to the server the URL names, authenticates and sets the
       # session.
       # @param target [String] mysql://USER[:PASSWORD]@HOST[:PORT][/DATABASE][?...]
