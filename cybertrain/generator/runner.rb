@@ -66,15 +66,9 @@ module Cybertrain
           refusals.each { |line| puts line }
           return 1
         end
-        # The adapter the app is built with (bin/NAME.rb's first require of
-        # cybertrain): a line that names neither stops gen, nothing written.
-        dialect = Dialect.for("sqlite")
-        begin
-          dialect = Dialect.of(root)
-        rescue ArgumentError => e
-          puts e.message
-          return 1
-        end
+        # The adapter the app is built with (bin/NAME.rb's entry require;
+        # SQLite without a MySQL one).
+        dialect = Dialect.of(root)
         # MySQL has no partial index: an add_index with where: stops gen,
         # nothing written, before `db migrate` would run it.
         if dialect.mysql?

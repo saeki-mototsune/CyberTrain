@@ -30,15 +30,6 @@ def app_with_bin(bin_source)
   root
 end
 
-REFUSAL = "bin/shop.rb: the first require must be \"cybertrain\" or \"cybertrain/mysql\""
-
-def detect_refusal(root)
-  Cybertrain::Gen::Dialect.detect(root)
-  ""
-rescue ArgumentError => e
-  e.message
-end
-
 test "for answers the spelling of each adapter" do
   sqlite = Cybertrain::Gen::Dialect.for("sqlite")
   assert_equal "sqlite", sqlite.name
@@ -85,11 +76,30 @@ test "detect takes the core entries of a cybertrain new application as the same 
   assert_equal "mysql", Cybertrain::Gen::Dialect.detect(app_with_bin("require \"cybertrain/core/mysql\"\nrequire \"cybertrain/jobs\"\n"))
 end
 
-test "detect stops on any other cybertrain require, or on none" do
-  assert_equal REFUSAL, detect_refusal(app_with_bin("require \"cybertrain/foo\"\n"))
-  assert_equal REFUSAL, detect_refusal(app_with_bin("require \"cybertrain/jobs\"\nrequire \"cybertrain\"\n"))
-  assert_equal REFUSAL, detect_refusal(app_with_bin("require \"cybertrain/mysql\" # x\n"))
-  assert_equal REFUSAL, detect_refusal(app_with_bin("puts 1\n"))
+test "detect reads the require in every spelling ViewRequires reads" do
+  # Either quote, parentheses, a trailing comment: the forms an app built
+  # before the MySQL adapter may hold, and SQLite's must still build.
+  assert_equal "sqlite", Cybertrain::Gen::Dialect.detect(app_with_bin("require 'cybertrain'\n"))
+  assert_equal "sqlite", Cybertrain::Gen::Dialect.detect(app_with_bin("require \"cybertrain\" # everything\n"))
+  assert_equal "sqlite", Cybertrain::Gen::Dialect.detect(app_with_bin("require(\"cybertrain\")\n"))
+  assert_equal "sqlite", Cybertrain::Gen::Dialect.detect(app_with_bin("require 'cybertrain/core'\n"))
+  assert_equal "mysql", Cybertrain::Gen::Dialect.detect(app_with_bin("require 'cybertrain/mysql'\n"))
+  assert_equal "mysql", Cybertrain::Gen::Dialect.detect(app_with_bin("require \"cybertrain/mysql\" # x\n"))
+  assert_equal "mysql", Cybertrain::Gen::Dialect.detect(app_with_bin("require(\"cybertrain/core/mysql\") # db\n"))
+  # A commented-out require is no require.
+  assert_equal "sqlite", Cybertrain::Gen::Dialect.detect(app_with_bin("# require \"cybertrain/mysql\"\nrequire \"cybertrain\"\n"))
+end
+
+test "detect skips the subsystem requires before the entry" do
+  assert_equal "sqlite", Cybertrain::Gen::Dialect.detect(app_with_bin("require \"cybertrain/jobs\"\nrequire \"cybertrain/core\"\n"))
+  assert_equal "mysql", Cybertrain::Gen::Dialect.detect(app_with_bin("require \"cybertrain/jobs\"\nrequire \"cybertrain/core/mysql\"\n"))
+  assert_equal "mysql", Cybertrain::Gen::Dialect.detect(app_with_bin("require \"cybertrain/streams\"\nrequire \"cybertrain/mysql\"\n"))
+end
+
+test "detect is SQLite when bin/NAME.rb names no MySQL entry" do
+  assert_equal "sqlite", Cybertrain::Gen::Dialect.detect(app_with_bin("puts 1\n"))
+  assert_equal "sqlite", Cybertrain::Gen::Dialect.detect(app_with_bin("require \"cybertrain/foo\"\n"))
+  assert_equal "sqlite", Cybertrain::Gen::Dialect.detect(app_with_bin("require_relative \"../lib/boot\"\n"))
 end
 
 test "a tree with no spin.toml name or no bin/NAME.rb is SQLite" do
@@ -210,10 +220,10 @@ test "the generated user command and first-run test connect to DATABASE_URL's da
   assert_nil test_mysql.index("database_path")
 end
 
-test "gen stops with the message on a bad first require, writing nothing" do
-  root = app_with_bin("require \"cybertrain/foo\"\n")
-  assert_equal 1, Cybertrain::Gen::Runner.run(root, [])
-  refute File.exist?("#{root}/gen")
+test "gen builds a SQLite app whose bin/NAME.rb spells the require another way" do
+  root = app_with_bin("require 'cybertrain' # rubocop's quotes\n")
+  assert_equal 0, Cybertrain::Gen::Runner.run(root, [])
+  assert File.exist?("#{root}/gen/app.rb")
 end
 
 PARTIAL_MIGRATION = "class AddIndex < Cybertrain::Migration::Base\n  def change\n" \

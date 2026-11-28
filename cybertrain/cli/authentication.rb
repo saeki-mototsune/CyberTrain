@@ -367,12 +367,7 @@ module Cybertrain
         bin_path = File.join(root, "bin/#{app}.rb")
         raise InvalidArgument, "#{bin_path} not found: run this inside a cybertrain app" unless File.exist?(bin_path)
         raise InvalidArgument, "#{bin_path} has no line starting with `#{MAIN_RUN_LINE}`" if SourceEdit.line_start(File.read(bin_path), MAIN_RUN_LINE) < 0
-        adapter = ""
-        begin
-          adapter = Gen::Dialect.in_source(app, File.read(bin_path))
-        rescue ArgumentError => e
-          raise InvalidArgument, e.message
-        end
+        adapter = Gen::Dialect.in_source(File.read(bin_path))
 
         # Both modes declare the base_url setting in config/app.rb.
         config_path = File.join(root, "config/app.rb")

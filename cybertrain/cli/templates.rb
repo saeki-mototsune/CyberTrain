@@ -1116,15 +1116,12 @@ module Cybertrain
       # where the database is and what several hosts do not yet share
       # safely (docs/design.md D96).
       # Whether bin/`app`.rb builds the application at `root` for MySQL
-      # (Gen::Dialect.in_source, as gen reads it); false without the file
-      # or with a first require gen would refuse.
+      # (Gen::Dialect.in_source, as gen reads it); false without the file.
       def self.mysql_app?(root, app)
         bin = File.join(root, "bin/#{app}.rb")
         return false unless File.file?(bin)
 
-        Gen::Dialect.in_source(app, File.read(bin)) == Gen::Dialect::MYSQL
-      rescue ArgumentError
-        false
+        Gen::Dialect.in_source(File.read(bin)) == Gen::Dialect::MYSQL
       end
 
       # config/deploy.yml's worker role on MySQL: commented, and saying why

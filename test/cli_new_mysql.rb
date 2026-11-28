@@ -85,9 +85,9 @@ test "bin/db.rb requires cybertrain/mysql" do
 end
 
 test "gen reads the app as MySQL, and the SQLite app as SQLite" do
-  assert_equal "mysql", Cybertrain::Gen::Dialect.in_source("shop", read("shop/bin/shop.rb"))
-  assert_equal "mysql", Cybertrain::Gen::Dialect.in_source("shop", read("shop/bin/db.rb"))
-  assert_equal "sqlite", Cybertrain::Gen::Dialect.in_source("zebra", read("zebra/bin/zebra.rb"))
+  assert_equal "mysql", Cybertrain::Gen::Dialect.in_source(read("shop/bin/shop.rb"))
+  assert_equal "mysql", Cybertrain::Gen::Dialect.in_source(read("shop/bin/db.rb"))
+  assert_equal "sqlite", Cybertrain::Gen::Dialect.in_source(read("zebra/bin/zebra.rb"))
 end
 
 test "config/app.rb explains DATABASE_URL" do

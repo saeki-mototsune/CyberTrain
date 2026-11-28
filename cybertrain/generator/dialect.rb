@@ -2,9 +2,9 @@ module Cybertrain
   module Gen
     # Cybertrain::Gen::Dialect -- which DB adapter the application is built
     # with, as far as the generator needs to know (docs/design.md D96). The
-    # adapter is chosen when the application is built, by the first
-    # `require "cybertrain..."` line of bin/NAME.rb (NAME is spin.toml's
-    # [package] name, as in ViewRequires):
+    # adapter is chosen when the application is built, by the entry
+    # bin/NAME.rb requires (NAME is spin.toml's [package] name, as in
+    # ViewRequires):
     #
     #   require "cybertrain"              SQLite
     #   require "cybertrain/mysql"        MySQL
@@ -15,11 +15,13 @@ module Cybertrain
     # (D85: the core and the subsystem lines it adds), so they pick the same
     # adapter as the whole-framework entries they stand beside.
     #
-    # Anything else after `require "cybertrain` (`require "cybertrain/foo"`),
-    # or no such line in a bin/NAME.rb that exists, is refused: detect raises
-    # ArgumentError with the message and Runner prints it and stops. An
-    # application with no spin.toml name or no bin/NAME.rb (a fixture tree)
-    # has nothing to read and is SQLite, as ViewRequires lets it pass.
+    # bin/NAME.rb is read lexically, line by line, as ViewRequires reads it:
+    # `require "X"`, `require 'X'` or `require("X")` after the indentation,
+    # a trailing comment allowed. The first of the four entries decides;
+    # other requires (a subsystem such as "cybertrain/jobs", another
+    # library) are skipped. With no MySQL entry the application is SQLite,
+    # as every application was before MySQL: gen refuses none of them. So
+    # is one with no spin.toml name or no bin/NAME.rb (a fixture tree).
     #
     # `for(name)` answers the Spec the emitters take, so that what is spelled
     # differently per adapter (the identifier quote, the entry require) is
@@ -28,7 +30,6 @@ module Cybertrain
     module Dialect
       SQLITE = "sqlite".freeze
       MYSQL = "mysql".freeze
-      REQUIRE_PREFIX = "require \"cybertrain".freeze
 
       # What one adapter spells for the generator.
       class Spec
@@ -81,8 +82,7 @@ module Cybertrain
       end
 
       # The adapter the application at `root` is built with: "sqlite" or
-      # "mysql". Raises ArgumentError when the first require of
-      # "cybertrain..." in bin/NAME.rb is neither. NAME is read by
+      # "mysql", from bin/NAME.rb's entry require. NAME is read by
       # ViewRequires.package_name, which the caller has loaded (Runner and the
       # tests do; this file requires nothing, since the CLI loads it too and
       # the gem ships only the files the CLI needs).
@@ -95,23 +95,43 @@ module Cybertrain
         bin = "#{root}/bin/#{name}.rb"
         return SQLITE unless File.file?(bin)
 
-        in_source(name, File.read(bin))
+        in_source(File.read(bin))
       end
 
-      # The adapter bin/`name`.rb's `source` is built with, as detect says it.
-      # @param name [String] the package name
+      # The adapter bin/NAME.rb's `source` is built with, as detect says it:
+      # the first entry it requires, SQLite when it requires neither MySQL
+      # entry.
       # @param source [String] the text of bin/NAME.rb
       # @return [String]
-      def self.in_source(name, source)
+      def self.in_source(source)
         source.split("\n").each do |raw|
-          line = raw.strip
-          next unless line.start_with?(REQUIRE_PREFIX)
-          return SQLITE if line == "require \"cybertrain\"" || line == "require \"cybertrain/core\""
-          return MYSQL if line == "require \"cybertrain/mysql\"" || line == "require \"cybertrain/core/mysql\""
-
-          break
+          spec = required_spec(raw.strip)
+          return SQLITE if spec == "cybertrain" || spec == "cybertrain/core"
+          return MYSQL if spec == "cybertrain/mysql" || spec == "cybertrain/core/mysql"
         end
-        raise ArgumentError, "bin/#{name}.rb: the first require must be \"cybertrain\" or \"cybertrain/mysql\""
+        SQLITE
+      end
+
+      # The argument of a `require "x"`, `require 'x'` or `require("x")`
+      # line; "" for any other line. ViewRequires reads bin/NAME.rb's
+      # subsystem lines with it too, so both see the same requires.
+      # @param line [String] stripped
+      # @return [String]
+      def self.required_spec(line)
+        return "" unless line.start_with?("require")
+
+        rest = line[7, line.size - 7]
+        rest = rest[1, rest.size - 1] if rest.start_with?("(")
+        rest = rest.strip
+        return "" if rest.empty?
+
+        quote = rest[0]
+        return "" unless quote == "\"" || quote == "'"
+
+        close = rest.index(quote, 1)
+        return "" if close.nil?
+
+        rest[1, close - 1]
       end
 
       # What gen says, after "<path>:<line>: ", of an add_index with a
