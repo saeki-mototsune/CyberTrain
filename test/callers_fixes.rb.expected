@@ -1,0 +1,5 @@
+ok   rescue_from of a DB::Error subclass wins over Cybertrain::DB::Error declared before it
+ok   rescue_from of a DB::Error subclass declared first still wins
+ok   an inherited exact rescue_from wins over the subclass's Cybertrain::DB::Error
+ok   DATABASE_URL is read without surrounding white space
+4 tests, 9 assertions, 0 failures
