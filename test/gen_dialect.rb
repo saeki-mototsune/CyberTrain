@@ -96,6 +96,30 @@ test "detect skips the subsystem requires before the entry" do
   assert_equal "mysql", Cybertrain::Gen::Dialect.detect(app_with_bin("require \"cybertrain/streams\"\nrequire \"cybertrain/mysql\"\n"))
 end
 
+test "an entry line inside a heredoc, an =begin block or after __END__ is text, not a require" do
+  help = "HELP = <<~TEXT\n  require \"cybertrain/mysql\"\nTEXT\nrequire \"cybertrain/core\"\n"
+  assert_equal "sqlite", Cybertrain::Gen::Dialect.in_source(help)
+  assert_equal "sqlite", Cybertrain::Gen::Dialect.in_source("=begin\nrequire \"cybertrain/mysql\"\n=end\nrequire \"cybertrain\"\n")
+  assert_equal "sqlite", Cybertrain::Gen::Dialect.in_source("require \"cybertrain\"\n__END__\nrequire \"cybertrain/mysql\"\n")
+  assert_equal "mysql", Cybertrain::Gen::Dialect.in_source("X = <<~TEXT\n  require \"cybertrain\"\nTEXT\nrequire \"cybertrain/mysql\"\n")
+  assert_equal [4], Cybertrain::Gen::Dialect.entry_lines(help)
+  # A quoted or dash ID, two heredocs on one line, and `<<` that opens none.
+  two = "puts(<<-'A', <<B)\n  require \"cybertrain/mysql\"\n  A\nrequire \"cybertrain/mysql\"\nB\nx = [] << \"y\"\nrequire \"cybertrain\"\n"
+  assert_equal [7], Cybertrain::Gen::Dialect.entry_lines(two)
+  assert_equal [1, 2], Cybertrain::Gen::Dialect.entry_lines("require \"cybertrain/mysql\" # <<~X\nrequire \"cybertrain\"\n")
+end
+
+test "an entry of each adapter is refused, naming both lines; gen writes nothing" do
+  both = "require \"cybertrain/core\"\nrequire \"cybertrain/jobs\"\nrequire \"cybertrain/mysql\"\n"
+  assert_equal "bin/shop.rb:1: requires both a SQLite entry (line 1) and a MySQL one (line 3); keep one of them, the first line of the file",
+               Cybertrain::Gen::Dialect.entry_conflict(both, "bin/shop.rb")
+  assert_equal "", Cybertrain::Gen::Dialect.entry_conflict("require \"cybertrain/mysql\"\nrequire \"cybertrain/jobs\"\n", "bin/shop.rb")
+  assert_equal "", Cybertrain::Gen::Dialect.entry_conflict("require \"cybertrain\"\n", "bin/shop.rb")
+  root = app_with_bin(both)
+  assert_equal 1, Cybertrain::Gen::Runner.run(root, [])
+  refute File.exist?("#{root}/gen")
+end
+
 test "detect is SQLite when bin/NAME.rb names no MySQL entry" do
   assert_equal "sqlite", Cybertrain::Gen::Dialect.detect(app_with_bin("puts 1\n"))
   assert_equal "sqlite", Cybertrain::Gen::Dialect.detect(app_with_bin("require \"cybertrain/foo\"\n"))
@@ -235,6 +259,22 @@ test "partial_index_lines finds the add_index calls with a where:, across lines"
   assert_equal [4], Cybertrain::Gen::Dialect.partial_index_lines(PARTIAL_MIGRATION)
   assert_equal [2], Cybertrain::Gen::Dialect.partial_index_lines("x = 1\n  s.add_index \"t\", [\"a\"], name: \"i\", where: \"a > 0\"\n")
   assert_equal Array.new(0) { 0 }, Cybertrain::Gen::Dialect.partial_index_lines("add_index \"t\", [\"a\"], name: \"somewhere: x\"\n")
+end
+
+test "partial_index_lines reads the call, not the text of its strings; where: nil is no condition" do
+  none = Array.new(0) { 0 }
+  # A string that holds "where:" or "add_index" is no partial index.
+  assert_equal none, Cybertrain::Gen::Dialect.partial_index_lines("add_index :users, :email, name: \"where: idx\"\n")
+  assert_equal none, Cybertrain::Gen::Dialect.partial_index_lines("say \"add_index later, where: x\"\n")
+  # The DSL makes `where: nil` no partial index (where.to_s is "").
+  assert_equal none, Cybertrain::Gen::Dialect.partial_index_lines("add_index :users, :email, where: nil\n")
+  # The forms it missed: a hash rocket, a continuation by \ or by a
+  # leading comma, a double-splatted hash literal over two lines.
+  assert_equal [1], Cybertrain::Gen::Dialect.partial_index_lines("add_index :t, :c, :where => \"x\"\n")
+  assert_equal [1], Cybertrain::Gen::Dialect.partial_index_lines("add_index :t, :c \\\n  , where: \"x\"\n")
+  assert_equal [1], Cybertrain::Gen::Dialect.partial_index_lines("add_index :t, :c\n  , where: \"x\"\n")
+  assert_equal [1], Cybertrain::Gen::Dialect.partial_index_lines("add_index :t, :c, **{\n  where: \"x\" }\n")
+  assert_equal [2], Cybertrain::Gen::Dialect.partial_index_lines("x = 1\nadd_index :t, :c, where: \"x\"\n")
 end
 
 test "gen on a MySQL app stops at a partial index, writing nothing; on SQLite it goes on" do

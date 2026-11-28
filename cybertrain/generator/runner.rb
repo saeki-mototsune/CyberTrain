@@ -67,7 +67,13 @@ module Cybertrain
           return 1
         end
         # The adapter the app is built with (bin/NAME.rb's entry require;
-        # SQLite without a MySQL one).
+        # SQLite without a MySQL one). Both a SQLite and a MySQL entry:
+        # refused, nothing written.
+        conflict = Dialect.entry_conflict_of(root)
+        unless conflict.empty?
+          puts conflict
+          return 1
+        end
         dialect = Dialect.of(root)
         # MySQL has no partial index: an add_index with where: stops gen,
         # nothing written, before `db migrate` would run it.

@@ -124,12 +124,97 @@ skip config/deploy.yml (MySQL: the worker role stays commented; jobs in several 
 insert config/deploy.yml (the worker role, uncommented)
 ok   generate job and generate authentication leave a MySQL app's worker role commented
 ok   AGENTS.md says the application is on MySQL and requires cybertrain/mysql
+ok   README.md names DATABASE_URL and the cybertrain/mysql line, not SQLite's require lines
 ok   .kamal/secrets reads DATABASE_URL from the environment
 ok   the CI workflow runs the tests against a MySQL service
 ok   every other file is SQLite's
 identical bin/shop.rb (require "cybertrain/mysql" loads cybertrain/jobs)
 identical bin/db.rb (require "cybertrain/mysql" loads cybertrain/jobs)
 ok   a subsystem's require is not added: cybertrain/mysql loads them all
+ok   the runtime image has the CA store MySQL's TLS checks against, and no SQLite
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create AGENTS.md
+create CLAUDE.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/store.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+create db/migrate/20261128102138_create_users.rb
+create db/migrate/20261128102139_create_sessions.rb
+create app/models/user.rb
+create app/models/session.rb
+create app/controllers/concerns/authentication.rb
+create app/controllers/sessions_controller.rb
+create app/controllers/setup_controller.rb
+create app/controllers/passwords_controller.rb
+create app/controllers/confirmations_controller.rb
+create app/controllers/accounts_controller.rb
+create app/mailers/passwords_mailer.rb
+create app/mailers/confirmations_mailer.rb
+create app/commands/user_command.rb
+create app/views/sessions/new.html.erb
+create app/views/sessions/_nav.html.erb
+create app/views/setup/new.html.erb
+create app/views/passwords/new.html.erb
+create app/views/passwords/edit.html.erb
+create app/views/mail/_password_reset.html.erb
+create app/views/confirmations/new.html.erb
+create app/views/mail/_confirmation.html.erb
+create app/views/accounts/edit.html.erb
+create test/fixtures/users.yml
+create test/support/session_test_helper.rb
+create test/models/user_test.rb
+create test/controllers/sessions_controller_test.rb
+create test/integration/first_run_test.rb
+create test/controllers/passwords_controller_test.rb
+create test/controllers/accounts_controller_test.rb
+create test/controllers/confirmations_controller_test.rb
+create test/integration/remember_me_test.rb
+create test/integration/lockout_test.rb
+create test/integration/admin_test.rb
+insert app/controllers/application_controller.rb (include Authentication)
+route resource :session, resources :passwords, resources :confirmations, resource :account, get/post /setup
+route jobs_page "/admin/jobs", before_action: :require_admin, skip_before_action: :require_authentication
+insert app/views/layouts/application.html.erb (<%= render "sessions/nav" %>)
+insert test/test_helper.rb (include SessionTestHelper)
+insert bin/store.rb (./store user, the first-run warning)
+insert config/app.rb (STORE_BASE_URL)
+insert config/app.rb (STORE_SETUP_OPEN)
+identical bin/store.rb (require "cybertrain/mysql" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+identical bin/db.rb (require "cybertrain/mysql" loads cybertrain/jobs, cybertrain/mailer, cybertrain/mailer/later, cybertrain/rate_limit)
+skip config/deploy.yml (MySQL: the worker role stays commented; jobs in several processes are not guaranteed until step 2, see the configuration guide, "MySQL")
+ok   generate authentication --confirmable on MySQL: the duplicate by class, the race trigger, the first-run lock
 create spin.toml
 create .gitignore
 create .env.example
@@ -248,4 +333,96 @@ ok   CLI new --database=mysql and --database mysql
 error: --database must be sqlite or mysql, got "postgresql"
 error: --database needs a value
 ok   CLI new refuses another --database, writing nothing
-16 tests, 72 assertions, 0 failures
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create AGENTS.md
+create CLAUDE.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/quoted.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+identical bin/quoted.rb (require "cybertrain/mysql" loads cybertrain/jobs)
+identical bin/db.rb (require "cybertrain/mysql" loads cybertrain/jobs)
+identical bin/quoted.rb (require "cybertrain/mysql" loads cybertrain/jobs)
+insert bin/db.rb (require "cybertrain/jobs")
+ok   the entry in single quotes is the entry for add_require too, as it is for gen
+ok   an attachment's backup note names the MySQL database, not a SQLite file
+ok   new's next steps on MySQL export DATABASE_URL and create the database first
+error: --database given more than once
+error: --database given more than once
+error: --database given more than once
+error: new has no option --databse=mysql (--path, --version, --git, --ref, --database, --skip-spin)
+error: new has no option --db=mysql (--path, --version, --git, --ref, --database, --skip-spin)
+error: new has no option -d (--path, --version, --git, --ref, --database, --skip-spin)
+error: new has no option -database=mysql (--path, --version, --git, --ref, --database, --skip-spin)
+error: new has no option --path=.. (--path, --version, --git, --ref, --database, --skip-spin)
+create spin.toml
+create .gitignore
+create .env.example
+create README.md
+create AGENTS.md
+create CLAUDE.md
+create config/app.rb
+create config/routes.rb
+create config/locales/en.yml
+create db/schema.rb
+create db/migrate/.keep
+create app/controllers/application_controller.rb
+create app/models/.keep
+create app/helpers/.keep
+create app/jobs/.keep
+create app/assets/stylesheets/application.css
+create app/assets/images/.keep
+create app/javascript/application.js
+create config/importmap.rb
+create app/views/layouts/application.html.erb
+create public/404.html
+create public/500.html
+create public/up.html
+create bin/dashed.rb
+create bin/gen.rb
+create bin/db.rb
+create Dockerfile
+create .dockerignore
+create config/deploy.yml
+create .kamal/secrets
+create .github/workflows/ci.yml
+create gen/.keep
+create storage/.keep
+create tmp/.keep
+create test/test_helper.rb
+create test/integration/health_test.rb
+create test/fixtures/.keep
+create test/support/.keep
+ok   CLI new refuses a second --database and an option it does not have, writing nothing
+23 tests, 114 assertions, 0 failures

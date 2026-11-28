@@ -30,7 +30,7 @@ module Cybertrain
           ["spin.toml", Templates.spin_toml(package, framework_dep)],
           [".gitignore", Templates.gitignore],
           [".env.example", Templates.env_example(package, database)],
-          ["README.md", Templates.readme(title, package)],
+          ["README.md", Templates.readme(title, package, database)],
           ["AGENTS.md", Templates.agents_md(title, package, database)],
           ["CLAUDE.md", Templates.claude_md],
           ["config/app.rb", Templates.config_app(package, database)],

@@ -87,10 +87,13 @@ module Cybertrain
           next unless File.exist?(path)
 
           lines = File.read(path).split("\n", -1)
-          stripped = Array.new(0) { "" }
-          lines.each { |line| stripped << line.strip }
+          # What each line requires, read as Gen::Dialect reads the entry
+          # (either quote, with or without parentheses), so a line gen takes
+          # for the entry is taken for it here too.
+          specs = Array.new(0) { "" }
+          lines.each { |line| specs << Gen::Dialect.required_spec(line.strip) }
           everything = ""
-          EVERYTHING_REQUIRES.each { |line| everything = line if everything.empty? && stripped.include?(line) }
+          EVERYTHING_REQUIRES.each { |line| everything = line if everything.empty? && specs.include?(Gen::Dialect.required_spec(line)) }
           unless everything.empty?
             puts "identical #{rel} (#{everything} loads #{features.join(", ")})"
             next
@@ -102,9 +105,9 @@ module Cybertrain
           while i < features.size
             line = "require \"#{features[i]}\""
             wanted << line
-            unless stripped.include?(line)
+            unless specs.include?(features[i])
               lines = insert_require(lines, line).split("\n", -1)
-              stripped << line
+              specs << features[i]
               added << line
             end
             i += 1
@@ -120,13 +123,14 @@ module Cybertrain
       end
 
       # The file's `lines` (split on newlines) with `line` after the last
-      # one that starts with `require "cybertrain`, or first when none does.
+      # one that requires a "cybertrain..." file (in either quote:
+      # Gen::Dialect.required_spec), or first when none does.
       # @return [String]
       def self.insert_require(lines, line)
         last = -1
         i = 0
         while i < lines.size
-          last = i if lines[i].start_with?("require \"cybertrain")
+          last = i if Gen::Dialect.required_spec(lines[i]).start_with?("cybertrain")
           i += 1
         end
         out = Array.new(0) { "" }
@@ -188,19 +192,26 @@ module Cybertrain
 
       # The secrets the application reads from its environment, commented:
       # a template to copy from, committed, so it never holds a value.
-      # database "mysql" adds DATABASE_URL, the development database
-      # (NAME_development on a local server), after SQLite's lines.
+      # database "mysql" adds DATABASE_URL after SQLite's lines, commented
+      # like them: the development database (NAME_development on a local
+      # server, without TLS, which a stock local MySQL presents with a
+      # self-signed certificate) and the one `cybertrain test` empties
+      # (its name must end in _test).
       def self.env_example(package = "", database = "sqlite")
         return sqlite_env_example unless database == "mysql"
 
         sqlite_env_example + <<~TEXT
 
           # The MySQL database (config/app.rb): mysql://USER:PASSWORD@HOST:3306/NAME.
-          # The connection uses TLS and checks the server's certificate; add
-          # ?ssl_mode=disabled for a local server without TLS. Production's
-          # holds a password: set it in the environment or your deploy's
-          # secrets, never here.
-          DATABASE_URL=mysql://root@127.0.0.1:3306/#{package}_development
+          # The connection uses TLS and checks the server's certificate;
+          # ?ssl_mode=disabled turns TLS off, for a server on localhost or a
+          # private address only (a local MySQL's certificate is self-signed).
+          # Production's holds a password: set it in the environment or your
+          # deploy's secrets, never here. `cybertrain db create` creates NAME.
+          # DATABASE_URL=mysql://root@127.0.0.1:3306/#{package}_development?ssl_mode=disabled
+          # `cybertrain test` empties and migrates the database DATABASE_URL
+          # names, and refuses one whose name does not end in _test:
+          # DATABASE_URL=mysql://root@127.0.0.1:3306/#{package}_test?ssl_mode=disabled
         TEXT
       end
 
@@ -260,7 +271,49 @@ module Cybertrain
         TEXT
       end
 
-      def self.readme(title, package)
+      # database "mysql": the first steps export DATABASE_URL and create the
+      # database, and the paragraphs on the require lines, deploying and
+      # the tests say what a cybertrain/mysql application needs.
+      def self.readme(title, package, database = "sqlite")
+        text = sqlite_readme(title, package)
+        return text unless database == "mysql"
+
+        swapped(text, "README.md", [
+                  ["cybertrain db migrate  # gen, apply db/migrate, gen again\n",
+                   "export DATABASE_URL='mysql://root@127.0.0.1:3306/#{package}_development?ssl_mode=disabled'  # .env.example\n" \
+                   "cybertrain db create   # the database DATABASE_URL names\n" \
+                   "cybertrain db migrate  # gen, apply db/migrate, gen again\n"],
+                  ["`bin/#{package}.rb` and `bin/db.rb` require `cybertrain/core`, the\n" \
+                   "framework without its optional subsystems, plus a line for each\n" \
+                   "one the application uses: `cybertrain generate job` adds\n" \
+                   "`require \"cybertrain/jobs\"`, `generate authentication` the jobs,\n" \
+                   "mailer, `mailer/later` and `rate_limit` lines. Add\n" \
+                   "`cybertrain/streams`, `cybertrain/feeds`, `cybertrain/mailer` or\n" \
+                   "`cybertrain/cache` yourself, or `require \"cybertrain\"` for everything; `spin run gen`\n" \
+                   "names the line a view's helper needs.\n",
+                   "`bin/#{package}.rb` and `bin/db.rb` require `cybertrain/mysql`: the\n" \
+                   "whole framework with the MySQL adapter and every subsystem (jobs,\n" \
+                   "streams, feeds, mailer, cache, rate_limit), so the generators add no\n" \
+                   "require line. Keep it the first line of both files: it is how the\n" \
+                   "application is built for MySQL. The database is the one DATABASE_URL\n" \
+                   "names (`config/app.rb`, `.env.example`).\n"],
+                  ["(production by default;\n" \
+                   "set CYBERTRAIN_SECRET_KEY_BASE).\n",
+                   "(production by default;\n" \
+                   "set CYBERTRAIN_SECRET_KEY_BASE and DATABASE_URL, the production database's).\n"],
+                  ["KAMAL_REGISTRY_PASSWORD and CYBERTRAIN_SECRET_KEY_BASE (read by\n" \
+                   "`.kamal/secrets`)",
+                   "KAMAL_REGISTRY_PASSWORD, CYBERTRAIN_SECRET_KEY_BASE and DATABASE_URL\n" \
+                   "(read by `.kamal/secrets`)"],
+                  ["`cybertrain test -n /title/` the tests whose names match.\n",
+                   "`cybertrain test -n /title/` the tests whose names match. It runs\n" \
+                   "against the database DATABASE_URL names, which it empties and\n" \
+                   "migrates first, so it refuses one whose name does not end in `_test`\n" \
+                   "(`.env.example` has the line).\n"]
+                ])
+      end
+
+      def self.sqlite_readme(title, package)
         <<~MARKDOWN
           # #{title}
 
@@ -347,7 +400,16 @@ module Cybertrain
                    "whole framework with the MySQL adapter, every subsystem (jobs,\n" \
                    "streams, feeds, mailer, cache, rate_limit) and the Sentry sender, so\n" \
                    "no feature needs a line of its own. Keep that line first in both\n" \
-                   "files: it is how the application is built for MySQL.\n"]
+                   "files: it is how the application is built for MySQL.\n"],
+                  ["  # gen/ is current and every view helper has its require line\n",
+                   "  # gen/ is current\n"],
+                  ["- `bin/#{package}.rb`: the program. Subsystem `require` lines,\n" \
+                   "  operational commands (`Cybertrain::Main.command`), job handlers.\n" \
+                   "  `bin/db.rb` must require the same subsystems.\n",
+                   "- `bin/#{package}.rb`: the program. Its first line, `require\n" \
+                   "  \"cybertrain/mysql\"`, operational commands\n" \
+                   "  (`Cybertrain::Main.command`), job handlers. `bin/db.rb` starts\n" \
+                   "  with the same line.\n"]
                 ])
       end
 
@@ -621,7 +683,12 @@ module Cybertrain
         return sqlite_config_app unless database == "mysql"
 
         first = "# Application settings; see Cybertrain::Config for every option.\n"
-        text = sqlite_config_app
+        # CYBERTRAIN_DATABASE names the SQLite file: this application reads
+        # DATABASE_URL instead.
+        text = swapped(sqlite_config_app, "config/app.rb", [
+                         ["# Environment variables (PORT, CYBERTRAIN_ENV, CYBERTRAIN_DATABASE,\n",
+                          "# Environment variables (PORT, CYBERTRAIN_ENV, DATABASE_URL,\n"]
+                       ])
         first + <<~RUBY + text[first.size, text.size - first.size]
           #
           # The database is MySQL (bin/#{package}.rb requires cybertrain/mysql): the one
@@ -858,7 +925,17 @@ module Cybertrain
         RUBY
       end
 
+      # database "mysql": the example command's SQL is MySQL's.
       def self.bin_app(package, database = "sqlite")
+        text = sqlite_bin_app(package, database)
+        return text unless database == "mysql"
+
+        swapped(text, "bin/#{package}.rb", [
+                  ["created_at < date('now', '-30 days')", "created_at < NOW() - INTERVAL 30 DAY"]
+                ])
+      end
+
+      def self.sqlite_bin_app(package, database)
         bin_app_head(database) + <<~RUBY
           require_relative "../gen/views"      # embedded build: sets CYBERTRAIN_ENV=production by default
           require_relative "../config/app"     # so it comes before the config
@@ -922,7 +999,9 @@ module Cybertrain
       # framework spin.lock fixes.
 
       # database "mysql": the run example passes DATABASE_URL, and storage/
-      # holds the uploads only (the database is the MySQL server's).
+      # holds the uploads only (the database is the MySQL server's); the
+      # runtime stage installs the CA store TLS to MySQL verifies against,
+      # and not SQLite's library.
       def self.dockerfile(package, database = "sqlite")
         text = sqlite_dockerfile(package)
         return text unless database == "mysql"
@@ -935,7 +1014,19 @@ module Cybertrain
                    "# a volume there so it outlives the container.\n",
                    "# The database is the MySQL server DATABASE_URL names; storage/ holds the\n" \
                    "# uploaded files (storage/uploads/): mount a volume there so they outlive\n" \
-                   "# the container.\n"]
+                   "# the container.\n"],
+                  ["# install from asking for a region.\n" \
+                   "RUN apt-get update -qq && \\\n" \
+                   "    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \\\n" \
+                   "      libsqlite3-0 zlib1g libjemalloc2 libssl3t64 tzdata && \\\n",
+                   "# install from asking for a region. ca-certificates: the connection to\n" \
+                   "# MySQL checks the server's certificate against this store by default\n" \
+                   "# (DATABASE_URL without ?ssl_mode=disabled); a server whose certificate a\n" \
+                   "# private CA signed needs that CA's file, named by SSL_CERT_FILE. No\n" \
+                   "# SQLite library: a cybertrain/mysql binary does not link it.\n" \
+                   "RUN apt-get update -qq && \\\n" \
+                   "    DEBIAN_FRONTEND=noninteractive apt-get install --no-install-recommends -y \\\n" \
+                   "      ca-certificates zlib1g libjemalloc2 libssl3t64 tzdata && \\\n"]
                 ])
       end
 
@@ -1129,7 +1220,10 @@ module Cybertrain
       # enable_worker_role leaves it so.
       def self.mysql_worker_role(package)
         text = worker_role(package, false)
-        at = text.index("  # worker:").to_i
+        at = text.index("  # worker:")
+        # Loud, as swapped is: from 0 the SQLite comment block would stay.
+        raise ArgumentError, "config/deploy.yml: the MySQL edit finds no \"  # worker:\"" if at.nil?
+
         lines = [
           "# Jobs and scheduled tasks without HTTP, in a process of their own.",
           "# On MySQL keep it commented for now: jobs, streams and leases in",
