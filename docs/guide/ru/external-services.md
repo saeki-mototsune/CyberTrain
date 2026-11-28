@@ -1,5 +1,5 @@
 ---
-source_sha256: 6e4f1fb3feea6c05454ba214e8d64b5662955142a0167ff12c120a2e654c9ca7
+source_sha256: 8066abf447d8825790ac1adde236f582ca0e2b936c010a9e0ad9ae22e7b35d66
 ---
 # Исходящий HTTP, потоки WebSocket и электронная почта
 
@@ -473,19 +473,19 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   NUL (внедрение заголовков) или длиннее 998 байт, тело, которое не является
   допустимым UTF-8 или содержит NUL, больше 100 получателей. `to:` принимает
   один адрес или несколько, разделённых запятыми.
-- **Мейлеры:** модуль в `app/mailers` (gen их загружает), метод которого
-  возвращает `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`,
-  читается как в Rails: `PasswordsMailer.reset(user, url).deliver_later`
+- **Мейлеры:** класс мейлера в `app/mailers` ([Классы мейлеров](#mailer-classes),
+  ниже) или модуль, метод которого возвращает
+  `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`: оба
+  читаются как в Rails, `PasswordsMailer.reset(user, url).deliver_later`
   ставит письмо в очередь, `deliver_now` отправляет сразу. `cybertrain/mailer`
   загружает `MailMessage` с `deliver_now`; `deliver_later` приходит с
   `cybertrain/mailer/later`. `cybertrain generate authentication` пишет два
-  таких ([Сброс пароля](authentication.md#password-reset)) и добавляет обе
+  модуля ([Сброс пароля](authentication.md#password-reset)) и добавляет обе
   строки.
-- **Пока нет:** вложений и встроенных изображений, классов мейлеров с
-  `default from:` и представлениями, найденными по имени, отображаемых имён,
-  заголовков `Cc`/`Bcc` (вместо этого отправляйте нескольким получателям),
-  AUTH LOGIN/CRAM-MD5, адресов SMTPUTF8, конвейеризации. `deliver`
-  выполняется в вызывающем потоке — зелёном потоке, как запрос.
+- **Пока нет:** отображаемых имён, заголовков `Cc`/`Bcc`/`Reply-To` (вместо
+  этого отправляйте нескольким получателям), AUTH LOGIN/CRAM-MD5, адресов
+  SMTPUTF8, конвейеризации. `deliver` выполняется в вызывающем потоке —
+  зелёном потоке, как запрос.
 
 ### HTML-письма
 
@@ -546,4 +546,119 @@ Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text,
   запускает свои потоки задач, даже в приложении без собственного класса
   задачи.
 
-Проектное решение: [docs/design.md](../design.md) D27 и D57.
+### Классы мейлеров
+
+Мейлер пишется как в Rails: класс в `app/mailers`, чьи публичные методы —
+его действия, каждое заканчивается вызовом `mail`, и по одному представлению
+на действие в `app/views/<mailer>/`. `cybertrain generate mailer user welcome`
+пишет такой класс с его представлениями и тестом, а также `ApplicationMailer`
+и макеты мейлеров, если их нет, и добавляет `require "cybertrain/mailer"` и
+`require "cybertrain/mailer/later"` в `bin/<app>.rb` и `bin/db.rb`:
+
+```ruby
+# app/mailers/application_mailer.rb
+class ApplicationMailer < Cybertrain::Mailer::Base
+  default from: "notifications@example.com"
+  layout "mailer"
+end
+
+# app/mailers/user_mailer.rb
+class UserMailer < ApplicationMailer
+  def welcome(user)
+    @user = user
+    @url = "https://example.com/login"
+    mail(to: user.email_address, subject: "Welcome to My Site")
+  end
+
+  def digest
+    @user = params[:user]
+    return if @user.unsubscribed   # письма нет: его доставка ничего не отправляет
+
+    mail(to: @user.email_address)
+  end
+end
+
+UserMailer.welcome(user).deliver_later
+UserMailer.with(user: user).digest.deliver_later(wait: 1.hour)
+UserMailer.welcome(user).deliver_now
+```
+
+- **Представления.** `mail` отрисовывает `app/views/user_mailer/welcome.html.erb`
+  и `welcome.text.erb` с переменными экземпляра действия: если есть оба,
+  получается сообщение `multipart/alternative`, если одно — только эта часть,
+  если ни одного — возбуждается `Cybertrain::Template::MissingTemplate`.
+  Каждое оборачивается в макет класса (`layout "mailer"`:
+  `app/views/layouts/mailer.html.erb` и `mailer.text.erb`, каждый, если он
+  есть; `layout false` — без макета). Представление и макет `.text.erb`
+  выводят `<%= %>` без экранирования, как Rails обращается с text/plain;
+  HTML-варианты экранируют. Представления отрисовываются вне запроса:
+  помощники путей работают, помощники `*_url` и `request` — нет, поэтому
+  стройте ссылки из настройки (сгенерированный `PasswordsMailer` принимает
+  URL аргументом). `t(".greeting")` в представлении читает
+  `user_mailer.welcome.greeting`.
+- **`mail(to:, subject:, from:, body:, template_name:, template_path:)`.**
+  Пропущенная тема берётся из словаря, `user_mailer.welcome.subject`, иначе
+  это имя действия в человекочитаемом виде ("Welcome"). Пропущенный
+  отправитель — это `default from:` класса (одна строка, наследуется), иначе
+  `CYBERTRAIN_SMTP_FROM`. `body:` задаёт текст и не читает никакого
+  представления.
+- **Сообщение строится при вызове действия.** `UserMailer.welcome(user)`
+  сразу выполняет действие и отрисовывает его и возвращает
+  `Cybertrain::MailMessage` (`mail_to`, `mail_subject`, `mail_body`,
+  `mail_html`, `mail_from`, `mail_attachments`); `deliver_later` ставит в
+  очередь это готовое сообщение, так что задаче не нужны ни записи, ни
+  представление. Rails вместо этого рендерит в задаче, по аргументам,
+  которые сериализует. Действие, вернувшееся до `mail`, возвращает
+  сообщение, которое `deliver_now` и `deliver_later` не отправляют
+  (`mail_skipped?`).
+- **`with(params)`** передаёт действию `params` (Hash с ключами-Symbol:
+  `params[:user]`). Параметры действия — именованные, с значениями по
+  умолчанию и ключевые (`def welcome(user, greeting = "Hi", copy: false)`);
+  `*`, `**` и `&` отвергаются, поскольку gen пишет методы класса, которые
+  передают их дальше.
+- **Что делает gen.** В Spinel нет `method_missing`, поэтому `spin run gen`
+  читает `app/mailers` как текст и пишет `gen/mailers.rb`: для каждого класса
+  методы класса `UserMailer.welcome(...)` и `UserMailer.with(...)`,
+  каталог представлений, макет, отправителя и переменные экземпляра, которые
+  читают представления. Действие не может называться так же, как метод
+  `Cybertrain::Mailer::Base` (`mail`, `params`, `attachments`, ...; gen
+  скажет, какой именно). Модуль мейлера, такой как сгенерированный
+  `PasswordsMailer`, загружается как раньше.
+
+### Вложения
+
+```ruby
+def invoice(order)
+  attachments["invoice.pdf"] = File.binread("storage/invoices/#{order.id}.pdf")
+  attachments.attach("event.ics", ics_text, mime_type: "text/calendar")
+  attachments.inline["logo.png"] = File.binread("app/assets/images/logo.png")
+  @logo = attachments["logo.png"].url   # "cid:logo.png", для <img src="<%= @logo %>">
+  mail(to: order.email, subject: "Your invoice")
+end
+```
+
+- Сообщение с вложениями имеет тип `multipart/mixed`: сначала текст (или
+  `multipart/alternative` из текста и HTML), затем каждый файл в base64 с
+  его `Content-Type` (по расширению: `pdf`, `png`, `jpg`, `csv`, `zip`,
+  `ics`, ... и `application/octet-stream` для любого другого;
+  `attach(..., mime_type:)` задаёт другой) и `Content-Disposition: attachment`
+  с его именем (в кодировке RFC 2231, когда имя не простой ASCII). Файл с
+  тем же именем заменяет первый.
+- Встроенный файл вместе с HTML-частью попадает в `multipart/related` с
+  `Content-ID: <logo.png>`; HTML показывает его как `cid:logo.png`. Его имя
+  и есть его Content-ID, поэтому оно может содержать только буквы, цифры и
+  `._-+`.
+- Имя файла отвергается (`ArgumentError`), когда оно пусто, длиннее 255
+  байт, не в UTF-8 или содержит управляющий символ, `/` или `\`.
+- `deliver_later` хранит файлы в полезной нагрузке задачи в кодировке
+  base64, так что они лежат в базе данных, пока задача не выполнится (и
+  столько, сколько хранится завершённая строка), а ограничение размера
+  сервера отправки действует, как для любого письма.
+- `Mailer.deliver_message(message)` отправляет `MailMessage`, собранное
+  вручную с `attachments:` (Array из `Cybertrain::Mailer::Attachment`).
+
+Тесты читают файлы письма из `Mailer.deliveries` (`mail_attachments`) и
+считают письма в очереди через `assert_enqueued_emails`
+([Тестирование почты](testing.md#testing-mail)).
+
+Проектное решение: [docs/design.md](../design.md) D27, D57 и D98.

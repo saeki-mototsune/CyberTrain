@@ -16,6 +16,7 @@ require "cybertrain/feeds"
 require "cybertrain/streams"
 require "cybertrain/mailer"
 require "cybertrain/mailer/later"
+require "cybertrain/mailer/base"
 require "cybertrain/cache"
 require "cybertrain/rate_limit"
 # The Sentry sender: CYBERTRAIN_SENTRY_DSN sends each error report to

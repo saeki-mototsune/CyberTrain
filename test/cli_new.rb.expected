@@ -499,6 +499,13 @@ Usage:
       in seconds or polynomially_longer, then the attempts) and a test
       running it. Queue it with NameJob.perform_later("id" => 1) once
       `spin run gen` has written gen/jobs.rb.
+  cybertrain generate mailer NAME [action ...] [--force]
+      Add a mailer class: app/mailers/NAME_mailer.rb (an
+      ApplicationMailer with one action per name), its views
+      (ACTION.html.erb and ACTION.text.erb) and a test, and the
+      application mailer and mailer layouts when they are missing.
+      Send with NameMailer.action.deliver_later once `spin run gen`
+      has written gen/mailers.rb.
   cybertrain db migrate
       Generate, apply pending migrations (build/bin/db migrate,
       built like gen), generate again.
@@ -624,6 +631,13 @@ Usage:
       in seconds or polynomially_longer, then the attempts) and a test
       running it. Queue it with NameJob.perform_later("id" => 1) once
       `spin run gen` has written gen/jobs.rb.
+  cybertrain generate mailer NAME [action ...] [--force]
+      Add a mailer class: app/mailers/NAME_mailer.rb (an
+      ApplicationMailer with one action per name), its views
+      (ACTION.html.erb and ACTION.text.erb) and a test, and the
+      application mailer and mailer layouts when they are missing.
+      Send with NameMailer.action.deliver_later once `spin run gen`
+      has written gen/mailers.rb.
   cybertrain db migrate
       Generate, apply pending migrations (build/bin/db migrate,
       built like gen), generate again.
@@ -748,6 +762,13 @@ Usage:
       in seconds or polynomially_longer, then the attempts) and a test
       running it. Queue it with NameJob.perform_later("id" => 1) once
       `spin run gen` has written gen/jobs.rb.
+  cybertrain generate mailer NAME [action ...] [--force]
+      Add a mailer class: app/mailers/NAME_mailer.rb (an
+      ApplicationMailer with one action per name), its views
+      (ACTION.html.erb and ACTION.text.erb) and a test, and the
+      application mailer and mailer layouts when they are missing.
+      Send with NameMailer.action.deliver_later once `spin run gen`
+      has written gen/mailers.rb.
   cybertrain db migrate
       Generate, apply pending migrations (build/bin/db migrate,
       built like gen), generate again.

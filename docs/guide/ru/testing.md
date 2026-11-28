@@ -1,5 +1,5 @@
 ---
-source_sha256: 6e23ce19069d28de5d3a3a07a86ec79bf0b74c537bf284d5e8df84fcbb180b83
+source_sha256: bc6663adeff171731ac0c5fc3fc0b4e6fd69efdaec1fda2c06bf4dc0aed1d39f
 ---
 # Тестирование приложения
 
@@ -562,7 +562,40 @@ end
 поставленное в очередь в блоке через `deliver_later`, сначала отправляется,
 а упавшая почтовая задача валит проверку со своей ошибкой.
 `assert_no_emails { }` требует, чтобы писем не было. Читатели сообщения —
-`mail_to`, `mail_from`, `mail_subject`, `mail_body` и `mail_html`. Тест
+`mail_to`, `mail_from`, `mail_subject`, `mail_body`, `mail_html` и
+`mail_attachments` (у каждого файла `attachment_filename`,
+`attachment_mime_type` и `attachment_content`).
+
+Действие [класса мейлера](external-services.md#mailer-classes) возвращает
+отрисованное сообщение, поэтому тест мейлера читает его, ничего не отправляя,
+в `ActionMailer::TestCase` (его пишет `cybertrain generate mailer`):
+
+```ruby test/mailers/user_mailer_test.rb
+require "test_helper"
+
+class UserMailerTest < ActionMailer::TestCase
+  test "welcome" do
+    mail = UserMailer.welcome(users(:one))
+    assert_equal "Welcome to My Site", mail.mail_subject
+    assert_equal users(:one).email_address, mail.mail_to
+    assert_match "Welcome", mail.mail_body
+  end
+
+  test "the digest is queued" do
+    assert_enqueued_emails 1 do
+      UserMailer.with(user: users(:one)).digest.deliver_later
+    end
+    assert_enqueued_email_with UserMailer, :digest, to: users(:one).email_address
+  end
+end
+```
+
+`assert_enqueued_emails(count) { }` считает письма, поставленные блоком в
+очередь через `deliver_later`, и не доставляет ни одного;
+`assert_no_enqueued_emails { }` требует, чтобы их не было;
+`assert_enqueued_email_with(mailer, action, to:)` требует письма в очереди,
+построенного этим действием. Сообщение отрисовано при постановке в очередь,
+поэтому `args:` и `params:` из Rails не сравниваются, а `to:` сравнивается. Тест
 самого пути SMTP задаёт `Cybertrain.config.mail_delivery_method = :smtp` и
 возвращает `:test` в `teardown` (настройка не сбрасывается между тестами),
 как в разделе [Тестирование исходящих вызовов](#testing-outbound-calls).

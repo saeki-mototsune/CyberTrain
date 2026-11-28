@@ -1,5 +1,5 @@
 ---
-source_sha256: 62e9c689219c4db26ce385321689566020292b1006b3883b3c811e280c7de675
+source_sha256: cf1537dadb7e4793a3711c9c9304361844186be00b34e509c948a963e106c132
 ---
 # インストール
 
@@ -49,6 +49,7 @@ cybertrain doctor
 - `cybertrain generate helper NAME [--force]` は `app/helpers/NAME_helper.rb` とテストを追加します。このモジュールのメソッドは、`spin run gen` を実行すればどのテンプレートからも呼べます（[アプリケーションのヘルパー](template-language.md#application-helpers)）。
 - `cybertrain generate component NAME [attr[:type] ...] [--force]` はビューコンポーネントを追加します：`app/components/NAME_component.rb`、そのテンプレート、そしてテストです（[コンポーネント](template-language.md#components)）。
 - `cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]` は `app/jobs/NAME_job.rb` とテストを追加し、`bin/<app>.rb` と `bin/db.rb` に `require "cybertrain/jobs"` を加えます（[バックグラウンド処理](background-and-operations.md#background-work)）。
+- `cybertrain generate mailer NAME [action ...] [--force]` は、名前ごとにアクションを一つ持つメーラークラス `app/mailers/NAME_mailer.rb` とそのビューとテストを追加し、アプリケーションのメーラーとメーラーのレイアウトがなければそれも書き、`bin/<app>.rb` と `bin/db.rb` に `require "cybertrain/mailer"` と `require "cybertrain/mailer/later"` を加えます（[メーラークラス](external-services.md#mailer-classes)）。
 - `cybertrain db migrate` は生成を行い、未適用のマイグレーションを適用して、もう一度生成します（`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate; SPIN_DEBUG=1 spin run gen`）。`cybertrain migration` もエイリアスとして残されています。
 - `cybertrain db COMMAND...` は `SPIN_DEBUG=1 spin
   run gen` の後に、その他のデータベースコマンドを実行します：`status`、`rollback [N]`（実行後にもう一度生成します）、`schema`（マイグレーションを行わず、いまのデータベースから `db/schema.rb` を書き出します）、`schema:dump`、`create`、`backup` と `vacuum`（[運用](background-and-operations.md#operations-backups-vacuum-health-check)）、`normalize`（[日時と `db normalize`](models.md#datetimes-and-db-normalize)）。

@@ -454,19 +454,19 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   CR, LF or NUL (header injection) or over 998 bytes, a body that is not
   valid UTF-8 or holds a NUL, more than 100 recipients. `to:` takes one
   address or several separated by commas.
-- **Mailers:** a module in `app/mailers` (gen loads them) whose method
-  returns a `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`
-  reads as Rails does: `PasswordsMailer.reset(user, url).deliver_later`
-  queues it, `deliver_now` sends it at once. `cybertrain/mailer` loads
-  `MailMessage` with `deliver_now`; `deliver_later` comes with
+- **Mailers:** a mailer class in `app/mailers` ([Mailer classes](#mailer-classes),
+  below) or a module whose method returns a
+  `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`: both
+  read as Rails does, `PasswordsMailer.reset(user, url).deliver_later`
+  queues the mail and `deliver_now` sends it at once. `cybertrain/mailer`
+  loads `MailMessage` with `deliver_now`; `deliver_later` comes with
   `cybertrain/mailer/later`. `cybertrain generate authentication` writes
-  two ([Password reset](authentication.md#password-reset)) and adds both
-  lines.
-- **Not yet:** attachments and inline images, mailer classes with
-  `default from:` and views found by name, display names, `Cc`/`Bcc`
-  headers (send to several recipients instead), AUTH LOGIN/CRAM-MD5,
-  SMTPUTF8 addresses, pipelining. `deliver` runs on the calling thread, a
-  green thread like a request.
+  two modules ([Password reset](authentication.md#password-reset)) and adds
+  both lines.
+- **Not yet:** display names, `Cc`/`Bcc`/`Reply-To` headers (send to
+  several recipients instead), AUTH LOGIN/CRAM-MD5, SMTPUTF8 addresses,
+  pipelining. `deliver` runs on the calling thread, a green thread like a
+  request.
 
 ### HTML mail
 
@@ -524,4 +524,114 @@ the job has no view context. It returns the job's id.
 - Registering the job means every process that runs jobs starts its job
   threads, also in an application with no job class of its own.
 
-The design: [docs/design.md](../design.md) D27 and D57.
+### Mailer classes
+
+A mailer is written as in Rails: a class under `app/mailers` whose public
+methods are its actions, each ending with `mail`, and a view per action
+under `app/views/<mailer>/`. `cybertrain generate mailer user welcome`
+writes one with its views and test, the `ApplicationMailer` and the mailer
+layouts when they are missing, and adds `require "cybertrain/mailer"` and
+`require "cybertrain/mailer/later"` to `bin/<app>.rb` and `bin/db.rb`:
+
+```ruby
+# app/mailers/application_mailer.rb
+class ApplicationMailer < Cybertrain::Mailer::Base
+  default from: "notifications@example.com"
+  layout "mailer"
+end
+
+# app/mailers/user_mailer.rb
+class UserMailer < ApplicationMailer
+  def welcome(user)
+    @user = user
+    @url = "https://example.com/login"
+    mail(to: user.email_address, subject: "Welcome to My Site")
+  end
+
+  def digest
+    @user = params[:user]
+    return if @user.unsubscribed   # no mail: delivering it sends nothing
+
+    mail(to: @user.email_address)
+  end
+end
+
+UserMailer.welcome(user).deliver_later
+UserMailer.with(user: user).digest.deliver_later(wait: 1.hour)
+UserMailer.welcome(user).deliver_now
+```
+
+- **The views.** `mail` renders `app/views/user_mailer/welcome.html.erb`
+  and `welcome.text.erb` with the action's instance variables: both make a
+  `multipart/alternative` message, one makes that part alone, neither
+  raises `Cybertrain::Template::MissingTemplate`. Each is wrapped in the
+  class's layout (`layout "mailer"`: `app/views/layouts/mailer.html.erb`
+  and `mailer.text.erb`, each when it exists; `layout false` for none). A
+  `.text.erb` view and layout print `<%= %>` unescaped, as Rails treats
+  text/plain; the HTML ones escape. The views render outside a request:
+  path helpers work, `*_url` helpers and `request` do not, so build links
+  from a setting (the generated `PasswordsMailer` takes the URL as an
+  argument). `t(".greeting")` in a view reads `user_mailer.welcome.greeting`.
+- **`mail(to:, subject:, from:, body:, template_name:, template_path:)`.**
+  A subject left out is the dictionary's `user_mailer.welcome.subject`, else
+  the action's name humanized ("Welcome"). A sender left out is the
+  class's `default from:` (one line, inherited), else
+  `CYBERTRAIN_SMTP_FROM`. `body:` gives the text and reads no view.
+- **The message is built when the action is called.**
+  `UserMailer.welcome(user)` runs the action and renders it at once, and
+  answers the `Cybertrain::MailMessage` (`mail_to`, `mail_subject`,
+  `mail_body`, `mail_html`, `mail_from`, `mail_attachments`);
+  `deliver_later` queues that finished message, so the job needs neither
+  the records nor a view. Rails renders in the job instead, from arguments
+  it serialises. An action that returns before `mail` answers a message
+  that `deliver_now` and `deliver_later` leave unsent (`mail_skipped?`).
+- **`with(params)`** gives the action `params` (a Hash with Symbol keys:
+  `params[:user]`). An action's parameters are named ones, with defaults
+  and keywords (`def welcome(user, greeting = "Hi", copy: false)`); `*`,
+  `**` and `&` are refused, since gen writes the class methods that pass
+  them on.
+- **What gen does.** Spinel has no `method_missing`, so `spin run gen`
+  reads `app/mailers` as text and writes `gen/mailers.rb`: per class the
+  class methods `UserMailer.welcome(...)` and `UserMailer.with(...)`, the
+  view directory, the layout, the sender and the instance variables the
+  views read. An action may not be named after a method of
+  `Cybertrain::Mailer::Base` (`mail`, `params`, `attachments`, ...; gen says
+  which). A mailer module, such as the generated `PasswordsMailer`, is
+  loaded as before.
+
+### Attachments
+
+```ruby
+def invoice(order)
+  attachments["invoice.pdf"] = File.binread("storage/invoices/#{order.id}.pdf")
+  attachments.attach("event.ics", ics_text, mime_type: "text/calendar")
+  attachments.inline["logo.png"] = File.binread("app/assets/images/logo.png")
+  @logo = attachments["logo.png"].url   # "cid:logo.png", for <img src="<%= @logo %>">
+  mail(to: order.email, subject: "Your invoice")
+end
+```
+
+- A message with attachments is `multipart/mixed`: the text (or the
+  `multipart/alternative` of text and HTML) first, then each file in
+  base64 with its `Content-Type` (from the extension: `pdf`, `png`, `jpg`,
+  `csv`, `zip`, `ics`, ... and `application/octet-stream` for any other;
+  `attach(..., mime_type:)` names another) and a
+  `Content-Disposition: attachment` naming it (RFC 2231-encoded when the
+  name is not plain ASCII). A file of the same name replaces the first.
+- An inline file goes with the HTML part into a `multipart/related`, with
+  `Content-ID: <logo.png>`; the HTML shows it as `cid:logo.png`. Its name
+  is its Content-ID, so it may hold only letters, digits and `._-+`.
+- A file name is refused (`ArgumentError`) when it is empty, longer than
+  255 bytes, not UTF-8, or holds a control character, `/` or `\`.
+- `deliver_later` keeps the files in the job's payload, base64-encoded, so
+  they sit in the database until the job has run (and for as long as the
+  finished row is kept), and the submission server's size limit applies
+  as for any mail.
+- `Mailer.deliver_message(message)` sends a `MailMessage` built by hand with
+  `attachments:` (an Array of `Cybertrain::Mailer::Attachment`).
+
+Tests read a mail's files from `Mailer.deliveries` (`mail_attachments`) and
+count queued mail with `assert_enqueued_emails`
+([Testing mail](testing.md#testing-mail)).
+
+The design: [docs/design.md](../design.md) D27, D57 and D98.

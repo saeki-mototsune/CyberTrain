@@ -121,6 +121,12 @@ from there, from `cybertrain new` to `cybertrain build`.
   adds `app/jobs/NAME_job.rb` and a test, and `require "cybertrain/jobs"` to
   `bin/<app>.rb` and `bin/db.rb`
   ([Background work](background-and-operations.md#background-work)).
+- `cybertrain generate mailer NAME [action ...] [--force]` adds a mailer
+  class `app/mailers/NAME_mailer.rb` with one action per name, its views
+  and a test, the application mailer and the mailer layouts when they are
+  missing, and `require "cybertrain/mailer"` and `require
+  "cybertrain/mailer/later"` to `bin/<app>.rb` and `bin/db.rb`
+  ([Mailer classes](external-services.md#mailer-classes)).
 - `cybertrain db migrate` generates, applies pending migrations, and
   generates again (`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db --
   migrate; SPIN_DEBUG=1 spin run gen`);

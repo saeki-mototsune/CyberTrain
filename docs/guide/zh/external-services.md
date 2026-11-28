@@ -1,5 +1,5 @@
 ---
-source_sha256: 6e4f1fb3feea6c05454ba214e8d64b5662955142a0167ff12c120a2e654c9ca7
+source_sha256: 8066abf447d8825790ac1adde236f582ca0e2b936c010a9e0ad9ae22e7b35d66
 ---
 # 出站 HTTP、WebSocket 订阅与电子邮件
 
@@ -200,8 +200,8 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
 - **邮件内容**：`Date`、`From`、`To`、`Subject`、`MIME-Version: 1.0`、`Content-Type: text/plain; charset=UTF-8`（HTML 邮件见下文）。非 ASCII 的主题按 RFC 2047 编码（`=?UTF-8?B?...?=`，在字符之间拆分）。正文的行尾会变成 CRLF，以 `.` 开头的行会进行点填充。其 `Content-Transfer-Encoding` 对 ASCII 为 `7bit`，对 UTF-8 在服务器声明支持 8BITMIME 时为 `8bit`（配合 `MAIL FROM
   ... BODY=8BITMIME`），其他情况或某一行长于 998 字节时为 `base64`。不会添加 `Message-ID`（提交服务器会添加）。
 - **会被拒绝的内容**，在连接之前以 `ArgumentError` 拒绝：不是纯 ASCII `local@domain` 的地址（不能有显示名称，不能有 `<>`、空格、逗号、引号、CR 或 LF；最多 254 字节），含有 CR、LF 或 NUL（请求头注入）或超过 998 字节的主题，不是有效 UTF-8 或含有 NUL 的正文，超过 100 个收件人。`to:` 接收一个地址，或用逗号分隔的多个地址。
-- **邮件程序**：`app/mailers` 中的模块（gen 会加载它们），其方法返回 `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`，写法与 Rails 相同：`PasswordsMailer.reset(user, url).deliver_later` 把它放入队列，`deliver_now` 立即发送。`cybertrain/mailer` 加载带 `deliver_now` 的 `MailMessage`；`deliver_later` 随 `cybertrain/mailer/later` 而来。`cybertrain generate authentication` 会写出两个（[密码重置](authentication.md#password-reset)），并添加这两行。
-- **尚未支持**：附件和内嵌图片、带 `default from:` 和按名称查找视图的邮件程序类、显示名称、`Cc`/`Bcc` 头（请改为发送给多个收件人）、AUTH LOGIN/CRAM-MD5、SMTPUTF8 地址、流水线。`deliver` 在调用它的线程上运行，那是一个绿色线程，与请求一样。
+- **邮件程序**：`app/mailers` 中的邮件程序类（见下文[邮件程序类](#mailer-classes)），或方法返回 `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)` 的模块：两者的写法都与 Rails 相同，`PasswordsMailer.reset(user, url).deliver_later` 把邮件放入队列，`deliver_now` 立即发送。`cybertrain/mailer` 加载带 `deliver_now` 的 `MailMessage`；`deliver_later` 随 `cybertrain/mailer/later` 而来。`cybertrain generate authentication` 会写出两个模块（[密码重置](authentication.md#password-reset)），并添加这两行。
+- **尚未支持**：显示名称、`Cc`/`Bcc`/`Reply-To` 头（请改为发送给多个收件人）、AUTH LOGIN/CRAM-MD5、SMTPUTF8 地址、流水线。`deliver` 在调用它的线程上运行，那是一个绿色线程，与请求一样。
 
 ### HTML 邮件
 
@@ -227,4 +227,62 @@ Cybertrain::Mailer.deliver_later(to: user.email, subject: "Welcome", body: text,
 - **邮件保存在数据库中**（作业行的负载，显示在作业页面上），直到作业运行完毕，并且在完成的行被保留期间一直存在。
 - 注册这个作业意味着每个运行作业的进程都会启动它的作业线程，即使应用自己没有任何作业类。
 
-设计说明：[docs/design.md](../design.md) D27 和 D57。
+### 邮件程序类
+
+邮件程序的写法与 Rails 相同：`app/mailers` 下的一个类，其公开方法就是它的动作，每个动作都以 `mail` 结尾，每个动作在 `app/views/<mailer>/` 下有一个视图。`cybertrain generate mailer user welcome` 会写出它的视图和测试，在缺少时写出 `ApplicationMailer` 和邮件布局，并把 `require "cybertrain/mailer"` 和 `require "cybertrain/mailer/later"` 添加到 `bin/<app>.rb` 和 `bin/db.rb`：
+
+```ruby
+# app/mailers/application_mailer.rb
+class ApplicationMailer < Cybertrain::Mailer::Base
+  default from: "notifications@example.com"
+  layout "mailer"
+end
+
+# app/mailers/user_mailer.rb
+class UserMailer < ApplicationMailer
+  def welcome(user)
+    @user = user
+    @url = "https://example.com/login"
+    mail(to: user.email_address, subject: "Welcome to My Site")
+  end
+
+  def digest
+    @user = params[:user]
+    return if @user.unsubscribed   # 没有邮件：投递它不会发送任何内容
+
+    mail(to: @user.email_address)
+  end
+end
+
+UserMailer.welcome(user).deliver_later
+UserMailer.with(user: user).digest.deliver_later(wait: 1.hour)
+UserMailer.welcome(user).deliver_now
+```
+
+- **视图。** `mail` 会用动作的实例变量渲染 `app/views/user_mailer/welcome.html.erb` 和 `welcome.text.erb`：两者都有则生成 `multipart/alternative` 邮件，只有一个则只生成那一部分，都没有则抛出 `Cybertrain::Template::MissingTemplate`。每个视图都包在该类的布局中（`layout "mailer"`：`app/views/layouts/mailer.html.erb` 和 `mailer.text.erb`，各自存在时才用；`layout false` 表示不用布局）。`.text.erb` 视图和布局不转义 `<%= %>` 的输出，与 Rails 对待 text/plain 的方式一致；HTML 的则会转义。视图在请求之外渲染：路径辅助方法可用，`*_url` 辅助方法和 `request` 不可用，所以请根据某个设置来构造链接（生成的 `PasswordsMailer` 把 URL 作为参数）。视图中的 `t(".greeting")` 读取 `user_mailer.welcome.greeting`。
+- **`mail(to:, subject:, from:, body:, template_name:, template_path:)`。** 省略主题时，取词典中的 `user_mailer.welcome.subject`，否则取动作名的人性化形式（"Welcome"）。省略发件人时，取该类的 `default from:`（一行，可继承），否则取 `CYBERTRAIN_SMTP_FROM`。`body:` 直接给出文本，不读取任何视图。
+- **邮件在调用动作时构建。** `UserMailer.welcome(user)` 会立即运行动作并渲染，返回 `Cybertrain::MailMessage`（`mail_to`、`mail_subject`、`mail_body`、`mail_html`、`mail_from`、`mail_attachments`）；`deliver_later` 把这封完成的邮件入队，所以作业既不需要记录也不需要视图。Rails 则是在作业中，根据它序列化的参数来渲染。在 `mail` 之前就返回的动作会返回一封 `deliver_now` 和 `deliver_later` 都不会发送的邮件（`mail_skipped?`）。
+- **`with(params)`** 给动作提供 `params`（键为 Symbol 的 Hash：`params[:user]`）。动作的参数是具名的，可以有默认值和关键字参数（`def welcome(user, greeting = "Hi", copy: false)`）；`*`、`**` 和 `&` 会被拒绝，因为 gen 要写出把它们传下去的类方法。
+- **gen 做什么。** Spinel 没有 `method_missing`，所以 `spin run gen` 把 `app/mailers` 当作文本读取，并写出 `gen/mailers.rb`：每个类的类方法 `UserMailer.welcome(...)` 和 `UserMailer.with(...)`、视图目录、布局、发件人，以及视图读取的实例变量。动作不能与 `Cybertrain::Mailer::Base` 的方法同名（`mail`、`params`、`attachments` 等；gen 会指出是哪一个）。邮件程序模块，例如生成的 `PasswordsMailer`，仍与以前一样加载。
+
+### 附件
+
+```ruby
+def invoice(order)
+  attachments["invoice.pdf"] = File.binread("storage/invoices/#{order.id}.pdf")
+  attachments.attach("event.ics", ics_text, mime_type: "text/calendar")
+  attachments.inline["logo.png"] = File.binread("app/assets/images/logo.png")
+  @logo = attachments["logo.png"].url   # "cid:logo.png"，用于 <img src="<%= @logo %>">
+  mail(to: order.email, subject: "Your invoice")
+end
+```
+
+- 带附件的邮件是 `multipart/mixed`：先是文本（或文本与 HTML 的 `multipart/alternative`），然后是每个文件，以 base64 编码，带有 `Content-Type`（由扩展名决定：`pdf`、`png`、`jpg`、`csv`、`zip`、`ics` 等，其他一律为 `application/octet-stream`；`attach(..., mime_type:)` 可指定别的类型）和写明文件名的 `Content-Disposition: attachment`（名称不是纯 ASCII 时按 RFC 2231 编码）。同名的文件会替换第一个。
+- 内嵌文件与 HTML 部分一起放进 `multipart/related`，带有 `Content-ID: <logo.png>`；HTML 以 `cid:logo.png` 引用它。它的名称就是它的 Content-ID，所以只能包含字母、数字和 `._-+`。
+- 文件名为空、长于 255 字节、不是 UTF-8，或含有控制字符、`/` 或 `\` 时会被拒绝（`ArgumentError`）。
+- `deliver_later` 把文件以 base64 编码保存在作业的负载中，所以在作业运行完毕之前（以及完成的行被保留期间）它们都在数据库里，并且提交服务器的大小限制与任何邮件一样适用。
+- `Mailer.deliver_message(message)` 发送手工构建、带有 `attachments:`（`Cybertrain::Mailer::Attachment` 的 Array）的 `MailMessage`。
+
+测试从 `Mailer.deliveries` 读取邮件的文件（`mail_attachments`），并用 `assert_enqueued_emails` 统计入队的邮件（[测试邮件](testing.md#testing-mail)）。
+
+设计说明：[docs/design.md](../design.md) D27、D57 和 D98。

@@ -120,7 +120,7 @@ module Cybertrain
       # The framework's test classes; an application class inheriting from
       # one of them (or from such a class, in any scanned file) is class
       # form too.
-      BASES = ["ActiveSupport::TestCase", "ActionDispatch::IntegrationTest", "ViewComponent::TestCase"].freeze
+      BASES = ["ActiveSupport::TestCase", "ActionDispatch::IntegrationTest", "ViewComponent::TestCase", "ActionMailer::TestCase"].freeze
       # gen/test/data.rb is the fixtures' file (TestDataEmitter): no copy
       # may take its place.
       DATA_FILE = "gen/test/data.rb".freeze

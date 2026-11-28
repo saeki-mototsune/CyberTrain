@@ -3,6 +3,7 @@ require "cybertrain/generator/controller_scan"
 require "cybertrain/generator/concern_scan"
 require "cybertrain/generator/model_scan"
 require "cybertrain/generator/job_scan"
+require "cybertrain/generator/mailer_scan"
 
 module Cybertrain
   module Gen
@@ -11,7 +12,8 @@ module Cybertrain
     # components with their generated tables, the console tables, the
     # generated controllers, then the app's own models, jobs
     # (application_job first) with their generated half (gen/jobs.rb),
-    # mailers (app/mailers) and controllers (application_controller
+    # mailers (app/mailers, application_mailer first, then gen/mailers.rb
+    # when there is a mailer class) and controllers (application_controller
     # first), and last gen/concerns.rb.
     # The concerns (app/models/concerns, app/controllers/concerns) come
     # before the models and the controllers that include them, loaded from
@@ -67,9 +69,16 @@ module Cybertrain
         jobs.each { |f| lines << "../#{f}" unless f == job_base }
         lines << "jobs"
         # The mailers (app/mailers, as Rails lays them out): modules whose
-        # methods build a Cybertrain::MailMessage, called from controllers
-        # and jobs.
-        rb_files(root, "app/mailers").each { |f| lines << "../#{f}" }
+        # methods build a Cybertrain::MailMessage, and mailer classes
+        # (application_mailer first) with their generated half
+        # (gen/mailers.rb, written while there is one, D98), called from
+        # controllers and jobs.
+        mailers = rb_files(root, "app/mailers")
+        mailer_base = "app/mailers/application_mailer"
+        lines << "../#{mailer_base}" if mailers.include?(mailer_base)
+        mailers.each { |f| lines << "../#{f}" unless f == mailer_base }
+        mailer_classes = !MailerScan.scan_dir("#{root}/app/mailers").empty?
+        lines << "mailers" if mailer_classes
         # The concerns before the classes that include them, each after
         # the concerns it includes.
         concerns = concern_files(root, "app/controllers")
@@ -92,6 +101,10 @@ module Cybertrain
         JobScan.framework_files(JobScan.scan_dir("#{root}/app/jobs")).each do |file|
           out << "require \"cybertrain/#{file}\"\n"
         end
+        # Mailer classes inherit Cybertrain::Mailer::Base, which renders
+        # views and so is not part of cybertrain/mailer (D98).
+        out << "require \"cybertrain/mailer/base\"\n" if mailer_classes
+
         lines.each { |l| out << "require_relative \"#{l}\"\n" }
         out
       end

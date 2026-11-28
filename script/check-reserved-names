@@ -24,7 +24,9 @@
 # against Cybertrain::Controller growing (see below), and the helper
 # generator's HelperScan::RESERVED_HELPER_NAMES against Template::Helpers
 # and HelperBase growing (see below), and the job generator's
-# JobScan::RESERVED_CLASS_METHODS against jobs_emitter.rb (see below), and
+# JobScan::RESERVED_CLASS_METHODS against jobs_emitter.rb (see below),
+# MailerScan::RESERVED_ACTIONS and RESERVED_CLASS_METHODS against
+# cybertrain/mailer/base.rb and mailers_emitter.rb, and
 # keeps each method name of NAME_HOMES defined only in the files its row
 # lists, and every framework method named like a typed column name
 # (Ident::FRAMEWORK_METHOD_TYPES) answering that type (see
@@ -177,6 +179,28 @@ job_names = jobs_emitter_source.scan(/out << "  def self\.([a-z_][A-Za-z0-9_]*[?
 abort "check-reserved-names: jobs_emitter.rb emits no `def self.` line" if job_names.empty?
 jobs_missing = job_names - Cybertrain::Gen::JobScan::RESERVED_CLASS_METHODS
 
+# A mailer action becomes an instance method of the mailer and a class
+# method gen/mailers.rb writes, so Gen::MailerScan::RESERVED_ACTIONS must
+# name every instance method Mailer::Base defines (cybertrain/mailer/base.rb)
+# and RESERVED_CLASS_METHODS every class method it defines and every
+# `def self.` mailers_emitter.rb emits by a fixed name.
+require "cybertrain/generator/mailer_scan"
+mailer_base_source = File.read(File.expand_path("../cybertrain/mailer/base.rb", __dir__))
+mailer_instance = mailer_base_source.scan(/^\s*def\s+(?!self\.)([a-z_][A-Za-z0-9_]*[?!]?)(?!=)/).flatten.uniq.sort - ["initialize"]
+mailer_class = mailer_base_source.scan(/^\s*def\s+self\.([a-z_][A-Za-z0-9_]*[?!]?)/).flatten
+mailers_emitter_source = File.read(File.expand_path("../cybertrain/generator/mailers_emitter.rb", __dir__))
+mailer_class.concat(mailers_emitter_source.scan(/out << "  def self\.([a-z_][A-Za-z0-9_]*[?!]?)/).flatten)
+mailer_class = mailer_class.uniq.sort + ["new"]
+abort "check-reserved-names: mailer/base.rb defines no instance method" if mailer_instance.empty?
+mailers_missing = (mailer_instance - Cybertrain::Gen::MailerScan::RESERVED_ACTIONS) +
+                  (mailer_class - Cybertrain::Gen::MailerScan::RESERVED_CLASS_METHODS)
+# The CLI's copy (cli/mailer.rb loads no generator file) is the same list.
+require "cybertrain/cli/mailer"
+mailer_lists = Cybertrain::Gen::MailerScan::RESERVED_ACTIONS + Cybertrain::Gen::MailerScan::RESERVED_CLASS_METHODS
+unless mailer_lists.sort == Cybertrain::CLI::Mailer::RESERVED.sort
+  mailers_missing << "CLI::Mailer::RESERVED differs from MailerScan's lists"
+end
+
 # A fixture accessor `def <table>(label)` (gen/test/data.rb) is a top-level
 # method and a method of ActiveSupport::TestCase, so
 # Gen::FixtureScan::TAKEN_NAMES must name every method a test reaches by a
@@ -227,7 +251,10 @@ NAME_HOMES = {
   # that lets a concern's never-run `included` block compile
   # (spikes/NOTES.md rule 92), returning nil as Controller's does.
   # config.rb's is the `attr_accessor :layout` of Config (a String).
-  "layout" => %w[cybertrain/cli/templates.rb cybertrain/controller.rb cybertrain/active_support.rb cybertrain/config.rb],
+  # mailer/base.rb's is Mailer::Base.layout, the macro gen reads (nil, as
+  # Controller's).
+  "layout" => %w[cybertrain/cli/templates.rb cybertrain/controller.rb cybertrain/active_support.rb cybertrain/config.rb
+                 cybertrain/mailer/base.rb],
   "before_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "after_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
   "skip_before_action" => %w[cybertrain/controller.rb cybertrain/active_support.rb],
@@ -352,7 +379,8 @@ NAME_HOMES = {
   # GenerateResult comes from Authentication.generate_with_result, which
   # cli.rb calls, beside Authentication.generate.
   "generate" => %w[cybertrain/cli/helper.rb cybertrain/cli/job.rb cybertrain/cli/authentication.rb
-                   cybertrain/cli/component.rb cybertrain/cli/scaffold.rb cybertrain/cli/attachment.rb],
+                   cybertrain/cli/component.rb cybertrain/cli/scaffold.rb cybertrain/cli/attachment.rb
+                   cybertrain/cli/mailer.rb],
   "issue" => %w[cybertrain/token.rb],
   "generate_with_result" => %w[cybertrain/cli/authentication.rb],
   # The Turbo Stream actions: Turbo.x (SafeString), TurboStreams#x
@@ -653,8 +681,8 @@ program_files.each do |file, rel|
 end
 
 if typed_wrong.empty? && typed_problems.empty? && missing.empty? && twice.empty? && hooks_missing.empty? && actions_missing.empty? && helpers_missing.empty? && scopes_missing.empty? &&
-   jobs_missing.empty? && homeless.empty? && home_rows_missing.empty? && fixtures_missing.empty?
-  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved); #{action_names.size} controller methods refused as attachment names; #{helper_names.size} template helper names refused as app helper names; #{scope_names.size} Relation and model class methods refused as scope names; #{job_names.size} generated job class methods refused as job class methods; #{NAME_HOMES.size} shared method names defined only in their homes; #{fixture_taken.size} test harness names refused as fixture accessors; #{typed.size} column names typed like their framework methods"
+   jobs_missing.empty? && mailers_missing.empty? && homeless.empty? && home_rows_missing.empty? && fixtures_missing.empty?
+  puts "check-reserved-names: #{names.size} Model names, all reserved or noted (#{advisory.size} advisory Object names, #{private_hooks.size} private hooks reserved); #{action_names.size} controller methods refused as attachment names; #{helper_names.size} template helper names refused as app helper names; #{scope_names.size} Relation and model class methods refused as scope names; #{job_names.size} generated job class methods refused as job class methods; #{mailer_instance.size + mailer_class.size} mailer methods refused as action names; #{NAME_HOMES.size} shared method names defined only in their homes; #{fixture_taken.size} test harness names refused as fixture accessors; #{typed.size} column names typed like their framework methods"
 else
   homeless.each do |rel, number, name, homes|
     where = homes.empty? ? "no file may define it yet" : "its homes are #{homes.join(", ")}"
@@ -669,6 +697,12 @@ else
     warn "check-reserved-names: the test harness defines #{fixtures_missing.map(&:inspect).join(", ")} " \
          "(a top-level def in cybertrain/test.rb or cybertrain/test/*.rb, or a method of a test base class) but " \
          "Cybertrain::Gen::FixtureScan::TAKEN_NAMES (cybertrain/generator/fixture_scan.rb) does not refuse it as a fixture file's name; add it"
+  end
+  unless mailers_missing.empty?
+    warn "check-reserved-names: a mailer already has #{mailers_missing.map(&:inspect).join(", ")} " \
+         "(cybertrain/mailer/base.rb or what cybertrain/generator/mailers_emitter.rb writes) but " \
+         "Cybertrain::Gen::MailerScan::RESERVED_ACTIONS / RESERVED_CLASS_METHODS (cybertrain/generator/mailer_scan.rb) " \
+         "does not refuse it as an action's name; add it"
   end
   unless jobs_missing.empty?
     warn "check-reserved-names: gen/jobs.rb defines #{jobs_missing.map(&:inspect).join(", ")} on every job class " \

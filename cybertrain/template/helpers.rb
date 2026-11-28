@@ -291,7 +291,7 @@ module Cybertrain
       # the template's turbo_stream builder renders for `partial:`.
       # @return [SafeString]
       def partial_html(name, locals, interp, env)
-        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name, FormBuilder.value_text(env["__template_format"])))
         names = Array.new(0) { "" }
         locals.each_key { |key| names << key }
         render_partial_scope(template, locals, names, interp, env)
@@ -756,19 +756,24 @@ module Cybertrain
 
       # "comments/_comment.html.erb" for render "comments/comment" (or
       # "comment" from a comments/ template), remembered like model_key.
-      # Ending in .erb, it is used by Engine#template as is.
-      def partial_file(dir, name)
-        by_name = @partial_files[dir]
+      # Ending in .erb, it is used by Engine#template as is. From a mailer's
+      # text view (`format` "text", Views.render_mailer_view) it is
+      # "_comment.text.erb", with no fallback to the HTML partial (a missing
+      # one is the render's Template::RuntimeError, as any missing partial).
+      def partial_file(dir, name, format = "")
+        key = format == "text" ? "#{dir}\ttext" : dir
+        by_name = @partial_files[key]
         if by_name.nil?
           by_name = { "" => "" }
           by_name.delete("")
-          @partial_files[dir] = by_name
+          @partial_files[key] = by_name
         end
         file = by_name[name]
         return file unless file.nil?
 
         path = Helpers.partial_path(dir, name)
-        file = path.end_with?(".erb") ? path : "#{path}.html.erb"
+        extension = format == "text" ? ".text.erb" : ".html.erb"
+        file = path.end_with?(".erb") ? path : "#{path}#{extension}"
         by_name[name] = file
         file
       end
@@ -961,7 +966,7 @@ module Cybertrain
           end
           name = text_arg(args, 0, "render")
         end
-        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name, FormBuilder.value_text(env["__template_format"])))
         names = []
         locals.each_key { |key| names << key if !(args.empty? && (key == "partial" || key == "locals")) }
         render_partial_scope(template, locals, names, interp, env)
@@ -1057,7 +1062,7 @@ module Cybertrain
       # (index; none when it is -1) unless the partial's strict locals leave
       # it out.
       def render_item(name, as_name, item, index, locals, interp, env)
-        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name))
+        template = Views.configured_engine.template(partial_file(FormBuilder.value_text(env["__template_dir"]), name, FormBuilder.value_text(env["__template_format"])))
         counter = "#{as_name}_counter"
         # Cast.empty_hash written out: this runs once per item, and the call
         # measured about 5% slower over a 200-item collection.

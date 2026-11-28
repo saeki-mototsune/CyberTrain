@@ -1,5 +1,5 @@
 ---
-source_sha256: 62e9c689219c4db26ce385321689566020292b1006b3883b3c811e280c7de675
+source_sha256: cf1537dadb7e4793a3711c9c9304361844186be00b34e509c948a963e106c132
 ---
 # Installer cybertrain
 
@@ -130,6 +130,12 @@ partir de là, de `cybertrain new` à `cybertrain build`.
   ajoute `app/jobs/NAME_job.rb` et un test, et `require "cybertrain/jobs"` à
   `bin/<app>.rb` et `bin/db.rb`
   ([Tâches de fond](background-and-operations.md#background-work)).
+- `cybertrain generate mailer NAME [action ...] [--force]` ajoute une classe
+  de mailer `app/mailers/NAME_mailer.rb` avec une action par nom, ses vues et
+  un test, le mailer de l’application et les layouts de mailer s’ils
+  manquent, et `require "cybertrain/mailer"` et `require
+  "cybertrain/mailer/later"` à `bin/<app>.rb` et `bin/db.rb`
+  ([Classes de mailer](external-services.md#mailer-classes)).
 - `cybertrain db migrate` génère, applique les migrations en attente, puis
   génère à nouveau (`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db --
   migrate; SPIN_DEBUG=1 spin run gen`)&nbsp;;

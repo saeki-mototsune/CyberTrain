@@ -17,6 +17,7 @@ require "cybertrain/generator/helpers_emitter"
 require "cybertrain/generator/components_emitter"
 require "cybertrain/generator/console_emitter"
 require "cybertrain/generator/jobs_emitter"
+require "cybertrain/generator/mailers_emitter"
 require "cybertrain/generator/assets_emitter"
 require "cybertrain/generator/locale_scan"
 require "cybertrain/generator/locales_emitter"
@@ -86,6 +87,7 @@ module Cybertrain
         end
         check = argv.include?("--check")
         embed = argv.include?("--embed-views")
+        stale_mailers = 0
         jobs_page = Cybertrain::Routes.jobs_page_spec
         warning = ControllersEmitter.jobs_page_warning(jobs_page)
         puts warning unless warning.empty?
@@ -111,12 +113,21 @@ module Cybertrain
         outputs << ["gen/helpers.rb", HelpersEmitter.emit(helper_modules)]
         outputs << ["gen/components.rb", ComponentsEmitter.emit(ComponentScan.scan_dir("#{root}/app/components"))]
         outputs << ["gen/jobs.rb", JobsEmitter.emit(JobScan.scan_dir("#{root}/app/jobs"))]
+        # gen/mailers.rb only while app/mailers has a mailer class (D98); a
+        # file gen wrote is removed once none is left.
+        mailers = MailerScan.scan_dir("#{root}/app/mailers")
+        mailers_rb = "#{root}/#{MailersEmitter::PATH}"
+        if !mailers.empty?
+          outputs << [MailersEmitter::PATH, MailersEmitter.emit(mailers)]
+        elsif File.exist?(mailers_rb) && File.read(mailers_rb).start_with?(MailersEmitter::HEADER)
+          stale_mailers = remove_file(root, MailersEmitter::PATH, check)
+        end
         concern_files = Array.new(0) { "" }
         concern_files_of(controller_concerns, model_concerns).each do |rel, source|
           outputs << [rel, source]
           concern_files << rel
         end
-        stale = 0
+        stale = stale_mailers
         # The schema db/schema.rb loaded, nil without one: gen/test/data.rb
         # and gen/models/<model>.rb per table are written only with it.
         schema = Cybertrain::Schema.current

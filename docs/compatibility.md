@@ -36,6 +36,7 @@ of those lines are contracts and how each is held.
 | `skip_forgery_protection` | per controller | CSRF runs before routing: exempt by path with `csrf_exempt_prefixes` | configuration guide | test/csrf.rb, test/csrf_chain.rb |
 | `Rails.cache.fetch` | any object | Strings; `fetch_hash`, `fetch_array`, `fetch_int` for the rest | operations guide, "The cache store"; D54 | test/cache.rb |
 | `perform_later(args)` | any serializable arguments, GlobalID | one Hash of JSON values; delivered at least once | operations guide; D28, D51, D68 | test/jobs.rb, test/job_threads.rb |
+| `UserMailer.welcome(user)`, `.with(...).welcome`, `deliver_later` | a lazy `MessageDelivery`: the action runs and renders in the job, from serialised arguments (GlobalID) | the action runs and renders when it is called and answers the `MailMessage`; `deliver_later` queues that finished message, attachments included; an action that returns before `mail` answers a message that sends nothing | external services guide, "Mailer classes"; D98 | test/mailer_classes.rb |
 | Concerns | included at run time | expanded by `spin run gen` into the including classes | requests guide, "Concerns and `helper_method`"; D60 | test/gen_concerns.rb, test/gen_model_concerns.rb |
 | ERB | Ruby | a template language with ERB's tags (below) | template language reference; D9 | test/template_*.rb |
 

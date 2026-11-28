@@ -280,7 +280,9 @@ module Cybertrain
         i = 0
         while i < text.size
           ch = text[i].to_s
-          if quote != ""
+          if quote != "" && ch == "\\"
+            i += 1 # an escaped character inside a String ("a\"#b")
+          elsif quote != ""
             quote = "" if ch == quote
           elsif ch == "\"" || ch == "'"
             quote = ch
@@ -301,8 +303,14 @@ module Cybertrain
       def self.open_parens(text)
         depth = 0
         quote = ""
+        # A backslash inside a String escapes the next character ("a\",b").
+        escaped = false
         text.each_char do |ch|
-          if quote != ""
+          if escaped
+            escaped = false
+          elsif quote != "" && ch == "\\"
+            escaped = true
+          elsif quote != ""
             quote = "" if ch == quote
           elsif ch == "\"" || ch == "'"
             quote = ch
@@ -380,9 +388,15 @@ module Cybertrain
       def self.inside_parens(text)
         depth = 0
         quote = ""
+        # A backslash inside a String escapes the next character ("a\",b").
+        escaped = false
         out = +""
         text.each_char do |ch|
-          if quote != ""
+          if escaped
+            escaped = false
+          elsif quote != "" && ch == "\\"
+            escaped = true
+          elsif quote != ""
             quote = "" if ch == quote
           elsif ch == "\"" || ch == "'"
             quote = ch
@@ -403,9 +417,15 @@ module Cybertrain
         parts = Array.new(0) { "" }
         depth = 0
         quote = ""
+        # A backslash inside a String escapes the next character ("a\",b").
+        escaped = false
         current = +""
         text.each_char do |ch|
-          if quote != ""
+          if escaped
+            escaped = false
+          elsif quote != "" && ch == "\\"
+            escaped = true
+          elsif quote != ""
             quote = "" if ch == quote
           elsif ch == "\"" || ch == "'"
             quote = ch

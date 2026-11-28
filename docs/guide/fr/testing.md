@@ -1,5 +1,5 @@
 ---
-source_sha256: 6e23ce19069d28de5d3a3a07a86ec79bf0b74c537bf284d5e8df84fcbb180b83
+source_sha256: bc6663adeff171731ac0c5fc3fc0b4e6fd69efdaec1fda2c06bf4dc0aed1d39f
 ---
 # Tester une application
 
@@ -586,7 +586,40 @@ end
 courriel mis en file dans le bloc avec `deliver_later` est d’abord envoyé,
 et un job de courriel qui échoue fait échouer l’assertion avec son erreur.
 `assert_no_emails { }` n’en veut aucun. Les lecteurs d’un message sont
-`mail_to`, `mail_from`, `mail_subject`, `mail_body` et `mail_html`. Un test
+`mail_to`, `mail_from`, `mail_subject`, `mail_body`, `mail_html` et
+`mail_attachments` (`attachment_filename`, `attachment_mime_type` et
+`attachment_content` de chaque fichier).
+
+L’action d’une [classe de mailer](external-services.md#mailer-classes) renvoie
+son message rendu, si bien qu’un test de mailer le lit sans rien envoyer, dans
+un `ActionMailer::TestCase` (ce qu’écrit `cybertrain generate mailer`)&nbsp;:
+
+```ruby test/mailers/user_mailer_test.rb
+require "test_helper"
+
+class UserMailerTest < ActionMailer::TestCase
+  test "welcome" do
+    mail = UserMailer.welcome(users(:one))
+    assert_equal "Welcome to My Site", mail.mail_subject
+    assert_equal users(:one).email_address, mail.mail_to
+    assert_match "Welcome", mail.mail_body
+  end
+
+  test "the digest is queued" do
+    assert_enqueued_emails 1 do
+      UserMailer.with(user: users(:one)).digest.deliver_later
+    end
+    assert_enqueued_email_with UserMailer, :digest, to: users(:one).email_address
+  end
+end
+```
+
+`assert_enqueued_emails(count) { }` compte les courriels que le bloc a mis en
+file avec `deliver_later` et n’en livre aucun&nbsp;; `assert_no_enqueued_emails { }`
+n’en veut aucun&nbsp;; `assert_enqueued_email_with(mailer, action, to:)` veut un
+courriel en file construit par cette action. Le message a été rendu quand il
+a été mis en file, donc les `args:` et `params:` de Rails ne sont pas
+comparés&nbsp;; `to:` l’est. Un test
 du chemin SMTP lui-même règle
 `Cybertrain.config.mail_delivery_method = :smtp` et remet `:test` dans
 `teardown` (le réglage n’est pas remis à zéro entre les tests), comme dans
