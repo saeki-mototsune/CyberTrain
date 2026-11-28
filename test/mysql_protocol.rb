@@ -49,6 +49,7 @@ require "cybertrain/db/mysql/wire"
 require "cybertrain/db/mysql/packet"
 require "cybertrain/db/mysql/result"
 require "cybertrain/db/mysql/protocol"
+require "cybertrain/db/mysql/statement_cache"
 require "cybertrain/test"
 
 Wire = Cybertrain::DB::MySQL::Wire
@@ -1140,6 +1141,37 @@ test "a ping whose answer timed out leaves the exchange pending, and no command 
   # COM_QUIT still goes out: the server reads it whatever answer is unread.
   assert_nil proto.quit
   assert_equal PING_REQ + QUIT_REQ, hex(stream.stall_sent)
+end
+
+# What cached_statement_id raised ("nothing raised" when it did not).
+def cache_failure(cache, sql)
+  got = "nothing raised"
+  begin
+    cache.cached_statement_id(sql)
+  rescue Cybertrain::DB::Error => e
+    got = "#{e.class.name}: #{e.message}"
+  end
+  got
+end
+
+test "a prepare the server refuses at a full statement cache closes nothing" do
+  stream = stream_of(BINDS_PREPARE_RESP + PREPARE_ERR_RESP + UNSIGNED_PREPARE_RESP)
+  cache = Cybertrain::DB::MySQL::StatementCache.new(protocol_for(stream), 1)
+  insert = "INSERT INTO t_binds (i, f, s, n, b) VALUES (?, ?, ?, ?, ?)"
+  assert_equal 5, cache.cached_statement_id(insert)
+  assert_equal true, cache_failure(cache, "SELEC 1").start_with?("Cybertrain::DB::Error: You have an error in your SQL syntax")
+  assert_equal 1, cache.cached_statement_count
+  assert_equal false, hex(stream.script_sent).include?(CLOSE_REQ)
+  # Still kept: a hit, nothing sent.
+  sent = stream.script_sent.bytesize
+  assert_equal 5, cache.cached_statement_id(insert)
+  assert_equal sent, stream.script_sent.bytesize
+  # A prepare that succeeds at the limit closes the least recently used one
+  # after it.
+  assert_equal 6, cache.cached_statement_id("SELECT CAST(18446744073709551615 AS UNSIGNED) AS big")
+  assert_equal 1, cache.cached_statement_count
+  assert_equal true, hex(stream.script_sent).end_with?(UNSIGNED_PREPARE_REQ + CLOSE_REQ)
+  assert_equal 0, stream.script_left
 end
 
 Cybertrain::Test.run!

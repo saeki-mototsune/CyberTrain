@@ -6,9 +6,10 @@
 # Bounded: SQL built from request data (an IN list of varying length)
 # would otherwise prepare without end, and the server refuses a prepare
 # past max_prepared_stmt_count (16382 by default, counted over every
-# session of the server). At LIMIT statements the one used least recently
-# is closed (COM_STMT_CLOSE) before another is prepared, so a connection
-# never holds more than LIMIT.
+# session of the server). Past LIMIT statements the one used least recently
+# is closed (COM_STMT_CLOSE) once another has been prepared, so a
+# connection holds LIMIT + 1 for one round trip at most, and a prepare the
+# server refuses closes nothing.
 #
 # The order of use is the Hash's insertion order: a hit moves its entry to
 # the end (delete and store again), so the first key is always the least
@@ -33,8 +34,9 @@ module Cybertrain
         end
 
         # The id of `sql`'s prepared statement, prepared now when it is not
-        # kept yet (closing the least recently used one first when the
-        # cache is full). A prepare the server refuses keeps nothing.
+        # kept yet (then closing the least recently used one when the cache
+        # is over its limit). A prepare the server refuses keeps nothing and
+        # closes nothing.
         # @return [Integer]
         # @raise [Cybertrain::DB::Error] what the prepare raised
         def cached_statement_id(sql)
@@ -45,9 +47,9 @@ module Cybertrain
             return id
           end
 
-          evict_oldest if @statement_ids.size >= @limit
           fresh = @protocol.prepare(sql)
           @statement_ids[sql] = fresh
+          evict_oldest if @statement_ids.size > @limit
           fresh
         end
 
