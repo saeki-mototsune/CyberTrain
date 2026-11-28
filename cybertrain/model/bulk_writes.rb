@@ -337,10 +337,11 @@ module Cybertrain
     #   `id`, the table has one (AUTO_INCREMENT), and no row can collide
     #   (insert_all!, which raises on a duplicate; insert_all on a table
     #   with no unique index but its primary key). The ids one INSERT makes
-    #   are consecutive in row order, from the first
-    #   (DB::Dialect.bulk_writes_first_insert_id), so the rows are those with
-    #   an id in [first, first + rows); the affected-row count must equal
-    #   the rows, or DB::Error.
+    #   are in row order, from the first
+    #   (DB::Dialect.bulk_writes_first_insert_id), `step` apart
+    #   (DB::Dialect.bulk_writes_id_step: MySQL's auto_increment_increment),
+    #   so the rows are those with an id first + k * step for k in
+    #   [0, rows); the affected-row count must equal the rows, or DB::Error.
     # - Otherwise the rows are looked up by their key: upsert_all's
     #   unique_by; the supplied id; or, for insert_all on a table with a
     #   unique index, the first unique index whose columns the rows supply
@@ -403,9 +404,18 @@ module Cybertrain
                         "their ids cannot be read back"
               raise Cybertrain::DB::Error, message
             end
+            # The ids are first, first + step, ... (step is the server's
+            # auto_increment_increment, 1 but on some replicated set-ups).
+            step = Cybertrain::DB::Dialect.bulk_writes_id_step(c)
             sql = "SELECT #{select_list} FROM #{quoted_table} WHERE #{id_column} >= ? AND #{id_column} < ? " \
                   "ORDER BY #{id_column}"
-            found = c.execute(sql, Cybertrain::Cast.binds(first_id, first_id + count))
+            window = Cybertrain::Cast.binds(first_id, first_id + count)
+            if step > 1
+              sql = "SELECT #{select_list} FROM #{quoted_table} WHERE #{id_column} >= ? AND #{id_column} < ? " \
+                    "AND MOD(#{id_column} - ?, ?) = 0 ORDER BY #{id_column}"
+              window = Cybertrain::Cast.binds(first_id, first_id + count * step, first_id, step)
+            end
+            found = c.execute(sql, window)
             found.each { |row| out << Model.bulk_returned_row(row, returned, returned_types) }
           else
             # Read before the statement only where a collision leaves the

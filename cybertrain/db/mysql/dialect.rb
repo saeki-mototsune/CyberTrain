@@ -691,16 +691,41 @@ module Cybertrain
         Cybertrain::Cast.int(rows[0]["n"])
       end
 
+      # How far apart the ids one INSERT makes are: the session's
+      # auto_increment_increment (1 but where a replicated set-up spreads
+      # the ids of its writers: group replication in multi-primary mode,
+      # Galera). SQLite: 1.
+      # @param conn [Cybertrain::DB::Connection]
+      # @return [Integer]
+      def self.bulk_writes_id_step(conn)
+        rows = conn.execute("SELECT @@auto_increment_increment AS n")
+        return 1 if rows.empty?
+
+        step = Cybertrain::Cast.int(rows[0]["n"])
+        step < 1 ? 1 : step
+      end
+
       # --- The framework's own tables -------------------------------------------
 
       # The tables take MySQL::DDL's types for what SQLite's hold (its
       # header has the type table): an id BIGINT AUTO_INCREMENT, epoch
       # seconds BIGINT, flags and counters INT, free text MEDIUMTEXT. A text
       # column that is a key or in an index is a VARCHAR(255) (MySQL keys
-      # no TEXT without a prefix length), and the indexes are in the CREATE
-      # TABLE (MySQL 8.0 has no CREATE INDEX IF NOT EXISTS). A MEDIUMTEXT
-      # default is an expression, `DEFAULT ('')`, the only default MySQL
-      # takes on one.
+      # no TEXT without a prefix length) where the framework writes it
+      # (a job's kind and state, a lease, schedule or feed name); where an
+      # application's data can make it longer (a cache key, a rate limit's
+      # key, a job's concurrency key) it is a MEDIUMTEXT, as long as
+      # SQLite's TEXT allows, keyed by its SHA-256 (a stored generated
+      # column) and read through an index on its first 255 characters. The
+      # indexes are in the CREATE TABLE (MySQL 8.0 has no CREATE INDEX IF
+      # NOT EXISTS). A MEDIUMTEXT default is an expression, `DEFAULT ('')`,
+      # the only default MySQL takes on one.
+      #
+      # A table created before the cache key and the concurrency key were
+      # MEDIUMTEXT keeps VARCHAR(255) there, and works as it did, refusing
+      # a longer key (error 1406): framework_table_install never alters a
+      # table that exists. docs/compatibility.md has the ALTER TABLE
+      # statements that bring one up to date.
 
       # Creates a framework table from `script` (its `<service>_table_sql`)
       # when `table` is missing. A CREATE TABLE commits the open transaction
@@ -818,6 +843,34 @@ module Cybertrain
           "created_at BIGINT NOT NULL, " \
           "INDEX index_cybertrain_messages_on_stream_and_id (stream, id))" +
           Cybertrain::DB::MySQL::DDL::TABLE_OPTIONS
+      end
+
+      # Whether cybertrain_messages rows become visible in id order: no. An
+      # id is taken at the INSERT and the row is seen at the COMMIT, so two
+      # broadcasts that commit out of id order are seen out of it (the
+      # stream poller must not move its cursor past an id still in flight).
+      # SQLite: true (one writer at a time).
+      # @return [Boolean]
+      def self.stream_ids_in_commit_order?
+        false
+      end
+
+      # The state of a message id this process inserted inside a
+      # transaction: 1 when its row is committed, 0 when it is gone (rolled
+      # back, or pruned), -1 while the inserting transaction is open (its
+      # row lock is held: a locking read with NOWAIT answers error 3572 at
+      # once instead of waiting). For a connection outside a transaction
+      # (the poller's), whose locking read keeps no lock. SQLite: 1.
+      # @param conn [Cybertrain::DB::Connection]
+      # @param id [Integer]
+      # @return [Integer]
+      def self.stream_message_state(conn, id)
+        rows = conn.execute("SELECT id FROM cybertrain_messages WHERE id = ? FOR SHARE NOWAIT", [id])
+        rows.empty? ? 0 : 1
+      rescue Cybertrain::DB::Error => e
+        raise e unless e.message.include?("(MySQL 3572,")
+
+        -1
       end
 
       # Scheduler::Timetable's table.

@@ -381,6 +381,14 @@ module Cybertrain
         conn.last_insert_id - changed + 1
       end
 
+      # How far apart the ids one INSERT makes are: 1 (only where
+      # returning? is false). MySQL: @@auto_increment_increment.
+      # @param conn [Cybertrain::DB::Connection]
+      # @return [Integer]
+      def self.bulk_writes_id_step(conn)
+        1
+      end
+
       # --- The framework's own tables -------------------------------------------
 
       # Creates a framework table (Job::Store, Cache, Lease, Stream,
@@ -610,6 +618,26 @@ module Cybertrain
       def self.lease_acquire(conn, name, holder, expires_at, now)
         conn.execute(LEASE_ACQUIRE_SQL, Cybertrain::Cast.binds(name, holder, expires_at, now))
         conn.changes == 1
+      end
+
+      # --- Stream -----------------------------------------------------------------
+
+      # Whether cybertrain_messages rows become visible in id order: yes,
+      # SQLite has one writer at a time. MySQL: false (an id is taken at the
+      # INSERT, the row seen at the COMMIT).
+      # @return [Boolean]
+      def self.stream_ids_in_commit_order?
+        true
+      end
+
+      # The state of a message id this process inserted: 1, committed (ids
+      # are visible in order, so nothing waits on one). MySQL: 1, 0 when it
+      # is gone, -1 while its transaction is open (a NOWAIT locking read).
+      # @param conn [Cybertrain::DB::Connection]
+      # @param id [Integer]
+      # @return [Integer]
+      def self.stream_message_state(conn, id)
+        1
       end
 
       # --- Scheduler::Timetable -------------------------------------------------
