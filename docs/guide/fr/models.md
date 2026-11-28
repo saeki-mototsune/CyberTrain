@@ -1,5 +1,5 @@
 ---
-source_sha256: ebea5fd4f6551f5a27f619315ce4c4c6037bfe519fe8ce4bc13323c83c30a561
+source_sha256: b40bfa6c7fc2b8082236e6ccd7d093bf6e0daa289f26af1371789b9cf724cca8
 ---
 # Modèles et base de données
 
@@ -1192,6 +1192,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 - **Les migrations ne sont pas annulées.** Le DDL de MySQL est validé à mesure qu’il s’exécute&nbsp;: une migration qui échoue à mi-chemin garde ce qui a tourné avant l’instruction en échec&nbsp;: `migration V failed at statement 2 of 3; statements 1..1 were applied and cannot be rolled back (MySQL DDL commits implicitly): ...`. La version n’est pas enregistrée&nbsp;; défaites la partie appliquée (ou terminez-la à la main) avant de relancer `db migrate`. L’adaptateur MySQL de Rails fait de même. Gardez un changement par migration quand c’est possible.
 - **Pas d’index partiels.** `add_index ..., where:` arrête `spin run gen` avec le fichier et la ligne (`partial indexes (where:) are not supported on MySQL`) avant que rien ne soit écrit&nbsp;; indexez la colonne entière, ou mettez la condition dans une colonne générée.
 - **Le schéma.** `db/schema.rb` est extrait de `information_schema`&nbsp;; les mêmes migrations écrivent le même fichier que sur SQLite. `db normalize`, `db backup` et `db vacuum` sont propres à SQLite.
+- **Un seul processus.** Les jobs, les flux, les baux et les tâches planifiées sont garantis dans un processus&nbsp;; entre plusieurs processus ou hôtes sur une même base, pas avant l’étape 2 de la feuille de route MySQL ([Configuration, «&nbsp;MySQL&nbsp;»](configuration.md#mysql)).
 
 ## Mise à jour
 

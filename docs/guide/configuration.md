@@ -301,11 +301,27 @@ require "cybertrain/mysql"   # every subsystem; "cybertrain/core/mysql" is the c
 `cybertrain new NAME --database=mysql` writes that line, explains
 `DATABASE_URL` in `config/app.rb` and `.env.example`, passes it as a
 secret in `config/deploy.yml` and `.kamal/secrets`, and writes a CI
-workflow that runs the tests against a MySQL service. An application made
-for SQLite moves by changing the line in both files (its data stays in the
-SQLite file). The models, migrations and tests are the same on both;
+workflow that runs the tests against a MySQL service. The models,
+migrations and tests are the same on both;
 [Models and the database](models.md#mysql) lists what MySQL answers
 differently.
+
+An application made for SQLite moves by changing the line in both files
+(its data stays in the SQLite file), and then:
+
+- with authentication, by running `cybertrain generate authentication`
+  again with the flags it was generated with (`--invite-only`,
+  `--confirmable`) and `--force`. It rewrites the four files whose MySQL
+  form differs: `app/commands/user_command.rb` and
+  `test/integration/first_run_test.rb` (they connect to `database_url`, not
+  `database_path`), `app/models/user.rb` (the lockout UPDATE, in MySQL's
+  order of assignment) and `test/controllers/accounts_controller_test.rb`
+  (its table's DDL and the refused deletion's error class). Read the diff
+  of any of them you changed since;
+- by making the edits `new --database=mysql` makes in the `Dockerfile`,
+  `config/deploy.yml`, `.kamal/secrets` and `.github/workflows/ci.yml`:
+  `DATABASE_URL` passed as a secret, a MySQL service in CI, and the worker
+  role left commented (below).
 
 The database is the one `DATABASE_URL` names (`database_url`, read before
 `config/app.rb` runs):
@@ -390,10 +406,11 @@ end
 > [!NOTE]
 > One process, for now. On MySQL the jobs, streams, leases and scheduled
 > tasks are guaranteed within one process (they answer as on SQLite), not
-> yet across several processes or hosts sharing the database: a job's
-> claim, a stream's order and a lease's clock are the next step of the
-> roadmap. Run one container, the web role alone, until a release says
-> otherwise.
+> yet across several processes or hosts sharing the database: that is
+> step 2 of the MySQL roadmap (a job's claim, a stream's order, a lease's
+> clock), not done yet. Run one container, the web role alone, until a
+> release says otherwise; on MySQL `generate job` and `generate
+> authentication` leave `config/deploy.yml`'s worker role commented.
 
 ## Time zones
 

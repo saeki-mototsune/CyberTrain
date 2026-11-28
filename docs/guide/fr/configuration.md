@@ -1,5 +1,5 @@
 ---
-source_sha256: 31cef0c4fd1f43cff188d2552a04cd69056b049d8bc2dcc24fb09e6bc6ef3dae
+source_sha256: bddbbec46f6a57a5845cdebf839f0b70c986951a99b83eeedb3932075048c4d6
 ---
 # Configuration
 
@@ -305,7 +305,12 @@ Une application est compilée pour une seule base de données&nbsp;: SQLite, par
 require "cybertrain/mysql"   # tous les sous-systèmes ; "cybertrain/core/mysql" est le cœur seul
 ```
 
-`cybertrain new NAME --database=mysql` écrit cette ligne, explique `DATABASE_URL` dans `config/app.rb` et `.env.example`, la passe comme secret dans `config/deploy.yml` et `.kamal/secrets`, et écrit un workflow de CI qui lance les tests contre un service MySQL. Une application créée pour SQLite passe à MySQL en changeant cette ligne dans les deux fichiers (ses données restent dans le fichier SQLite). Les modèles, les migrations et les tests sont les mêmes sur les deux&nbsp;; [Modèles et base de données](models.md#mysql) liste ce que MySQL répond autrement.
+`cybertrain new NAME --database=mysql` écrit cette ligne, explique `DATABASE_URL` dans `config/app.rb` et `.env.example`, la passe comme secret dans `config/deploy.yml` et `.kamal/secrets`, et écrit un workflow de CI qui lance les tests contre un service MySQL. Les modèles, les migrations et les tests sont les mêmes sur les deux&nbsp;; [Modèles et base de données](models.md#mysql) liste ce que MySQL répond autrement.
+
+Une application créée pour SQLite passe à MySQL en changeant cette ligne dans les deux fichiers (ses données restent dans le fichier SQLite), puis&nbsp;:
+
+- avec l’authentification, en relançant `cybertrain generate authentication` avec les options de sa génération (`--invite-only`, `--confirmable`) et `--force`. Il réécrit les quatre fichiers dont la forme MySQL diffère&nbsp;: `app/commands/user_command.rb` et `test/integration/first_run_test.rb` (ils se connectent à `database_url`, pas à `database_path`), `app/models/user.rb` (l’UPDATE du verrouillage, dans l’ordre d’affectation de MySQL) et `test/controllers/accounts_controller_test.rb` (le DDL de sa table et la classe d’erreur de la suppression refusée). Lisez le diff de ceux que vous avez modifiés depuis&nbsp;;
+- en faisant dans le `Dockerfile`, `config/deploy.yml`, `.kamal/secrets` et `.github/workflows/ci.yml` les modifications que fait `new --database=mysql`&nbsp;: `DATABASE_URL` passée comme secret, un service MySQL dans la CI, et le rôle worker laissé en commentaire (plus bas).
 
 La base de données est celle que nomme `DATABASE_URL` (`database_url`, lue avant l’exécution de `config/app.rb`)&nbsp;:
 
@@ -342,7 +347,7 @@ end
 ```
 
 > [!NOTE]
-> Un seul processus, pour l’instant. Sur MySQL, les jobs, les flux, les baux et les tâches planifiées sont garantis dans un processus (ils répondent comme sur SQLite), pas encore entre plusieurs processus ou hôtes qui partagent la base&nbsp;: la prise d’un job, l’ordre d’un flux et l’horloge d’un bail sont l’étape suivante de la feuille de route. Faites tourner un seul conteneur, le rôle web seul, jusqu’à ce qu’une version dise autre chose.
+> Un seul processus, pour l’instant. Sur MySQL, les jobs, les flux, les baux et les tâches planifiées sont garantis dans un processus (ils répondent comme sur SQLite), pas encore entre plusieurs processus ou hôtes qui partagent la base&nbsp;: c’est l’étape 2 de la feuille de route MySQL (la prise d’un job, l’ordre d’un flux, l’horloge d’un bail), pas encore faite. Faites tourner un seul conteneur, le rôle web seul, jusqu’à ce qu’une version dise autre chose&nbsp;; sur MySQL, `generate job` et `generate authentication` laissent en commentaire le rôle worker de `config/deploy.yml`.
 
 ## Fuseaux horaires
 

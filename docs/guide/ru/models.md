@@ -1,5 +1,5 @@
 ---
-source_sha256: ebea5fd4f6551f5a27f619315ce4c4c6037bfe519fe8ce4bc13323c83c30a561
+source_sha256: b40bfa6c7fc2b8082236e6ccd7d093bf6e0daa289f26af1371789b9cf724cca8
 ---
 # Модели и база данных
 
@@ -1223,6 +1223,10 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 - **Схема.** `db/schema.rb` выгружается из `information_schema`; те же
   миграции пишут тот же файл, что и на SQLite. `db normalize`, `db backup`
   и `db vacuum` — команды SQLite.
+- **Один процесс.** Задания, потоки, аренды и запланированные задачи
+  гарантированы в пределах одного процесса; для нескольких процессов или
+  хостов с одной базой — не раньше шага 2 дорожной карты MySQL
+  ([Конфигурация, «MySQL»](configuration.md#mysql)).
 
 ## Обновление
 

@@ -1199,6 +1199,10 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 - **The schema.** `db/schema.rb` is dumped from `information_schema`; the
   same migrations write the same file as on SQLite. `db normalize`,
   `db backup` and `db vacuum` are SQLite's.
+- **One process.** Jobs, streams, leases and scheduled tasks are
+  guaranteed within one process; across several processes or hosts on one
+  database they are not until step 2 of the MySQL roadmap
+  ([Configuration, "MySQL"](configuration.md#mysql)).
 
 ## Upgrading
 

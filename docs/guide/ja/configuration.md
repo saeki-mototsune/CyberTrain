@@ -1,5 +1,5 @@
 ---
-source_sha256: 31cef0c4fd1f43cff188d2552a04cd69056b049d8bc2dcc24fb09e6bc6ef3dae
+source_sha256: bddbbec46f6a57a5845cdebf839f0b70c986951a99b83eeedb3932075048c4d6
 ---
 # 設定
 
@@ -160,7 +160,12 @@ end
 require "cybertrain/mysql"   # すべてのサブシステム。"cybertrain/core/mysql" はコアだけ
 ```
 
-`cybertrain new NAME --database=mysql` はこの行を書き、`config/app.rb` と `.env.example` で `DATABASE_URL` を説明し、`config/deploy.yml` と `.kamal/secrets` でそれをシークレットとして渡し、テストを MySQL のサービスに対して実行する CI のワークフローを書きます。SQLite 向けに作ったアプリケーションは、2 つのファイルのこの行を変えれば移れます（データは SQLite のファイルに残ります）。モデル、マイグレーション、テストはどちらでも同じです。MySQL で答えが変わるところは[モデルとデータベース](models.md#mysql)にまとめてあります。
+`cybertrain new NAME --database=mysql` はこの行を書き、`config/app.rb` と `.env.example` で `DATABASE_URL` を説明し、`config/deploy.yml` と `.kamal/secrets` でそれをシークレットとして渡し、テストを MySQL のサービスに対して実行する CI のワークフローを書きます。モデル、マイグレーション、テストはどちらでも同じです。MySQL で答えが変わるところは[モデルとデータベース](models.md#mysql)にまとめてあります。
+
+SQLite 向けに作ったアプリケーションは、2 つのファイルのこの行を変え（データは SQLite のファイルに残ります）、さらに次のようにして移ります：
+
+- 認証があれば、生成したときのフラグ（`--invite-only`、`--confirmable`）と `--force` を付けて `cybertrain generate authentication` をもう一度実行します。MySQL の形が違う 4 つのファイルが書き直されます：`app/commands/user_command.rb` と `test/integration/first_run_test.rb`（`database_path` ではなく `database_url` に接続する）、`app/models/user.rb`（ロックアウトの UPDATE を MySQL の代入順で）、`test/controllers/accounts_controller_test.rb`（テーブルの DDL と、拒否された削除のエラークラス）。その後に手を入れたファイルは差分を読んでください。
+- `Dockerfile`、`config/deploy.yml`、`.kamal/secrets`、`.github/workflows/ci.yml` に、`new --database=mysql` と同じ変更を加えます：`DATABASE_URL` をシークレットとして渡す、CI に MySQL のサービスを置く、worker のロールをコメントのままにする（後述）。
 
 データベースは `DATABASE_URL` が指すものです（`database_url`。`config/app.rb` が実行される前に読まれます）：
 
@@ -197,7 +202,7 @@ end
 ```
 
 > [!NOTE]
-> 当面は 1 プロセスです。MySQL では、ジョブ、ストリーム、リース、スケジュールされたタスクは 1 プロセスの中で保証されます（SQLite と同じに答えます）が、同じデータベースを共有する複数のプロセスやホストでは、まだ保証されません。ジョブの取り出し、ストリームの順序、リースの時計は、ロードマップの次の段階です。リリースがそうでないと言うまで、コンテナは 1 つ、web のロールだけで動かしてください。
+> 当面は 1 プロセスです。MySQL では、ジョブ、ストリーム、リース、スケジュールされたタスクは 1 プロセスの中で保証されます（SQLite と同じに答えます）が、同じデータベースを共有する複数のプロセスやホストでは、まだ保証されません。それは MySQL のロードマップの第 2 段（ジョブの取り出し、ストリームの順序、リースの時計）で、まだ済んでいません。リリースがそうでないと言うまで、コンテナは 1 つ、web のロールだけで動かしてください。MySQL では、`generate job` と `generate authentication` は `config/deploy.yml` の worker のロールをコメントのままにします。
 
 ## タイムゾーン
 

@@ -1,5 +1,5 @@
 ---
-source_sha256: ebea5fd4f6551f5a27f619315ce4c4c6037bfe519fe8ce4bc13323c83c30a561
+source_sha256: b40bfa6c7fc2b8082236e6ccd7d093bf6e0daa289f26af1371789b9cf724cca8
 ---
 # モデルとデータベース
 
@@ -660,6 +660,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 - **マイグレーションは巻き戻りません。** MySQL の DDL は実行するたびにコミットされるので、途中で失敗したマイグレーションは、失敗した文より前に実行したものを残します：`migration V failed at statement 2 of 3; statements 1..1 were applied and cannot be rolled back (MySQL DDL commits implicitly): ...`。バージョンは記録されません。もう一度 `db migrate` を実行する前に、適用された部分を元に戻して（または手で終わらせて）ください。Rails の MySQL アダプターも同じです。できるところでは、1 つのマイグレーションに 1 つの変更にしてください。
 - **部分インデックスはありません。** `add_index ..., where:` は、何かを書く前に、ファイルと行を示して `spin run gen` を止めます（`partial indexes (where:) are not supported on MySQL`）。カラム全体にインデックスを張るか、条件を生成カラムに入れてください。
 - **スキーマ。** `db/schema.rb` は `information_schema` からダンプされ、同じマイグレーションからは SQLite と同じファイルができます。`db normalize`、`db backup`、`db vacuum` は SQLite のものです。
+- **1 プロセス。** ジョブ、ストリーム、リース、スケジュールされたタスクは 1 プロセスの中で保証されます。1 つのデータベースを使う複数のプロセスやホストでは、MySQL のロードマップの第 2 段まで保証されません（[設定の「MySQL」](configuration.md#mysql)）。
 
 ## アップグレード
 

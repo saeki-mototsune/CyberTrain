@@ -1,5 +1,5 @@
 ---
-source_sha256: 31cef0c4fd1f43cff188d2552a04cd69056b049d8bc2dcc24fb09e6bc6ef3dae
+source_sha256: bddbbec46f6a57a5845cdebf839f0b70c986951a99b83eeedb3932075048c4d6
 ---
 # 配置
 
@@ -160,7 +160,12 @@ end
 require "cybertrain/mysql"   # 所有子系统；"cybertrain/core/mysql" 只有核心
 ```
 
-`cybertrain new NAME --database=mysql` 会写入这一行，在 `config/app.rb` 和 `.env.example` 中说明 `DATABASE_URL`，在 `config/deploy.yml` 和 `.kamal/secrets` 中把它作为密钥传入，并写一个针对 MySQL 服务运行测试的 CI 工作流。为 SQLite 创建的应用程序，只要改掉两个文件中的这一行就能迁移（数据留在 SQLite 文件中）。模型、迁移和测试在两者上相同；[模型与数据库](models.md#mysql)列出了 MySQL 回答不同的地方。
+`cybertrain new NAME --database=mysql` 会写入这一行，在 `config/app.rb` 和 `.env.example` 中说明 `DATABASE_URL`，在 `config/deploy.yml` 和 `.kamal/secrets` 中把它作为密钥传入，并写一个针对 MySQL 服务运行测试的 CI 工作流。模型、迁移和测试在两者上相同；[模型与数据库](models.md#mysql)列出了 MySQL 回答不同的地方。
+
+为 SQLite 创建的应用程序，改掉两个文件中的这一行（数据留在 SQLite 文件中），然后：
+
+- 如果有认证，用生成时的标志（`--invite-only`、`--confirmable`）加上 `--force` 再运行一次 `cybertrain generate authentication`。它会重写 MySQL 形式不同的四个文件：`app/commands/user_command.rb` 和 `test/integration/first_run_test.rb`（它们连接 `database_url` 而不是 `database_path`）、`app/models/user.rb`（锁定的 UPDATE，按 MySQL 的赋值顺序）和 `test/controllers/accounts_controller_test.rb`（其表的 DDL 和被拒绝删除的错误类）。之后改过的文件请阅读差异。
+- 在 `Dockerfile`、`config/deploy.yml`、`.kamal/secrets` 和 `.github/workflows/ci.yml` 中做 `new --database=mysql` 所做的修改：把 `DATABASE_URL` 作为密钥传入、在 CI 中加入 MySQL 服务、让 worker 角色保持注释（见下文）。
 
 数据库是 `DATABASE_URL` 指定的那个（`database_url`，在 `config/app.rb` 运行之前读取）：
 
@@ -197,7 +202,7 @@ end
 ```
 
 > [!NOTE]
-> 目前只保证一个进程。在 MySQL 上，作业、流、租约和计划任务在一个进程内得到保证（与 SQLite 的回答相同），但在共享同一数据库的多个进程或主机之间尚未得到保证：作业的领取、流的顺序和租约的时钟是路线图的下一步。在某个版本另有说明之前，请只运行一个容器，即单独的 web 角色。
+> 目前只保证一个进程。在 MySQL 上，作业、流、租约和计划任务在一个进程内得到保证（与 SQLite 的回答相同），但在共享同一数据库的多个进程或主机之间尚未得到保证：那是 MySQL 路线图的第 2 步（作业的领取、流的顺序、租约的时钟），尚未完成。在某个版本另有说明之前，请只运行一个容器，即单独的 web 角色；在 MySQL 上，`generate job` 和 `generate authentication` 会让 `config/deploy.yml` 的 worker 角色保持注释。
 
 ## 时区
 

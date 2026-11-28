@@ -1,5 +1,5 @@
 ---
-source_sha256: 31cef0c4fd1f43cff188d2552a04cd69056b049d8bc2dcc24fb09e6bc6ef3dae
+source_sha256: bddbbec46f6a57a5845cdebf839f0b70c986951a99b83eeedb3932075048c4d6
 ---
 # Конфигурация
 
@@ -290,7 +290,12 @@ end
 require "cybertrain/mysql"   # все подсистемы; "cybertrain/core/mysql" — только ядро
 ```
 
-`cybertrain new NAME --database=mysql` пишет эту строку, объясняет `DATABASE_URL` в `config/app.rb` и `.env.example`, передаёт её как секрет в `config/deploy.yml` и `.kamal/secrets` и пишет workflow CI, который запускает тесты на сервисе MySQL. Приложение, созданное для SQLite, переходит, если поменять эту строку в обоих файлах (данные остаются в файле SQLite). Модели, миграции и тесты одинаковы на обеих базах; [Модели и база данных](models.md#mysql) перечисляет, где MySQL отвечает иначе.
+`cybertrain new NAME --database=mysql` пишет эту строку, объясняет `DATABASE_URL` в `config/app.rb` и `.env.example`, передаёт её как секрет в `config/deploy.yml` и `.kamal/secrets` и пишет workflow CI, который запускает тесты на сервисе MySQL. Модели, миграции и тесты одинаковы на обеих базах; [Модели и база данных](models.md#mysql) перечисляет, где MySQL отвечает иначе.
+
+Приложение, созданное для SQLite, переходит, если поменять эту строку в обоих файлах (данные остаются в файле SQLite), а затем:
+
+- с аутентификацией — запустить `cybertrain generate authentication` ещё раз с флагами, с которыми она была сгенерирована (`--invite-only`, `--confirmable`), и `--force`. Генератор перепишет четыре файла, чья форма для MySQL отличается: `app/commands/user_command.rb` и `test/integration/first_run_test.rb` (они подключаются к `database_url`, а не к `database_path`), `app/models/user.rb` (UPDATE блокировки в порядке присваивания MySQL) и `test/controllers/accounts_controller_test.rb` (DDL его таблицы и класс ошибки отклонённого удаления). Прочитайте diff тех из них, которые вы меняли;
+- внести в `Dockerfile`, `config/deploy.yml`, `.kamal/secrets` и `.github/workflows/ci.yml` правки, которые делает `new --database=mysql`: `DATABASE_URL` как секрет, сервис MySQL в CI и закомментированная роль worker (ниже).
 
 База данных — та, которую называет `DATABASE_URL` (`database_url`, читается до `config/app.rb`):
 
@@ -327,7 +332,7 @@ end
 ```
 
 > [!NOTE]
-> Пока — один процесс. На MySQL задания, потоки, аренды и запланированные задачи гарантированы в пределах одного процесса (они отвечают как на SQLite), но ещё не для нескольких процессов или хостов с общей базой: захват задания, порядок потока и часы аренды — следующий шаг дорожной карты. Запускайте один контейнер, только роль web, пока релиз не скажет иного.
+> Пока — один процесс. На MySQL задания, потоки, аренды и запланированные задачи гарантированы в пределах одного процесса (они отвечают как на SQLite), но ещё не для нескольких процессов или хостов с общей базой: это шаг 2 дорожной карты MySQL (захват задания, порядок потока, часы аренды), и он ещё не сделан. Запускайте один контейнер, только роль web, пока релиз не скажет иного; на MySQL `generate job` и `generate authentication` оставляют роль worker в `config/deploy.yml` закомментированной.
 
 ## Часовые пояса
 

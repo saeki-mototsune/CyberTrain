@@ -1,5 +1,5 @@
 ---
-source_sha256: ebea5fd4f6551f5a27f619315ce4c4c6037bfe519fe8ce4bc13323c83c30a561
+source_sha256: b40bfa6c7fc2b8082236e6ccd7d093bf6e0daa289f26af1371789b9cf724cca8
 ---
 # 模型与数据库
 
@@ -660,6 +660,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 - **迁移不会回滚。** MySQL 的 DDL 一执行就提交，所以中途失败的迁移会保留失败语句之前已运行的部分：`migration V failed at statement 2 of 3; statements 1..1 were applied and cannot be rolled back (MySQL DDL commits implicitly): ...`。该版本不会被记录；再次运行 `db migrate` 之前，请撤销已应用的部分（或手动完成它）。Rails 的 MySQL 适配器也是如此。尽可能让一个迁移只做一项更改。
 - **没有部分索引。** `add_index ..., where:` 会在写入任何东西之前带着文件和行号停止 `spin run gen`（`partial indexes (where:) are not supported on MySQL`）；请对整列建立索引，或把条件放进生成列。
 - **模式。** `db/schema.rb` 从 `information_schema` 转储；相同的迁移会写出与 SQLite 上相同的文件。`db normalize`、`db backup` 和 `db vacuum` 属于 SQLite。
+- **一个进程。** 作业、流、租约和计划任务在一个进程内得到保证；在使用同一数据库的多个进程或主机之间，直到 MySQL 路线图的第 2 步之前都不保证（[配置中的“MySQL”](configuration.md#mysql)）。
 
 ## 升级
 
