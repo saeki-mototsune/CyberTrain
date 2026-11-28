@@ -17,8 +17,8 @@ require_relative "support/services"
 # find_by (a derived table needs an alias on MySQL), JobsPage.discard_job's
 # updated_at (MySQL evaluates SET left to right), Stream.prune beside a
 # broadcast in an open transaction (it must not wait for that row's lock),
-# a job claim asked again once its lock is held, and the health check's
-# query.
+# a job claim asked again once its lock is held, the health check's
+# query, and Model#insert_row on a table whose id is no AUTO_INCREMENT.
 
 DB = Cybertrain::DB
 Job = Cybertrain::Job
@@ -286,6 +286,34 @@ end
 test "the health check's database query answers on MySQL" do
   fresh_db
   assert Cybertrain::HealthCheck.database_ok?
+end
+
+# ---- Model#insert_row's id -------------------------------------------------
+
+def cf_count
+  rows = DB.with { |c| c.execute("SELECT COUNT(*) AS n FROM cf_articles") }
+  Cybertrain::Cast.int(rows[0]["n"])
+end
+
+test "a record whose INSERT generates no id does not take the connection's earlier id" do
+  fresh_db
+  # One connection, so the broadcast's INSERT and the record's share it.
+  DB.connect(URL, size: 1)
+  DB.with do |c|
+    c.exec_script("CREATE TABLE cf_articles (id BIGINT UNSIGNED NOT NULL DEFAULT (UUID_SHORT()) PRIMARY KEY, " \
+                  "title VARCHAR(255) NOT NULL)")
+  end
+  assert_equal 1, Stream.broadcast("s", "x")
+  # The id is the column's default expression, not an AUTO_INCREMENT
+  # value: the OK packet reports insert id 0, and the record must not keep
+  # the broadcast's 1 (an update would then write WHERE id = 1).
+  rec = CfArticle.create(title: "a")
+  assert_equal 0, rec.id
+  assert_equal 1, cf_count
+  # An AUTO_INCREMENT table on the same connection still answers its id.
+  DB.with { |c| c.exec_script("DROP TABLE cf_articles") }
+  DB.with { |c| c.exec_script("CREATE TABLE cf_articles (id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY, title VARCHAR(255) NOT NULL)") }
+  assert_equal 1, CfArticle.create(title: "b").id
 end
 
 Cybertrain::Test.run!
