@@ -7,6 +7,7 @@
 #   cybertrain generate authentication [--invite-only] [--confirmable] [--force]
 #   cybertrain generate helper NAME [--force] | generate component NAME [attr[:type]...] [--force]
 #   cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]
+#   cybertrain generate mailer NAME [action ...] [--force]
 #   cybertrain db migrate | db COMMAND... | server [PORT] [--spinel] | build | spin ARGS...
 #   cybertrain test [FILE|DIR ...] [-n NAME|-n /TEXT/]
 #   cybertrain secret [--hex] | setup [--force] | doctor | version | help
@@ -26,6 +27,7 @@ require "cybertrain/cli/attachment"
 require "cybertrain/cli/helper"
 require "cybertrain/cli/component"
 require "cybertrain/cli/job"
+require "cybertrain/cli/mailer"
 require "cybertrain/cli/build"
 require "cybertrain/cli/toolchain"
 require "cybertrain/cli/framework_version"
@@ -108,6 +110,13 @@ module Cybertrain
             in seconds or polynomially_longer, then the attempts) and a test
             running it. Queue it with NameJob.perform_later("id" => 1) once
             `spin run gen` has written gen/jobs.rb.
+        cybertrain generate mailer NAME [action ...] [--force]
+            Add a mailer class: app/mailers/NAME_mailer.rb (an
+            ApplicationMailer with one action per name), its views
+            (ACTION.html.erb and ACTION.text.erb) and a test, and the
+            application mailer and mailer layouts when they are missing.
+            Send with NameMailer.action.deliver_later once `spin run gen`
+            has written gen/mailers.rb.
         cybertrain db migrate
             Generate, apply pending migrations (build/bin/db migrate,
             built like gen), generate again.
@@ -494,8 +503,18 @@ module Cybertrain
         puts "next:"
         puts "  spin run gen           # writes gen/jobs.rb (perform_later and the retry arms)"
         puts "  cybertrain test        # test/jobs/#{Inflector.underscore(args[0]).delete_suffix("_job")}_job_test.rb among the others"
+      when "mailer"
+        rest = argv[2, argv.size - 2]
+        args = without_flag(rest, "--force")
+        raise InvalidArgument, Mailer::USAGE if args.empty? || args.any? { |a| a.start_with?("-") }
+
+        Mailer.generate(".", args[0], args[1, args.size - 1], argv.include?("--force"))
+        puts ""
+        puts "next:"
+        puts "  spin run gen           # writes gen/mailers.rb (the class methods and with)"
+        puts "  cybertrain test        # test/mailers/#{Inflector.underscore(args[0]).delete_suffix("_mailer")}_mailer_test.rb among the others"
       else
-        raise InvalidArgument, "only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper`, `generate component` and `generate job` are supported"
+        raise InvalidArgument, "only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper`, `generate component`, `generate job` and `generate mailer` are supported"
       end
       0
     end

@@ -1,5 +1,5 @@
 ---
-source_sha256: 6e23ce19069d28de5d3a3a07a86ec79bf0b74c537bf284d5e8df84fcbb180b83
+source_sha256: bc6663adeff171731ac0c5fc3fc0b4e6fd69efdaec1fda2c06bf4dc0aed1d39f
 ---
 # アプリをテストする
 
@@ -280,7 +280,31 @@ test "a reset mails a link" do
 end
 ```
 
-`assert_emails(count) { }` はブロックが送ったメールを数えます。ブロックの中で `deliver_later` でキューに入れたメールは先に送られ、失敗したメールのジョブはそのエラーでアサーションを失敗させます。`assert_no_emails { }` は 1 通もないことを求めます。メッセージの読み取りメソッドは `mail_to`、`mail_from`、`mail_subject`、`mail_body`、`mail_html` です。SMTP の経路そのもののテストは `Cybertrain.config.mail_delivery_method = :smtp` を設定し、`teardown` で `:test` に戻します（この設定はテストの間でリセットされません）。[外向きの呼び出しをテストする](#testing-outbound-calls)と同じです。テスト環境の外では `:test` は警告を出して起動し、メールは送られません。
+`assert_emails(count) { }` はブロックが送ったメールを数えます。ブロックの中で `deliver_later` でキューに入れたメールは先に送られ、失敗したメールのジョブはそのエラーでアサーションを失敗させます。`assert_no_emails { }` は 1 通もないことを求めます。メッセージの読み取りメソッドは `mail_to`、`mail_from`、`mail_subject`、`mail_body`、`mail_html`、`mail_attachments`（各ファイルの `attachment_filename`、`attachment_mime_type`、`attachment_content`）です。
+
+[メーラークラス](external-services.md#mailer-classes)のアクションはレンダー済みのメッセージを返すので、メーラーのテストは何も送らずにそれを読めます。`ActionMailer::TestCase` の中で書きます（`cybertrain generate mailer` が書き出すもの）：
+
+```ruby test/mailers/user_mailer_test.rb
+require "test_helper"
+
+class UserMailerTest < ActionMailer::TestCase
+  test "welcome" do
+    mail = UserMailer.welcome(users(:one))
+    assert_equal "Welcome to My Site", mail.mail_subject
+    assert_equal users(:one).email_address, mail.mail_to
+    assert_match "Welcome", mail.mail_body
+  end
+
+  test "the digest is queued" do
+    assert_enqueued_emails 1 do
+      UserMailer.with(user: users(:one)).digest.deliver_later
+    end
+    assert_enqueued_email_with UserMailer, :digest, to: users(:one).email_address
+  end
+end
+```
+
+`assert_enqueued_emails(count) { }` はブロックが `deliver_later` でキューに入れたメールを数え、どれも送りません。`assert_no_enqueued_emails { }` は 1 通もないことを求め、`assert_enqueued_email_with(mailer, action, to:)` はそのアクションが作ったメールがキューにあることを求めます。メッセージはキューに入れた時点でレンダー済みなので、Rails の `args:` と `params:` は比較されず、`to:` は比較されます。 SMTP の経路そのもののテストは `Cybertrain.config.mail_delivery_method = :smtp` を設定し、`teardown` で `:test` に戻します（この設定はテストの間でリセットされません）。[外向きの呼び出しをテストする](#testing-outbound-calls)と同じです。テスト環境の外では `:test` は警告を出して起動し、メールは送られません。
 
 ## ジョブのテスト
 

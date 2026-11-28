@@ -1,5 +1,5 @@
 ---
-source_sha256: 6e23ce19069d28de5d3a3a07a86ec79bf0b74c537bf284d5e8df84fcbb180b83
+source_sha256: bc6663adeff171731ac0c5fc3fc0b4e6fd69efdaec1fda2c06bf4dc0aed1d39f
 ---
 # 测试应用
 
@@ -280,7 +280,31 @@ test "a reset mails a link" do
 end
 ```
 
-`assert_emails(count) { }` 统计块发送的邮件；块中用 `deliver_later` 排队的邮件会先被发送，失败的邮件作业会让断言带着它的错误失败。`assert_no_emails { }` 要求一封都没有。消息的读取方法是 `mail_to`、`mail_from`、`mail_subject`、`mail_body` 和 `mail_html`。测试 SMTP 路径本身的测试会设置 `Cybertrain.config.mail_delivery_method = :smtp`，并在 `teardown` 中改回 `:test`（这个设置在测试之间不会重置），见[测试出站调用](#testing-outbound-calls)。在测试环境之外，`:test` 会带着警告启动，并且不发送任何邮件。
+`assert_emails(count) { }` 统计块发送的邮件；块中用 `deliver_later` 排队的邮件会先被发送，失败的邮件作业会让断言带着它的错误失败。`assert_no_emails { }` 要求一封都没有。消息的读取方法是 `mail_to`、`mail_from`、`mail_subject`、`mail_body`、`mail_html` 和 `mail_attachments`（每个文件的 `attachment_filename`、`attachment_mime_type` 和 `attachment_content`）。
+
+[邮件程序类](external-services.md#mailer-classes)的动作返回渲染好的邮件，所以邮件程序的测试可以在不发送任何东西的情况下读取它，写在 `ActionMailer::TestCase` 中（`cybertrain generate mailer` 写出的就是这样）：
+
+```ruby test/mailers/user_mailer_test.rb
+require "test_helper"
+
+class UserMailerTest < ActionMailer::TestCase
+  test "welcome" do
+    mail = UserMailer.welcome(users(:one))
+    assert_equal "Welcome to My Site", mail.mail_subject
+    assert_equal users(:one).email_address, mail.mail_to
+    assert_match "Welcome", mail.mail_body
+  end
+
+  test "the digest is queued" do
+    assert_enqueued_emails 1 do
+      UserMailer.with(user: users(:one)).digest.deliver_later
+    end
+    assert_enqueued_email_with UserMailer, :digest, to: users(:one).email_address
+  end
+end
+```
+
+`assert_enqueued_emails(count) { }` 统计块用 `deliver_later` 入队的邮件，并且不投递其中任何一封；`assert_no_enqueued_emails { }` 要求一封都没有；`assert_enqueued_email_with(mailer, action, to:)` 要求有一封由该动作构建的已入队邮件。邮件在入队时已经渲染好，所以不会比较 Rails 的 `args:` 和 `params:`，但会比较 `to:`。 测试 SMTP 路径本身的测试会设置 `Cybertrain.config.mail_delivery_method = :smtp`，并在 `teardown` 中改回 `:test`（这个设置在测试之间不会重置），见[测试出站调用](#testing-outbound-calls)。在测试环境之外，`:test` 会带着警告启动，并且不发送任何邮件。
 
 ## 测试作业
 

@@ -2330,7 +2330,7 @@ error: usage: cybertrain generate attachment MODEL FIELD [--any] [--show-checks-
 error: usage: cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]
 error: usage: cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]
 error: usage: cybertrain generate scaffold NAME field:type ... [--any]
-error: only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper`, `generate component` and `generate job` are supported
+error: only `generate scaffold`, `generate attachment`, `generate authentication`, `generate helper`, `generate component`, `generate job` and `generate mailer` are supported
 ok   the command line: usage, --any, and the unknown generator message
 create spin.toml
 create .gitignore

@@ -1,0 +1,9 @@
+ok   an attachment's type comes from its extension, else octet-stream, or is given
+ok   names and types that are refused
+ok   Attachments: []= adds, the same name replaces, [] reads back, inline adds inline
+ok   text and a file: multipart/mixed, the text part first
+ok   text, HTML, an inline image and a file: mixed > alternative > related
+ok   an inline file without HTML is attached as the others; no file is D57's message byte for byte
+ok   a name that is not plain ASCII is RFC 2231-encoded, and read back
+ok   the job payload's attachment lines round-trip, and a malformed one is refused
+8 tests, 58 assertions, 0 failures

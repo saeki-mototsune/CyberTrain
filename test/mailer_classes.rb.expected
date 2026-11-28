@@ -1,0 +1,13 @@
+ok   a class method runs the action and answers its rendered message
+ok   positional and keyword parameters pass through
+ok   with(params) gives the action its params
+ok   an action that returns before mail answers a skipped message that sends nothing
+ok   body: skips the views, from: overrides the default
+ok   a namespaced mailer reads its own view directory, layout false
+ok   a mailer module still works beside the classes
+ok   deliver_now stores the message with its attachments under :test
+ok   deliver_now over SMTP sends multipart/mixed with the files
+ok   deliver_later queues the message, files included, and the job sends it
+ok   assert_enqueued_emails, assert_no_enqueued_emails and assert_enqueued_email_with
+ok   a view the action lacks raises MissingTemplate naming both files
+12 tests, 65 assertions, 0 failures

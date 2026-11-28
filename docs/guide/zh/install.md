@@ -1,5 +1,5 @@
 ---
-source_sha256: 62e9c689219c4db26ce385321689566020292b1006b3883b3c811e280c7de675
+source_sha256: cf1537dadb7e4793a3711c9c9304361844186be00b34e509c948a963e106c132
 ---
 # 安装
 
@@ -49,6 +49,7 @@ cybertrain doctor
 - `cybertrain generate helper NAME [--force]` 添加 `app/helpers/NAME_helper.rb` 和一个测试；运行 `spin run gen` 之后，这个模块的方法可以在任何模板中调用（[应用的辅助方法](template-language.md#application-helpers)）。
 - `cybertrain generate component NAME [attr[:type] ...] [--force]` 添加一个视图组件：`app/components/NAME_component.rb`、它的模板和一个测试（[组件](template-language.md#components)）。
 - `cybertrain generate job NAME [--retry Klass:wait:attempts ...] [--force]` 添加 `app/jobs/NAME_job.rb` 和一个测试，并在 `bin/<app>.rb` 和 `bin/db.rb` 中加入 `require "cybertrain/jobs"`（[后台任务](background-and-operations.md#background-work)）。
+- `cybertrain generate mailer NAME [action ...] [--force]` 添加邮件程序类 `app/mailers/NAME_mailer.rb`（每个名称一个动作）及其视图和一个测试，在缺少时写入应用的邮件程序和邮件程序布局，并在 `bin/<app>.rb` 和 `bin/db.rb` 中加入 `require "cybertrain/mailer"` 和 `require "cybertrain/mailer/later"`（[邮件程序类](external-services.md#mailer-classes)）。
 - `cybertrain db migrate` 先生成代码，再执行待处理的迁移，然后再次生成（`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db -- migrate; SPIN_DEBUG=1 spin run gen`）；`cybertrain migration` 作为别名保留。
 - `cybertrain db COMMAND...` 在 `SPIN_DEBUG=1 spin
   run gen` 之后运行其他任意数据库命令：`status`、`rollback [N]`（之后会再次生成）、`schema`（不做迁移，按数据库的现状写出 `db/schema.rb`）、`schema:dump`、`create`、`backup` 和 `vacuum`（[运维](background-and-operations.md#operations-backups-vacuum-health-check)）以及 `normalize`（[日期时间与 `db normalize`](models.md#datetimes-and-db-normalize)）。

@@ -73,7 +73,7 @@ module Cybertrain
       # require (CLI::ToolBinary.requirement), and one it cannot follow
       # costs gen its reuse.
       TAKEN_NAMES = (%w[assert assert_broadcasts assert_changes assert_difference assert_emails assert_empty assert_enqueued_jobs
-                       assert_enqueued_with assert_equal assert_in_delta assert_includes assert_match assert_nil
+                       assert_enqueued_email_with assert_enqueued_emails assert_no_enqueued_emails assert_enqueued_with assert_equal assert_in_delta assert_includes assert_match assert_nil
                        assert_no_broadcasts assert_no_difference assert_no_emails assert_no_enqueued_jobs assert_no_match
                        assert_not assert_not_empty assert_not_equal assert_not_includes assert_not_nil assert_nothing_raised
                        assert_raises assert_redirected_to assert_response assert_select assert_turbo_stream clear_enqueued_jobs

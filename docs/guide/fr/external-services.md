@@ -1,5 +1,5 @@
 ---
-source_sha256: 6e4f1fb3feea6c05454ba214e8d64b5662955142a0167ff12c120a2e654c9ca7
+source_sha256: 8066abf447d8825790ac1adde236f582ca0e2b936c010a9e0ad9ae22e7b35d66
 ---
 # HTTP sortant, flux WebSocket et e-mail
 
@@ -499,20 +499,19 @@ mailer.deliver(to: "a@example.com, b@example.com", subject: "Report", body: repo
   de plus de 998 octets, un corps qui n’est pas de l’UTF-8 valide ou contient un
   NUL, plus de 100 destinataires. `to:` prend une adresse ou plusieurs séparées
   par des virgules.
-- **Mailers&nbsp;:** un module dans `app/mailers` (gen les charge) dont la
-  méthode renvoie un `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`
-  se lit comme dans Rails&nbsp;: `PasswordsMailer.reset(user, url).deliver_later`
-  le met en file, `deliver_now` l’envoie aussitôt. `cybertrain/mailer`
+- **Mailers&nbsp;:** une classe de mailer dans `app/mailers` ([Classes de mailer](#mailer-classes),
+  plus bas) ou un module dont la méthode renvoie un
+  `Cybertrain::MailMessage.new(to:, subject:, body:, html:, from:)`&nbsp;: les
+  deux se lisent comme dans Rails, `PasswordsMailer.reset(user, url).deliver_later`
+  met le courriel en file, `deliver_now` l’envoie aussitôt. `cybertrain/mailer`
   charge `MailMessage` avec `deliver_now`&nbsp;; `deliver_later` vient avec
-  `cybertrain/mailer/later`. `cybertrain generate authentication` en écrit
-  deux ([Réinitialisation du mot de passe](authentication.md#password-reset))
+  `cybertrain/mailer/later`. `cybertrain generate authentication` écrit
+  deux modules ([Réinitialisation du mot de passe](authentication.md#password-reset))
   et ajoute les deux lignes.
-- **Pas encore&nbsp;:** les pièces jointes et les images en ligne, les
-  classes de mailer avec `default from:` et des vues trouvées par leur nom,
-  les noms affichés, les en-têtes `Cc`/`Bcc` (envoyez plutôt à plusieurs
-  destinataires), AUTH LOGIN/CRAM-MD5, les adresses SMTPUTF8, le
-  pipelining. `deliver` s’exécute sur le thread appelant, un green thread
-  comme une requête.
+- **Pas encore&nbsp;:** les noms affichés, les en-têtes `Cc`/`Bcc`/`Reply-To`
+  (envoyez plutôt à plusieurs destinataires), AUTH LOGIN/CRAM-MD5, les
+  adresses SMTPUTF8, le pipelining. `deliver` s’exécute sur le thread
+  appelant, un green thread comme une requête.
 
 ### Mail HTML
 
@@ -575,4 +574,120 @@ l’appel&nbsp;: le job n’a pas de contexte de vue. Il renvoie l’id du job.
   démarre ses threads de jobs, même dans une application sans classe de job
   à elle.
 
-La conception&nbsp;: [docs/design.md](../design.md) D27 et D57.
+### Classes de mailer
+
+Un mailer s’écrit comme dans Rails&nbsp;: une classe sous `app/mailers` dont les
+méthodes publiques sont ses actions, chacune finissant par `mail`, et une vue
+par action sous `app/views/<mailer>/`. `cybertrain generate mailer user welcome`
+en écrit une avec ses vues et son test, l’`ApplicationMailer` et les layouts de
+mailer quand ils manquent, et ajoute `require "cybertrain/mailer"` et
+`require "cybertrain/mailer/later"` à `bin/<app>.rb` et `bin/db.rb`&nbsp;:
+
+```ruby
+# app/mailers/application_mailer.rb
+class ApplicationMailer < Cybertrain::Mailer::Base
+  default from: "notifications@example.com"
+  layout "mailer"
+end
+
+# app/mailers/user_mailer.rb
+class UserMailer < ApplicationMailer
+  def welcome(user)
+    @user = user
+    @url = "https://example.com/login"
+    mail(to: user.email_address, subject: "Welcome to My Site")
+  end
+
+  def digest
+    @user = params[:user]
+    return if @user.unsubscribed   # pas de courriel : le livrer n’envoie rien
+
+    mail(to: @user.email_address)
+  end
+end
+
+UserMailer.welcome(user).deliver_later
+UserMailer.with(user: user).digest.deliver_later(wait: 1.hour)
+UserMailer.welcome(user).deliver_now
+```
+
+- **Les vues.** `mail` rend `app/views/user_mailer/welcome.html.erb` et
+  `welcome.text.erb` avec les variables d’instance de l’action&nbsp;: les deux
+  font un message `multipart/alternative`, une seule fait cette partie
+  seule, aucune lève `Cybertrain::Template::MissingTemplate`. Chacune est
+  enveloppée dans le layout de la classe (`layout "mailer"`&nbsp;:
+  `app/views/layouts/mailer.html.erb` et `mailer.text.erb`, chacun quand il
+  existe&nbsp;; `layout false` pour aucun). Une vue et un layout `.text.erb`
+  affichent `<%= %>` sans échappement, comme Rails traite le text/plain&nbsp;;
+  ceux en HTML échappent. Les vues sont rendues hors d’une requête&nbsp;: les
+  helpers de chemin marchent, les helpers `*_url` et `request` non, donc
+  construisez les liens à partir d’un réglage (le `PasswordsMailer` généré
+  prend l’URL en argument). `t(".greeting")` dans une vue lit
+  `user_mailer.welcome.greeting`.
+- **`mail(to:, subject:, from:, body:, template_name:, template_path:)`.**
+  Un sujet omis est celui du dictionnaire, `user_mailer.welcome.subject`,
+  sinon le nom de l’action mis en forme lisible («&nbsp;Welcome&nbsp;»). Un
+  expéditeur omis est le `default from:` de la classe (une ligne, hérité),
+  sinon `CYBERTRAIN_SMTP_FROM`. `body:` donne le texte et ne lit aucune vue.
+- **Le message est construit quand l’action est appelée.**
+  `UserMailer.welcome(user)` exécute l’action et la rend aussitôt, et
+  renvoie le `Cybertrain::MailMessage` (`mail_to`, `mail_subject`,
+  `mail_body`, `mail_html`, `mail_from`, `mail_attachments`)&nbsp;;
+  `deliver_later` met en file ce message terminé, si bien que le job n’a
+  besoin ni des enregistrements ni d’une vue. Rails rend au contraire dans le
+  job, à partir d’arguments qu’il sérialise. Une action qui retourne avant
+  `mail` renvoie un message que `deliver_now` et `deliver_later` laissent
+  non envoyé (`mail_skipped?`).
+- **`with(params)`** donne à l’action des `params` (un Hash à clés Symbol&nbsp;:
+  `params[:user]`). Les paramètres d’une action sont nommés, avec des valeurs
+  par défaut et des mots-clés (`def welcome(user, greeting = "Hi", copy: false)`)&nbsp;;
+  `*`, `**` et `&` sont refusés, puisque gen écrit les méthodes de classe qui
+  les transmettent.
+- **Ce que fait gen.** Spinel n’a pas de `method_missing`, donc `spin run gen`
+  lit `app/mailers` comme du texte et écrit `gen/mailers.rb`&nbsp;: pour chaque
+  classe, les méthodes de classe `UserMailer.welcome(...)` et
+  `UserMailer.with(...)`, le répertoire des vues, le layout, l’expéditeur et
+  les variables d’instance que lisent les vues. Une action ne peut pas porter
+  le nom d’une méthode de `Cybertrain::Mailer::Base` (`mail`, `params`,
+  `attachments`, ...&nbsp;; gen dit laquelle). Un module de mailer, comme le
+  `PasswordsMailer` généré, se charge comme avant.
+
+### Pièces jointes
+
+```ruby
+def invoice(order)
+  attachments["invoice.pdf"] = File.binread("storage/invoices/#{order.id}.pdf")
+  attachments.attach("event.ics", ics_text, mime_type: "text/calendar")
+  attachments.inline["logo.png"] = File.binread("app/assets/images/logo.png")
+  @logo = attachments["logo.png"].url   # "cid:logo.png", pour <img src="<%= @logo %>">
+  mail(to: order.email, subject: "Your invoice")
+end
+```
+
+- Un message avec pièces jointes est `multipart/mixed`&nbsp;: le texte (ou le
+  `multipart/alternative` du texte et du HTML) d’abord, puis chaque fichier
+  en base64 avec son `Content-Type` (d’après l’extension&nbsp;: `pdf`, `png`,
+  `jpg`, `csv`, `zip`, `ics`, ... et `application/octet-stream` pour toute
+  autre&nbsp;; `attach(..., mime_type:)` en nomme une autre) et un
+  `Content-Disposition: attachment` qui le nomme (codé en RFC 2231 quand le
+  nom n’est pas de l’ASCII simple). Un fichier de même nom remplace le
+  premier.
+- Un fichier en ligne va avec la partie HTML dans un `multipart/related`,
+  avec `Content-ID: <logo.png>`&nbsp;; le HTML l’affiche comme `cid:logo.png`.
+  Son nom est son Content-ID, il ne peut donc contenir que des lettres, des
+  chiffres et `._-+`.
+- Un nom de fichier est refusé (`ArgumentError`) quand il est vide, de plus
+  de 255 octets, pas en UTF-8, ou contient un caractère de contrôle, `/` ou
+  `\`.
+- `deliver_later` garde les fichiers dans la charge utile du job, codés en
+  base64, si bien qu’ils restent dans la base jusqu’à ce que le job ait tourné
+  (et aussi longtemps que la ligne terminée est conservée), et la limite de
+  taille du serveur de soumission s’applique comme pour tout courriel.
+- `Mailer.deliver_message(message)` envoie un `MailMessage` construit à la
+  main avec `attachments:` (un Array de `Cybertrain::Mailer::Attachment`).
+
+Les tests lisent les fichiers d’un courriel dans `Mailer.deliveries`
+(`mail_attachments`) et comptent les courriels en file avec
+`assert_enqueued_emails` ([Tester les courriels](testing.md#testing-mail)).
+
+La conception&nbsp;: [docs/design.md](../design.md) D27, D57 et D98.

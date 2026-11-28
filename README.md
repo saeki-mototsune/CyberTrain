@@ -55,7 +55,7 @@ it, in English and Japanese, with an admin user guarding its `/admin` pages.
   account page and admin users into the application.
 - **Other generators**: scaffold, file upload
   ([advanced tutorial](https://www.cybertrain.dev/guide/advanced-tutorial.html#attachments)),
-  helper, component and job.
+  helper, component, job and mailer.
 - **Background work** ([guide](https://www.cybertrain.dev/guide/background-and-operations.html)):
   job classes with retry policies, cron schedules, a jobs page, a cache
   store.
@@ -63,10 +63,12 @@ it, in English and Japanese, with an admin user guarding its `/admin` pages.
   Turbo Streams over Server-Sent Events or WebSocket.
 - **Outbound clients** ([guide](https://www.cybertrain.dev/guide/external-services.html)):
   HTTP (streamed, gzip and Server-Sent Events responses), SMTP (plain or
-  HTML mail, sent now or from a job), WebSocket feeds.
+  HTML mail with attachments, from Rails-style mailer classes, sent now or
+  from a job), WebSocket feeds.
 - **Tests** ([guide](https://www.cybertrain.dev/guide/testing.html)):
   Rails' test classes (`ActiveSupport::TestCase`,
-  `ActionDispatch::IntegrationTest`, `ViewComponent::TestCase`) with
+  `ActionDispatch::IntegrationTest`, `ViewComponent::TestCase`,
+  `ActionMailer::TestCase`) with
   `setup` / `teardown`, fixtures, `travel_to`, `assert_select`, and
   broadcast, mail and job assertions, all run by `cybertrain test` as one
   compiled program.
@@ -80,8 +82,7 @@ it, in English and Japanese, with an admin user guarding its `/admin` pages.
   through `require "cybertrain/error_reporter/sentry"`), and a console
   over the models.
 
-Not built: mailer classes (a mailer is a module whose methods return a
-`MailMessage` to `deliver_later`), mail attachments, HTTP/2
+Not built: HTTP/2, `Cc`/`Bcc` and display names in mail, mailer previews
 ([what differs from Rails](https://www.cybertrain.dev/guide/how-it-works.html#differences-from-rails)).
 
 Since 2026-11-05 porting an existing Rails application by hand is a goal
@@ -146,7 +147,7 @@ file), in about a seventh of the memory, in the run of 2026-11-24
 | [Background work and operations](https://www.cybertrain.dev/guide/background-and-operations.html) | Job classes, retries and concurrency keys (delivered at least once, so make jobs idempotent), `every` and `cron` tasks, the jobs page, the `worker` and `feeds` process roles, the cache store, the console, backups, the health check |
 | [Logs and error reporting](https://www.cybertrain.dev/guide/logs-and-errors.html) | The log line, levels and JSON lines, request ids and tags, `Cybertrain.error`, subscribers and filters, Sentry or GlitchTip |
 | [Realtime](https://www.cybertrain.dev/guide/realtime.html) | Turbo Streams over Server-Sent Events or WebSocket, broadcasts from actions, jobs and feeds, signed stream names, feed health |
-| [Outbound HTTP, WebSocket feeds and e-mail](https://www.cybertrain.dev/guide/external-services.html) | `HttpClient` (streaming, gzip, redirects, Server-Sent Events), `WebSocket.subscribe` (timers, restarts), `Mailer` (HTML mail, `deliver_later`) |
+| [Outbound HTTP, WebSocket feeds and e-mail](https://www.cybertrain.dev/guide/external-services.html) | `HttpClient` (streaming, gzip, redirects, Server-Sent Events), `WebSocket.subscribe` (timers, restarts), `Mailer` (HTML mail, `deliver_later`, mailer classes, attachments) |
 | [Testing](https://www.cybertrain.dev/guide/testing.html) | Test classes, fixtures, `cybertrain test`, time travel, components and streams, mail, jobs, outbound calls, logs and error reports, CI |
 | [Upgrading](https://www.cybertrain.dev/guide/upgrading.html) | Moving an application to a newer release: the procedure, step by step, and the notes of each release |
 | [Deploying](https://www.cybertrain.dev/deploy.html) | To a server with systemd, or with Kamal |

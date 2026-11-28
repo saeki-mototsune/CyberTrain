@@ -532,8 +532,39 @@ end
 `assert_emails(count) { }` counts the mail the block delivered; mail queued
 in it with `deliver_later` is delivered first, and a mail job that fails
 fails the assertion with its error. `assert_no_emails { }` wants none. A
-message's readers are `mail_to`, `mail_from`, `mail_subject`, `mail_body`
-and `mail_html`. A test of the SMTP path itself sets
+message's readers are `mail_to`, `mail_from`, `mail_subject`, `mail_body`,
+`mail_html` and `mail_attachments` (each file's `attachment_filename`,
+`attachment_mime_type` and `attachment_content`).
+
+A [mailer class](external-services.md#mailer-classes)'s action answers its
+rendered message, so a mailer test reads it without sending anything, in an
+`ActionMailer::TestCase` (what `cybertrain generate mailer` writes):
+
+```ruby test/mailers/user_mailer_test.rb
+require "test_helper"
+
+class UserMailerTest < ActionMailer::TestCase
+  test "welcome" do
+    mail = UserMailer.welcome(users(:one))
+    assert_equal "Welcome to My Site", mail.mail_subject
+    assert_equal users(:one).email_address, mail.mail_to
+    assert_match "Welcome", mail.mail_body
+  end
+
+  test "the digest is queued" do
+    assert_enqueued_emails 1 do
+      UserMailer.with(user: users(:one)).digest.deliver_later
+    end
+    assert_enqueued_email_with UserMailer, :digest, to: users(:one).email_address
+  end
+end
+```
+
+`assert_enqueued_emails(count) { }` counts the mail the block queued with
+`deliver_later` and delivers none of it; `assert_no_enqueued_emails { }`
+wants none; `assert_enqueued_email_with(mailer, action, to:)` wants a queued
+mail that action built. The message was rendered when it was queued, so
+Rails' `args:` and `params:` are not compared; `to:` is. A test of the SMTP path itself sets
 `Cybertrain.config.mail_delivery_method = :smtp` and puts `:test` back in
 `teardown` (the setting is not reset between tests), as in
 [Testing outbound calls](#testing-outbound-calls). Outside the test

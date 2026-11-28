@@ -1,5 +1,5 @@
 # cybertrain/test/mail -- the mail assertions (docs/design.md
-# D84): assert_emails and assert_no_emails count the messages
+# D84, D98): assert_emails and assert_no_emails count the messages
 # Mailer.deliveries gained, which in the test environment is where every
 # delivery goes (Config#mail_delivery_method :test). As in Rails, mail
 # queued with deliver_later in the block is delivered (its "cybertrain
@@ -9,6 +9,7 @@ require "cybertrain/test"
 require "cybertrain/test/jobs"
 require "cybertrain/db/base"
 require "cybertrain/mail_message"
+require "cybertrain/test/test_case"
 
 module Cybertrain
   module Test
@@ -33,6 +34,16 @@ module Cybertrain
 
         Jobs.perform_after(floor, Mailer::JOB_KIND, helper)
       end
+    end
+
+    # `assert_enqueued_emails`: Rails' wording.
+    # @return [nil]
+    def self.check_enqueued_emails(expected, got)
+      count_assertion
+      return nil if got == expected
+
+      fail_with("Expected #{expected} enqueued emails, got #{got}")
+      nil
     end
 
     # `assert_emails`: Rails' count, in Minitest's capitalisation.
@@ -98,4 +109,98 @@ def assert_no_emails
     Cybertrain::Test::Mail.deliver_queued(floor, "assert_no_emails")
   end
   Cybertrain::Test.check_emails(0, Cybertrain::Mailer.deliveries.size - before)
+end
+
+# Passes when the block queued `count` mails with deliver_later (the
+# "cybertrain mail" jobs it added; none is delivered). Without a block,
+# passes when `count` such jobs are queued. Rails' assertion, which counts
+# ActionMailer::MailDeliveryJob.
+# @example
+#   assert_enqueued_emails 1 do
+#     UserMailer.with(user: user).welcome.deliver_later
+#   end
+# @param count [Integer]
+# @yield the code that queues the mail
+# @return [nil]
+# @raise [Cybertrain::Test::AssertionFailed] "Expected 1 enqueued emails, got 0"
+# @api public
+def assert_enqueued_emails(count)
+  before = 0
+  if block_given?
+    before = Cybertrain::Test::Jobs.queued_count(Cybertrain::Mailer::JOB_KIND)
+    yield
+  end
+  got = Cybertrain::Test::Jobs.queued_count(Cybertrain::Mailer::JOB_KIND) - before
+  Cybertrain::Test.check_enqueued_emails(count, got)
+end
+
+# Passes when the block queued no mail (`assert_enqueued_emails(0) { }`);
+# without a block, when none is queued.
+# @example
+#   assert_no_enqueued_emails { post "/passwords", params: { email: "nobody@example.com" } }
+# @yield the code that must queue no mail
+# @return [nil]
+# @api public
+def assert_no_enqueued_emails
+  before = 0
+  if block_given?
+    before = Cybertrain::Test::Jobs.queued_count(Cybertrain::Mailer::JOB_KIND)
+    yield
+  end
+  got = Cybertrain::Test::Jobs.queued_count(Cybertrain::Mailer::JOB_KIND) - before
+  Cybertrain::Test.check_enqueued_emails(0, got)
+end
+
+# Passes when a mail built by `mailer`'s `action` is queued with
+# deliver_later (Rails' `assert_enqueued_email_with UserMailer, :welcome`),
+# to `to` when it is given. The message is rendered when it is queued
+# (docs/design.md D98), so Rails' `args:` and `params:` are not compared:
+# read the mail's fields instead (`to:` here, or perform the job and read
+# Mailer.deliveries).
+# @example
+#   UserMailer.with(user: user).welcome.deliver_later
+#   assert_enqueued_email_with UserMailer, :welcome, to: user.email_address
+# @param mailer [Class, String] the mailer class, or its name
+# @param action [Symbol, String]
+# @param to [String] the recipients as given to `mail`; "" for any
+# @return [void]
+# @raise [Cybertrain::Test::AssertionFailed] naming the queued mails
+# @api public
+def assert_enqueued_email_with(mailer, action, to: "")
+  wanted = Cybertrain::Cast.empty_hash
+  wanted["mailer"] = mailer.to_s
+  wanted["action"] = action.to_s
+  wanted["to"] = to unless to.empty?
+  Cybertrain::Test.count_assertion
+  payloads = Cybertrain::Test::Jobs.queued_payloads(Cybertrain::Mailer::JOB_KIND)
+  payloads.each do |payload|
+    return if Cybertrain::Test::Jobs.args_match?(payload, wanted)
+  end
+
+  queued = Array.new(0) { "" }
+  payloads.each do |payload|
+    fields = Cybertrain::Cast.json_hash(payload)
+    queued << "#{Cybertrain::Cast.str(fields["mailer"])}##{Cybertrain::Cast.str(fields["action"])} to #{Cybertrain::Cast.str(fields["to"])}"
+  end
+  seen = queued.empty? ? "none queued" : "queued: #{queued.join(", ")}"
+  target = to.empty? ? "" : " to #{to}"
+  flunk("expected an enqueued email #{mailer}##{action}#{target}; #{seen}")
+end
+
+# Rails' base class for mailer tests (ActionMailer::TestCase): every
+# assertion of ActiveSupport::TestCase, the mail ones included.
+# @example test/mailers/user_mailer_test.rb
+#   require "test_helper"
+#
+#   class UserMailerTest < ActionMailer::TestCase
+#     test "welcome" do
+#       mail = UserMailer.welcome
+#       assert_equal "Welcome", mail.mail_subject
+#     end
+#   end
+# @api public
+module ActionMailer
+  # @api public
+  class TestCase < ActiveSupport::TestCase
+  end
 end

@@ -193,6 +193,36 @@ module Cybertrain
       render_detached(name, locals, layout)
     end
 
+    # Whether the views hold `name` ("user_mailer/welcome.text.erb").
+    # @return [Boolean]
+    def self.view_exists?(name)
+      configured_engine.exists?(name)
+    end
+
+    # A mailer's view rendered with no request (Mailer::Base#mail):
+    # `name` ("user_mailer/welcome.html.erb") with `assigns` (the action's
+    # instance variables by name), inside `layout`
+    # ("layouts/mailer.html.erb") when that is not "" and exists. A
+    # `.text.erb` view and layout print `<%= %>` unescaped, as Rails
+    # treats text/plain (Template::Interpreter).
+    # @return [String]
+    def self.render_mailer_view(name, assigns, layout)
+      engine = configured_engine
+      helpers = detached_helpers
+      slash = name.rindex("/")
+      env = Cast.empty_hash
+      env["__template_dir"] = slash.nil? ? "" : name[0, slash].to_s
+      keys = assigns.keys
+      i = 0
+      while i < keys.size
+        env[keys[i]] = assigns[keys[i]]
+        i += 1
+      end
+      return engine.render(name, env, helpers).to_s if layout.empty? || !engine.exists?(layout)
+
+      engine.render_with_layout(name, layout, env, helpers).to_s
+    end
+
     # A component rendered with no request, `content` (HTML, not escaped)
     # as its block:
     #

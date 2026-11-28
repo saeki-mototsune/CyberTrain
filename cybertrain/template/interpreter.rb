@@ -86,6 +86,10 @@ module Cybertrain
         # Renders currently open on this interpreter (typed Integer counter).
         @depth = 0
         @last_error = ""
+        # Whether <%= %> escapes: false while a `.text.erb` template
+        # renders (a mail's text part, docs/design.md D98), as Rails leaves
+        # text/plain unescaped.
+        @escape = true
         # The output buffer lives in an ivar rather than being passed down:
         # Spinel strings are immutable C strings that `<<` replaces, and a
         # String parameter appended to inside a nested block call is not
@@ -113,8 +117,10 @@ module Cybertrain
 
         saved_name = @name
         saved_out = @out
+        saved_escape = @escape
         @name = template.name
         @out = String.new
+        @escape = !template.name.end_with?(".text.erb")
         @depth = @depth + 1
         begin
           exec_nodes(template.nodes, env)
@@ -123,6 +129,7 @@ module Cybertrain
           @depth = @depth - 1
           @name = saved_name
           @out = saved_out
+          @escape = saved_escape
         end
         result
       end
@@ -160,12 +167,15 @@ module Cybertrain
         end
       end
 
-      # <%= %>: nil prints nothing, SafeString passes through, the rest is escaped.
+      # <%= %>: nil prints nothing, SafeString passes through, the rest is
+      # escaped (not in a `.text.erb` template: @escape).
       def to_output(v)
         case v
         when nil then ""
         when SafeString then v.to_s
-        else escape_html(to_s_value(v))
+        else
+          text = to_s_value(v)
+          @escape ? escape_html(text) : text
         end
       end
 

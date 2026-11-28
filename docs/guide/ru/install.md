@@ -1,5 +1,5 @@
 ---
-source_sha256: 62e9c689219c4db26ce385321689566020292b1006b3883b3c811e280c7de675
+source_sha256: cf1537dadb7e4793a3711c9c9304361844186be00b34e509c948a963e106c132
 ---
 # Установка
 
@@ -125,6 +125,12 @@ cybertrain doctor
   добавляет `app/jobs/NAME_job.rb` и тест, а в `bin/<app>.rb` и `bin/db.rb` —
   `require "cybertrain/jobs"`
   ([Фоновая работа](background-and-operations.md#background-work)).
+- `cybertrain generate mailer NAME [action ...] [--force]` добавляет класс
+  мейлера `app/mailers/NAME_mailer.rb` с одним действием на каждое имя, его
+  представления и тест, базовый мейлер приложения и макеты мейлеров, если их
+  нет, а в `bin/<app>.rb` и `bin/db.rb` — `require "cybertrain/mailer"` и
+  `require "cybertrain/mailer/later"`
+  ([Классы мейлеров](external-services.md#mailer-classes)).
 - `cybertrain db migrate` выполняет генерацию, применяет ожидающие миграции и
   генерирует снова (`SPIN_DEBUG=1 spin run gen; SPIN_DEBUG=1 spin run db --
   migrate; SPIN_DEBUG=1 spin run gen`);

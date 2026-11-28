@@ -11,6 +11,7 @@
 # unless Config#worker is off, and `./<app> worker`) starts its job threads
 # even when the application defines no job of its own.
 require "json"
+require "base64"
 require "cybertrain/cast"
 require "cybertrain/jobs"
 require "cybertrain/mailer"
@@ -66,19 +67,46 @@ module Cybertrain
     #   the insert fails
     # @api public
     def self.deliver_later(to:, subject:, body:, html: "", from: "")
-      sender = from.to_s
-      recipients = to.to_s
-      title = subject.to_s
-      text = body.to_s
-      markup = html.to_s
+      message = MailMessage.new(to: to.to_s, subject: subject.to_s, body: body.to_s, html: html.to_s, from: from.to_s)
+      Mailer.deliver_message_later(message, 0)
+    end
+
+    # {.deliver_later} for a {MailMessage}, its attachments included (in
+    # the payload's `attachments` field, {.encode_attachments}), due
+    # `wait` seconds from now ({MailMessage#deliver_later}'s `wait:`).
+    # The payload also names the mailer and action that built it
+    # (`mailer`, `action`; "" for a message built by hand), which
+    # `assert_enqueued_email_with` reads.
+    # @param message [MailMessage]
+    # @param wait [Integer] seconds; 0 for now
+    # @return [Integer] the job's id
+    # @raise [ArgumentError] for an address, subject or body refused, or a
+    #   negative wait
+    # @raise [Cybertrain::DB::Error] when the database is not connected or
+    #   the insert fails
+    # @api public
+    def self.deliver_message_later(message, wait)
+      raise ArgumentError, "deliver_later: wait must be 0 or more seconds" if wait < 0
+
+      sender = message.mail_from
+      recipients = message.mail_to
+      title = message.mail_subject
+      text = message.mail_body
+      markup = message.mail_html
       Mailer.check_address(sender, "from") unless sender.empty?
       Mailer.split_recipients(recipients)
       Mailer.check_subject(title)
       Mailer.normalize_body(text)
       Mailer.normalize_body(markup) unless markup.empty?
       fields = { "to" => recipients, "subject" => title, "body" => text, "html" => markup, "from" => sender }
+      attachments = message.mail_attachments
+      fields["attachments"] = Mailer.encode_attachments(attachments) unless attachments.empty?
+      fields["mailer"] = message.mail_mailer_name unless message.mail_mailer_name.empty?
+      fields["action"] = message.mail_action unless message.mail_action.empty?
       payload = JSON.generate(fields)
-      Job.enqueue(JOB_KIND, payload)
+      return Job.enqueue(JOB_KIND, payload) if wait == 0
+
+      Job.enqueue(JOB_KIND, payload, run_at: Time.current + wait)
     end
 
     # The "cybertrain mail" job: {.mail_job_with_timeout} with the
@@ -107,9 +135,13 @@ module Cybertrain
       body = Cast.str(args["body"])
       html = Cast.str(args["html"])
       from = Cast.str(args["from"])
+      encoded = Cast.str(args["attachments"])
       begin
+        attachments = Mailer.decode_attachments(encoded)
+        message = MailMessage.new(to: to, subject: subject, body: body, html: html, from: from, attachments: attachments)
+        message.mark_origin(Cast.str(args["mailer"]), Cast.str(args["action"]))
         mailer = Mailer.new(timeout: timeout)
-        mailer.deliver(to: to, subject: subject, body: body, html: html, from: from)
+        mailer.deliver_message(message)
       rescue ::Cybertrain::Mailer::TimeoutError, ::Cybertrain::Mailer::ConnectError => e
         Cybertrain::Job.retry_later(run, e, 60, false, 5)
       rescue ::Cybertrain::Mailer::RejectedError => e
@@ -129,18 +161,23 @@ module Cybertrain
   # {#deliver_later} here, beside the job it enqueues; the fields and
   # {#deliver_now} are in cybertrain/mailer/mail_message.rb.
   class MailMessage
-    # Enqueues the message for a job thread to send ({Mailer.deliver_later}:
-    # the fields are checked now, so a refused one raises and nothing is
-    # queued).
+    # Enqueues the message for a job thread to send
+    # ({Mailer.deliver_message_later}: the fields are checked now, so a
+    # refused one raises and nothing is queued), attachments included. A
+    # skipped message ({MailMessage.skipped}) enqueues nothing and answers 0.
     # @example
     #   PasswordsMailer.reset(user, url).deliver_later
-    # @return [Integer] the job's id
+    #   UserMailer.with(user: user).welcome.deliver_later(wait: 5.minutes)
+    # @param wait [Integer] seconds from now (`5.minutes`); 0 for now
+    # @return [Integer] the job's id, 0 for a skipped message
     # @raise [ArgumentError] for an address, subject or body refused
     # @raise [Cybertrain::DB::Error] when the database is not connected or
     #   the insert fails
     # @api public
-    def deliver_later
-      Mailer.deliver_later(to: @mail_to, subject: @mail_subject, body: @mail_body, html: @mail_html, from: @mail_from)
+    def deliver_later(wait: 0)
+      return 0 if @mail_skipped
+
+      Mailer.deliver_message_later(self, wait.to_i)
     end
   end
 end

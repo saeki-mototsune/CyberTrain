@@ -353,22 +353,48 @@ module Cybertrain
     # @raise [Error] a subclass; ArgumentError for an address, subject or body refused
     # @api public
     def deliver(to:, subject:, body:, html: "", from: "")
-      given = from.to_s
+      deliver_message(MailMessage.new(to: to.to_s, subject: subject.to_s, body: body.to_s, html: html.to_s, from: from.to_s))
+    end
+
+    # Sends a {MailMessage} with the settings in {Config}: what
+    # {MailMessage#deliver_now} calls, its attachments included.
+    # @param message [MailMessage]
+    # @return [String] as {.deliver}
+    # @raise [Error] a subclass; ArgumentError for an address, subject or body refused
+    # @api public
+    def self.deliver_message(message)
+      Mailer.new.deliver_message(message)
+    end
+
+    # Sends a {MailMessage}: {#deliver} with its attachments. With
+    # attachments the message is multipart/mixed ({Message.build_mime});
+    # with the delivery method :test the message itself, checked as for
+    # SMTP, is appended to {.deliveries} (its `mail_from` the sender used).
+    # @param message [MailMessage]
+    # @return [String] as {#deliver}
+    # @raise [Error] a subclass; ArgumentError for an address, subject or body refused
+    # @api public
+    def deliver_message(message)
+      given = message.mail_from
       sender = given.empty? ? @mail_from : given
       Mailer.check_address(sender, "from")
-      recipients = Mailer.split_recipients(to.to_s)
-      title = subject.to_s
+      to = message.mail_to
+      recipients = Mailer.split_recipients(to)
+      title = message.mail_subject
       Mailer.check_subject(title)
-      text = Mailer.normalize_body(body.to_s)
-      markup = html.to_s
+      text = Mailer.normalize_body(message.mail_body)
+      markup = message.mail_html
+      attachments = message.mail_attachments
       built = ""
-      unless markup.empty?
+      unless markup.empty? && attachments.empty?
         boundary = String.new
         boundary << "=_cybertrain_" << Crypto.random_token(16)
-        built = Message.build(sender, to.to_s, title, text, markup, boundary)
+        built = Message.build_mime(sender, to, title, text, markup, attachments, boundary)
       end
       if @mail_delivery_method == :test
-        stored = MailMessage.new(to: to.to_s, subject: title, body: body.to_s, html: markup, from: sender)
+        stored = MailMessage.new(to: to, subject: title, body: message.mail_body, html: markup, from: sender,
+                                 attachments: attachments)
+        stored.mark_origin(message.mail_mailer_name, message.mail_action)
         return Mailer.store_delivery(stored)
       end
 
@@ -958,6 +984,7 @@ module Cybertrain
   end
 end
 
+require "cybertrain/mailer/attachment"
 require "cybertrain/mailer/message"
 require "cybertrain/mailer/mail_message"
 

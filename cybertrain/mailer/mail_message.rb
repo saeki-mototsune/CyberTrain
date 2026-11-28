@@ -39,6 +39,19 @@ module Cybertrain
     # @api public
     attr_reader :mail_from
 
+    # @return [Array<Mailer::Attachment>] the attached files, in order
+    #   (none for a message without)
+    # @api public
+    attr_reader :mail_attachments
+    # @return [String] the mailer class that built the message
+    #   ("UserMailer"), "" for one built by hand
+    # @api public
+    attr_reader :mail_mailer_name
+    # @return [String] the mailer action that built it ("welcome"), "" for
+    #   one built by hand
+    # @api public
+    attr_reader :mail_action
+
     # Keeps the fields; nothing is checked or sent until a deliver call.
     # @example
     #   Cybertrain::MailMessage.new(to: user.email, subject: "Welcome", body: text, html: html)
@@ -47,16 +60,55 @@ module Cybertrain
     # @param body [String] UTF-8 plain text
     # @param html [String] UTF-8 HTML, "" for a plain-text message
     # @param from [String] the sender; "" for Config#smtp_from
+    # @param attachments [Array<Mailer::Attachment>] the files to attach
     # @api public
-    def initialize(to:, subject:, body:, html: "", from: "")
+    def initialize(to:, subject:, body:, html: "", from: "", attachments: Mailer::Attachment.none)
       @mail_to = to.to_s
       @mail_subject = subject.to_s
       @mail_body = body.to_s
       @mail_html = html.to_s
       @mail_from = from.to_s
+      @mail_attachments = attachments
+      @mail_mailer_name = ""
+      @mail_action = ""
+      @mail_skipped = false
     end
 
-    # Sends the message now, with the settings in {Config} ({Mailer.deliver}).
+    # The message of a mailer action that did not call `mail` (Rails'
+    # null mail): delivering it sends nothing.
+    # @return [MailMessage]
+    # @api public
+    def self.skipped(mailer_name, action)
+      message = MailMessage.new(to: "", subject: "", body: "")
+      message.mark_origin(mailer_name, action)
+      message.mark_skipped
+      message
+    end
+
+    # True for {.skipped}'s message: {#deliver_now} and {#deliver_later}
+    # do nothing.
+    # @return [Boolean]
+    # @api public
+    def mail_skipped?
+      @mail_skipped
+    end
+
+    # Records the mailer and action that built the message (Mailer::Base).
+    # @return [nil]
+    def mark_origin(mailer_name, action)
+      @mail_mailer_name = mailer_name.to_s
+      @mail_action = action.to_s
+      nil
+    end
+
+    # @return [nil]
+    def mark_skipped
+      @mail_skipped = true
+      nil
+    end
+
+    # Sends the message now, with the settings in {Config}
+    # ({Mailer.deliver_message}). A skipped message sends nothing.
     # @example
     #   WelcomeMailer.welcome(user).deliver_now
     # @return [nil]
@@ -65,7 +117,9 @@ module Cybertrain
     # @raise [ArgumentError] for an address, subject or body refused
     # @api public
     def deliver_now
-      Mailer.deliver(to: @mail_to, subject: @mail_subject, body: @mail_body, html: @mail_html, from: @mail_from)
+      return nil if @mail_skipped
+
+      Mailer.deliver_message(self)
       nil
     end
   end
