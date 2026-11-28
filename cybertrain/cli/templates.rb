@@ -9,6 +9,7 @@ require "cybertrain/ident"
 require "cybertrain/shell"
 require "cybertrain/version"
 require "cybertrain/cli/build"
+require "cybertrain/generator/dialect"
 
 module Cybertrain
   module CLI
@@ -322,7 +323,35 @@ module Cybertrain
       # the application, above all where cybertrain is not Rails. Read by
       # Codex, Cursor, Copilot and the other tools that follow the
       # AGENTS.md convention; CLAUDE.md imports it for Claude Code.
-      def self.agents_md(title, package)
+      # database "mysql": the Models bullet and the Subsystems section say
+      # what a cybertrain/mysql application is (docs/design.md D96).
+      def self.agents_md(title, package, database = "sqlite")
+        text = sqlite_agents_md(title, package)
+        return text unless database == "mysql"
+
+        subsystems_from = "`bin/#{package}.rb` and `bin/db.rb` require `cybertrain/core`. A\n"
+        subsystems_to = "The generators add the lines their code needs.\n"
+        from = text.index(subsystems_from)
+        to = from.nil? ? nil : text.index(subsystems_to, from)
+        raise ArgumentError, "AGENTS.md: the MySQL edit finds no Subsystems section" if from.nil? || to.nil?
+
+        subsystems = text[from, to + subsystems_to.size - from]
+        swapped(text, "AGENTS.md", [
+                  ["- SQLite only. A column named like a framework method or a Ruby\n",
+                   "- MySQL 8.0: the database DATABASE_URL names (config/app.rb). LIKE\n" \
+                   "  is case-sensitive, a migration that fails half way is not rolled\n" \
+                   "  back, and there are no partial indexes (the models guide, \"MySQL\").\n" \
+                   "  A column named like a framework method or a Ruby\n"],
+                  [subsystems,
+                   "`bin/#{package}.rb` and `bin/db.rb` require `cybertrain/mysql`: the\n" \
+                   "whole framework with the MySQL adapter, every subsystem (jobs,\n" \
+                   "streams, feeds, mailer, cache, rate_limit) and the Sentry sender, so\n" \
+                   "no feature needs a line of its own. Keep that line first in both\n" \
+                   "files: it is how the application is built for MySQL.\n"]
+                ])
+      end
+
+      def self.sqlite_agents_md(title, package)
         <<~MARKDOWN
           # AGENTS.md
 
@@ -1063,6 +1092,12 @@ module Cybertrain
         path = File.join(root, rel)
         return nil unless File.exist?(path)
 
+        if mysql_app?(root, app)
+          puts "skip #{rel} (MySQL: the worker role stays commented; jobs in several processes " \
+               "are not guaranteed until step 2, see the configuration guide, \"MySQL\")"
+          return nil
+        end
+
         source = File.read(path)
         commented = worker_role(app, false)
         active = worker_role(app, true)
@@ -1080,6 +1115,37 @@ module Cybertrain
       # database "mysql": DATABASE_URL is a secret, and the comments say
       # where the database is and what several hosts do not yet share
       # safely (docs/design.md D96).
+      # Whether bin/`app`.rb builds the application at `root` for MySQL
+      # (Gen::Dialect.in_source, as gen reads it); false without the file
+      # or with a first require gen would refuse.
+      def self.mysql_app?(root, app)
+        bin = File.join(root, "bin/#{app}.rb")
+        return false unless File.file?(bin)
+
+        Gen::Dialect.in_source(app, File.read(bin)) == Gen::Dialect::MYSQL
+      rescue ArgumentError
+        false
+      end
+
+      # config/deploy.yml's worker role on MySQL: commented, and saying why
+      # (several processes running jobs are step 2, docs/design.md D96);
+      # enable_worker_role leaves it so.
+      def self.mysql_worker_role(package)
+        text = worker_role(package, false)
+        at = text.index("  # worker:").to_i
+        lines = [
+          "# Jobs and scheduled tasks without HTTP, in a process of their own.",
+          "# On MySQL keep it commented for now: jobs, streams and leases in",
+          "# several processes sharing the database are not guaranteed until",
+          "# step 2 of the MySQL roadmap (the configuration guide, \"MySQL\");",
+          "# the web role runs the jobs."
+        ]
+        out = +""
+        lines.each { |line| out << "  " << line << "\n" }
+        out << text[at, text.size - at]
+        out
+      end
+
       def self.deploy_yml(package, database = "sqlite")
         text = sqlite_deploy_yml(package)
         return text unless database == "mysql"
@@ -1089,9 +1155,10 @@ module Cybertrain
                    "# SQLite file on that server's volume, which every role shares.\n",
                    "# CHANGE ME: the server's address. The database is the MySQL server\n" \
                    "# DATABASE_URL names (a secret, below). On MySQL, jobs, streams, leases\n" \
-                   "# and scheduled tasks are guaranteed within one process only for now\n" \
-                   "# (the configuration guide, \"MySQL\"): run the web role alone, and\n" \
-                   "# comment the worker role out again if a generator turned it on.\n"],
+                   "# and scheduled tasks are guaranteed within one process only until step 2\n" \
+                   "# of the roadmap (the configuration guide, \"MySQL\"): run the web role\n" \
+                   "# alone. The generators leave the worker role commented.\n"],
+                  [worker_role(package, false), mysql_worker_role(package)],
                   ["  secret:\n    - CYBERTRAIN_SECRET_KEY_BASE\n",
                    "  secret:\n    # mysql://USER:PASSWORD@HOST:3306/#{package}_production (config/app.rb);\n" \
                    "    # also listed in .kamal/secrets.\n    - DATABASE_URL\n    - CYBERTRAIN_SECRET_KEY_BASE\n"],

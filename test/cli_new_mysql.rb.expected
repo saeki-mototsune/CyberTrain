@@ -120,6 +120,10 @@ ok   config/app.rb explains DATABASE_URL
 ok   .env.example names the development database
 ok   the Dockerfile's run example passes DATABASE_URL; storage/ keeps the uploads
 ok   config/deploy.yml takes DATABASE_URL as a secret and says what one process guarantees
+skip config/deploy.yml (MySQL: the worker role stays commented; jobs in several processes are not guaranteed until step 2, see the configuration guide, "MySQL")
+insert config/deploy.yml (the worker role, uncommented)
+ok   generate job and generate authentication leave a MySQL app's worker role commented
+ok   AGENTS.md says the application is on MySQL and requires cybertrain/mysql
 ok   .kamal/secrets reads DATABASE_URL from the environment
 ok   the CI workflow runs the tests against a MySQL service
 ok   every other file is SQLite's
@@ -244,4 +248,4 @@ ok   CLI new --database=mysql and --database mysql
 error: --database must be sqlite or mysql, got "postgresql"
 error: --database needs a value
 ok   CLI new refuses another --database, writing nothing
-14 tests, 67 assertions, 0 failures
+16 tests, 72 assertions, 0 failures

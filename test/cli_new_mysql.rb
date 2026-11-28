@@ -7,7 +7,8 @@ require_relative "support/file_tree"
 # (bin/NAME.rb and bin/db.rb require "cybertrain/mysql", config/app.rb
 # explains DATABASE_URL, .env.example has its line; the Dockerfile,
 # config/deploy.yml, .kamal/secrets and the CI workflow pass DATABASE_URL,
-# the workflow with a MySQL service), every other file as
+# the workflow with a MySQL service and the worker role commented on
+# purpose; AGENTS.md says MySQL), every other file as
 # `cybertrain new` writes it for SQLite, and gen reading the app as MySQL
 # (Gen::Dialect.in_source). The CLI runs under CRuby; nothing here touches a
 # database.
@@ -28,12 +29,12 @@ CREATED = Cybertrain::CLI::NewApp.create("shop", "{ path = \"../cybertrain\" }",
 
 # The files whose text differs from a SQLite app's.
 MYSQL_FILES = ["bin/shop.rb", "bin/db.rb", "config/app.rb", ".env.example", "Dockerfile", "config/deploy.yml",
-               ".kamal/secrets", ".github/workflows/ci.yml"]
+               ".kamal/secrets", ".github/workflows/ci.yml", "AGENTS.md"]
 
 # The lines of the MySQL app's `path` that the SQLite app's (with the name
 # swapped) lacks, and the other way round, each in file order.
 def line_diff(path)
-  sqlite = read("zebra/#{path}").gsub("zebra", "shop").split("\n")
+  sqlite = read("zebra/#{path}").gsub("zebra", "shop").gsub("Zebra", "Shop").split("\n")
   mysql = read("shop/#{path}").split("\n")
   [mysql.reject { |l| sqlite.include?(l) }, sqlite.reject { |l| mysql.include?(l) }]
 end
@@ -130,9 +131,14 @@ test "config/deploy.yml takes DATABASE_URL as a secret and says what one process
   added, gone = line_diff("config/deploy.yml")
   assert_equal ["# CHANGE ME: the server's address. The database is the MySQL server",
                 "# DATABASE_URL names (a secret, below). On MySQL, jobs, streams, leases",
-                "# and scheduled tasks are guaranteed within one process only for now",
-                "# (the configuration guide, \"MySQL\"): run the web role alone, and",
-                "# comment the worker role out again if a generator turned it on.",
+                "# and scheduled tasks are guaranteed within one process only until step 2",
+                "# of the roadmap (the configuration guide, \"MySQL\"): run the web role",
+                "# alone. The generators leave the worker role commented.",
+                "  # Jobs and scheduled tasks without HTTP, in a process of their own.",
+                "  # On MySQL keep it commented for now: jobs, streams and leases in",
+                "  # several processes sharing the database are not guaranteed until",
+                "  # step 2 of the MySQL roadmap (the configuration guide, \"MySQL\");",
+                "  # the web role runs the jobs.",
                 "    # mysql://USER:PASSWORD@HOST:3306/shop_production (config/app.rb);",
                 "    # also listed in .kamal/secrets.",
                 "    - DATABASE_URL",
@@ -140,9 +146,43 @@ test "config/deploy.yml takes DATABASE_URL as a secret and says what one process
                 "# deploys. The database is MySQL's: back it up there."], added
   assert_equal ["# CHANGE ME: the server's address. One server: the database is a",
                 "# SQLite file on that server's volume, which every role shares.",
+                "  # Jobs and scheduled tasks without HTTP. Several workers (and the",
+                "  # web role) may share the database: one at a time leads the",
+                "  # scheduled tasks, and the jobs of one that dies are picked up by",
+                "  # the others.",
+                "  # It needs require \"cybertrain/jobs\" in bin/shop.rb and bin/db.rb;",
+                "  # `cybertrain generate job` and `generate authentication` add that",
+                "  # line and uncomment this role.",
                 "# The SQLite database lives in storage/: keep it on the server across",
                 "# deploys. Back it up from there (docs/deploy.md)."], gone
-  assert_includes read("shop/config/deploy.yml"), Cybertrain::CLI::Templates.worker_role("shop", false)
+  assert_includes read("shop/config/deploy.yml"), "  # worker:\n  #   hosts:\n"
+end
+
+test "generate job and generate authentication leave a MySQL app's worker role commented" do
+  # Each prints its status line (the MySQL one a skip naming step 2).
+  before = read("shop/config/deploy.yml")
+  Cybertrain::CLI::Templates.enable_worker_role("shop")
+  assert_equal before, read("shop/config/deploy.yml")
+  sqlite = read("zebra/config/deploy.yml")
+  Cybertrain::CLI::Templates.enable_worker_role("zebra")
+  assert_includes read("zebra/config/deploy.yml"), Cybertrain::CLI::Templates.worker_role("zebra", true)
+  File.write("zebra/config/deploy.yml", sqlite)
+end
+
+test "AGENTS.md says the application is on MySQL and requires cybertrain/mysql" do
+  added, gone = line_diff("AGENTS.md")
+  assert_equal ["- MySQL 8.0: the database DATABASE_URL names (config/app.rb). LIKE",
+                "  is case-sensitive, a migration that fails half way is not rolled",
+                "  back, and there are no partial indexes (the models guide, \"MySQL\").",
+                "  A column named like a framework method or a Ruby",
+                "`bin/shop.rb` and `bin/db.rb` require `cybertrain/mysql`: the",
+                "whole framework with the MySQL adapter, every subsystem (jobs,",
+                "streams, feeds, mailer, cache, rate_limit) and the Sentry sender, so",
+                "no feature needs a line of its own. Keep that line first in both",
+                "files: it is how the application is built for MySQL."], added
+  assert_equal "- SQLite only. A column named like a framework method or a Ruby", gone[0]
+  assert_equal "The generators add the lines their code needs.", gone[gone.size - 1]
+  assert_nil read("shop/AGENTS.md").index("SQLite only")
 end
 
 test ".kamal/secrets reads DATABASE_URL from the environment" do
