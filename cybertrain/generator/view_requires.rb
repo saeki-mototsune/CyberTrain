@@ -12,10 +12,10 @@ module Cybertrain
     # NAME is spin.toml's [package] name. bin/NAME.rb is read lexically: a
     # line that is, after its indentation, `require "LINE"` (or 'LINE', or
     # require("LINE")) adds what FeatureCatalog.loaded_by(LINE) loads;
-    # `require "cybertrain"` loads everything. A require written another
-    # way, or in a file bin/NAME.rb requires, is not seen. With no spin.toml
-    # name or no bin/NAME.rb (a fixture tree, an app laid out otherwise)
-    # nothing is refused: the check needs the file to say what is loaded.
+    # `require "cybertrain"` (or "cybertrain/mysql") loads everything. A
+    # require written another way, or in a file bin/NAME.rb requires, is
+    # not seen. With no spin.toml name or no bin/NAME.rb (a fixture tree,
+    # an app laid out otherwise) nothing is refused: the check needs the file to say what is loaded.
     #
     # The views are app/views/**/*.erb and app/components/**/*.erb. In each
     # `<% %>`, `<%= %>` and `<%== %>` tag (not `<%# %>` nor a literal `<%%`)

@@ -409,7 +409,7 @@ module Cybertrain
         record_file(result, root, "app/controllers/accounts_controller.rb", accounts_controller(confirmable), force)
         record_file(result, root, "app/mailers/passwords_mailer.rb", passwords_mailer, force)
         record_file(result, root, "app/mailers/confirmations_mailer.rb", confirmations_mailer, force) if confirmable
-        record_file(result, root, "app/commands/user_command.rb", user_command(app, invite_only, confirmable), force)
+        record_file(result, root, "app/commands/user_command.rb", user_command(app, invite_only, confirmable, adapter), force)
         record_file(result, root, "app/views/sessions/new.html.erb", sessions_new_view(invite_only, confirmable), force)
         record_file(result, root, "app/views/sessions/_nav.html.erb", nav_partial, force)
         if invite_only
@@ -430,7 +430,7 @@ module Cybertrain
         record_file(result, root, "test/models/user_test.rb", user_model_test, force)
         record_file(result, root, "test/controllers/sessions_controller_test.rb", sessions_controller_test(invite_only), force)
         if invite_only
-          record_file(result, root, "test/integration/first_run_test.rb", first_run_test(app), force)
+          record_file(result, root, "test/integration/first_run_test.rb", first_run_test(app, adapter), force)
         else
           record_file(result, root, "test/controllers/registrations_controller_test.rb", registrations_controller_test(confirmable), force)
         end
@@ -2760,9 +2760,18 @@ module Cybertrain
       # bin/<app>.rb (and from the app's tests, which run it). With
       # --invite-only it also holds the boot warning, which names /setup's
       # token; a sign-up app has no SetupController to name.
-      def self.user_command(app, invite_only = false, confirmable = false)
+      # What a generated file passes DB.connect for the application's
+      # database: `Cybertrain.config.database_path` on SQLite,
+      # `Cybertrain.config.database_url` on MySQL (DATABASE_URL).
+      def self.connect_target_expression(adapter)
+        adapter == "mysql" ? "Cybertrain.config.database_url" : "Cybertrain.config.database_path"
+      end
+
+      # `adapter` ("sqlite" or "mysql") names the database the boot
+      # warning's question connects to: database_path, or database_url.
+      def self.user_command(app, invite_only = false, confirmable = false, adapter = "sqlite")
         head = user_command_head(app, invite_only, confirmable)
-        warning = invite_only ? user_command_warning(app) : ""
+        warning = invite_only ? user_command_warning(app, adapter) : ""
         tail = <<~RUBY
           end
 
@@ -2885,7 +2894,8 @@ module Cybertrain
 
       # --invite-only: the boot warning and the question it asks, indented
       # into the module.
-      def self.user_command_warning(app)
+      def self.user_command_warning(app, adapter = "sqlite")
+        target = Authentication.connect_target_expression(adapter)
         text = <<~RUBY
 
           # Called by bin/#{app}.rb before the server boots: a WARN line while no
@@ -2902,7 +2912,7 @@ module Cybertrain
           # server's own pool afterwards.
           def self.no_user?
             begin
-              Cybertrain::DB.connect(Cybertrain.config.database_path, size: 1)
+              Cybertrain::DB.connect(#{target}, size: 1)
               !User.all.exists?
             rescue Cybertrain::DB::Error
               false

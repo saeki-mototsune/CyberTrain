@@ -45,6 +45,7 @@ done
   up 20261112174320 AddCoverToArticles
 ok   rollback and status, step by step
 ok   a version failing at its second statement says what was applied and is not recorded
+ok   a version failing at its first statement says nothing was applied
 Cybertrain::Schema.define(version: "20270201000100") do |s|
   s.create_table "mig_items" do |t|
     t.string "title", null: false, limit: 80
@@ -128,4 +129,4 @@ Cybertrain::Schema.define(version: "20270401000100") do |s|
   s.add_foreign_key "mig_children", "mig_parents", column: "mig_parent_id", on_delete: :cascade
 end
 ok   the operations SQLite rebuilds a table for are one ALTER TABLE each on MySQL
-8 tests, 48 assertions, 0 failures
+9 tests, 52 assertions, 0 failures

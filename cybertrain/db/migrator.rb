@@ -206,7 +206,8 @@ module Cybertrain
       # applied, and the error says so (DB::Error "migration <version>
       # failed at statement <n> of <m>; statements 1..<n-1> were applied
       # and cannot be rolled back (MySQL DDL commits implicitly):
-      # <message>"); the version is not recorded. Every statement is
+      # <message>", or "...; nothing was applied: <message>" when the first
+      # fails); the version is not recorded. Every statement is
       # counted before the first runs, so an operation the DDL refuses (a
       # partial index) raises before anything is applied.
       def run_version_in_steps(version, ops, forward, sql, rebuilt)
@@ -228,8 +229,12 @@ module Cybertrain
         at = @statement_at
         total = @statement_total
         # A local first (spikes/NOTES.md rule 58).
-        message = "migration #{version} failed at statement #{at} of #{total}; statements 1..#{at - 1} " \
-                  "were applied and cannot be rolled back (MySQL DDL commits implicitly): #{e.message}"
+        applied = if at <= 1
+                    "nothing was applied"
+                  else
+                    "statements 1..#{at - 1} were applied and cannot be rolled back (MySQL DDL commits implicitly)"
+                  end
+        message = "migration #{version} failed at statement #{at} of #{total}; #{applied}: #{e.message}"
         raise Error, message
       end
 

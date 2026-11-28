@@ -698,8 +698,10 @@ module Cybertrain
 
       # test/integration/first_run_test.rb (--invite-only): /setup, the
       # boot warning and `./<app> user`.
-      def self.first_run_test(app)
-        first_run_test_body.gsub("@APP@", app).gsub("@SETUP_ENV@", setup_env(app))
+      # `adapter` ("sqlite" or "mysql"): what `reconnect` connects to.
+      def self.first_run_test(app, adapter = "sqlite")
+        text = first_run_test_body.gsub("@APP@", app).gsub("@SETUP_ENV@", setup_env(app))
+        text.gsub("@CONNECT_TARGET@", Authentication.connect_target_expression(adapter))
       end
 
       def self.first_run_test_body
@@ -893,7 +895,7 @@ module Cybertrain
             end
 
             def reconnect
-              Cybertrain::DB.connect(Cybertrain.config.database_path, size: Cybertrain.config.pool_size)
+              Cybertrain::DB.connect(@CONNECT_TARGET@, size: Cybertrain.config.pool_size)
               nil
             end
           end

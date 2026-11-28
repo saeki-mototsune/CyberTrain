@@ -87,6 +87,12 @@ test "the program is built with the MySQL adapter" do
   assert_equal "mysql", Cybertrain::DB::Adapter.adapter_name
 end
 
+# cybertrain/mysql loads what cybertrain loads, the Sentry sender included
+# (examples/blog's error_reporting_test.rb on MySQL found it missing).
+test "the Sentry sender is linked, as with require \"cybertrain\"" do
+  assert_equal "sentry", Cybertrain.error.sender.sender_name
+end
+
 test "boot refuses a database whose name does not end in _test, before anything connects" do
   bundle_config("test", url_for("cybertrain_tdb"))
   label = Cybertrain::DB::MySQL::Url.parse(url_for("cybertrain_tdb")).to_s

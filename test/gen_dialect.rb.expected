@@ -26,6 +26,8 @@ wrote gen/console.rb
 wrote gen/app.rb
 ok   gen on a MySQL app writes its models, fixtures and test program for MySQL
 ok   the generated account test checks the refused deletion by the adapter's own error
+ok   require "cybertrain/mysql" loads every subsystem, as require "cybertrain" does
+ok   the generated user command and first-run test connect to DATABASE_URL's database on MySQL
 bin/shop.rb: the first require must be "cybertrain" or "cybertrain/mysql"
 ok   gen stops with the message on a bad first require, writing nothing
 ok   partial_index_lines finds the add_index calls with a where:, across lines
@@ -47,4 +49,4 @@ wrote gen/app.rb
 ok   gen on a MySQL app stops at a partial index, writing nothing; on SQLite it goes on
 ok   the generated account test makes its notes table in the adapter's DDL
 ok   the generated lockout UPDATE sets the lock first on MySQL, which assigns left to right
-18 tests, 67 assertions, 0 failures
+20 tests, 79 assertions, 0 failures

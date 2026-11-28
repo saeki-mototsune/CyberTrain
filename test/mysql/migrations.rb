@@ -167,6 +167,27 @@ test "a version failing at its second statement says what was applied and is not
   conn.close
 end
 
+# Its first statement fails (mig_parents has a name column already).
+class AddNameToMigParents < Cybertrain::Migration::Base
+  def change
+    add_column "mig_parents", "name", :string
+    add_column "mig_parents", "score", :integer
+  end
+end
+
+test "a version failing at its first statement says nothing was applied" do
+  conn = fresh_db
+  migrator = DB::Migrator.new(conn)
+  migrator.quiet!
+  migrations = [["20270101000000", CreateMigParents.new], ["20270101000200", AddNameToMigParents.new]]
+  message = assert_raises("DB::Error") { migrator.migrate(migrations) }
+  assert_equal "migration 20270101000200 failed at statement 1 of 2; nothing was applied: Duplicate column name " \
+               "'name' (MySQL 1060, 42S21) (sql: ALTER TABLE `mig_parents` ADD COLUMN `name` VARCHAR(255))", message
+  assert_equal ["20270101000000"], versions(conn)
+  assert_equal ["id", "name"], Dialect.column_names(conn, "mig_parents")
+  conn.close
+end
+
 class CreateMigItems < Cybertrain::Migration::Base
   def change
     create_table "mig_items" do |t|

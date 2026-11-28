@@ -184,6 +184,32 @@ test "the generated account test checks the refused deletion by the adapter's ow
   assert_nil mysql.index("FOREIGN KEY constraint failed")
 end
 
+test "require \"cybertrain/mysql\" loads every subsystem, as require \"cybertrain\" does" do
+  everything = Cybertrain::FeatureCatalog.subsystem_names
+  assert_equal everything, Cybertrain::FeatureCatalog.loaded_by("cybertrain")
+  assert_equal everything, Cybertrain::FeatureCatalog.loaded_by("cybertrain/mysql")
+  assert_equal [], Cybertrain::FeatureCatalog.loaded_by("cybertrain/core/mysql")
+  root = app_with_bin("require \"cybertrain/mysql\"\n")
+  FileTree.make_dirs("#{root}/app/views/articles")
+  File.write("#{root}/app/views/articles/show.html.erb", "<%= turbo_stream_from @article %>\n")
+  assert_equal [], Cybertrain::Gen::ViewRequires.problems(root)
+end
+
+test "the generated user command and first-run test connect to DATABASE_URL's database on MySQL" do
+  sqlite = Cybertrain::CLI::Authentication.user_command("shop", true)
+  assert_equal sqlite, Cybertrain::CLI::Authentication.user_command("shop", true, false, "sqlite")
+  assert_includes sqlite, "Cybertrain::DB.connect(Cybertrain.config.database_path, size: 1)"
+  mysql = Cybertrain::CLI::Authentication.user_command("shop", true, false, "mysql")
+  assert_includes mysql, "Cybertrain::DB.connect(Cybertrain.config.database_url, size: 1)"
+  assert_nil mysql.index("database_path")
+  test_sqlite = Cybertrain::CLI::Authentication.first_run_test("shop")
+  assert_equal test_sqlite, Cybertrain::CLI::Authentication.first_run_test("shop", "sqlite")
+  assert_includes test_sqlite, "Cybertrain::DB.connect(Cybertrain.config.database_path, size: Cybertrain.config.pool_size)"
+  test_mysql = Cybertrain::CLI::Authentication.first_run_test("shop", "mysql")
+  assert_includes test_mysql, "Cybertrain::DB.connect(Cybertrain.config.database_url, size: Cybertrain.config.pool_size)"
+  assert_nil test_mysql.index("database_path")
+end
+
 test "gen stops with the message on a bad first require, writing nothing" do
   root = app_with_bin("require \"cybertrain/foo\"\n")
   assert_equal 1, Cybertrain::Gen::Runner.run(root, [])
