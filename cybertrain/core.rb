@@ -23,3 +23,6 @@
 # cybertrain/db/sqlite). cybertrain/core/mysql is the same with MySQL.
 require "cybertrain/core/common"
 require "cybertrain/db"
+# The database commands' SQLite part (cybertrain/db/cli.rb, which the
+# core requires, is what the adapters share).
+require "cybertrain/db/sqlite/cli"

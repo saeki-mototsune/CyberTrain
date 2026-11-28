@@ -2,6 +2,7 @@ require "tmpdir"
 require "cybertrain/db"
 require "cybertrain/test"
 require "cybertrain/main"
+require "cybertrain/db/sqlite/cli"
 require_relative "support/log_capture"
 require_relative "support/file_tree"
 

@@ -742,6 +742,41 @@ module Cybertrain
         found.join(", ")
       end
 
+      # Whether `next_op` is the :add_foreign_key that Base#add_reference
+      # records right after the :add_reference `op` (same table and column),
+      # which the migrator then runs together with it, as
+      # migrator_reference_statements: SQLite cannot add a foreign key to an
+      # existing table, only a REFERENCES clause on the column ALTER TABLE
+      # ADD COLUMN creates (SqliteDDL.folds_foreign_key?).
+      # MySQL: false (the foreign key is a statement of its own).
+      # @param op [Cybertrain::Migration::Operation]
+      # @param next_op [Cybertrain::Migration::Operation]
+      # @return [Boolean]
+      def self.migrator_folds_reference?(op, next_op)
+        Cybertrain::DB::SqliteDDL.folds_foreign_key?(op, next_op)
+      end
+
+      # The statements of an :add_reference `op` with its foreign key to
+      # `to_table` folded in (SqliteDDL.add_reference_statements).
+      # MySQL: the reference's statements, then the foreign key's.
+      # @param op [Cybertrain::Migration::Operation]
+      # @param to_table [String]
+      # @return [Array<String>]
+      def self.migrator_reference_statements(op, to_table)
+        Cybertrain::DB::SqliteDDL.add_reference_statements(op, to_table)
+      end
+
+      # The statement that drops the index `name` of `table`, the one a
+      # remove_index found (SqliteDDL.drop_index_sql: SQLite's index names
+      # are the schema's, so the table is not named).
+      # MySQL: DROP INDEX `name` ON `table`.
+      # @param table [String]
+      # @param name [String]
+      # @return [String]
+      def self.migrator_drop_index_sql(table, name)
+        Cybertrain::DB::SqliteDDL.drop_index_sql(name)
+      end
+
       # Runs one operation that rebuilds its table (op.rebuilds?) by
       # SQLite's procedure: `definition` is the live schema dumped just now
       # (after the version's earlier operations); the operation is applied

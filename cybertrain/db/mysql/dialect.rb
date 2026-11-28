@@ -835,6 +835,37 @@ module Cybertrain
         found.join(", ")
       end
 
+      # False: MySQL adds a foreign key to an existing table, so an
+      # :add_reference and its :add_foreign_key run as their own statements
+      # (the Migrator's steps, without a transaction).
+      # @param op [Cybertrain::Migration::Operation]
+      # @param next_op [Cybertrain::Migration::Operation]
+      # @return [Boolean]
+      def self.migrator_folds_reference?(op, next_op)
+        false
+      end
+
+      # The :add_reference `op`'s statements, then the ALTER TABLE that adds
+      # its foreign key to `to_table` (what the two operations run one by
+      # one; the Migrator never folds them on MySQL).
+      # @param op [Cybertrain::Migration::Operation]
+      # @param to_table [String]
+      # @return [Array<String>]
+      def self.migrator_reference_statements(op, to_table)
+        stmts = Cybertrain::DB::MySQL::DDL.statements(op)
+        stmts << "ALTER TABLE #{Dialect.quote_ident(op.table_text)} ADD " +
+                 Cybertrain::DB::MySQL::DDL.foreign_key_sql(op.name, to_table, op.on_delete)
+        stmts
+      end
+
+      # DROP INDEX `name` ON `table` (a MySQL index belongs to its table).
+      # @param table [String]
+      # @param name [String]
+      # @return [String]
+      def self.migrator_drop_index_sql(table, name)
+        "DROP INDEX #{Dialect.quote_ident(name)} ON #{Dialect.quote_ident(table)}"
+      end
+
       # Runs one operation SQLite rebuilds its table for (op.rebuilds?):
       # MySQL changes the table in place, with the one ALTER TABLE
       # MySQL::DDL.rebuild_sql writes from `definition` (the live schema

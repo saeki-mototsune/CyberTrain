@@ -1,5 +1,5 @@
 require "cybertrain/db/error"
-require "cybertrain/db/sqlite_ddl"
+require "cybertrain/schema"
 require "cybertrain/db/schema_dumper"
 require "cybertrain/migration"
 
@@ -355,8 +355,9 @@ module Cybertrain
       # (the other direction's statement) is skipped. A rebuild operation
       # goes through `run_rebuild`. Two other operations get special handling:
       # - an :add_reference directly followed by its :add_foreign_key
-      #   (Base#add_reference's default) runs as one ADD COLUMN ... REFERENCES,
-      #   since SQLite cannot add a foreign key on its own;
+      #   (Base#add_reference's default) runs as one ADD COLUMN ... REFERENCES
+      #   where the adapter folds them (DB::Dialect.migrator_folds_reference?:
+      #   SQLite, which cannot add a foreign key on its own);
       # - a :remove_index drops the index `forward` (the
       #   migration's forward operations, when rolling back) created on those
       #   columns, else the derived index_<table>_on_<cols> when it exists,
@@ -365,8 +366,8 @@ module Cybertrain
         i = 0
         while i < ops.size
           op = ops[i]
-          if i + 1 < ops.size && Cybertrain::DB::SqliteDDL.folds_foreign_key?(op, ops[i + 1])
-            run_sql(Cybertrain::DB::SqliteDDL.add_reference_statements(op, ops[i + 1].to_table))
+          if i + 1 < ops.size && Dialect.migrator_folds_reference?(op, ops[i + 1])
+            run_sql(Dialect.migrator_reference_statements(op, ops[i + 1].to_table))
             i += 2
           else
             if op.kind == :execute || op.kind == :reversible_up
@@ -376,7 +377,7 @@ module Cybertrain
             elsif op.rebuilds?
               run_rebuild(op)
             elsif op.kind == :remove_index
-              @connection.exec_script(Cybertrain::DB::SqliteDDL.drop_index_sql(index_to_remove(op, forward)))
+              @connection.exec_script(Dialect.migrator_drop_index_sql(op.table_text, index_to_remove(op, forward)))
             else
               run_sql(Dialect.ddl_statements(op))
             end
@@ -406,7 +407,7 @@ module Cybertrain
           next unless f.kind == :add_index && f.name != ""
           return f.name if f.table_text == table && f.columns == op.columns
         end
-        derived = Cybertrain::DB::SqliteDDL.derived_index_name(table, op.columns)
+        derived = Cybertrain::Schema::Index.derived_name(table, op.columns)
         names = index_names_on(table, op.columns)
         return derived if names.empty? || names.include?(derived)
         names[0]

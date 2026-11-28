@@ -68,7 +68,7 @@ module Cybertrain
 
       status = 0
       begin
-        DB.connect(Cybertrain.config.database_path, size: 1)
+        DB.connect(DB::Adapter.connect_target(Cybertrain.config), size: 1)
         status = Job::CLI.run(args)
       rescue DB::Error => e
         puts "jobs failed: #{e.message}"

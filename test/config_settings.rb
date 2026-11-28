@@ -2,6 +2,7 @@ require "stringio"
 require "cybertrain/db"
 require "cybertrain/test"
 require "cybertrain/main"
+require "cybertrain/db/sqlite/cli"
 require_relative "support/log_capture"
 
 # Application-defined settings (Config#setting_string / setting_int /
