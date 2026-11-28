@@ -2,6 +2,7 @@
 # the framework's template engine: they may only use the template language
 # subset (docs/design.md section 7), never arbitrary Ruby.
 require "tmpdir"
+require "cybertrain/db"
 require "cybertrain/cli"
 require "cybertrain/template"
 require "cybertrain/test"

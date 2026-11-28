@@ -6,6 +6,7 @@
 # cybertrain/test_help, so its reset hooks are registered and the program
 # compiles everything an application's test helper loads.
 require "cybertrain/db"
+require "cybertrain/db/sqlite/cli"
 require "cybertrain/test_help"
 require "cybertrain/test/http_receiver"
 
