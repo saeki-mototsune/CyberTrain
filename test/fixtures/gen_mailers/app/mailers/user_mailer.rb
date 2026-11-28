@@ -25,6 +25,10 @@ class UserMailer < ApplicationMailer
     mail(to: to, subject: "Note", from: "other@example.com", body: "Just text & <plain>\n")
   end
 
+  def empty_note(to)
+    mail(to: to, subject: "Empty", body: "")
+  end
+
   private def helper_not_an_action
     nil
   end

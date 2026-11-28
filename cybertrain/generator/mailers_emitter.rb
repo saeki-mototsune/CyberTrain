@@ -47,6 +47,27 @@ module Cybertrain
         names
       end
 
+      # The actions of the class and its mailer ancestors, nearest first: an
+      # inherited action is dispatched through the receiving class (its
+      # view path, layout and sender), and the class's own replaces one of
+      # the same name.
+      def self.actions_of(info, infos)
+        owners = Array.new(0) { MailerScan.empty_info }
+        owners << info
+        MailerScan.ancestors(info, infos).each { |a| owners << a }
+        out = Array.new(0) { MailerScan.empty_action }
+        names = Array.new(0) { "" }
+        owners.each do |owner|
+          owner.mailer_actions.each do |a|
+            next if names.include?(a.action_name)
+
+            names << a.action_name
+            out << a
+          end
+        end
+        out
+      end
+
       def self.plain_class_source(info, infos, name, superclass)
         full = info.mailer_name
         out = +""
@@ -73,7 +94,8 @@ module Cybertrain
         end
         out << "\n"
         out << view_assigns_source(ivars_of(info, infos))
-        return out << "end\n" if info.mailer_actions.empty?
+        actions = actions_of(info, infos)
+        return out << "end\n" if actions.empty?
 
         out << "\n"
         out << "  # #{name}.with(key: value).action: the action with those params.\n"
@@ -81,7 +103,7 @@ module Cybertrain
         out << "    def initialize(params)\n"
         out << "      @params = params\n"
         out << "    end\n"
-        info.mailer_actions.each do |a|
+        actions.each do |a|
           out << "\n"
           out << "    def #{a.action_name}#{signature(a)}\n"
           out << "      mailer = #{full}.new\n"
@@ -95,7 +117,7 @@ module Cybertrain
         out << "  def self.with(params)\n"
         out << "    Parameterized.new(params)\n"
         out << "  end\n"
-        info.mailer_actions.each do |a|
+        actions.each do |a|
           out << "\n"
           out << "  def self.#{a.action_name}#{signature(a)}\n"
           out << "    with({}).#{a.action_name}#{call_args(a)}\n"

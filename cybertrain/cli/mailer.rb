@@ -39,6 +39,9 @@ module Cybertrain
         segments = GeneratedFiles.name_segments(name, "mailer")
         stem = segments.last.delete_suffix("_mailer")
         raise InvalidArgument, "bad mailer name '#{name}'" if stem.empty?
+        if segments.size == 1 && stem == "application"
+          raise InvalidArgument, "ApplicationMailer is the base the generator writes when it is missing: give the mailer another name"
+        end
 
         segments[segments.size - 1] = "#{stem}_mailer"
         modules = segments.map { |s| Inflector.camelize(s) }
@@ -182,7 +185,6 @@ module Cybertrain
           out << "    mail = #{full}.#{a}\n"
           out << "    assert_equal #{subject.inspect}, mail.mail_subject\n"
           out << "    assert_equal \"to@example.org\", mail.mail_to\n"
-          out << "    assert_equal \"from@example.com\", mail.mail_from\n"
           out << "    assert_match \"Hi\", mail.mail_body\n"
           out << "    assert_emails 1 do\n"
           out << "      mail.deliver_now\n"

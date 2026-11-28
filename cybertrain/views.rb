@@ -204,7 +204,9 @@ module Cybertrain
     # instance variables by name), inside `layout`
     # ("layouts/mailer.html.erb") when that is not "" and exists. A
     # `.text.erb` view and layout print `<%= %>` unescaped, as Rails
-    # treats text/plain (Template::Interpreter).
+    # treats text/plain (Template::Interpreter), and a partial it renders
+    # is the `.text.erb` one (`_footer.text.erb`; a missing one raises
+    # MissingTemplate rather than rendering the HTML partial).
     # @return [String]
     def self.render_mailer_view(name, assigns, layout)
       engine = configured_engine
@@ -212,6 +214,8 @@ module Cybertrain
       slash = name.rindex("/")
       env = Cast.empty_hash
       env["__template_dir"] = slash.nil? ? "" : name[0, slash].to_s
+      # A text view's partials are its .text.erb ones (Helpers#partial_file).
+      env["__template_format"] = name.end_with?(".text.erb") ? "text" : "html"
       keys = assigns.keys
       i = 0
       while i < keys.size

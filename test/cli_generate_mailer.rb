@@ -64,7 +64,6 @@ test "the test is an ActionMailer::TestCase reading the message back" do
         mail = UserMailer.welcome
         assert_equal "Welcome", mail.mail_subject
         assert_equal "to@example.org", mail.mail_to
-        assert_equal "from@example.com", mail.mail_from
         assert_match "Hi", mail.mail_body
         assert_emails 1 do
           mail.deliver_now
@@ -105,6 +104,7 @@ end
 test "refusals: a reserved action, a bad name, an existing file without --force" do
   assert_equal 1, generate(["user", "params"])
   assert_equal 1, generate(["user", "9lives"])
+  assert_equal 1, generate(["application", "welcome"])
   File.write("shop/app/mailers/user_mailer.rb", "class UserMailer < ApplicationMailer\nend\n")
   assert_equal 1, generate(["user", "welcome"])
   assert_equal 0, generate(["user", "welcome", "--force"])

@@ -193,7 +193,8 @@ module Cybertrain
       text.split("\n").each do |line|
         next if line.empty?
 
-        fields = line.split(" ")
+        # -1 keeps an empty last field: the content of an empty file.
+        fields = line.split(" ", -1)
         raise ArgumentError, "the mail job's attachments field is malformed" unless fields.size == 4
 
         name = Base64.strict_decode64(fields[1]).force_encoding("UTF-8")

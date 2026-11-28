@@ -308,9 +308,13 @@ module Cybertrain
       def self.parse_parts(body, mark, out, depth)
         return nil if depth > 8
 
+        # A delimiter is a line of its own (RFC 2046 5.1.1): CRLF, "--",
+        # the boundary; the same text inside a header (a file name) is not one.
         delimiter = String.new
-        delimiter << "--" << mark
-        pieces = body.split(delimiter)
+        delimiter << "\r\n--" << mark
+        framed = String.new
+        framed << "\r\n" << body
+        pieces = framed.split(delimiter)
         i = 1
         while i < pieces.size
           piece = pieces[i]
@@ -358,7 +362,7 @@ module Cybertrain
       # A header parameter's value: `key="v"`, `key=v` or RFC 2231's
       # `key*=UTF-8''...` decoded; "" when the header has none.
       def self.param_of(value, key)
-        value.split(";").each do |raw|
+        Message.split_params(value).each do |raw|
           item = raw.strip
           if item.start_with?("#{key}*=")
             rest = item.byteslice(key.bytesize + 2, item.bytesize - key.bytesize - 2).to_s
@@ -373,6 +377,30 @@ module Cybertrain
           return rest
         end
         ""
+      end
+
+      # A header value split at the `;`s outside double quotes.
+      def self.split_params(value)
+        out = Array.new(0) { "" }
+        piece = String.new
+        quoted = false
+        n = value.bytesize
+        i = 0
+        while i < n
+          b = value.getbyte(i)
+          if b == 34
+            quoted = !quoted
+          elsif b == 59 && !quoted
+            out << piece
+            piece = String.new
+            i += 1
+            next
+          end
+          piece << value.byteslice(i, 1)
+          i += 1
+        end
+        out << piece
+        out
       end
 
       # %XX escapes decoded, as UTF-8.

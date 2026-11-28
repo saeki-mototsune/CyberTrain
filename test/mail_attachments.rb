@@ -119,6 +119,15 @@ test "a name that is not plain ASCII is RFC 2231-encoded, and read back" do
   assert_equal "x", Cybertrain::Mailer::Message.parse(out)["attachment:résumé \"1\".pdf"]
 end
 
+test "a file name holding ; or the boundary reads back whole" do
+  semi = Cybertrain::Mailer::Attachment.new("report;2026.pdf", "a")
+  marked = Cybertrain::Mailer::Attachment.new("x--=_b1.txt", "b")
+  parts = Cybertrain::Mailer::Message.parse(build("Hi\n", "", [semi, marked]))
+  assert_equal "a", parts["attachment:report;2026.pdf"]
+  assert_equal "b", parts["attachment:x--=_b1.txt"]
+  assert_equal "Hi\r\n", parts["text"]
+end
+
 test "the job payload's attachment lines round-trip, and a malformed one is refused" do
   text = Cybertrain::Mailer.encode_attachments([pdf, logo])
   assert_equal "a cmVwb3J0LnBkZg== application/pdf JVBERgD/\ni bG9nby5wbmc= image/png UE5H\n", text
@@ -127,6 +136,9 @@ test "the job payload's attachment lines round-trip, and a malformed one is refu
   assert_equal "%PDF\x00\xff".b, back[0].attachment_content.b
   assert back[1].attachment_inline?
   assert_equal 0, Cybertrain::Mailer.decode_attachments("").size
+  empty = Cybertrain::Mailer.decode_attachments(Cybertrain::Mailer.encode_attachments([Cybertrain::Mailer::Attachment.new("empty.txt", "")]))
+  assert_equal 1, empty.size
+  assert_equal "", empty[0].attachment_content
   message = assert_raises("ArgumentError") { Cybertrain::Mailer.decode_attachments("a bad\n") }
   assert_equal "the mail job's attachments field is malformed", message
 end

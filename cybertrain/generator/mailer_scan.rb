@@ -208,12 +208,14 @@ module Cybertrain
           end
           text = line
           inline_hidden = false
+          inline_public = false
           words = ["private ", "protected ", "public "]
           w = 0
           while w < words.size
             word = words[w]
             if text.start_with?(word) && text[word.size, text.size - word.size].to_s.lstrip.start_with?("def ")
               inline_hidden = word != "public "
+              inline_public = word == "public "
               text = text[word.size, text.size - word.size].to_s.lstrip
             end
             w += 1
@@ -226,7 +228,7 @@ module Cybertrain
               j += 1
             end
             name = ModelScan.def_name(joined)
-            if !hidden && !inline_hidden && action_name?(name)
+            if (inline_public || !hidden) && !inline_hidden && action_name?(name)
               actions << action_at(file, lineno, joined, name)
             elsif text.start_with?("def self.")
               reserved_class_method!(file, lineno, text)
@@ -270,7 +272,7 @@ module Cybertrain
           params = HelperScan.inside_parens(rest).strip
         elsif rest.start_with?(" ") && !rest.lstrip.start_with?("=") && !rest.lstrip.start_with?(";") &&
               !rest.lstrip.start_with?("#") && rest.strip != ""
-          params = HelperScan.strip_comment(rest).strip
+          params = MailerScan.before_semicolon(HelperScan.strip_comment(rest)).strip
         end
         args = Array.new(0) { "" }
         HelperScan.split_params(params).each do |raw_param|
@@ -293,6 +295,30 @@ module Cybertrain
           end
         end
         MailerAction.new(name, params, args.join(", "))
+      end
+
+      # `text` up to its first `;` outside quotes and brackets (the end of a
+      # parenthesis-free parameter list: `def welcome user; mail(...); end`).
+      def self.before_semicolon(text)
+        depth = 0
+        quote = ""
+        i = 0
+        while i < text.size
+          ch = text[i, 1]
+          if quote != ""
+            quote = "" if ch == quote
+          elsif ch == "\"" || ch == "'"
+            quote = ch
+          elsif ch == "(" || ch == "[" || ch == "{"
+            depth += 1
+          elsif ch == ")" || ch == "]" || ch == "}"
+            depth -= 1
+          elsif ch == ";" && depth <= 0
+            return text[0, i].to_s
+          end
+          i += 1
+        end
+        text
       end
 
       # `def self.with` and the like collide with the generated class methods.

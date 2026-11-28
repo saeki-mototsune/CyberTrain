@@ -63,7 +63,7 @@ test "the fixture's mailer classes in load order, the module left out" do
   assert_equal "", notice.mailer_layout_name
   assert_equal ["module"], notice.mailer_scopes
   user = infos[2]
-  assert_equal ["welcome", "reset", "plain_note"], user.mailer_actions.map { |a| a.action_name }
+  assert_equal ["welcome", "reset", "plain_note", "empty_note"], user.mailer_actions.map { |a| a.action_name }
   assert_equal "user, greeting = \"Hello\", copy: false", user.mailer_actions[0].action_params
   assert_equal "user, greeting, copy: copy", user.mailer_actions[0].action_args
   assert_equal "", user.mailer_actions[1].action_params
@@ -86,6 +86,29 @@ test "a parameter list continued over lines is read whole" do
   assert_equal "to, subject: subject", infos[1].mailer_actions[0].action_args
 end
 
+test "a parameter list without parentheses ends at the semicolon of a one-line def" do
+  infos = scan(one_mailer("  def note to, subject = \"a;b\"; mail(to: to, subject: subject); end\n"))
+  assert_equal "to, subject = \"a;b\"", infos[1].mailer_actions[0].action_params
+  assert_equal "to, subject", infos[1].mailer_actions[0].action_args
+end
+
+test "a subclass dispatches its ancestors' actions through itself, its own first" do
+  root = app_tree("app/mailers/application_mailer.rb" => BASE_MAILER,
+                  "app/mailers/a_parent_mailer.rb" => "class AParentMailer < ApplicationMailer\n  def welcome(user)\n    nil\n  end\n\n" \
+                                                      "  def receipt\n    nil\n  end\nend\n",
+                  "app/mailers/b_child_mailer.rb" => "class BChildMailer < AParentMailer\n  def receipt(order)\n    nil\n  end\nend\n",
+                  "app/mailers/c_empty_mailer.rb" => "class CEmptyMailer < AParentMailer\nend\n")
+  out = Cybertrain::Gen::MailersEmitter.emit(scan(root))
+  from = out.index("class BChildMailer").to_i
+  child = out[from, out.index("class CEmptyMailer").to_i - from].to_s
+  assert child.include?("      mailer = BChildMailer.new\n      mailer.mailer_setup(@params, \"receipt\")\n      mailer.receipt(order)\n")
+  assert child.include?("      mailer = BChildMailer.new\n      mailer.mailer_setup(@params, \"welcome\")\n")
+  assert_not child.include?("mailer.receipt\n")
+  empty = out[out.index("class CEmptyMailer"), out.size].to_s
+  assert empty.include?("  def self.with(params)\n")
+  assert empty.include?("      mailer = CEmptyMailer.new\n      mailer.mailer_setup(@params, \"welcome\")\n")
+end
+
 test "refusals: splats, reserved names, a default that is not from: alone, a layout that is not literal" do
   splat = refusal(one_mailer("  def note(*names)\n    nil\n  end\n"))
   assert splat.end_with?("app/mailers/note_mailer.rb:2: note: a mailer action takes named parameters only (no *, ** or &), " \
@@ -105,9 +128,10 @@ test "refusals: splats, reserved names, a default that is not from: alone, a lay
 end
 
 test "private and protected methods are not actions; public after them is" do
-  infos = scan(one_mailer("  def a\n    nil\n  end\n\n  protected\n\n  def b\n    @hidden = 1\n  end\n\n  public\n\n" \
+  infos = scan(one_mailer("  def a\n    nil\n  end\n\n  protected\n\n  def b\n    @hidden = 1\n  end\n\n  public def f\n    nil\n  end\n\n" \
+                          "  def g\n    nil\n  end\n\n  public\n\n" \
                           "  def c = nil\n  private def d\n    nil\n  end\nend\nclass Helper\n  def e\n    nil\n  end\n"))
-  assert_equal ["a", "c"], infos[1].mailer_actions.map { |x| x.action_name }
+  assert_equal ["a", "f", "c"], infos[1].mailer_actions.map { |x| x.action_name }
   assert_equal ["hidden"], infos[1].mailer_ivars
 end
 

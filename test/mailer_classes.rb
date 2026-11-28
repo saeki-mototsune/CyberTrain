@@ -92,7 +92,8 @@ test "with(params) gives the action its params" do
   # No subject given: the action's name, humanized.
   assert_equal "Reset", m.mail_subject
   # The text layout's footer reads @footer, which reset does not set.
-  assert_equal "Reset: https://example.com/r/1\n--\n\n", m.mail_body
+  # Its partial is _sign.text.erb, unescaped, not the HTML one beside it.
+  assert_equal "Reset: https://example.com/r/1\nText & sign\n\n--\n\n", m.mail_body
   # A text view alone: no HTML part.
   assert_equal "", m.mail_html
 end
@@ -112,6 +113,13 @@ test "body: skips the views, from: overrides the default" do
   assert_equal "Just text & <plain>\n", m.mail_body
   assert_equal "other@example.com", m.mail_from
   assert_equal "", m.mail_html
+end
+
+test "body: \"\" is an empty text, no view read" do
+  m = UserMailer.empty_note("bob@example.org")
+  assert_equal "", m.mail_body
+  assert_equal "", m.mail_html
+  assert_equal "Empty", m.mail_subject
 end
 
 test "a namespaced mailer reads its own view directory, layout false" do

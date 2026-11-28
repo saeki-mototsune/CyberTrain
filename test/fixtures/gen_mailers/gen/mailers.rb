@@ -104,6 +104,13 @@ class UserMailer < ApplicationMailer
       mailer.plain_note(to)
       mailer.mailer_result
     end
+
+    def empty_note(to)
+      mailer = UserMailer.new
+      mailer.mailer_setup(@params, "empty_note")
+      mailer.empty_note(to)
+      mailer.mailer_result
+    end
   end
 
   def self.with(params)
@@ -120,5 +127,9 @@ class UserMailer < ApplicationMailer
 
   def self.plain_note(to)
     with({}).plain_note(to)
+  end
+
+  def self.empty_note(to)
+    with({}).empty_note(to)
   end
 end

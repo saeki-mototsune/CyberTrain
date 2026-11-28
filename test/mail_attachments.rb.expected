@@ -5,5 +5,6 @@ ok   text and a file: multipart/mixed, the text part first
 ok   text, HTML, an inline image and a file: mixed > alternative > related
 ok   an inline file without HTML is attached as the others; no file is D57's message byte for byte
 ok   a name that is not plain ASCII is RFC 2231-encoded, and read back
+ok   a file name holding ; or the boundary reads back whole
 ok   the job payload's attachment lines round-trip, and a malformed one is refused
-8 tests, 58 assertions, 0 failures
+9 tests, 63 assertions, 0 failures

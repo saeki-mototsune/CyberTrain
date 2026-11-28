@@ -46,6 +46,10 @@ module Cybertrain
       # taken. A no-op here.
       # @return [nil]
       # @api public
+      # `mail`'s default for `body:` when none is given (a NUL, which no
+      # body may hold), so `body: ""` sends an empty text without views.
+      NO_BODY = "\0"
+
       def self.default(from: "")
         nil
       end
@@ -108,7 +112,8 @@ module Cybertrain
       #   ("Welcome email"), as Rails does
       # @param from [String] "" for the class's `default from:`, else
       #   Config#smtp_from
-      # @param body [String] a plain-text body instead of the views
+      # @param body [String] a plain-text body instead of the views (`""`
+      #   too: an empty text, no view read)
       # @param template_name [String] the view's name instead of the action's
       # @param template_path [String] the view directory instead of the
       #   class's (`user_mailer`)
@@ -116,14 +121,15 @@ module Cybertrain
       # @raise [Cybertrain::Template::MissingTemplate] when the action has
       #   neither view (and no `body:`)
       # @api public
-      def mail(to:, subject: "", from: "", body: "", template_name: "", template_path: "")
+      def mail(to:, subject: "", from: "", body: NO_BODY, template_name: "", template_path: "")
         sender = from.to_s
         sender = mailer_default_from.to_s if sender.empty?
         title = subject.to_s
         title = Base.default_subject(mailer_path, @mailer_action) if title.empty?
         text = body.to_s
         html = ""
-        if text.empty?
+        if text == NO_BODY
+          text = ""
           name = template_name.to_s
           name = @mailer_action if name.empty?
           dir = template_path.to_s
