@@ -456,7 +456,9 @@ module Cybertrain
     # Unlike ActiveRecord it returns nil rather than the block's value, a
     # `save` returning false does not roll anything back (raise, or use
     # `save!`), and there is no `ActiveRecord::Rollback`.
-    # @param immediate [Boolean] BEGIN IMMEDIATE instead of BEGIN
+    # @param immediate [Boolean] BEGIN IMMEDIATE instead of BEGIN (SQLite;
+    #   ignored on MySQL, where it does not serialize a read-then-write
+    #   block: see {Cybertrain::DB.transaction})
     # @yieldparam conn [Cybertrain::DB::Connection]
     # @return [nil]
     # @api public
