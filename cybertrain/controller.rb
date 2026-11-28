@@ -5,6 +5,7 @@ require "cybertrain/html"
 require "cybertrain/http/client_error"
 require "cybertrain/http/uploaded_file"
 require "cybertrain/logger"
+require "cybertrain/db/error"
 require "cybertrain/callback"
 require "cybertrain/feature"
 require "cybertrain/views"
@@ -500,6 +501,33 @@ module Cybertrain
         i += 1
       end
       handlers
+    end
+
+    # The index in `handlers` (rescues_for's order) of the handler for an
+    # exception of class `class_name`, -1 for none. A handler of that very
+    # class wins over a `rescue_from Cybertrain::DB::Error` that takes it as
+    # a subclass, wherever each was declared, so
+    #
+    #   rescue_from Cybertrain::DB::Error, with: :database_error
+    #   rescue_from Cybertrain::DB::UniqueViolation, with: :duplicate
+    #
+    # sends a UniqueViolation to :duplicate in either order (Rails, which
+    # tries the last declaration first, does so only in this order); the
+    # first of several matches of the same kind wins, as before.
+    def self.rescue_index(handlers, class_name)
+      i = 0
+      while i < handlers.size
+        return i if handlers[i].class_name == class_name
+        i += 1
+      end
+      return -1 unless Cybertrain::DB.error_subclass?(class_name)
+
+      i = 0
+      while i < handlers.size
+        return i if handlers[i].class_name == "Cybertrain::DB::Error"
+        i += 1
+      end
+      -1
     end
 
     # Always returns a plain Integer: the result lands in Response#status,
@@ -1370,9 +1398,10 @@ module Cybertrain
     # Re-raises e when no rescue_from handler matches its class name.
     def rescue_with_handler(e)
       class_name = e.class.name
-      Controller.rescues_for(self.class).each do |h|
-        next unless h.class_name == class_name
-
+      handlers = Controller.rescues_for(self.class)
+      index = Controller.rescue_index(handlers, class_name)
+      if index >= 0
+        h = handlers[index]
         @rescued_exception = e
         with = h.with
         if with.nil?

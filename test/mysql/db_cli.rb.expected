@@ -1,0 +1,55 @@
+db status failed: 127.0.0.1:33306: MySQL error 1049 (42000): Unknown database 'cybertrain_cli_test'
+ok   migrate before create is the server's refusal: the database does not exist
+created mysql://root@127.0.0.1:33306/cybertrain_cli_test
+database already exists: mysql://root@127.0.0.1:33306/cybertrain_cli_test
+ok   create makes the database with the adapter's character set, once
+== 20260101000000 CreatePosts: migrating
+done
+== 20260101000100 CreateComments: migrating
+done
+ok   migrate applies the migrations and writes db/schema.rb
+Status  Migration ID    Migration Name
+    up  20260101000000  CreatePosts
+    up  20260101000100  CreateComments
+ok   status lists each migration as up
+== 20260101000100 CreateComments: reverting
+done
+Status  Migration ID    Migration Name
+    up  20260101000000  CreatePosts
+  down  20260101000100  CreateComments
+ok   rollback reverts the newest migration and rewrites db/schema.rb
+wrote tmp/mysql_db_cli_test/db/schema.rb from mysql://root@127.0.0.1:33306/cybertrain_cli_test
+ok   schema writes db/schema.rb and names the database without the password
+db backup is SQLite-only; use mysqldump or your provider's snapshots
+db backup is SQLite-only; use mysqldump or your provider's snapshots
+db vacuum is SQLite-only; use mysqldump or your provider's snapshots
+db normalize is SQLite-only; use mysqldump or your provider's snapshots
+ok   backup, vacuum and normalize are SQLite's: exit status 2
+dropped mysql://root@127.0.0.1:33306/cybertrain_cli_test
+database does not exist: mysql://root@127.0.0.1:33306/cybertrain_cli_test
+ok   drop drops the database, and says when there is none
+usage: db (migrate|rollback [N]|status|schema|schema:dump|create|drop)
+unknown command: explode
+usage: db (migrate|rollback [N]|status|schema|schema:dump|create|drop)
+ok   no arguments or an unknown command prints MySQL's usage and returns 1
+db drop refuses to drop shop_production: its name ends in _production
+db drop refuses to drop shop_production: its name ends in _production
+db drop refuses to drop shop_PRODUCTION: its name ends in _production
+ok   drop refuses a name that ends in _production, before it connects
+ok   create and drop take letters, digits, _ and $, at most 64, and refuse anything else
+db create failed: the database name "bad-name" is not allowed: use letters, digits, _ and $ (at most 64 characters)
+db drop failed: the database name "bad-name" is not allowed: use letters, digits, _ and $ (at most 64 characters)
+db create failed: the database name "a`b" is not allowed: use letters, digits, _ and $ (at most 64 characters)
+db drop failed: the database name "a`b" is not allowed: use letters, digits, _ and $ (at most 64 characters)
+db create failed: the database name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" is not allowed: use letters, digits, _ and $ (at most 64 characters)
+db drop failed: the database name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" is not allowed: use letters, digits, _ and $ (at most 64 characters)
+db create failed: DATABASE_URL names no database (mysql://user:password@host:3306/NAME)
+db create failed: DATABASE_URL is not set (mysql://user:password@host:3306/name)
+db migrate failed: DATABASE_URL is not set (mysql://user:password@host:3306/name)
+ok   a refused name stops create and drop before anything runs; the message has no password
+ok   server_url drops the database and keeps the password and the parameters
+ok   db migrate, rollback, status and schema wait as long as an ALTER takes
+ok   dbconsole runs mysql over TCP with the server, the user and the database, and the password in MYSQL_PWD
+ok   dbconsole's CA for ssl_mode=verify: SSL_CERT_FILE and SSL_CERT_DIR, else the system bundle
+ok   help's db and dbconsole lines are MySQL's
+17 tests, 106 assertions, 0 failures

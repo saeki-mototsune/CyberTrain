@@ -5,6 +5,7 @@ require "cybertrain/generator/model_scan"
 require "cybertrain/generator/model_naming"
 require "cybertrain/generator/model_validation"
 require "cybertrain/generator/association_emitter"
+require "cybertrain/generator/dialect"
 
 module Cybertrain
   module Gen
@@ -32,16 +33,17 @@ module Cybertrain
       def self.shadow_note(what, name) = ModelNaming.shadow_note(what, name)
 
       # { "gen/models/post.rb" => source, ... } for every modelled table, by
-      # table name.
-      def self.outputs(definition, infos)
-        outputs_for(ModelValidation.validate_all(definition, infos, SchemaPlaces.absent))
+      # table name. `dialect` is the adapter's spelling (Dialect.for; SQLite's
+      # when left out), used for the SQL the models carry.
+      def self.outputs(definition, infos, dialect = Dialect.for("sqlite"))
+        outputs_for(ModelValidation.validate_all(definition, infos, SchemaPlaces.absent), dialect)
       end
 
       # The same, from the models ModelValidation.validate_all answered.
-      def self.outputs_for(validated)
+      def self.outputs_for(validated, dialect = Dialect.for("sqlite"))
         out = { "" => "" }
         out.delete("")
-        validated.each { |v| out["gen/models/" + file_name(v.source_table.name)] = emit_validated(v) }
+        validated.each { |v| out["gen/models/" + file_name(v.source_table.name)] = emit_validated(v, dialect) }
         out
       end
 
@@ -59,7 +61,7 @@ module Cybertrain
       end
 
       # The gen/models file of a validated model.
-      def self.emit_validated(validated)
+      def self.emit_validated(validated, dialect = Dialect.for("sqlite"))
         table = validated.source_table
         model = validated.model
         scopes = validated.scopes
@@ -73,7 +75,7 @@ module Cybertrain
         src << "\n"
         src << emit_model_head(model, table, plans, encrypted)
         src << emit_persistence(model, table, scopes, encrypted)
-        src << emit_dispatch(table, plans, validated.view_methods, validated.counter_columns)
+        src << emit_dispatch(table, plans, validated.view_methods, validated.counter_columns, dialect)
         src << emit_validations(model, table, validated.condition_methods, validated.custom_validations, encrypted)
         src << "end\n"
         src
@@ -744,7 +746,7 @@ module Cybertrain
       # interpreter dispatches through by name. `methods` are the view
       # methods left to call_view_method, `counter_columns` the columns
       # another model's counter_cache counts in (both from ModelValidation).
-      def self.emit_dispatch(table, plans, methods, counter_columns)
+      def self.emit_dispatch(table, plans, methods, counter_columns, dialect)
         src = +""
         # Each reader, with the method includes fills its cache through,
         # then a blank line.
@@ -757,7 +759,7 @@ module Cybertrain
         end
         src << emit_destroy_dependents(plans)
         src << emit_reset_association_caches(plans)
-        src << emit_counter_cache(table, plans)
+        src << emit_counter_cache(table, plans, dialect)
         src << emit_counter_cache_columns(counter_columns)
         src << emit_read_association(plans)
         src << "\n" unless plans.empty? && methods.empty?

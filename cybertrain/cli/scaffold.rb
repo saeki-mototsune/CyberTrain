@@ -324,7 +324,7 @@ module Cybertrain
           attachments = true
           Attachment.install_code(root, AttachmentSpec.new(res.singular, f.field_name, any), created)
         end
-        puts Attachment::BACKUP_NOTE if attachments
+        puts Attachment.backup_note(root) if attachments
         shadow_notes(res).each { |note| puts note }
         created
       end

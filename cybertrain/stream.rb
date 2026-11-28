@@ -5,7 +5,7 @@ require "cybertrain/logger"
 require "cybertrain/cast"
 require "cybertrain/config"
 require "cybertrain/crypto"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/html"
 require "cybertrain/model"
 require "cybertrain/views"
@@ -15,7 +15,7 @@ require "cybertrain/stream/hub"
 module Cybertrain
   # Cybertrain::Stream -- the pub/sub behind the realtime endpoint
   # (docs/design.md D37). A broadcast is a row in the application's own
-  # SQLite database, in the `cybertrain_messages` table the framework creates
+  # database, in the `cybertrain_messages` table the framework creates
   # itself (`CREATE TABLE IF NOT EXISTS`) and leaves out of `db/schema.rb`;
   # every web process polls the table ({Stream::Poller}, every
   # {Config#stream_poll_ms} ms) and hands new rows to the browsers
@@ -36,15 +36,10 @@ module Cybertrain
   # only on that user's pages.
   # @api public
   module Stream
+    # The table and its (stream, id) index are the adapter's
+    # (DB::Dialect.stream_table_sql), created by
+    # DB::Dialect.framework_table_install.
     TABLE = "cybertrain_messages"
-
-    TABLE_SQL = "CREATE TABLE IF NOT EXISTS cybertrain_messages (" \
-                "id INTEGER PRIMARY KEY AUTOINCREMENT, " \
-                "stream TEXT NOT NULL, " \
-                "payload TEXT NOT NULL, " \
-                "created_at INTEGER NOT NULL); " \
-                "CREATE INDEX IF NOT EXISTS index_cybertrain_messages_on_stream_and_id " \
-                "ON cybertrain_messages (stream, id);"
 
     # A stream name is 1..MAX_NAME_BYTES bytes, with no control character
     # and no comma (the separator inside a token).
@@ -65,6 +60,18 @@ module Cybertrain
     # the stream (in this process and every other one polling the same
     # database) within about {Config#stream_poll_ms}. Inside a
     # {DB.transaction} the message is sent only if the transaction commits.
+    #
+    # On MySQL a row takes its id at the INSERT and is seen at the COMMIT,
+    # so a lower id can become visible after a higher one (SQLite has one
+    # writer: ids are visible in id order). The poller of this process
+    # never moves past a broadcast this process has in flight
+    # ({Stream.delivery_bound}): it waits for an INSERT to answer and, for
+    # one made inside a transaction, until the transaction commits or rolls
+    # back. A broadcast made inside a transaction in another process is not
+    # known here: if a higher id commits before it, this process's poller
+    # passes it, and its subscribers get it neither live nor by a replay
+    # from a later id. Across processes on MySQL, broadcast after the
+    # COMMIT (docs/compatibility.md).
     # @param name [String] the stream ({Stream.name_for} for a record)
     # @param payload [String] what the subscribers receive: Turbo Stream
     #   HTML, JSON or any text
@@ -77,12 +84,167 @@ module Cybertrain
 
       ensure_installed
       binds = Cast.binds(stream, payload.to_s, Clock.now.to_i)
+      return Stream.insert_message(binds) if DB::Dialect.stream_ids_in_commit_order?
+
+      Stream.insert_tracked(binds)
+    end
+
+    # The broadcast's INSERT; its id.
+    def self.insert_message(binds)
       id = 0
       DB.with do |c|
         c.execute("INSERT INTO cybertrain_messages (stream, payload, created_at) VALUES (?, ?, ?)", binds)
         id = c.last_insert_id
       end
       id
+    end
+
+    # --- Commit order (where ids are not visible in id order: MySQL) -----
+    #
+    # The process's broadcasts in flight, for {Stream.delivery_bound}: a
+    # ticket is taken before the INSERT (its id is not known until the
+    # INSERT answers) and given back after it; an id inserted inside a
+    # transaction then stays pending until the poller sees, by
+    # DB::Dialect.stream_message_state, that it was committed or is gone.
+    # No database call is made under TRACK.
+    TRACK = Mutex.new
+    @ticket_seq = 0
+    @in_flight = Array.new(0) { 0 }
+    @pending = Array.new(0) { 0 }
+
+    # insert_message with the bookkeeping around it. A failed INSERT gives
+    # its ticket back and leaves nothing pending.
+    def self.insert_tracked(binds)
+      ticket = Stream.take_ticket
+      id = 0
+      begin
+        id = Stream.insert_message(binds)
+      rescue StandardError => e
+        Stream.finish_ticket(ticket, 0)
+        raise e
+      end
+      # Outside a transaction the INSERT has committed when it answers.
+      Stream.finish_ticket(ticket, DB.outside_transaction? ? 0 : id)
+      id
+    end
+
+    # A ticket for an INSERT about to run.
+    # @return [Integer]
+    # @api private
+    def self.take_ticket
+      ticket = 0
+      TRACK.synchronize do
+        @ticket_seq += 1
+        ticket = @ticket_seq
+        @in_flight << ticket
+      end
+      ticket
+    end
+
+    # The INSERT of `ticket` answered; `pending_id` is its id when it ran
+    # inside a transaction, else 0.
+    # @return [nil]
+    # @api private
+    def self.finish_ticket(ticket, pending_id)
+      TRACK.synchronize do
+        i = 0
+        while i < @in_flight.size
+          if @in_flight[i] == ticket
+            @in_flight.delete_at(i)
+            break
+          end
+          i += 1
+        end
+        @pending << pending_id if pending_id > 0
+      end
+      nil
+    end
+
+    # Probes the pending ids above `after` in id order (a NOWAIT locking
+    # read each, on the caller's connection, which must be outside a
+    # transaction) and forgets those committed or gone, up to the first
+    # whose transaction is still open; ids at or below `after` are past the
+    # cursor and forgotten unprobed. So a rolled-back broadcast holds the
+    # poller only until its ROLLBACK. Run before the poller's read: an id
+    # seen committed here is in the read that follows.
+    # @param after [Integer] the poller's cursor
+    # @return [nil]
+    # @api private
+    def self.resolve_pending(after)
+      ids = Array.new(0) { 0 }
+      TRACK.synchronize do
+        i = 0
+        while i < @pending.size
+          ids << @pending[i]
+          i += 1
+        end
+      end
+      return nil if ids.empty?
+
+      ids.sort!
+      done = Array.new(0) { 0 }
+      i = 0
+      while i < ids.size
+        id = ids[i]
+        if id > after
+          state = DB.with { |c| DB::Dialect.stream_message_state(c, id) }
+          break if state < 0
+        end
+        done << id
+        i += 1
+      end
+      Stream.forget_pending(done)
+    end
+
+    def self.forget_pending(done)
+      TRACK.synchronize do
+        kept = Array.new(0) { 0 }
+        i = 0
+        while i < @pending.size
+          id = @pending[i]
+          kept << id unless Stream.int_in?(done, id)
+          i += 1
+        end
+        @pending = kept
+      end
+      nil
+    end
+
+    def self.int_in?(list, value)
+      i = 0
+      while i < list.size
+        return true if list[i] == value
+
+        i += 1
+      end
+      false
+    end
+
+    # Read after the poller's read: the lowest id above `after` that may
+    # still become visible (a pending one), 0 while an INSERT of this
+    # process has not answered (its id is not known, and may be below a row
+    # just read), -1 when nothing holds the poller. Rows from that id on
+    # wait for a later tick. An INSERT whose ticket is taken after the read
+    # gets an id above every row the read saw (AUTO_INCREMENT only grows),
+    # so counting every ticket in flight now is safe.
+    # @param after [Integer]
+    # @return [Integer]
+    # @api private
+    def self.delivery_bound(after)
+      bound = -1
+      TRACK.synchronize do
+        if @in_flight.empty?
+          i = 0
+          while i < @pending.size
+            id = @pending[i]
+            bound = id if id > after && (bound < 0 || id < bound)
+            i += 1
+          end
+        else
+          bound = 0
+        end
+      end
+      bound
     end
 
     # The stream name of a record, `"articles:12"` (its table and id); a
@@ -262,7 +424,7 @@ module Cybertrain
     # @return [nil]
     # @api public
     def self.install!
-      DB.with { |c| c.exec_script(TABLE_SQL) }
+      DB.with { |c| DB::Dialect.framework_table_install(c, TABLE, DB::Dialect.stream_table_sql) }
       # As Job.install!: a CREATE inside a transaction that rolls back is
       # gone again, so only one outside a transaction is remembered.
       @installed_generation = DB.generation if DB.outside_transaction?
@@ -284,8 +446,20 @@ module Cybertrain
       ensure_installed
       count = 0
       DB.with do |c|
-        c.execute("DELETE FROM cybertrain_messages WHERE created_at < ?", [before])
-        count = c.changes
+        # Bounded by id, the primary key: the newest old row is found with
+        # a plain read, and the DELETE then scans the key only up to it. A
+        # DELETE by created_at alone, which no index covers, reads (and on
+        # MySQL has to lock) every row, so it would wait for the row of a
+        # broadcast in a transaction still open on another connection, up
+        # to innodb_lock_wait_timeout, and the poller, which prunes, would
+        # deliver nothing meanwhile. Below the bound only a transaction
+        # open since before `before` can still hold a row.
+        rows = c.execute("SELECT MAX(id) AS m FROM cybertrain_messages WHERE created_at < ?", [before])
+        last = rows.empty? ? 0 : Cast.int(rows[0]["m"])
+        if last > 0
+          c.execute("DELETE FROM cybertrain_messages WHERE id <= ? AND created_at < ?", [last, before])
+          count = c.changes
+        end
       end
       count
     end

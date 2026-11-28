@@ -1,0 +1,14 @@
+ok   the checked-in gen/models files match the emitter (fixture stale otherwise)
+ok   includes(comments: :author) is one statement per level: has_many then belongs_to
+ok   includes(comments: [:author, :likes]) preloads both below comments
+ok   includes(:author, comments: { likes: :comment }) mixes a name and a Hash three levels deep
+ok   belongs_to, belongs_to, has_one: Comment.includes(article: { author: :profile })
+ok   has_one then belongs_to: Author.includes(profile: :author); a missing profile is nil
+ok   has_many three deep: Author.includes(articles: { comments: :likes })
+ok   a nil parent or an empty level stops the path there without a statement
+ok   preload takes the same nested forms; dup and a second includes keep and add paths
+ok   a path that comes back to its start loads each level again: comments: { article: :comments }
+ok   an unknown name at any depth raises before any statement, naming it and its model
+ok   a refused includes leaves the relation as it was
+ok   String names are taken as Symbols are
+13 tests, 60 assertions, 0 failures

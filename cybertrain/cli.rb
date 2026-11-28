@@ -209,20 +209,56 @@ module Cybertrain
       raise InvalidArgument, "'#{File.basename(dir)}' is not a valid app name (lowercase letters, digits and _)" unless Templates.identifier?(File.basename(dir))
       raise InvalidArgument, "#{dir} already exists" if File.exist?(dir)
 
+      unknown = unknown_new_option(argv)
+      raise InvalidArgument, "new has no option #{unknown} (#{NEW_OPTIONS.join(', ')})" unless unknown == ""
+
+      database = database_option(argv)
       dep = framework_dep(argv)
       note = version_note(option(argv, "--version"))
-      NewApp.create(dir, dep)
+      NewApp.create(dir, dep, database)
       puts note unless note == ""
       return 0 if argv.include?("--skip-spin")
       return 1 unless NewApp.bootstrap(dir)
 
       puts ""
-      puts "next:"
-      puts "  cd #{Build.quote_arg(dir)}"
-      puts "  cybertrain generate scaffold article title:string body:text"
-      puts "  cybertrain db migrate"
-      puts "  cybertrain server"
+      puts new_next_steps(dir, database)
       0
+    end
+
+    # What `new` prints once spin has installed the framework. On MySQL
+    # `db migrate` needs DATABASE_URL (.env.example's development line)
+    # and the database `db create` makes.
+    def self.new_next_steps(dir, database)
+      text = +"next:\n  cd #{Build.quote_arg(dir)}\n  cybertrain generate scaffold article title:string body:text\n"
+      if database == "mysql"
+        text << "  export DATABASE_URL='mysql://root@127.0.0.1:3306/#{File.basename(dir)}_development?ssl_mode=disabled'\n"
+        text << "  cybertrain db create\n"
+      end
+      text << "  cybertrain db migrate\n  cybertrain server\n"
+      text
+    end
+
+    # The options `new` takes; the first four are followed by a value.
+    NEW_OPTIONS = ["--path", "--version", "--git", "--ref", "--database", "--skip-spin"].freeze
+
+    # The first argument of `new` after NAME that starts with "-" and is
+    # none of NEW_OPTIONS (nor `--database=NAME`), "" when there is none:
+    # `-d mysql` or `--databse=mysql` would otherwise write a SQLite
+    # application without a word. A value after an option that takes one
+    # is skipped, whatever it looks like.
+    def self.unknown_new_option(argv)
+      i = 2
+      while i < argv.size
+        arg = argv[i]
+        if ["--path", "--version", "--git", "--ref", "--database"].include?(arg)
+          i += 2
+          next
+        end
+        return arg if arg.start_with?("-") && arg != "--skip-spin" && !arg.start_with?("--database=")
+
+        i += 1
+      end
+      ""
     end
 
     # The spin.toml value of the `cybertrain =` dependency. By default the
@@ -261,6 +297,32 @@ module Cybertrain
 
       "note: spin selects the lowest release that satisfies \"#{version}\" and spin.lock pins it, " \
         "so a range does not follow new releases; name one release (--version X.Y.Z) to choose it"
+    end
+
+    # The adapter `new` writes the app for: "sqlite" unless `--database=NAME`
+    # or `--database NAME` says "mysql" (or "sqlite"); any other value, or
+    # none, is refused before anything is written, and so is a second
+    # --database (which of the two would win is not obvious).
+    def self.database_option(argv)
+      count = argv.count { |arg| arg == "--database" || arg.start_with?("--database=") }
+      raise InvalidArgument, "--database given more than once" if count > 1
+
+      value = ""
+      given = false
+      argv.each do |arg|
+        if arg.start_with?("--database=")
+          given = true
+          value = arg["--database=".size, arg.size - "--database=".size].to_s
+        end
+      end
+      unless given
+        return "sqlite" unless argv.include?("--database")
+
+        value = option(argv, "--database")
+      end
+      return value if value == "sqlite" || value == "mysql"
+
+      raise InvalidArgument, "--database must be sqlite or mysql, got #{value.inspect}"
     end
 
     # `value` as a TOML basic string: `\` and `"` escaped. Control
@@ -390,7 +452,7 @@ module Cybertrain
         raise InvalidArgument, "usage: cybertrain generate attachment MODEL FIELD [--any] [--show-checks-nothing]" unless args.size == 2
 
         Attachment.generate(".", args[0], args[1], argv.include?("--any"), argv.include?("--show-checks-nothing"))
-        puts Attachment::BACKUP_NOTE
+        puts Attachment.backup_note(".")
         puts ""
         puts "next:"
         puts "  cybertrain db migrate"

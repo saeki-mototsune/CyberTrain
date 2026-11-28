@@ -1,0 +1,29 @@
+ok   upsert answers 1 for an insert and an update, 0 for a row an empty update left
+ok   a conflict target that is no unique key is refused before anything is written
+ok   a row that collides on another unique key raises UniqueViolation and changes no row
+ok   a collision on the target itself still takes the update where other unique keys exist
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `counter` bigint unsigned NOT NULL DEFAULT '5',
+  `e` enum('a','b c') COLLATE utf8mb4_0900_bin NOT NULL DEFAULT 'b c' COMMENT 'it''s',
+  `ci` varchar(20) CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci NOT NULL,
+  `ts` timestamp NOT NULL ON UPDATE CURRENT_TIMESTAMP,
+  `body` mediumtext COLLATE utf8mb4_0900_bin DEFAULT (_utf8mb4'x'),
+  `meta` json,
+  `at` datetime(6) DEFAULT CURRENT_TIMESTAMP(6),
+  `n` int NOT NULL DEFAULT '3',
+ok   change_column_null and change_column_default change nothing else of the column
+ok   an expression default and an expression index read back as SQL the server takes
+ok   a change_column_null runs with foreign keys on, and an old orphan elsewhere does not fail it
+ok   a cache key, a rate-limit key and a concurrency key longer than 255 characters are stored
+ok   a failing execute of several statements says it may be partly applied
+  index_fx_organization_memberships_on_organization_id__59f91a5c58
+ok   a derived index name longer than 64 characters is shortened the same way when it is dropped
+ok   an add_column NOT NULL without a default is refused on a table with rows, as SQLite refuses it
+ok   the test marker table is not dumped
+ok   reset_sequences starts the ids of a cleared table at 1 again
+ok   a row of a table whose id is not an integer is named by its foreign key value
+ok   a text or json default dumps as an expression create_table_sql writes back
+ok   stream_message_state: -1 while the inserting transaction is open, then 1 committed, 0 rolled back
+ok   Cache.increment reads a stored number past BIGINT as SQLite's CAST does, without error 1292
+ok   insert_all's returning: reads its rows back where the server's ids are 2 apart
+18 tests, 86 assertions, 0 failures

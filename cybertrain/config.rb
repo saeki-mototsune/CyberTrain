@@ -6,7 +6,7 @@ require "cybertrain/config/files"
 
 module Cybertrain
   # The application's settings. Defaults come from the environment
-  # (CYBERTRAIN_ENV, PORT, CYBERTRAIN_DATABASE, CYBERTRAIN_SECRET_KEY_BASE,
+  # (CYBERTRAIN_ENV, PORT, CYBERTRAIN_DATABASE, DATABASE_URL, CYBERTRAIN_SECRET_KEY_BASE,
   # SPINEL_WORKERS, CYBERTRAIN_HOST, CYBERTRAIN_ALLOWED_HOSTS, CYBERTRAIN_SESSION_SAME_SITE,
   # CYBERTRAIN_SESSION_PARTITIONED, CYBERTRAIN_MAX_PAGE, CYBERTRAIN_HTTP_ALLOW_PRIVATE,
   # CYBERTRAIN_WORKER, CYBERTRAIN_I18N_DEFAULT_LOCALE, CYBERTRAIN_AUTH_LOCKOUT_ATTEMPTS,
@@ -66,6 +66,14 @@ module Cybertrain
     # @return [String]
     # @api public
     attr_accessor :database_path
+
+    # The MySQL server an application built on the MySQL adapter connects
+    # to, `mysql://user:password@host:3306/name`, from `DATABASE_URL`; ""
+    # by default in every environment. Boot stops when it is empty on
+    # MySQL. Not read on SQLite, which uses {#database_path}.
+    # @return [String]
+    # @api public
+    attr_accessor :database_url
 
     # The secret the session and cookie keys are derived from, from
     # `CYBERTRAIN_SECRET_KEY_BASE`. Required in production (boot fails without
@@ -1183,6 +1191,10 @@ module Cybertrain
       Config.list_from(ENV["CYBERTRAIN_ALLOWED_HOSTS"] || "").each { |name| @allowed_hosts << name }
       @port = (ENV["PORT"] || "3000").to_i
       @database_path = Config.default_database_path(@env)
+      # Stripped: a trailing newline or space (a secrets file read with
+      # $(cat ...), a quoted .env line) would become part of the database
+      # name, and the server's "Unknown database" does not show it.
+      @database_url = (ENV["DATABASE_URL"] || "").strip
       @secret_key_base = ENV["CYBERTRAIN_SECRET_KEY_BASE"] || ""
       # Stripped, like the previous keys: a .env line's newline is not part of it.
       @encryption_key = (ENV["CYBERTRAIN_ENCRYPTION_KEY"] || "").strip

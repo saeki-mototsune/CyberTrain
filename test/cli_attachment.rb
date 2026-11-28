@@ -1,4 +1,5 @@
 require "tmpdir"
+require "cybertrain/db"
 require "cybertrain/cli"
 require "cybertrain/template"
 require "cybertrain/test"

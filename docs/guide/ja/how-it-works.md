@@ -1,5 +1,5 @@
 ---
-source_sha256: e45c543e65d1d9c60b0b0595c662b3d3ab8776a5808c05d21dd0975b21569f4a
+source_sha256: e7a5648877686591b752c4b0d96d4963c325a2b3d89f6189f2c1fe3085245ade
 description: "CyberTrain のアプリがどのようにビルドされ、実行されるか（ビルド時のコード生成、オプションのサブシステム、解釈されるビュー、HTTP サーバー、FFI による SQLite、開発ループ）と、Rails との違い。"
 ---
 # 仕組み
@@ -167,7 +167,7 @@ CLI とこのループは gen を、CLI はさらに `bin/db.rb` を、spin の�
 | Rack は gzip されたリクエストボディをそのままにする | `Content-Encoding: gzip` のボディは `request.decoded_body` で、10 MiB の上限のもとで展開される。壊れたものや大きすぎるものは 400。`request.body` は送られたままのバイト列（[クエリ文字列とボディ](requests.md#query-strings-and-bodies)） |
 | セッションはマーシャルされた任意のオブジェクトを保持する | セッションの値は String だけで、Rails の cookie store と同じく AES-256-GCM で暗号化した cookie に入る（[Cookie とセッション](requests.md#cookies-and-the-session)） |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` は String の Array で、大文字小文字を区別せず部分文字列で照合される（Regexp やラムダは使えない）。リクエストログと開発環境のエラーページに適用される（[フィルターされるパラメーター](configuration.md#configuration-and-environment-variables)） |
-| 多くのデータベースアダプター | FFI による SQLite のみ |
+| 多くのデータベースアダプター | FFI による SQLite か、フレームワーク自身のクライアントによる MySQL 8.0。ビルドごとに 1 つで、`bin/NAME.rb` が require するエントリーで選ばれる（[MySQL](models.md#mysql)） |
 | `Article.transaction { ... }` はブロックの値を返す。`raise ActiveRecord::Rollback`。`requires_new: true` のセーブポイント | `Article.transaction { \|c\| ... }` は接続を渡して nil を返す。抜けるには例外を出す。ネストした呼び出しは外側のトランザクションに合流し、セーブポイントはない（[トランザクション](models.md#transactions)） |
 | `has_many :through`、enum、STI、ポリモーフィック関連 | 実装されていない。`has_many`、`has_one`、`belongs_to` は外部キーか一行の宣言から作られ、`dependent:`、`counter_cache:`、一段の `includes` がある（[関連付け](models.md#associations)） |
 | `pluck(:a)`、`maximum(:a)`、`group(:a).sum(:b)`、`upsert`、`update_counters`、`where(created_at: t1..t2)` | Spinel のメソッドは戻り値の型がひとつなので、型付きの版になる：`pluck_int` とその仲間、`maximum_int`、`sum_float_by`、`upsert`、`increment(:col, by: n)`。Time の範囲は `where_between`（[`where` を超えるクエリ](models.md#querying-beyond-where)） |
@@ -176,13 +176,13 @@ CLI とこのループは gen を、CLI はさらに `bin/db.rb` を、spin の�
 | ERB はメソッドにコンパイルされる。どんなオブジェクトの、どんなメソッドでも呼べる | 固定の文法とディスパッチテーブルに対して解釈される（[テンプレート言語](template-language.md)） |
 | Propshaft、importmap-rails | 同じ配置（`app/assets`、`app/javascript`、`vendor/javascript`、`config/importmap.rb`）で、`spin run gen` がダイジェストを付けて `public/assets/` に書く。`bin/importmap pin` はなく、Turbo は同梱しない（[アセット](assets.md)） |
 | Rails の i18n、rails-i18n の辞書、`I18n.t`、`t(".title")` | 同じ API とキーで、英語と日本語を同梱。`config/locales/*.yml` は YAML のサブセット（アンカー、エイリアス、タグはなし）から `spin run gen` が組み込む。リストは `I18n.translate_list` で引く（[国際化](i18n.md)） |
-| Action Cable、`turbo_stream_from`、`broadcast_append_to` | 同じヘルパー名で、1 つの SQLite テーブルから Server-Sent Events か WebSocket で配信される署名付きストリーム。チャンネルのクラスはない（[リアルタイム](realtime.md)） |
+| Action Cable、`turbo_stream_from`、`broadcast_append_to` | 同じヘルパー名で、アプリケーションのデータベースの 1 つのテーブルから Server-Sent Events か WebSocket で配信される署名付きストリーム。チャンネルのクラスはない（[リアルタイム](realtime.md)） |
 | `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` は同じ形に加えてサインアップのページを書き出す。パスワードには PBKDF2-HMAC-SHA256 を使う（bcrypt は C ライブラリを必要とし、macOS の `String#crypt` には bcrypt がない）。パスワードリセット、確認、ロックアウト、ログインしたままにする機能も、Devise が加えるように生成される（[認証](authentication.md)） |
 | Active Storage、`has_one_attached :cover` | `cybertrain generate attachment` は 5 つの `cover_*` カラムとモデルのメソッドを書き出す。ファイルはローカルディスクの `storage/uploads/` 以下に置かれ、`send_blob` で配信される。フィールドごとに 1 つで、バリアントやダイレクトアップロードはない（[カバー画像を追加する](advanced-tutorial.md#attachments)） |
 | `Net::HTTP`、Faraday | Webhook や API には `Cybertrain::HttpClient`：すべての待ちに上限があり、公開されていない宛先はデフォルトで拒否され、リダイレクトは求められたときだけ、ストリーミングと gzip のレスポンス、Server-Sent Events のパーサーがあり、keep-alive はない（[外向きの HTTP](external-services.md#outbound-http) を参照）。Spinel の `Net::HTTP` は、相手が止まるとサーバー全体を止めてしまう |
 | Action Mailer（`deliver_later`、メーラークラス、ビュー） | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` はプレーンテキスト、またはパーシャルからレンダーした HTML の部分（`Views.render_mail`）を持つ `multipart/alternative` を SMTP で送る（STARTTLS、暗黙の TLS、またはループバックへの平文。AUTH PLAIN。すべての待ちに上限がある）。`Mailer.deliver_later` は組み込みのジョブから送る。メーラーは `app/mailers` のモジュールで、そのメソッドは `Cybertrain::MailMessage` を返す（`deliver_later`、`deliver_now`）。生成される `PasswordsMailer` がその例。添付ファイルはない（[メールを送る](external-services.md#sending-e-mail)を参照） |
 | Active Job、`perform_later`、`solid_queue`、定期タスク、Mission Control | `app/jobs` のジョブクラス（`< Cybertrain::Job::Base`、JSON の値の Hash を受け取る `perform(args)`、`perform_later`、`retry_on`、`discard_on`、キー付きの `limits_concurrency`）、短い形の `Job.handle(kind)`。タイムゾーンとデータベースに保存される時刻表を持つ `Scheduler.every` と `Scheduler.cron`。ジョブページ（ルートの `jobs_page`）と `./<app> jobs`。サーバーか `./<app> worker` のプロセスで、プロセスあたり `job_threads` 本のスレッド。少なくとも 1 回の配信（[バックグラウンド処理](background-and-operations.md#background-work)） |
-| `Rails.cache.fetch(key, expires_in:, race_condition_ttl:)` | アプリケーションの SQLite データベースの `Cybertrain::Cache.fetch`。オプションは同じ。値は String で、それ以外は `fetch_hash`、`fetch_array`、`fetch_int`。メモリや Redis のストアはない（[キャッシュストア](background-and-operations.md#the-cache-store)） |
+| `Rails.cache.fetch(key, expires_in:, race_condition_ttl:)` | アプリケーションのデータベースの `Cybertrain::Cache.fetch`。オプションは同じ。値は String で、それ以外は `fetch_hash`、`fetch_array`、`fetch_int`。メモリや Redis のストアはない（[キャッシュストア](background-and-operations.md#the-cache-store)） |
 | ActionCable クライアント、faye-websocket、websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url)` はサーバーの動作中、フィードを接続したまま保つ（再接続、ping、無音の検出）。同期的な 1 本の接続には `WebSocket::Client`。外向きのみ（[WebSocket フィードを購読する](external-services.md#consuming-websocket-feeds)） |
 | `Time.zone = "Asia/Tokyo"`、`time.in_time_zone`、ActiveSupport に同梱のタイムゾーンデータ | `Cybertrain::TimeZone.find("Asia/Tokyo")` はシステムの TZif ファイル（`/usr/share/zoneinfo`、または `TZDIR`）を読み、Integer のエポック秒を変換する（`utc_offset_at`、`utc_to_local`、`local_to_utc`）。`c.time_zone` がアプリケーション全体の `Time.zone` を決め、`in_time_zone` は壁時計の値を持つ小さな値を返し、Time は UTC の瞬間のまま（TimeWithZone はなく、`time.hour` は UTC）（[タイムゾーン](configuration.md#time-zones)） |
 | `get "up" => "rails/health#show"`（コントローラーへのルート） | `GET /up` は組み込みで、静的ファイル、セッション、ルーターより前に応答するので、`before_action` は実行されない。データベース、ワーカー、WebSocket のフィードを確認し、`200 ok` または `503` を返す（[運用](background-and-operations.md#operations-backups-vacuum-health-check)） |

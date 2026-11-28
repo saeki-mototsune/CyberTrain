@@ -1,0 +1,70 @@
+ok   for answers the spelling of each adapter
+ok   quote_ident doubles the quote character it quotes with
+ok   SQLite models are what examples/blog/gen holds, byte for byte
+ok   for refuses a name that is no adapter
+ok   detect reads the first require of cybertrain in bin/NAME.rb
+ok   detect takes the core entries of a cybertrain new application as the same adapters
+ok   detect reads the require in every spelling ViewRequires reads
+ok   detect skips the subsystem requires before the entry
+ok   an entry line inside a heredoc, an =begin block or after __END__ is text, not a require
+bin/shop.rb:1: requires both a SQLite entry (line 1) and a MySQL one (line 3); keep one of them, the first line of the file
+ok   an entry of each adapter is refused, naming both lines; gen writes nothing
+ok   detect is SQLite when bin/NAME.rb names no MySQL entry
+ok   a tree with no spin.toml name or no bin/NAME.rb is SQLite
+ok   a model's counter_cache SELECT quotes with the adapter's identifier quote
+ok   gen/test/data.rb's INSERTs quote with the adapter's identifier quote
+ok   gen/tests.rb requires the adapter's entry and test bundle
+wrote gen/routes.rb
+wrote gen/assets.rb
+wrote gen/locales.rb
+wrote gen/controllers.rb
+wrote gen/concerns.rb
+wrote gen/views.rb
+wrote gen/helpers.rb
+wrote gen/components.rb
+wrote gen/jobs.rb
+wrote gen/tests.rb
+wrote gen/test/data.rb
+wrote gen/models/comment.rb
+wrote gen/models/post.rb
+wrote gen/console.rb
+wrote gen/app.rb
+ok   gen on a MySQL app writes its models, fixtures and test program for MySQL
+ok   the generated account test checks the refused deletion by the adapter's own error
+ok   require "cybertrain/mysql" loads every subsystem, as require "cybertrain" does
+ok   the generated user command and first-run test connect to DATABASE_URL's database on MySQL
+wrote gen/routes.rb
+wrote gen/assets.rb
+wrote gen/locales.rb
+wrote gen/controllers.rb
+wrote gen/concerns.rb
+wrote gen/views.rb
+wrote gen/helpers.rb
+wrote gen/components.rb
+wrote gen/jobs.rb
+wrote gen/models/comment.rb
+wrote gen/models/post.rb
+wrote gen/console.rb
+wrote gen/app.rb
+ok   gen builds a SQLite app whose bin/NAME.rb spells the require another way
+ok   partial_index_lines finds the add_index calls with a where:, across lines
+ok   partial_index_lines reads the call, not the text of its strings; where: nil is no condition
+db/migrate/20270101000000_add_index.rb:4: partial indexes (where:) are not supported on MySQL
+wrote gen/routes.rb
+wrote gen/assets.rb
+wrote gen/locales.rb
+wrote gen/controllers.rb
+wrote gen/concerns.rb
+wrote gen/views.rb
+wrote gen/helpers.rb
+wrote gen/components.rb
+wrote gen/jobs.rb
+wrote gen/migrations.rb
+wrote gen/models/comment.rb
+wrote gen/models/post.rb
+wrote gen/console.rb
+wrote gen/app.rb
+ok   gen on a MySQL app stops at a partial index, writing nothing; on SQLite it goes on
+ok   the generated account test makes its notes table in the adapter's DDL
+ok   the generated lockout UPDATE sets the lock first on MySQL, which assigns left to right
+25 tests, 109 assertions, 0 failures

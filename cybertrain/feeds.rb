@@ -15,7 +15,7 @@
 # FeedsFeature, which this file registers at its end
 # (cybertrain/feature.rb). It loads the core too. Requiring it twice, or
 # after require "cybertrain", is a no-op.
-require "cybertrain/core"
+require "cybertrain/core/common"
 require "cybertrain/feature"
 require "cybertrain/background"
 require "cybertrain/websocket/feed_table"

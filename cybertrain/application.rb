@@ -16,7 +16,7 @@ require "cybertrain/middleware/ssl_redirect"
 require "cybertrain/middleware/content_security_policy_header"
 require "cybertrain/i18n"
 require "cybertrain/http/server"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/feature"
 require "cybertrain/feature_catalog"
 require "cybertrain/error_reporter"
@@ -201,12 +201,14 @@ module Cybertrain
     # is the process's (DB.connect replaces it): a boot connects only when
     # nothing has, and remembers that the pool is then its own to close
     # (#shutdown, #abandon_boot). A pool the caller connected stays the
-    # caller's.
+    # caller's. What it connects to is the adapter's word
+    # (DB::Adapter.connect_target): SQLite's database_path, MySQL's
+    # database_url, whose being empty stops the boot here.
     def acquire_boot_resources
       c = @config
       c.resolve_secret!
       unless DB.connected?
-        DB.connect(c.database_path, size: c.pool_size)
+        DB.connect(DB::Adapter.connect_target(c), size: c.pool_size)
         @database_generation = DB.generation
       end
       nil

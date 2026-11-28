@@ -50,6 +50,7 @@ on:
       - "cybertrain/ident.rb"
       - "cybertrain/crypto.rb"
       - "cybertrain/generator/inflector.rb"
+      - "cybertrain/generator/dialect.rb"
       # The CRuby preview, which the image warms (the shim's libraries in
       # tmp/cybertrain-dev/ffi/, built at image build) and the smoke test
       # drives through playground-server: the shim, whose cache key and

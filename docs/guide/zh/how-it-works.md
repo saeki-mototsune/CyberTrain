@@ -1,6 +1,6 @@
 ---
 description: CyberTrain 应用如何构建和运行（构建时代码生成、可选的子系统、解释执行的视图、HTTP 服务器、通过 FFI 使用 SQLite、开发循环），以及与 Rails 的差异。
-source_sha256: e45c543e65d1d9c60b0b0595c662b3d3ab8776a5808c05d21dd0975b21569f4a
+source_sha256: e7a5648877686591b752c4b0d96d4963c325a2b3d89f6189f2c1fe3085245ade
 ---
 # 工作原理
 
@@ -167,7 +167,7 @@ CLI 和这个循环以 spin 的调试模式（`SPIN_DEBUG=1`，`-O0`）构建 ge
 | Rack 对 gzip 压缩的请求体保持原样 | 以 `Content-Encoding: gzip` 发送的请求体通过 `request.decoded_body` 获取，在 10 MiB 的上限内解压；损坏或过大的请求体返回 400；`request.body` 仍然是发送时的原样（[查询字符串与请求体](requests.md#query-strings-and-bodies)） |
 | 会话可以保存任何序列化的对象 | 会话的值只能是 String，与 Rails 的 cookie store 一样存放在用 AES-256-GCM 加密的 cookie 中（[Cookie 与会话](requests.md#cookies-and-the-session)） |
 | `config.filter_parameters += [:passw, /\Apin\z/, ->(k, v) { ... }]` | `config.filter_parameters` 是一个 String 数组，按子串不区分大小写地匹配（不支持正则表达式或 lambda）；它作用于请求日志和开发时的错误页面（[过滤的参数](configuration.md#configuration-and-environment-variables)） |
-| 多种数据库适配器 | 只有 SQLite，通过 FFI |
+| 多种数据库适配器 | 通过 FFI 的 SQLite，或通过框架自带客户端的 MySQL 8.0；每次构建一种，由 `bin/NAME.rb` require 的入口决定（[MySQL](models.md#mysql)） |
 | `Article.transaction { ... }` 返回块的值；`raise ActiveRecord::Rollback`；`requires_new: true` 保存点 | `Article.transaction { \|c\| ... }` 把连接传给块并返回 nil；通过抛出异常退出；嵌套调用加入外层事务，没有保存点（[事务](models.md#transactions)） |
 | `has_many :through`、枚举、STI、多态关联 | 未实现；`has_many`、`has_one` 和 `belongs_to` 来自外键或一行声明，支持 `dependent:`、`counter_cache:` 和一层 `includes`（[关联](models.md#associations)） |
 | `pluck(:a)`、`maximum(:a)`、`group(:a).sum(:b)`、`upsert`、`update_counters`、`where(created_at: t1..t2)` | 带类型的版本，因为 Spinel 的方法只有一种返回类型：`pluck_int` 及其同类方法、`maximum_int`、`sum_float_by`、`upsert`、`increment(:col, by: n)`；Time 的范围写作 `where_between`（[超出 `where` 的查询](models.md#querying-beyond-where)） |
@@ -176,13 +176,13 @@ CLI 和这个循环以 spin 的调试模式（`SPIN_DEBUG=1`，`-O0`）构建 ge
 | ERB 编译为方法；任意对象、任意方法 | 按固定的语法和分派表解释执行（[模板语言](template-language.md)） |
 | Propshaft、importmap-rails | 相同的目录布局（`app/assets`、`app/javascript`、`vendor/javascript`、`config/importmap.rb`），由 `spin run gen` 加上摘要写入 `public/assets/`；没有 `bin/importmap pin`，不内置 Turbo（[资源](assets.md)） |
 | Rails 的 i18n、rails-i18n 的词典、`I18n.t`、`t(".title")` | 相同的 API 和键，捆绑英语和日语；`config/locales/*.yml` 由 `spin run gen` 从一个 YAML 子集（没有锚点、别名或标签）编译进程序，列表通过 `I18n.translate_list` 获取（[国际化](i18n.md)） |
-| Action Cable、`turbo_stream_from`、`broadcast_append_to` | 相同的辅助方法名称，基于签名的流，从一张 SQLite 表通过 Server-Sent Events 或 WebSocket 投递；没有频道类（[实时](realtime.md)） |
+| Action Cable、`turbo_stream_from`、`broadcast_append_to` | 相同的辅助方法名称，基于签名的流，从应用数据库中的一张表通过 Server-Sent Events 或 WebSocket 投递；没有频道类（[实时](realtime.md)） |
 | `bin/rails generate authentication`、`has_secure_password` + bcrypt | `cybertrain generate authentication` 写出同样的结构，外加一个注册页面；密码使用 PBKDF2-HMAC-SHA256（bcrypt 需要 C 库，而 macOS 上的 `String#crypt` 不支持它）；密码重置、确认、锁定和保持登录也会像 Devise 所增加的那样一并生成（[认证](authentication.md)） |
 | Active Storage、`has_one_attached :cover` | `cybertrain generate attachment` 写出五个 `cover_*` 列和模型方法；文件保存在本地磁盘的 `storage/uploads/` 下，由 `send_blob` 提供；每个字段一个文件，没有变体，也没有直接上传（[添加封面图片](advanced-tutorial.md#attachments)） |
 | `Net::HTTP`、Faraday | 用于 webhook 和 API 的 `Cybertrain::HttpClient`：每次等待都有上限，默认拒绝非公网目标，只在要求时跟随重定向，支持流式和 gzip 响应，带有 Server-Sent Events 解析器，不保持连接（参见[出站 HTTP](external-services.md#outbound-http)）；Spinel 的 `Net::HTTP` 遇到停滞的对端会阻塞整个服务器 |
 | Action Mailer（`deliver_later`、邮件程序类、视图） | `Cybertrain::Mailer.deliver(to:, subject:, body:, html:)` 通过 SMTP 发送纯文本，或带有从局部模板渲染的 HTML 部分（`Views.render_mail`）的 `multipart/alternative`（STARTTLS、隐式 TLS，或对环回地址使用明文；AUTH PLAIN；每次等待都有上限）；`Mailer.deliver_later` 从一个内置作业发送；邮件程序是 `app/mailers` 中的模块，其方法返回 `Cybertrain::MailMessage`（`deliver_later`、`deliver_now`），生成的 `PasswordsMailer` 就是如此；没有附件（参见[发送电子邮件](external-services.md#sending-e-mail)） |
 | Active Job、`perform_later`、`solid_queue`、周期性任务、Mission Control | `app/jobs` 中的作业类（`< Cybertrain::Job::Base`，`perform(args)` 接收由 JSON 值组成的 Hash，`perform_later`、`retry_on`、`discard_on`、带键的 `limits_concurrency`），`Job.handle(kind)` 作为简短形式；带时区和保存在数据库中的时间表的 `Scheduler.every` 与 `Scheduler.cron`；作业页面（路由中的 `jobs_page`）和 `./<app> jobs`；每个进程 `job_threads` 个线程，在服务器或 `./<app> worker` 进程中运行，至少投递一次（[后台任务](background-and-operations.md#background-work)） |
-| `Rails.cache.fetch(key, expires_in:, race_condition_ttl:)` | 应用 SQLite 数据库中的 `Cybertrain::Cache.fetch`，选项相同；值是 String，其他类型用 `fetch_hash`、`fetch_array` 和 `fetch_int`；没有内存或 Redis 存储（[缓存存储](background-and-operations.md#the-cache-store)） |
+| `Rails.cache.fetch(key, expires_in:, race_condition_ttl:)` | 应用数据库中的 `Cybertrain::Cache.fetch`，选项相同；值是 String，其他类型用 `fetch_hash`、`fetch_array` 和 `fetch_int`；没有内存或 Redis 存储（[缓存存储](background-and-operations.md#the-cache-store)） |
 | ActionCable 客户端、faye-websocket、websocket-client-simple | `Cybertrain::WebSocket.subscribe(name, url)` 在服务器运行期间保持订阅连接（重连、ping、静默检测）；`WebSocket::Client` 用于单个同步连接；仅限出站（[订阅 WebSocket 数据流](external-services.md#consuming-websocket-feeds)） |
 | `Time.zone = "Asia/Tokyo"`、`time.in_time_zone`、ActiveSupport 自带的时区数据 | `Cybertrain::TimeZone.find("Asia/Tokyo")` 读取系统的 TZif 文件（`/usr/share/zoneinfo`，或 `TZDIR`），并转换 Integer 类型的纪元秒数（`utc_offset_at`、`utc_to_local`、`local_to_utc`）；`c.time_zone` 为整个应用设置 `Time.zone`，`in_time_zone` 返回带墙上时间字段的小值对象，Time 仍是 UTC 瞬间（没有 TimeWithZone，`time.hour` 是 UTC）（[时区](configuration.md#time-zones)） |
 | `get "up" => "rails/health#show"`（指向控制器的路由） | `GET /up` 是内置的，在静态文件、会话和路由器之前就作出响应，所以不会运行任何 `before_action`；它检查数据库、后台工作线程和 WebSocket 数据订阅，返回 `200 ok` 或 `503`（[运维](background-and-operations.md#operations-backups-vacuum-health-check)） |

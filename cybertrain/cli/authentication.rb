@@ -133,6 +133,7 @@ require "cybertrain/cli/scaffold"
 require "cybertrain/cli/build"
 require "cybertrain/cli/line_diff"
 require "cybertrain/cli/authentication_tests"
+require "cybertrain/generator/dialect"
 
 module Cybertrain
   module CLI
@@ -365,7 +366,12 @@ module Cybertrain
 
         bin_path = File.join(root, "bin/#{app}.rb")
         raise InvalidArgument, "#{bin_path} not found: run this inside a cybertrain app" unless File.exist?(bin_path)
-        raise InvalidArgument, "#{bin_path} has no line starting with `#{MAIN_RUN_LINE}`" if SourceEdit.line_start(File.read(bin_path), MAIN_RUN_LINE) < 0
+        bin_source = File.read(bin_path)
+        raise InvalidArgument, "#{bin_path} has no line starting with `#{MAIN_RUN_LINE}`" if SourceEdit.line_start(bin_source, MAIN_RUN_LINE) < 0
+        conflict = Gen::Dialect.entry_conflict(bin_source, "bin/#{app}.rb")
+        raise InvalidArgument, conflict unless conflict.empty?
+
+        adapter = Gen::Dialect.in_source(bin_source)
 
         # Both modes declare the base_url setting in config/app.rb.
         config_path = File.join(root, "config/app.rb")
@@ -388,12 +394,12 @@ module Cybertrain
         # above lean on, then arrives only as this diff.
         unconfirmed_concern = confirmable ? "this diff holds the check that refuses an unconfirmed account a session; until it is applied, unconfirmed accounts sign in (whatever the other diffs say)" : ""
         unconfirmed_setup = confirmable ? "until this diff is applied, the first user /setup creates is not confirmed and cannot sign in (a password reset confirms it)" : ""
-        record_file(result, root, "app/models/user.rb", user_model(app, confirmable), force)
+        record_file(result, root, "app/models/user.rb", user_model(app, confirmable, adapter), force)
         record_file(result, root, "app/models/session.rb", session_model, force)
         record_file(result, root, "app/controllers/concerns/authentication.rb", authentication_concern(app, confirmable), force, unconfirmed_concern)
         record_file(result, root, "app/controllers/sessions_controller.rb", sessions_controller(confirmable), force, unconfirmed_sign_in)
         if invite_only
-          record_file(result, root, "app/controllers/setup_controller.rb", setup_controller(app, confirmable), force, unconfirmed_setup)
+          record_file(result, root, "app/controllers/setup_controller.rb", setup_controller(app, confirmable, adapter), force, unconfirmed_setup)
         else
           record_file(result, root, "app/controllers/registrations_controller.rb", registrations_controller(confirmable), force, unconfirmed_sign_up)
         end
@@ -402,7 +408,7 @@ module Cybertrain
         record_file(result, root, "app/controllers/accounts_controller.rb", accounts_controller(confirmable), force)
         record_file(result, root, "app/mailers/passwords_mailer.rb", passwords_mailer, force)
         record_file(result, root, "app/mailers/confirmations_mailer.rb", confirmations_mailer, force) if confirmable
-        record_file(result, root, "app/commands/user_command.rb", user_command(app, invite_only, confirmable), force)
+        record_file(result, root, "app/commands/user_command.rb", user_command(app, invite_only, confirmable, adapter), force)
         record_file(result, root, "app/views/sessions/new.html.erb", sessions_new_view(invite_only, confirmable), force)
         record_file(result, root, "app/views/sessions/_nav.html.erb", nav_partial, force)
         if invite_only
@@ -423,13 +429,13 @@ module Cybertrain
         record_file(result, root, "test/models/user_test.rb", user_model_test, force)
         record_file(result, root, "test/controllers/sessions_controller_test.rb", sessions_controller_test(invite_only), force)
         if invite_only
-          record_file(result, root, "test/integration/first_run_test.rb", first_run_test(app), force)
+          record_file(result, root, "test/integration/first_run_test.rb", first_run_test(app, adapter), force)
         else
           record_file(result, root, "test/controllers/registrations_controller_test.rb", registrations_controller_test(confirmable), force)
         end
         record_file(result, root, "test/controllers/passwords_controller_test.rb", passwords_controller_test(app), force)
-        record_file(result, root, "test/controllers/accounts_controller_test.rb", accounts_controller_test(confirmable), force)
-        record_file(result, root, "test/controllers/confirmations_controller_test.rb", confirmations_controller_test(app, invite_only), force) if confirmable
+        record_file(result, root, "test/controllers/accounts_controller_test.rb", accounts_controller_test(confirmable, adapter), force)
+        record_file(result, root, "test/controllers/confirmations_controller_test.rb", confirmations_controller_test(app, invite_only, adapter), force) if confirmable
         record_file(result, root, "test/integration/remember_me_test.rb", remember_me_integration_test, force)
         record_file(result, root, "test/integration/lockout_test.rb", lockout_integration_test, force)
         record_file(result, root, "test/integration/admin_test.rb", admin_integration_test(app), force)
@@ -1093,10 +1099,27 @@ module Cybertrain
         RUBY
       end
 
+      # The UPDATE of count_failed_attempt!. SQLite evaluates every SET
+      # expression on the row as it was; MySQL assigns left to right, each
+      # expression reading what the ones before it wrote, so there the lock
+      # comes first and reads the count before it is reset.
+      def self.count_update_line(adapter)
+        if adapter == "mysql"
+          return "    # MySQL assigns left to right (each SET reads what the ones before it\n" \
+                 "    # wrote), so the lock comes first and reads the count as it was.\n" \
+                 "    User.where(id: id).update_all_sql(lock + \", \" + count, [limit, ends, limit])\n"
+        end
+
+        "    User.where(id: id).update_all_sql(count + \", \" + lock, [limit, limit, ends])\n"
+      end
+
       # With `confirmable`, what --confirmable adds: confirmed?, the
       # confirmation token and confirm, and the check of a new address
       # waiting for its confirmation.
-      def self.user_model(app, confirmable = false)
+      #
+      # `adapter` ("sqlite" or "mysql", Gen::Dialect.in_source) orders the
+      # lockout's UPDATE (count_update_line).
+      def self.user_model(app, confirmable = false, adapter = "sqlite")
         text = <<~RUBY
           # Columns (email_address, password_digest, admin, failed_attempts,
           # locked_until@CONFIRMABLE_COLUMN_NAMES@), the Cybertrain::Model superclass and `sessions` (from
@@ -1263,7 +1286,7 @@ module Cybertrain
               count = "failed_attempts = CASE WHEN failed_attempts + 1 >= ? THEN 0 ELSE failed_attempts + 1 END"
               lock = "locked_until = CASE WHEN failed_attempts + 1 >= ? THEN ? ELSE locked_until END"
               ends = Time.current + Cybertrain.config.auth_lockout_period
-              User.where(id: id).update_all_sql(count + ", " + lock, [limit, limit, ends])
+              @COUNT_UPDATE@
               nil
             end
 
@@ -1343,7 +1366,8 @@ module Cybertrain
         text = SourceEdit.splice(text, "@CONFIRMATION_TOKEN_TTL@", confirmable ? confirmation_token_ttl_lines : "")
         text = SourceEdit.splice(text, "@VALIDATE_UNCONFIRMED_EMAIL@", confirmable ? "    user.validate_unconfirmed_email\n" : "")
         text = SourceEdit.splice(text, "@FIND_BY_CONFIRMATION_TOKEN@", confirmable ? find_by_confirmation_token_method : "")
-        text = SourceEdit.splice(text, "@CONFIRMATION_METHODS@", confirmable ? confirmation_methods : "")
+        text = SourceEdit.splice(text, "@CONFIRMATION_METHODS@", confirmable ? confirmation_methods(adapter) : "")
+        text = SourceEdit.splice(text, "@COUNT_UPDATE@", count_update_line(adapter))
         SourceEdit.splice(text, "@VALIDATE_UNCONFIRMED_EMAIL_METHOD@", confirmable ? validate_unconfirmed_email_method : "")
       end
 
@@ -1372,7 +1396,20 @@ module Cybertrain
         RUBY
       end
 
-      def self.confirmation_methods
+      # `adapter` "mysql": save_confirmed knows the duplicate by its class
+      # (Cybertrain::DB::UniqueViolation), as MySQL's message ("Duplicate
+      # entry ...") has no "UNIQUE" in it; SQLite's text is kept as it was.
+      def self.confirmation_methods(adapter = "sqlite")
+        text = sqlite_confirmation_methods
+        return text unless adapter == "mysql"
+
+        Templates.swapped(text, "app/models/user.rb", [
+                            ["  rescue Cybertrain::DB::Error => e\n    raise e unless e.message.include?(\"UNIQUE\")\n\n",
+                             "  rescue Cybertrain::DB::UniqueViolation\n"]
+                          ])
+      end
+
+      def self.sqlite_confirmation_methods
         SourceEdit.indent(<<~'RUBY')
 
           # Whether the address has been confirmed (--confirmable): until it is,
@@ -2599,8 +2636,10 @@ module Cybertrain
       # ---- --invite-only ------------------------------------------------
 
       # The first user's page (--invite-only); with `confirmable` the user
-      # it creates is confirmed, as nothing mails them.
-      def self.setup_controller(app, confirmable = false)
+      # it creates is confirmed, as nothing mails them. With `adapter`
+      # "mysql" the first-user check is a locking read
+      # (setup_first_user_mysql).
+      def self.setup_controller(app, confirmable = false, adapter = "sqlite")
         env = setup_env(app)
         text = <<~RUBY
           # First-run setup (cybertrain generate authentication --invite-only):
@@ -2686,7 +2725,47 @@ module Cybertrain
         RUBY
         chunk = SourceEdit.margin("# Nothing mails the first user a link: the address counts as\n" \
                                   "# confirmed (--confirmable).\n@user.confirmed_at = Time.current\n", 4)
-        SourceEdit.splice(text, "@CONFIRMED_AT_CREATION@", confirmable ? chunk : "")
+        text = SourceEdit.splice(text, "@CONFIRMED_AT_CREATION@", confirmable ? chunk : "")
+        adapter == "mysql" ? setup_first_user_mysql(text) : text
+      end
+
+      # SetupController#create's transaction on MySQL, where BEGIN takes no
+      # lock (immediate: is SQLite's BEGIN IMMEDIATE): a plain read of the
+      # empty table sees nothing another request has inserted and not yet
+      # committed, so two first-run requests could both save "the first"
+      # account. A locking read (FOR UPDATE) reads the latest rows and waits
+      # for an uncommitted one. Two requests that read the empty table at
+      # the same moment both lock the gap their inserts need, and MySQL
+      # rolls one back (Cybertrain::DB::Deadlock, error 1213), which saves
+      # nothing either and re-renders the form, as SQLite's second does.
+      def self.setup_first_user_mysql(text)
+        Templates.swapped(text, "app/controllers/setup_controller.rb", [
+                            ["    # The no-user check and the insert are one write transaction\n" \
+                             "    # (BEGIN IMMEDIATE takes the lock first), so two requests that\n" \
+                             "    # both passed require_first_run cannot both create \"the first\"\n" \
+                             "    # account: the second finds a user and saves nothing.\n" \
+                             "    saved = false\n" \
+                             "    User.transaction(immediate: true) do |c|\n" \
+                             "      saved = @user.save unless User.all.exists?\n" \
+                             "    end\n",
+                             "    # The no-user check is a locking read in the insert's transaction\n" \
+                             "    # (FOR UPDATE: MySQL reads the latest rows, and waits for one that\n" \
+                             "    # another request inserted and has not committed), so two requests\n" \
+                             "    # that both passed require_first_run cannot both create \"the first\"\n" \
+                             "    # account: the second finds a user and saves nothing. Two that read\n" \
+                             "    # the empty table at the same moment both lock the gap their\n" \
+                             "    # inserts need, and MySQL rolls one of them back (a deadlock): that\n" \
+                             "    # one saves nothing either.\n" \
+                             "    saved = false\n" \
+                             "    begin\n" \
+                             "      User.transaction do |c|\n" \
+                             "        taken = !c.execute(\"SELECT id FROM users LIMIT 1 FOR UPDATE\").empty?\n" \
+                             "        saved = @user.save unless taken\n" \
+                             "      end\n" \
+                             "    rescue Cybertrain::DB::Deadlock\n" \
+                             "      saved = false\n" \
+                             "    end\n"]
+                          ])
       end
 
       def self.setup_new_view
@@ -2731,13 +2810,22 @@ module Cybertrain
         ERB
       end
 
+      # What a generated file passes DB.connect for the application's
+      # database: `Cybertrain.config.database_path` on SQLite,
+      # `Cybertrain.config.database_url` on MySQL (DATABASE_URL).
+      def self.connect_target_expression(adapter)
+        adapter == "mysql" ? "Cybertrain.config.database_url" : "Cybertrain.config.database_path"
+      end
+
       # app/commands/user_command.rb: the `user` command, required from
       # bin/<app>.rb (and from the app's tests, which run it). With
       # --invite-only it also holds the boot warning, which names /setup's
       # token; a sign-up app has no SetupController to name.
-      def self.user_command(app, invite_only = false, confirmable = false)
+      # `adapter` ("sqlite" or "mysql") names the database the boot
+      # warning's question connects to: database_path, or database_url.
+      def self.user_command(app, invite_only = false, confirmable = false, adapter = "sqlite")
         head = user_command_head(app, invite_only, confirmable)
-        warning = invite_only ? user_command_warning(app) : ""
+        warning = invite_only ? user_command_warning(app, adapter) : ""
         tail = <<~RUBY
           end
 
@@ -2860,7 +2948,8 @@ module Cybertrain
 
       # --invite-only: the boot warning and the question it asks, indented
       # into the module.
-      def self.user_command_warning(app)
+      def self.user_command_warning(app, adapter = "sqlite")
+        target = Authentication.connect_target_expression(adapter)
         text = <<~RUBY
 
           # Called by bin/#{app}.rb before the server boots: a WARN line while no
@@ -2877,7 +2966,7 @@ module Cybertrain
           # server's own pool afterwards.
           def self.no_user?
             begin
-              Cybertrain::DB.connect(Cybertrain.config.database_path, size: 1)
+              Cybertrain::DB.connect(#{target}, size: 1)
               !User.all.exists?
             rescue Cybertrain::DB::Error
               false

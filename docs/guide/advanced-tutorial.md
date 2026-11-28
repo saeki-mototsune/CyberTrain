@@ -873,7 +873,7 @@ a clean stop and the database kept on its volume, and loads
 
 <!-- list: points know -->
 - Sessions hold Strings only, in an encrypted cookie.
-- SQLite only, through Spinel&rsquo;s FFI.
+- SQLite through Spinel&rsquo;s FFI, or MySQL 8.0; one per build.
 - No backtraces: errors show class, message, request line and template
   name/line.
 - A misspelled attribute in a view raises (`undefined method 'titel' for

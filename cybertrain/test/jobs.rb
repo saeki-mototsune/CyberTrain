@@ -1,6 +1,6 @@
 require "cybertrain/test"
 require "cybertrain/cast"
-require "cybertrain/db"
+require "cybertrain/db/base"
 require "cybertrain/job"
 
 module Cybertrain
@@ -49,8 +49,7 @@ module Cybertrain
       # jobs as it was).
       # @return [Boolean]
       def self.table?
-        rows = DB.with { |c| c.execute("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'cybertrain_jobs'") }
-        !rows.empty?
+        DB.with { |c| DB::Dialect.table_exists?(c, "cybertrain_jobs") }
       end
 
       # The largest id in cybertrain_jobs, 0 when it is empty or missing:

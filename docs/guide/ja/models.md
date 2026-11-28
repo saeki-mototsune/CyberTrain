@@ -1,9 +1,9 @@
 ---
-source_sha256: 9448b08f2105bfebf96da9fa441104f830033615cec5905c22830b88988af371
+source_sha256: 5508f9f060e3e3ca9a9ada2b047e0e7d1ad60bec891c513ebee81baba949fe0d
 ---
 # モデルとデータベース
 
-スキャフォールドを超えてモデルが行うこと：マイグレーション、カラムの型、クエリ、関連付け、バリデーション、暗号化されたカラム、ページ分け、トランザクション、Spinel のもとでカラム名と `order` 句が従う規則、そして Rails が作ったデータベースの引き継ぎです。
+スキャフォールドを超えてモデルが行うこと：マイグレーション、カラムの型、クエリ、関連付け、バリデーション、暗号化されたカラム、ページ分け、トランザクション、Spinel のもとでカラム名と `order` 句が従う規則、Rails が作ったデータベースの引き継ぎ、そして MySQL で変わることです。
 
 ## マイグレーション
 
@@ -237,7 +237,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1 (by: n for another step)
 Comment.where(article_id: article.id).pluck_int(:id)      # => [3, 7]   （pluck_str、pluck_float もある）
 Comment.all.count_by(:article_id)                         # => {"1" => 2, "4" => 1}
-Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # 1 時間ごとの集計
+Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # 1 時間ごとの集計（SQLite の strftime。MySQL では DATE_FORMAT(created_at, '%Y-%m-%dT%H')）
 Stat.where(project_id: 1).sum_int(:calls)                 # sum_float もある
 Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%' ESCAPE '\'
 ```
@@ -541,6 +541,8 @@ Article.transaction(immediate: true) do |c|
 end
 ```
 
+MySQL では `immediate: true` に効果はありません。MySQL には `BEGIN` で取る書き込みロックがないので、どちらの形も `BEGIN` を送り、そのようなブロック 2 つが順番に実行されることはありません。それぞれのブロックはロックを取らないスナップショット（REPEATABLE READ）を読むので、何かを確かめてから書く 2 つのブロックは、どちらも確認を通り、どちらも書き込めます。書き込みに確認を持たせる（一意インデックス。古い値を指定する `UPDATE ... WHERE` と `c.changes` の確認）か、ブロックが読むものを自分の SQL でロックしてください：`c.execute("SELECT id FROM accounts WHERE id = ? FOR UPDATE", [id])` は `COMMIT` までその行を押さえます。結果が空なら、行が入るはずの隙間をロックするので、2 つ目のブロックのそこへの挿入は待ちます。2 つのブロックが同じ空の隙間を同時に読んだときは、MySQL がどちらかをロールバックします（`Cybertrain::DB::Deadlock`）。`generate authentication --invite-only` が MySQL で書く `SetupController` は、最初のユーザーをこの方法で確かめます。
+
 Rails の `transaction` と異なる点と、避けるべきこと：
 
 - ブロックの値ではなく nil を返します。
@@ -636,6 +638,35 @@ Rails 8 のアプリケーションが作った SQLite のファイルは、そ�
 5. 制限：主キーが `id` カラムでないテーブル（結合テーブル）は `create_table "articles_tags", id: false` としてダンプされ、モデルはありません（`spin run gen` が `skipped articles_tags: no id column, so no model (reach it with Cybertrain::DB.with)` と表示します）。整数でない `id` 主キー（Rails の `id: :uuid` や `id: :string`）も同じようにダンプされ、`id` は PRIMARY KEY のない普通のカラムとして残ります。`ar_internal_metadata` はそのままにします。スキーマが表せないものを `CREATE TABLE` に含むテーブルは、作り直すヘルパーでは変えられません（[テーブルを変える](#changing-a-table)）。Rails が暗号化したカラムは暗号化し直します（[すでにテキストのあるカラムを暗号化する](#encrypting-a-column-that-already-holds-text)）。
 
 そのうえで、Rails のモデルにあったバリデーション、関連付け、スコープを、このページの形で `app/models/*.rb` に書きます。
+
+## MySQL
+
+`require "cybertrain/mysql"` でビルドしたアプリケーション（[設定の「MySQL」](configuration.md#mysql)）は、同じモデル、マイグレーション、クエリを MySQL 8.0 で動かし、SQLite と同じ答えを返します。違いと、それを固定するテストは `docs/compatibility.md` にあります。モデルのコードが出会うのは次のことです：
+
+- **カラムの型。** `string` は `VARCHAR(255)`（`limit:` で変わる）、`text` は `MEDIUMTEXT`、`integer` は `INT`（`id` と整数の `*_id` はすべて `BIGINT`）、`boolean` は `TINYINT(1)`、`decimal` は `DECIMAL(p,s)`、`float` は `DOUBLE`、`date` は `DATE`、`datetime` は UTC の `DATETIME(6)`、`json` は `JSON`、`binary` は `LONGBLOB` です。属性は SQLite と同じように読めます。
+- **比較は厳密です。** テーブルは `utf8mb4` とバイナリの照合順序 `utf8mb4_0900_bin` を使うので、`where`、`uniqueness`、一意インデックスは、SQLite と同じく `"A"` と `"a"`、`"a"` と `"a "` を区別します。そのため `LIKE` と `where_like` も大文字と小文字を区別します（SQLite の LIKE は ASCII の大文字小文字を区別しません）。検索ボックスには、小文字にしたパターンと `LOWER(title) LIKE ?` を比べてください。
+- **JSON は正規化されます。** サーバーは `{"k":[1,2]}` を `{"k": [1, 2]}` として保存します。属性が読む Hash は同じですが、保存されたテキスト（`execute`、ダンプ、`ORDER BY`）は違います。
+- **範囲外の decimal は拒否されます。** 接続の厳格な `sql_mode` は、カラムの精度を超える値を拒否します（`Out of range value for column 'price'`、エラー 1264）。SQLite は Float を保存します。これは、`save` が実行するバリデーションを飛ばす `update_columns`、`update_all`、一括書き込みにも及びます（[decimal は Float](#decimals-are-floats)）。有限でない Float（`Infinity`、`NaN`）は、どのカラムでもバインドする値として `Cybertrain::DB::Error` で拒否され、文は送られません。SQLite は無限大を保存し、NaN は NULL として保存します。
+- **decimal のテキスト。** `DECIMAL(p,s)` のカラムをテキストとして読むと（`execute`）、MySQL では位取りが付き、SQLite が `"9.5"` と答えるところで `"9.50"` になります。モデルの decimal 属性はどちらでも同じ Float です。
+- **エラー。** 制約の違反は、どちらでも同じクラスを投げます（`Cybertrain::DB::UniqueViolation`、`ForeignKeyViolation`。MySQL ではさらに `Deadlock`、`LockTimeout`、`ConnectionLost`）。メッセージはサーバーのもの（`Duplicate entry 'x' for key ... (MySQL 1062, 23000)`）なので、文言ではなくクラスで照合してください。
+- **`upsert` の `update:`。** 新しい行はどちらでも `excluded` ですが、MySQL ではテーブルを付けないカラム名はあいまいです（エラー 1052）。テーブル自身のカラムには名前を付け、SQLite の 2 引数の `MAX` / `MIN` には `GREATEST` / `LEAST` を使います：
+
+```ruby
+# MySQL：INSERT ... AS excluded ON DUPLICATE KEY UPDATE ...
+Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: Time.now },
+            conflict: [:project_id, :key],
+            update: { calls: "stats.calls + excluded.calls", max_ms: "GREATEST(stats.max_ms, excluded.max_ms)",
+                      seen_at: "excluded.seen_at" })
+```
+
+- **衝突の対象。** `upsert` の `conflict:` と `upsert_all` の `unique_by:` は、SQLite と同じく、主キーか 1 つの一意インデックスのカラムとちょうど同じでなければならず（順序は問いません）、そうでなければ何かを書く前に `Cybertrain::DB::Error`（`upsert: ... is not the primary key or a unique index of ...`）になります。ほかの一意キーで衝突する行は `Cybertrain::DB::UniqueViolation` を投げ、その文は何も書きません。違いが 1 つ残ります：対象とほかの一意キーの両方で同時に衝突する行は、SQLite なら対象の行を更新することがあるところで、例外になります。`upsert` は、SQLite と同じく、挿入または更新した行には 1、空の `update:` が残した行には 0 を返します。一意キーはテーブルと接続ごとに一度読むので、ほかのプロセスがスキーマを変えた後は、このプロセスを再起動してください。
+- **`returning:`。** MySQL には `RETURNING` がありません。`insert_all` と `upsert_all` は同じトランザクションの中で行を読み戻し、SQLite が返すのと同じ行を返します。（主キー以外の）一意インデックスがあるテーブルでは、`insert_all(..., returning:)` は、行がそのようなインデックスの 1 つのカラムをすべて含んでいる必要があり、そうでなければ書く前に `Cybertrain::DB::Error` を投げます。そうでないと、飛ばした重複を見分けられないからです。
+- **マイグレーションは巻き戻りません。** MySQL の DDL は実行するたびにコミットされるので、途中で失敗したマイグレーションは、失敗した文より前に実行したものを残します：`migration V failed at statement 2 of 3; statements 1..1 were applied and cannot be rolled back (MySQL DDL commits implicitly): ...`。バージョンは記録されません。もう一度 `db migrate` を実行する前に、適用された部分を元に戻して（または手で終わらせて）ください。Rails の MySQL アダプターも同じです。できるところでは、1 つのマイグレーションに 1 つの変更にしてください。
+- **部分インデックスはありません。** `add_index ..., where:` は、何かを書く前に、ファイルと行を示して `spin run gen` を止めます（`partial indexes (where:) are not supported on MySQL`）。カラム全体にインデックスを張るか、条件を生成カラムに入れてください。
+- **式インデックス。** MySQL は式をそれ専用の括弧の中でしか受け付けません：`execute "CREATE UNIQUE INDEX index_users_on_lower_email ON users ((LOWER(email)))"`。[マイグレーション](#migrations)の括弧 1 組の形は SQLite のもので、MySQL では構文エラー（1064）になります。`db/schema.rb` はこのインデックスを MySQL の綴りのまま ``"(lower(`email`))"`` とダンプします。
+- **スキーマ。** `db/schema.rb` は `information_schema` からダンプされます。examples/blog が使うカラムの型とオプションなら、同じマイグレーションから SQLite と同じファイルができます。それ以外は MySQL が保持する形でダンプされます：文字列の `limit: 255` は落ち、decimal の `scale: 0` は落ちるか付き、`*_id` という名前の `t.bigint` は `t.integer` になり、decimal の既定値には位取りが付き、式の既定値は括弧付きでダンプされ（`(rand())`）、式インデックスは MySQL のテキストになり、インデックスのない外部キーにはインデックスが付きます。そのため SQLite で書いた `db/schema.rb` は、MySQL での最初の `db migrate` で変わることがあります。一覧は `docs/compatibility.md` にあります。`db normalize`、`db backup`、`db vacuum` は SQLite のものです。
+- **`transaction(immediate: true)` はただの `BEGIN` です。** SQLite の書き込みロックのように、読んでから書く 2 つのブロックを順番に実行させることはしません。ブロックが読む行をロックする（`SELECT ... FOR UPDATE`）か、一意インデックスや条件付きの `UPDATE` に 2 つ目の書き込みを拒ませてください（[トランザクション](#transactions)）。
+- **1 プロセス。** ジョブ、ストリーム、リース、スケジュールされたタスクは 1 プロセスの中で保証されます。1 つのデータベースを使う複数のプロセスやホストでは、MySQL のロードマップの第 2 段まで保証されません（[設定の「MySQL」](configuration.md#mysql)）。
 
 ## アップグレード
 

@@ -494,7 +494,7 @@ NAME_HOMES = {
   "release" => %w[cybertrain/lease.rb cybertrain/config.rb],
   # DB::Connection#error_message(sql), I18n.error_message and
   # ErrorEvent#error_message: all String.
-  "error_message" => %w[cybertrain/db/connection.rb cybertrain/i18n.rb cybertrain/error_reporter.rb],
+  "error_message" => %w[cybertrain/db/sqlite/connection.rb cybertrain/i18n.rb cybertrain/error_reporter.rb],
   # HttpLogSwitch's and its Logger::ScopeSwitch overrides (an
   # HttpLogContext): no other definer, kept so a new one is checked.
   "current_context" => %w[spinel-http/log.rb cybertrain/logger.rb],

@@ -1,0 +1,29 @@
+ok   Url.parse reads every part and decodes the user and password
+ok   Url.parse defaults
+ok   Url.parse takes a bracketed IPv6 host
+ok   a password may hold an unescaped @, / or ?
+ok   each malformed URL is an ArgumentError that names the fault
+ok   no URL error message holds the password
+ok   a Url's to_s and inspect never hold the password
+ok   a NUL in the user, the password or the database is refused
+ok   ssl_mode=disabled is accepted for local and private addresses
+ok   ssl_mode=disabled is refused for any other host
+ok   the recorded handshake parses
+ok   a handshake whose plugin name lacks its NUL still parses
+ok   an ERR in place of the handshake is a DB::Error with the server's message
+ok   an old protocol or a cut packet is a DB::Error
+ok   native_password and caching_sha2 match the CRuby Digest vectors
+ok   an empty password scrambles to the empty string
+ok   mysql_native_password: the response and the OK
+ok   caching_sha2_password: the fast path (0x01 0x03) then OK
+ok   caching_sha2_password: full authentication without TLS is refused
+ok   ssl_mode=verify: SSL Request, the switch, then the response and full authentication over TLS
+ok   ssl_mode=verify against a server without TLS is refused before any credential
+ok   an auth switch (0xFE) to mysql_native_password is answered with its scramble
+ok   an auth switch to an unknown plugin, or a second switch, is a DB::Error
+ok   an ERR during authentication is a DB::Error with the server's message and no password
+ok   an unexpected packet during authentication is a DB::Error
+ok   the TlsUpgrade base refuses
+ok   an ERR with non-ASCII text, before or during authentication, reads as UTF-8
+ok   caching_sha2_password: a fast-path result or a full-authentication request sent twice is a DB::Error
+28 tests, 235 assertions, 0 failures

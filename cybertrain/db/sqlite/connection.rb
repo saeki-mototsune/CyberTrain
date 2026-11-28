@@ -40,12 +40,22 @@ module Cybertrain
         path.include?(":memory:") || path.include?("mode=memory")
       end
 
+      # The target as a message or log line shows it: the path as given
+      # (MySQL's leaves the URL's password out). Pool's log lines name the
+      # target through this.
+      # @return [String]
+      # @api private
+      def self.target_label(path)
+        path.to_s
+      end
+
       # path is a file name, ":memory:" or a "file:" URI (OPEN_URI makes
       # SQLite read the URI form whether or not the library was compiled
       # with SQLITE_USE_URI). With create: false a missing file is refused
       # by SQLite itself (SQLITE_CANTOPEN -> DB::Error) instead of created.
       def initialize(path, create: true)
         @closed = false
+        @script_errcode = 0
         @transaction_depth = 0
         # SQLITE_LIMIT_VARIABLE_NUMBER, read on the first #variable_limit.
         @variable_limit = -1
@@ -220,7 +230,7 @@ module Cybertrain
           end
           if rc != SQLite3::DONE
             note_lost_transaction(in_transaction, sql)
-            raise Error, error_message(sql)
+            raise_failure(sql)
           end
         ensure
           if cached
@@ -246,8 +256,9 @@ module Cybertrain
         return nil if refuse_if_transaction_gone(sql)
 
         forget_names
+        @script_errcode = 0
         message = run_script(sql)
-        raise Error, message unless message.empty?
+        raise_with_code(message, @script_errcode) unless message.empty?
 
         nil
       end
@@ -268,6 +279,16 @@ module Cybertrain
       def last_insert_id
         raise Error, "connection closed (last_insert_id)" if @closed
         SQLite3.sqlite3_last_insert_rowid(@db)
+      end
+
+      # The MySQL Connection's method, here so that code above the adapter
+      # can call it on either: a no-op. SQLite keeps its own last rowid
+      # (sqlite3_last_insert_rowid), which every INSERT into a rowid table
+      # sets; nothing is kept here to forget.
+      # @return [nil]
+      def forget_last_insert_id
+        raise Error, "connection closed (forget_last_insert_id)" if @closed
+        nil
       end
 
       # The most `?` binds one statement may carry
@@ -495,6 +516,17 @@ module Cybertrain
         @closed
       end
 
+      # The Pool hands this connection to a caller (Pool#with,
+      # Pool#checkout_transaction). Nothing to do on SQLite: the database is
+      # a file this process holds open, which no server can end while the
+      # connection sits in the pool. The MySQL Connection's lets the next
+      # statement reopen a session the server ended meanwhile.
+      # @return [nil]
+      # @api private
+      def checked_out!
+        nil
+      end
+
       # Remembered column names for one SQL text, and which of the columns
       # are declared DATETIME (1) or not (0).
       class ColumnNames
@@ -620,7 +652,7 @@ module Cybertrain
         raise Error, "connection closed (sql: #{sql})" if @closed
         forget_names
         rc = SQLite3.sqlite3_exec(@db, sql, nil, nil, nil)
-        raise Error, error_message(sql) if rc != SQLite3::OK
+        raise_failure(sql) if rc != SQLite3::OK
         nil
       end
 
@@ -840,6 +872,7 @@ module Cybertrain
           rc = SQLite3.sqlite3_step(stmt) while rc == SQLite3::ROW
           if rc != SQLite3::DONE
             message = error_message(sql)
+            @script_errcode = SQLite3.sqlite3_extended_errcode(@db)
             SQLite3.sqlite3_finalize(stmt)
             note_lost_transaction(in_transaction, statement)
             return message
@@ -863,6 +896,25 @@ module Cybertrain
 
       def error_message(sql)
         "#{SQLite3.sqlite3_errmsg(@db)} (sql: #{sql})"
+      end
+
+      # Raises the failure of the last call on this handle: a unique or
+      # primary key violation as UniqueViolation, a foreign key one as
+      # ForeignKeyViolation (by SQLite's extended result code, which
+      # sqlite3_extended_errcode answers without the connection asking for
+      # extended codes), anything else as Error. The message is the same
+      # for all of them.
+      def raise_failure(sql)
+        raise_with_code(error_message(sql), SQLite3.sqlite3_extended_errcode(@db))
+      end
+
+      def raise_with_code(message, code)
+        if code == SQLite3::CONSTRAINT_UNIQUE || code == SQLite3::CONSTRAINT_PRIMARYKEY
+          raise UniqueViolation, message
+        end
+        raise ForeignKeyViolation, message if code == SQLite3::CONSTRAINT_FOREIGNKEY
+
+        raise Error, message
       end
     end
   end

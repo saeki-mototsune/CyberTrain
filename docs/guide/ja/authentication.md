@@ -1,5 +1,5 @@
 ---
-source_sha256: 8eee615f131af513a326deaed48ebbd9806241fcc18f5f4993103cf38b59c5db
+source_sha256: 0949ea9f7b5309187c8e36797c312be87f337f90198a89473d0af15ffa61a97e
 ---
 # 認証
 
@@ -72,6 +72,7 @@ class ArticlesController < ApplicationController
 - トークンはプログラムの起動時に作られる 32 文字のランダムな 16 進文字列（`SetupController.setup_token`）で、定数時間で比較されます。`X-Forwarded-For` を付けないプロキシの背後のように、アドレスの検査が効かない場面でもページを閉じたままにします。リクエストログには `[FILTERED]` と出ます。
 - ユーザーがいない間、サーバーは起動前に `WARN no user exists yet: run ./<app> user EMAIL, or open /setup?token=<token> from this machine` をログに出します。トークンが表示されるのはこの行だけです。
 - `<APP>_SETUP_OPEN=1`（`config/app.rb` の `setup_open` 設定）は、別のホストのプロキシの背後での初回起動のために、アドレスの検査を外します。トークンの検査は外しません。ユーザーができたら解除してください。
+- 同時に来た 2 つの初回のリクエストが作るアカウントは 1 つです。ユーザーの確認と挿入は 1 つのトランザクションです：SQLite では `BEGIN IMMEDIATE`、MySQL では挿入のトランザクションの中のロックする読み取り（`SELECT ... FOR UPDATE`）で、MySQL がデッドロックとしてロールバックしたリクエストは何も保存せず、フォームをもう一度表示します。
 
 ## ユーザーコマンド
 

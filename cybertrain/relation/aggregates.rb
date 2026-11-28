@@ -7,6 +7,12 @@
 # stay there.
 module Cybertrain
   class Relation
+    # The aggregate the Float sums name (sum_float, sum_float_sql,
+    # sum_float_by): 0.0 over no rows, written by the adapter
+    # (Cybertrain::DB::Dialect.relation_float_total; SQLite's TOTAL). Every other
+    # aggregate is its SQL function's name.
+    FLOAT_TOTAL = "float_total"
+
     # One column of the matching rows, in the relation's order, as Strings
     # (NULL is `""`, a DATETIME its stored text). Every pluck reads the
     # stored cells, so an encrypted column (`encrypts`) answers its payloads
@@ -142,7 +148,7 @@ module Cybertrain
     # @raise [ArgumentError] when `column` is not a column name
     # @api public
     def sum_float(column)
-      Cast.float(aggregate_cell("sum_float", "TOTAL", column))
+      Cast.float(aggregate_cell("sum_float", FLOAT_TOTAL, column))
     end
 
     # The smallest value of an integer `column` (`MIN`), nil when no row
@@ -232,7 +238,7 @@ module Cybertrain
     # @return [Float]
     # @api public
     def sum_float_sql(expr)
-      Cast.float(aggregate_expr("TOTAL", expr))
+      Cast.float(aggregate_expr(FLOAT_TOTAL, expr))
     end
 
     # {#minimum_float} over a trusted SQL expression (see {#sum_float_sql}).
@@ -290,7 +296,7 @@ module Cybertrain
     # @raise [ArgumentError] when either is not a column name
     # @api public
     def sum_float_by(group, column)
-      float_totals(grouped_by("sum_float_by", "TOTAL", group, column))
+      float_totals(grouped_by("sum_float_by", FLOAT_TOTAL, group, column))
     end
 
     # {#minimum_int} per value of `group`; a group whose values are all
@@ -390,13 +396,23 @@ module Cybertrain
       sql = if windowed?
               columns = "#{expr} AS v"
               inner = select_sql(columns, @order, @limit, @offset)
-              "SELECT #{func}(v) AS n FROM (#{inner})"
+              call = Relation.aggregate_call(func, "v")
+              sub = Cybertrain::DB::Dialect.relation_subquery_alias
+              "SELECT #{call} AS n FROM (#{inner})#{sub}"
             else
               arg = aggregate_arg(expr)
-              select_sql("#{func}(#{arg}) AS n", "", -1, 0)
+              call = Relation.aggregate_call(func, arg)
+              select_sql("#{call} AS n", "", -1, 0)
             end
       found = Relation.select_rows(sql, @binds)
       found[0]["n"]
+    end
+
+    # `func(arg)`, FLOAT_TOTAL as the adapter writes it.
+    def self.aggregate_call(func, arg)
+      return Cybertrain::DB::Dialect.relation_float_total(arg) if func == FLOAT_TOTAL
+
+      "#{func}(#{arg})"
     end
 
     # The function's argument: `DISTINCT expr` under distinct (not for `*`).
@@ -426,10 +442,13 @@ module Cybertrain
               columns = expr == "*" ? "#{group} AS k" : "#{group} AS k, #{expr} AS v"
               inner = select_sql(columns, @order, @limit, @offset)
               arg = expr == "*" ? "*" : "v"
-              "SELECT k, #{func}(#{arg}) AS n FROM (#{inner}) GROUP BY 1 ORDER BY 1"
+              call = Relation.aggregate_call(func, arg)
+              sub = Cybertrain::DB::Dialect.relation_subquery_alias
+              "SELECT k, #{call} AS n FROM (#{inner})#{sub} GROUP BY 1 ORDER BY 1"
             else
               arg = aggregate_arg(expr)
-              grouped = select_from_sql("#{group} AS k, #{func}(#{arg}) AS n", "", -1, 0)
+              call = Relation.aggregate_call(func, arg)
+              grouped = select_from_sql("#{group} AS k, #{call} AS n", "", -1, 0)
               having = @having == "" ? "" : " HAVING #{@having}"
               "#{grouped} GROUP BY 1#{having} ORDER BY 1"
             end

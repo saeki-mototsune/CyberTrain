@@ -1,5 +1,5 @@
 ---
-source_sha256: 66999cb2e64c8060c3a4cd7100fab0efa7c77701391e63b73ae9b4f068b1db93
+source_sha256: 5b38950394c6e05d1c8ade68057260208b4ecc135960cf4797c10c3a5f3625e2
 title: "発展編チュートリアル：ブログをさらに進める"
 description: "Getting Started のブログを CyberTrain でさらに進めます：コンポーネントとヘルパー、Turbo Streams によるコメントのライブ更新、バックグラウンドジョブ、JSON、サインイン、アップロードしたカバー画像、cybertrain build によるデプロイ用ビルド。"
 og_title: "発展編チュートリアル：CyberTrain のブログをさらに進める"
@@ -603,7 +603,7 @@ kamal deploy   # 以降のデプロイ
 
 <!-- list: points know -->
 - セッションに保持できるのは String のみで、暗号化した cookie に入ります。
-- データベースは SQLite のみで、Spinel の FFI を経由します。
+- データベースは Spinel の FFI を経由する SQLite か MySQL 8.0 で、ビルドごとに 1 つです。
 - バックトレースはありません：エラーにはクラス、メッセージ、リクエスト行、テンプレート名と行番号が表示されます。
 - ビュー内で属性名を書き間違えると例外になります（`undefined method 'titel' for Article`）。`nil` が入っているカラムは空としてレンダリングされます。
 - 関連付けは外部キーか一行の宣言から作られます。`has_many :through`、enum、STI、ポリモーフィック関連付けはありません。

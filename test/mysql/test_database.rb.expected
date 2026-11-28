@@ -1,0 +1,7 @@
+ok   a database whose name does not end in _test is refused, by its URL without the password
+ok   a _test database with tables and no marker is refused, and nothing is changed
+ok   an empty database gets the marker first; the bundle drops the rest and migrates
+ok   after the clear and the fixture load, ids start again at 1
+ok   a fixture's foreign key violation is reported, and the fixtures are rolled back
+ok   fixtures load beside an id-less table with a foreign key, and its dangling row is named by its column
+6 tests, 52 assertions, 0 failures

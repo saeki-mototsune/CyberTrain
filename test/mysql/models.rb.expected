@@ -1,0 +1,77 @@
+ok   Cast converts to non-null Integer, String and Float
+ok   Cast nullable helpers keep nil and blank form input as nil
+ok   Cast.bool accepts true/false, 1/0 and form strings
+ok   Cast.time_or_nil parses both SQLite datetime formats
+ok   Cast.time_or_nil returns nil for well-formed but out-of-range values
+ok   Cast.to_sql turns Time and booleans into SQLite values
+ok   Errors collects messages per attribute in insertion order
+ok   Relation builds SQL from where, order, limit and offset
+ok   order validates its columns and quotes them
+ok   reverse_order flips quoted order terms (used by last)
+ok   where with a Time value binds it as a single equality
+ok   delete_all respects limit and offset
+ok   count and size respect limit and offset
+ok   exists? respects offset and limit
+ok   first and last pick from the limit/offset window
+ok   Post.new(title: ...).save inserts and sets id and created_at
+ok   Post.find(id) returns a typed record
+ok   Post.find(999) raises RecordNotFound with a message
+ok   where chains order, limit and offset
+ok   first on an empty relation is nil
+ok   count and exists?
+ok   validations: save returns false and fills errors.full_messages
+ok   save! raises RecordInvalid
+ok   update
+ok   destroy
+ok   destroy on a new record deletes nothing and returns false
+ok   reload
+ok   before_save callback runs
+ok   after_create runs once
+ok   comments association through comments.post_id
+ok   read_association and call_view_method dispatch by name
+ok   to_json exact string
+ok   to_json keeps booleans as true/false and floats as numbers
+ok   columns named after SQL keywords are quoted
+ok   ==
+ok   to_param
+ok   nullable body round trips nil and String
+ok   created_at is a Time after reload
+ok   assign_attributes with String keys from Params#permit
+ok   has_one answers the child or nil
+ok   has_many readers are Relations; read_association gives an Array
+ok   a nullable belongs_to answers nil for a nil key and caches the parent per key
+ok   destroy: has_one :delete_all, has_many :nullify and :delete_all run inside destroy's transaction
+ok   without dependent: the database's foreign key refuses, and the dependents' work is rolled back
+ok   destroy joins a transaction the application opened
+ok   reload clears the belongs_to cache
+ok   validates_foreign_key: nil, blank and 0 are blank; a saved parent's id is not
+ok   includes(:profile) fills every user's has_one, nil where there is none, in one query
+ok   includes(:notes, :profile) runs one query per association; a nullable key groups its children
+ok   Note.includes(:user) on a nullable key: a nil key queries nothing and answers nil
+ok   a Thing with its defaults is valid
+ok   presence and length in:, is:
+ok   inclusion in an Array of Strings, allow_nil
+ok   inclusion in an Integer Range, exclusion of an Integer Array
+ok   format with: and exclusion of Strings
+ok   format without:, with message: inside the rule
+ok   numericality on a String attribute: a number passes, else not a number, only_integer
+ok   numericality only_integer on a Float, and nil is not a number
+ok   numericality comparisons print their limits as written
+ok   inclusion in an exclusive-end Range and an endless Range
+ok   an exclusive-end Integer Range admits a Float below its end
+ok   allow_nil inside a rule's Hash skips nil for that rule
+ok   format: nil fails a with: rule and passes a without:-only rule
+ok   allow_blank skips nil and blank Strings only
+ok   uniqueness passes scope, scope value, id and case_sensitive; message: replaces the default
+ok   on: :create runs only on a new record, on: :update only on a persisted one
+ok   if: and unless: go through validation_condition?
+ok   one validates line for two attributes, under if:
+ok   run_custom_validations runs after the declared rules with the context
+ok   an unknown option, a lambda condition and an on: other than :create or :update raise ArgumentError
+ok   a Time is neither a list for in: nor a member of one
+ok   model_concern_insert_at puts a concern's validates calls after the model's own call of that index
+ok   the default messages come from the dictionary of the current locale, message: still wins
+ok   uniqueness: "a" and "a " are different values, and so are "A" and "a"
+ok   blob_17mb_roundtrip
+ok   utf8mb4_and_nul_roundtrip
+76 tests, 520 assertions, 0 failures

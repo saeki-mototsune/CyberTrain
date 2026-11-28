@@ -1,12 +1,12 @@
 ---
-source_sha256: 9448b08f2105bfebf96da9fa441104f830033615cec5905c22830b88988af371
+source_sha256: 5508f9f060e3e3ca9a9ada2b047e0e7d1ad60bec891c513ebee81baba949fe0d
 ---
 # Модели и база данных
 
 Что модель делает помимо скаффолда: миграции, типы столбцов, запросы,
 ассоциации, валидации, зашифрованные столбцы, постраничный вывод, транзакции,
 правила, которым под Spinel подчиняются имена столбцов и конструкции `order`,
-и перенос базы данных, созданной Rails.
+перенос базы данных, созданной Rails, и что меняется на MySQL.
 
 ## Миграции
 
@@ -436,7 +436,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1 (by: n for another step)
 Comment.where(article_id: article.id).pluck_int(:id)      # => [3, 7]   (также pluck_str, pluck_float)
 Comment.all.count_by(:article_id)                         # => {"1" => 2, "4" => 1}
-Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # группы по часам
+Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # группы по часам (strftime SQLite; на MySQL DATE_FORMAT(created_at, '%Y-%m-%dT%H'))
 Stat.where(project_id: 1).sum_int(:calls)                 # также sum_float
 Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%' ESCAPE '\'
 ```
@@ -980,6 +980,22 @@ Article.transaction(immediate: true) do |c|
 end
 ```
 
+На MySQL `immediate: true` ничего не делает: в MySQL нет блокировки
+записи, которую можно взять при `BEGIN`, поэтому обе формы отправляют
+`BEGIN`, и два таких блока не выполняются один за другим. Каждый блок
+читает снимок, который не берёт блокировок (REPEATABLE READ), так что два
+блока, которые что-то проверяют, а потом пишут, могут оба пройти проверку
+и оба записать. Пусть запись сама несёт проверку (уникальный индекс;
+`UPDATE ... WHERE`, называющий старое значение, и взгляд на `c.changes`),
+или заблокируйте то, что блок читает, своим SQL:
+`c.execute("SELECT id FROM accounts WHERE id = ? FOR UPDATE", [id])`
+держит строку до `COMMIT`. При пустом результате он блокирует промежуток,
+куда легла бы строка, так что вставка второго блока туда ждёт; когда два
+блока читают один и тот же пустой промежуток одновременно, MySQL
+откатывает один из них (`Cybertrain::DB::Deadlock`). `SetupController`,
+который `generate authentication --invite-only` пишет для MySQL, так и
+проверяет первого пользователя.
+
 Чем она отличается от `transaction` в Rails и чего следует избегать:
 
 - Она возвращает nil, а не значение блока.
@@ -1156,6 +1172,116 @@ Post.order(SORTS.fetch(params[:sort].to_s, "id"))
 
 Затем напишите `app/models/*.rb` с валидациями, ассоциациями и скоупами,
 которые были у моделей Rails, в формах, показанных на этой странице.
+
+## MySQL
+
+Приложение, собранное с `require "cybertrain/mysql"`
+([Конфигурация, «MySQL»](configuration.md#mysql)), выполняет те же модели,
+миграции и запросы на MySQL 8.0, и они отвечают то же, что на SQLite;
+`docs/compatibility.md` перечисляет различия вместе с тестами, которые их
+закрепляют. С чем встречается код модели:
+
+- **Типы столбцов.** `string` — `VARCHAR(255)` (меняется через `limit:`),
+  `text` — `MEDIUMTEXT`, `integer` — `INT` (`id` и любой целочисленный
+  `*_id` — `BIGINT`), `boolean` — `TINYINT(1)`, `decimal` — `DECIMAL(p,s)`,
+  `float` — `DOUBLE`, `date` — `DATE`, `datetime` — `DATETIME(6)` в UTC,
+  `json` — `JSON`, `binary` — `LONGBLOB`. Атрибуты читаются как на SQLite.
+- **Сравнения точные.** Таблицы используют `utf8mb4` с двоичной
+  сортировкой `utf8mb4_0900_bin`, поэтому `where`, `uniqueness` и
+  уникальный индекс отличают `"A"` от `"a"` и `"a"` от `"a "`, как SQLite.
+  Поэтому `LIKE` и `where_like` тоже чувствительны к регистру, тогда как
+  LIKE в SQLite не различает регистр ASCII: для поля поиска сравнивайте
+  `LOWER(title) LIKE ?` с шаблоном в нижнем регистре.
+- **JSON нормализуется.** Сервер хранит `{"k": [1, 2]}` вместо
+  `{"k":[1,2]}`: Hash, который читает атрибут, тот же, а сохранённый текст
+  (в `execute`, дампе, `ORDER BY`) — нет.
+- **Decimal вне диапазона отклоняется.** Строгий `sql_mode` соединения
+  отклоняет значение вне точности столбца (`Out of range value for column
+  'price'`, ошибка 1264), тогда как SQLite сохраняет Float; это касается и
+  `update_columns`, `update_all` и массовых записей, которые пропускают
+  валидацию, выполняемую `save` ([Decimal — это Float](#decimals-are-floats)).
+  Неконечный Float (`Infinity`, `NaN`) как привязанное значение
+  отклоняется в любом столбце с `Cybertrain::DB::Error` до отправки
+  запроса; SQLite сохраняет бесконечности, а NaN сохраняет как NULL.
+- **Текст decimal.** Столбец `DECIMAL(p,s)`, прочитанный как текст
+  (`execute`), на MySQL несёт свой масштаб: `"9.50"` там, где SQLite
+  отвечает `"9.5"`; атрибут decimal модели — один и тот же Float на обеих.
+- **Ошибки.** Нарушение ограничения выбрасывает одни и те же классы на
+  обеих базах (`Cybertrain::DB::UniqueViolation`, `ForeignKeyViolation`;
+  на MySQL также `Deadlock`, `LockTimeout` и `ConnectionLost`); сообщение —
+  сервера (`Duplicate entry 'x' for key ... (MySQL 1062, 23000)`), поэтому
+  сверяйте класс, а не текст.
+- **`update:` у `upsert`.** Новая строка — `excluded` на обеих базах, но
+  голое имя столбца на MySQL неоднозначно (ошибка 1052): уточняйте
+  собственные столбцы таблицы её именем и используйте `GREATEST` / `LEAST`
+  вместо двухаргументных `MAX` / `MIN` SQLite:
+
+```ruby
+# MySQL: INSERT ... AS excluded ON DUPLICATE KEY UPDATE ...
+Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: Time.now },
+            conflict: [:project_id, :key],
+            update: { calls: "stats.calls + excluded.calls", max_ms: "GREATEST(stats.max_ms, excluded.max_ms)",
+                      seen_at: "excluded.seen_at" })
+```
+
+- **Цель конфликта.** `conflict:` у `upsert` и `unique_by:` у
+  `upsert_all` должны быть ровно столбцами первичного ключа или одного
+  уникального индекса (в любом порядке), как на SQLite, иначе
+  `Cybertrain::DB::Error` (`upsert: ... is not the primary key or a unique index of ...`)
+  до того, как что-либо записано. Строка, которая конфликтует по другому
+  уникальному ключу, выбрасывает `Cybertrain::DB::UniqueViolation`, и
+  запрос ничего не пишет. Одно различие оставлено: строка, которая
+  конфликтует одновременно по цели и по другому уникальному ключу,
+  выбрасывает исключение там, где SQLite может обновить строку цели.
+  `upsert` отвечает 1 за вставленную или обновлённую строку и 0 за ту,
+  которую оставил пустой `update:`, как на SQLite. Уникальные ключи
+  читаются один раз на таблицу и соединение, поэтому после того, как
+  другой процесс изменил схему, перезапустите этот.
+- **`returning:`.** В MySQL нет `RETURNING`: `insert_all` и `upsert_all`
+  читают строки обратно в той же транзакции и отвечают теми строками,
+  которыми ответил бы SQLite. На таблице с уникальным индексом (помимо
+  первичного ключа) `insert_all(..., returning:)` требует, чтобы строки
+  содержали все столбцы одного такого индекса, иначе выбрасывает
+  `Cybertrain::DB::Error` до записи: иначе пропущенный дубликат не отличить.
+- **Миграции не откатываются.** DDL в MySQL фиксируется по мере
+  выполнения, поэтому миграция, упавшая на полпути, сохраняет то, что
+  выполнилось до упавшей инструкции: `migration V failed at statement 2 of
+  3; statements 1..1 were applied and cannot be rolled back (MySQL DDL
+  commits implicitly): ...`. Версия не записывается; отмените применённую
+  часть (или завершите её вручную), прежде чем снова запускать
+  `db migrate`. Адаптер MySQL в Rails ведёт себя так же. По возможности
+  делайте одно изменение на миграцию.
+- **Частичных индексов нет.** `add_index ..., where:` останавливает
+  `spin run gen` с файлом и строкой (`partial indexes (where:) are not
+  supported on MySQL`) до того, как что-либо записано; индексируйте столбец
+  целиком или вынесите условие в генерируемый столбец.
+- **Индексы по выражению.** MySQL принимает выражение только в отдельных
+  скобках: `execute "CREATE UNIQUE INDEX index_users_on_lower_email ON
+  users ((LOWER(email)))"`. Форма с одной парой скобок из
+  [Миграций](#migrations) — это форма SQLite, на MySQL она даёт
+  синтаксическую ошибку (1064). `db/schema.rb` выгружает индекс так, как
+  его пишет MySQL: ``"(lower(`email`))"``.
+- **Схема.** `db/schema.rb` выгружается из `information_schema`. Для типов
+  и опций столбцов, которыми пользуется examples/blog, те же миграции пишут
+  тот же файл, что и на SQLite; остальные выгружаются так, как их хранит
+  MySQL: `limit: 255` у строки пропадает, `scale: 0` у decimal пропадает
+  или добавляется, `t.bigint` с именем `*_id` выгружается как `t.integer`,
+  значение по умолчанию у decimal получает его масштаб, значение по
+  умолчанию, заданное выражением, выгружается в скобках (`(rand())`), индекс по
+  выражению записывается текстом MySQL, а внешний ключ без индекса
+  получает индекс. Поэтому
+  `db/schema.rb`, записанный на SQLite, может измениться при первом
+  `db migrate` на MySQL; `docs/compatibility.md` их перечисляет.
+  `db normalize`, `db backup` и `db vacuum` — команды SQLite.
+- **`transaction(immediate: true)` — простой `BEGIN`.** Он не заставляет
+  два блока «прочитать, потом записать» выполняться один за другим, как
+  блокировка записи SQLite: заблокируйте строки, которые читает блок
+  (`SELECT ... FOR UPDATE`), или дайте уникальному индексу или `UPDATE`
+  с условием отклонить вторую запись ([Транзакции](#transactions)).
+- **Один процесс.** Задания, потоки, аренды и запланированные задачи
+  гарантированы в пределах одного процесса; для нескольких процессов или
+  хостов с одной базой — не раньше шага 2 дорожной карты MySQL
+  ([Конфигурация, «MySQL»](configuration.md#mysql)).
 
 ## Обновление
 

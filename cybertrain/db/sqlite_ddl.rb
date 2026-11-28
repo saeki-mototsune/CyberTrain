@@ -1,5 +1,6 @@
 require "cybertrain/schema"
 require "cybertrain/migration"
+require "cybertrain/db/ddl_text"
 
 module Cybertrain
   module DB
@@ -28,7 +29,8 @@ module Cybertrain
           parts << column_def(c.name, c.type, c.null, c.default, c.limit, c.precision, c.scale)
         end
         table.foreign_keys.each do |fk|
-          parts << "FOREIGN KEY (#{fk.column}) REFERENCES #{fk.to_table}(id)" + on_delete_clause(fk.on_delete)
+          parts << "FOREIGN KEY (#{fk.column}) REFERENCES #{fk.to_table}(id)" +
+                   Cybertrain::DB::DDLText.on_delete_clause(fk.on_delete)
         end
         buf = +"CREATE TABLE #{table_name} ("
         buf << parts.join(", ")
@@ -289,58 +291,10 @@ module Cybertrain
         (b >= 48 && b <= 57) || (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || b == 95 || b == 36 || b >= 128
       end
 
-      # A copy of `table` with the rebuild operation `op` applied: a
-      # changed column (change_column, change_column_default,
-      # change_column_null), a dropped reference column with its indexes
-      # and foreign keys (remove_reference), a dropped foreign key
-      # (remove_foreign_key). `table` itself is left as it was. Raises
-      # ArgumentError when the column or the foreign key does not exist.
+      # A copy of `table` with the rebuild operation `op` applied
+      # (DDLText.table_after, shared with MySQL's DDL).
       def self.table_after(table, op)
-        result = Cybertrain::Schema::Table.new(table.name)
-        result.mark_without_id if table.without_id?
-        found = false
-        table.columns.each do |c|
-          if c.name != op.name
-            result.add_column(c)
-          else
-            found = true
-            case op.kind
-            when :change_column
-              result.add_column(Cybertrain::Schema::Column.new(c.name, op.type, op.null, op.default, op.limit, op.precision, op.scale))
-            when :change_column_default
-              result.add_column(Cybertrain::Schema::Column.new(c.name, c.type, c.null, op.default, c.limit, c.precision, c.scale))
-            when :change_column_null
-              result.add_column(Cybertrain::Schema::Column.new(c.name, c.type, op.null, c.default, c.limit, c.precision, c.scale))
-            when :remove_reference
-              nil
-            else
-              result.add_column(c)
-            end
-          end
-        end
-        unless found || op.kind == :remove_foreign_key
-          message = "#{op.kind}: no column #{table.name}.#{op.name}"
-          raise ArgumentError, message
-        end
-        table.indexes.each do |idx|
-          result.add_index(idx) unless op.kind == :remove_reference && idx.columns.include?(op.name)
-        end
-        removed = false
-        table.foreign_keys.each do |fk|
-          drop = false
-          drop = true if op.kind == :remove_reference && fk.column == op.name
-          drop = true if op.kind == :remove_foreign_key && fk.column == op.name && fk.to_table == op.to_table
-          if drop
-            removed = true
-          else
-            result.add_foreign_key(fk)
-          end
-        end
-        if op.kind == :remove_foreign_key && !removed
-          message = "remove_foreign_key: no foreign key from #{table.name}.#{op.name} to #{op.to_table}"
-          raise ArgumentError, message
-        end
-        result
+        Cybertrain::DB::DDLText.table_after(table, op)
       end
 
       def self.create_table_statements(op)
@@ -388,7 +342,8 @@ module Cybertrain
       def self.add_reference_statements(op, to_table = "")
         table = op.table_text
         column = add_column_sql(op)
-        column = "#{column} REFERENCES #{to_table}(id)#{on_delete_clause(op.on_delete)}" if to_table != ""
+        on_delete = Cybertrain::DB::DDLText.on_delete_clause(op.on_delete)
+        column = "#{column} REFERENCES #{to_table}(id)#{on_delete}" if to_table != ""
         [column, index_sql(table, [op.name], false, "")]
       end
 
@@ -439,27 +394,12 @@ module Cybertrain
       # `expression` non-empty is the key of an expression index and
       # replaces the column list; `where` non-empty makes it partial.
       def self.index_sql(table, columns, unique, name, where = "", expression = "")
-        index_name = name == "" ? derived_index_name(table, columns) : name
+        index_name = name == "" ? Cybertrain::Schema::Index.derived_name(table, columns) : name
         kind = unique ? "CREATE UNIQUE INDEX" : "CREATE INDEX"
         key = expression == "" ? columns.join(", ") : expression
         sql = "#{kind} #{index_name} ON #{table}(#{key})"
         sql = "#{sql} WHERE #{where}" if where != ""
         sql
-      end
-
-      # The ON DELETE clause for a foreign key's action, with its leading
-      # space; "" for :no_action (SQLite's default).
-      def self.on_delete_clause(action)
-        case action
-        when :cascade then " ON DELETE CASCADE"
-        when :nullify then " ON DELETE SET NULL"
-        when :restrict then " ON DELETE RESTRICT"
-        else ""
-        end
-      end
-
-      def self.derived_index_name(table, columns)
-        Cybertrain::Schema::Index.derived_name(table, columns)
       end
     end
   end

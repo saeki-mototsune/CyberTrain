@@ -1,4 +1,4 @@
-require "cybertrain/db/connection"
+require "cybertrain/db/base"
 require "cybertrain/cast"
 require "cybertrain/relation"
 
