@@ -193,6 +193,9 @@ test "drop refuses a name that ends in _production, before it connects" do
   # A server that cannot be reached is not tried.
   Cybertrain.config.database_url = "mysql://root:#{PASSWORD}@127.0.0.1:1/shop_production?ssl_mode=disabled"
   assert_equal 1, run_db("drop")
+  # In any case.
+  Cybertrain.config.database_url = "mysql://root:#{PASSWORD}@127.0.0.1:1/shop_PRODUCTION?ssl_mode=disabled"
+  assert_equal 1, run_db("drop")
 end
 
 test "create and drop take letters, digits, _ and $, at most 64, and refuse anything else" do
@@ -230,27 +233,56 @@ test "server_url drops the database and keeps the password and the parameters" d
   assert_equal "mysql://u@[::1]:3306", CLI.server_url("mysql://u@[::1]:3306/db")
 end
 
-test "dbconsole runs mysql with the server, the user and the database, and the password in MYSQL_PWD" do
+test "dbconsole runs mysql over TCP with the server, the user and the database, and the password in MYSQL_PWD" do
+  ENV["SSL_CERT_FILE"] = "/etc/app/ca.pem"
+  ENV.delete("SSL_CERT_DIR")
   config = Cybertrain::Config.new
   config.database_url = "mysql://app:s%40cr%2Ft@db.internal:3307/shop_development"
   args = CLI.console_args(config)
-  assert_equal ["--host=db.internal", "--port=3307", "--user=app", "--database=shop_development", "--ssl-mode=VERIFY_IDENTITY"],
-               args
+  assert_equal ["--protocol=TCP", "--host=db.internal", "--port=3307", "--user=app", "--database=shop_development",
+                "--ssl-mode=VERIFY_IDENTITY", "--ssl-ca=/etc/app/ca.pem"], args
   args.each { |arg| refute arg.include?("s@cr/t") }
   env = CLI.console_env(config)
   assert_equal ["MYSQL_PWD"], env.keys
   assert_equal "s@cr/t", env["MYSQL_PWD"]
   assert_equal "mysql", CLI.console_program
-  config.database_url = "mysql://root@127.0.0.1/blog?ssl_mode=disabled"
-  assert_equal ["--host=127.0.0.1", "--port=3306", "--user=root", "--database=blog", "--ssl-mode=DISABLED"],
+  # localhost is the client's Unix socket unless the protocol is TCP: the
+  # URL's port is kept.
+  config.database_url = "mysql://root@localhost:33306/blog?ssl_mode=disabled"
+  assert_equal ["--protocol=TCP", "--host=localhost", "--port=33306", "--user=root", "--database=blog", "--ssl-mode=DISABLED"],
                CLI.console_args(config)
   assert_equal 0, CLI.console_env(config).size
+  ENV.delete("SSL_CERT_FILE")
   config.database_url = ""
   message = assert_raises("Cybertrain::DB::Error") { CLI.console_args(config) }
   assert_equal Cybertrain::DB::Adapter::MISSING_URL, message
   config.database_url = "mysql://root:sekrit@db.example.com/blog?ssl_mode=disabled"
   message = assert_raises("Cybertrain::DB::Error") { CLI.console_args(config) }
   refute message.include?("sekrit")
+end
+
+test "dbconsole's CA for ssl_mode=verify: SSL_CERT_FILE and SSL_CERT_DIR, else the system bundle" do
+  assert_equal ["--ssl-ca=/etc/app/ca.pem"], CLI.console_ca_args("/etc/app/ca.pem", "")
+  assert_equal ["--ssl-capath=/etc/app/certs"], CLI.console_ca_args("", "/etc/app/certs")
+  assert_equal ["--ssl-ca=/etc/app/ca.pem", "--ssl-capath=/etc/app/certs"], CLI.console_ca_args("/etc/app/ca.pem", "/etc/app/certs")
+  # Neither: the first system bundle there is (this machine's), or a refusal
+  # that says what to set.
+  found = Array.new(0) { "" }
+  CLI::CA_BUNDLES.each { |path| found << path if File.file?(path) }
+  if found.empty?
+    message = assert_raises("Cybertrain::DB::Error") { CLI.console_ca_args("", "") }
+    assert message.end_with?(": set SSL_CERT_FILE (or SSL_CERT_DIR)"), message
+  else
+    assert_equal ["--ssl-ca=#{found[0]}"], CLI.console_ca_args("", "")
+    # As many assertions as the other branch, for the snapshot's count.
+    assert found[0].start_with?("/etc/")
+  end
+  ENV.delete("SSL_CERT_FILE")
+  ENV["SSL_CERT_DIR"] = "/etc/app/certs"
+  config = Cybertrain::Config.new
+  config.database_url = "mysql://app@db.internal/shop"
+  assert_equal "--ssl-capath=/etc/app/certs", CLI.console_args(config).last
+  ENV.delete("SSL_CERT_DIR")
 end
 
 test "help's db and dbconsole lines are MySQL's" do

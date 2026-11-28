@@ -96,7 +96,9 @@ module Cybertrain
         text = database_url
         url = parsed_url(text)
         name = CLI.database_name(url.database)
-        if name.end_with?("_production")
+        # Case-insensitively: database names are case-sensitive on Linux,
+        # and shop_PRODUCTION is as much production's.
+        if name.downcase.end_with?("_production")
           puts "db drop refuses to drop #{name}: its name ends in _production"
           return 1
         end
@@ -225,20 +227,72 @@ module Cybertrain
         "mysql"
       end
 
-      # Its arguments: --host, --port, --user and --database from
-      # DATABASE_URL, each with its value in the same word (a value that
-      # starts with "-" is not taken for an option), and --ssl-mode, so the
-      # client is held to the URL's TLS (verify: VERIFY_IDENTITY, the
-      # client's own default PREFERRED would fall back to plain text). Never
+      # Its arguments: --protocol=TCP, then --host, --port, --user and
+      # --database from DATABASE_URL, each with its value in the same word (a
+      # value that starts with "-" is not taken for an option), then
+      # --ssl-mode and, for ssl_mode=verify, the CA (console_ca_args). Never
       # the password: console_env gives it.
+      #
+      # --protocol=TCP: the client takes --host=localhost for its Unix socket
+      # and ignores --port, so a localhost URL would reach whatever server
+      # owns the socket rather than the URL's host:port, which the framework
+      # connects to over TCP. --ssl-mode holds the client to the URL's TLS
+      # (verify: VERIFY_IDENTITY; the client's own default, PREFERRED, would
+      # fall back to plain text; disabled: DISABLED).
       # @param config [Cybertrain::Config]
       # @return [Array<String>]
-      # @raise [Cybertrain::DB::Error] when DATABASE_URL is empty or bad
+      # @raise [Cybertrain::DB::Error] when DATABASE_URL is empty or bad, or
+      #   for ssl_mode=verify when no CA can be named (console_ca_args)
       def self.console_args(config)
         url = parsed_url(DB::Adapter.connect_target(config))
-        ssl = url.ssl_mode == "disabled" ? "DISABLED" : "VERIFY_IDENTITY"
-        ["--host=#{url.url_host}", "--port=#{url.port}", "--user=#{url.url_user}", "--database=#{url.database}",
-         "--ssl-mode=#{ssl}"]
+        args = ["--protocol=TCP", "--host=#{url.url_host}", "--port=#{url.port}", "--user=#{url.url_user}",
+                "--database=#{url.database}"]
+        if url.ssl_mode == "disabled"
+          args << "--ssl-mode=DISABLED"
+        else
+          args << "--ssl-mode=VERIFY_IDENTITY"
+          CLI.console_ca_args(ENV["SSL_CERT_FILE"].to_s, ENV["SSL_CERT_DIR"].to_s).each { |arg| args << arg }
+        end
+        args
+      end
+
+      # The system CA bundles looked for when neither SSL_CERT_FILE nor
+      # SSL_CERT_DIR is set, in this order: Debian and Ubuntu, Fedora and
+      # RHEL, openSUSE, macOS / Alpine / the BSDs.
+      CA_BUNDLES = ["/etc/ssl/certs/ca-certificates.crt", "/etc/pki/tls/certs/ca-bundle.crt",
+                    "/etc/ssl/ca-bundle.pem", "/etc/ssl/cert.pem"].freeze
+
+      # The CA the mysql client verifies the server with, which it needs for
+      # VERIFY_IDENTITY ("CA certificate is required if ssl-mode is VERIFY_CA
+      # or VERIFY_IDENTITY": it has no default store). The same trust as the
+      # framework's own connection, which uses OpenSSL's default store with
+      # SSL_CERT_FILE / SSL_CERT_DIR over it (cybertrain/net/tls.rb):
+      # --ssl-ca=`file` and --ssl-capath=`dir` for the ones set; with
+      # neither, --ssl-ca= the first of CA_BUNDLES that exists (where the
+      # system's OpenSSL keeps its default store). With none of them a
+      # DB::Error says to set SSL_CERT_FILE, rather than a client that
+      # fails to connect.
+      # @param file [String] SSL_CERT_FILE, "" when unset
+      # @param dir [String] SSL_CERT_DIR, "" when unset
+      # @return [Array<String>]
+      # @raise [Cybertrain::DB::Error] when nothing names a CA
+      def self.console_ca_args(file, dir)
+        args = Array.new(0) { "" }
+        args << "--ssl-ca=#{file}" unless file.empty?
+        args << "--ssl-capath=#{dir}" unless dir.empty?
+        return args unless args.empty?
+
+        i = 0
+        while i < CA_BUNDLES.size
+          bundle = CA_BUNDLES[i]
+          if File.file?(bundle)
+            args << "--ssl-ca=#{bundle}"
+            return args
+          end
+          i += 1
+        end
+        raise Error, "ssl_mode=verify needs the CA the server's certificate is checked against, and this system has none " \
+                     "of #{CA_BUNDLES.join(", ")}: set SSL_CERT_FILE (or SSL_CERT_DIR)"
       end
 
       # MYSQL_PWD, the password the client reads from its environment, when
