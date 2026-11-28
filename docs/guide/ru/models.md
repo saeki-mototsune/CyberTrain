@@ -1,5 +1,5 @@
 ---
-source_sha256: f5c73b275f1fdf56c1574b71501412b09d25246ca9bcfe16c4ae1ec94896c4d5
+source_sha256: 5508f9f060e3e3ca9a9ada2b047e0e7d1ad60bec891c513ebee81baba949fe0d
 ---
 # Модели и база данных
 
@@ -436,7 +436,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1 (by: n for another step)
 Comment.where(article_id: article.id).pluck_int(:id)      # => [3, 7]   (также pluck_str, pluck_float)
 Comment.all.count_by(:article_id)                         # => {"1" => 2, "4" => 1}
-Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # группы по часам
+Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # группы по часам (strftime SQLite; на MySQL DATE_FORMAT(created_at, '%Y-%m-%dT%H'))
 Stat.where(project_id: 1).sum_int(:calls)                 # также sum_float
 Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%' ESCAPE '\'
 ```
@@ -980,6 +980,22 @@ Article.transaction(immediate: true) do |c|
 end
 ```
 
+На MySQL `immediate: true` ничего не делает: в MySQL нет блокировки
+записи, которую можно взять при `BEGIN`, поэтому обе формы отправляют
+`BEGIN`, и два таких блока не выполняются один за другим. Каждый блок
+читает снимок, который не берёт блокировок (REPEATABLE READ), так что два
+блока, которые что-то проверяют, а потом пишут, могут оба пройти проверку
+и оба записать. Пусть запись сама несёт проверку (уникальный индекс;
+`UPDATE ... WHERE`, называющий старое значение, и взгляд на `c.changes`),
+или заблокируйте то, что блок читает, своим SQL:
+`c.execute("SELECT id FROM accounts WHERE id = ? FOR UPDATE", [id])`
+держит строку до `COMMIT`. При пустом результате он блокирует промежуток,
+куда легла бы строка, так что вставка второго блока туда ждёт; когда два
+блока читают один и тот же пустой промежуток одновременно, MySQL
+откатывает один из них (`Cybertrain::DB::Deadlock`). `SetupController`,
+который `generate authentication --invite-only` пишет для MySQL, так и
+проверяет первого пользователя.
+
 Чем она отличается от `transaction` в Rails и чего следует избегать:
 
 - Она возвращает nil, а не значение блока.
@@ -1184,6 +1200,12 @@ Post.order(SORTS.fetch(params[:sort].to_s, "id"))
   'price'`, ошибка 1264), тогда как SQLite сохраняет Float; это касается и
   `update_columns`, `update_all` и массовых записей, которые пропускают
   валидацию, выполняемую `save` ([Decimal — это Float](#decimals-are-floats)).
+  Неконечный Float (`Infinity`, `NaN`) как привязанное значение
+  отклоняется в любом столбце с `Cybertrain::DB::Error` до отправки
+  запроса; SQLite сохраняет бесконечности, а NaN сохраняет как NULL.
+- **Текст decimal.** Столбец `DECIMAL(p,s)`, прочитанный как текст
+  (`execute`), на MySQL несёт свой масштаб: `"9.50"` там, где SQLite
+  отвечает `"9.5"`; атрибут decimal модели — один и тот же Float на обеих.
 - **Ошибки.** Нарушение ограничения выбрасывает одни и те же классы на
   обеих базах (`Cybertrain::DB::UniqueViolation`, `ForeignKeyViolation`;
   на MySQL также `Deadlock`, `LockTimeout` и `ConnectionLost`); сообщение —
@@ -1202,6 +1224,19 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
                       seen_at: "excluded.seen_at" })
 ```
 
+- **Цель конфликта.** `conflict:` у `upsert` и `unique_by:` у
+  `upsert_all` должны быть ровно столбцами первичного ключа или одного
+  уникального индекса (в любом порядке), как на SQLite, иначе
+  `Cybertrain::DB::Error` (`upsert: ... is not the primary key or a unique index of ...`)
+  до того, как что-либо записано. Строка, которая конфликтует по другому
+  уникальному ключу, выбрасывает `Cybertrain::DB::UniqueViolation`, и
+  запрос ничего не пишет. Одно различие оставлено: строка, которая
+  конфликтует одновременно по цели и по другому уникальному ключу,
+  выбрасывает исключение там, где SQLite может обновить строку цели.
+  `upsert` отвечает 1 за вставленную или обновлённую строку и 0 за ту,
+  которую оставил пустой `update:`, как на SQLite. Уникальные ключи
+  читаются один раз на таблицу и соединение, поэтому после того, как
+  другой процесс изменил схему, перезапустите этот.
 - **`returning:`.** В MySQL нет `RETURNING`: `insert_all` и `upsert_all`
   читают строки обратно в той же транзакции и отвечают теми строками,
   которыми ответил бы SQLite. На таблице с уникальным индексом (помимо
@@ -1232,11 +1267,17 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
   MySQL: `limit: 255` у строки пропадает, `scale: 0` у decimal пропадает
   или добавляется, `t.bigint` с именем `*_id` выгружается как `t.integer`,
   значение по умолчанию у decimal получает его масштаб, значение по
-  умолчанию у столбца text или json и индекс по выражению записываются
-  текстом MySQL, а внешний ключ без индекса получает индекс. Поэтому
+  умолчанию, заданное выражением, выгружается в скобках (`(rand())`), индекс по
+  выражению записывается текстом MySQL, а внешний ключ без индекса
+  получает индекс. Поэтому
   `db/schema.rb`, записанный на SQLite, может измениться при первом
   `db migrate` на MySQL; `docs/compatibility.md` их перечисляет.
   `db normalize`, `db backup` и `db vacuum` — команды SQLite.
+- **`transaction(immediate: true)` — простой `BEGIN`.** Он не заставляет
+  два блока «прочитать, потом записать» выполняться один за другим, как
+  блокировка записи SQLite: заблокируйте строки, которые читает блок
+  (`SELECT ... FOR UPDATE`), или дайте уникальному индексу или `UPDATE`
+  с условием отклонить вторую запись ([Транзакции](#transactions)).
 - **Один процесс.** Задания, потоки, аренды и запланированные задачи
   гарантированы в пределах одного процесса; для нескольких процессов или
   хостов с одной базой — не раньше шага 2 дорожной карты MySQL

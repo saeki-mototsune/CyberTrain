@@ -417,7 +417,7 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
 Article.where(id: article.id).increment(:views)          # UPDATE ... SET views = views + 1 (by: n for another step)
 Comment.where(article_id: article.id).pluck_int(:id)      # => [3, 7]   (also pluck_str, pluck_float)
 Comment.all.count_by(:article_id)                         # => {"1" => 2, "4" => 1}
-Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # hour buckets
+Comment.all.count_by_sql("strftime('%Y-%m-%dT%H', created_at)")  # hour buckets (SQLite's strftime; MySQL: DATE_FORMAT(created_at, '%Y-%m-%dT%H'))
 Stat.where(project_id: 1).sum_int(:calls)                 # also sum_float
 Article.where_like(:title, params[:q].to_s)               # `title` LIKE '%...%' ESCAPE '\'
 ```
@@ -941,6 +941,21 @@ Article.transaction(immediate: true) do |c|
 end
 ```
 
+On MySQL `immediate: true` has no effect: MySQL has no write lock to take
+at `BEGIN`, so both forms send `BEGIN`, and two such blocks are not run one
+after the other. Each block reads a snapshot that takes no lock
+(REPEATABLE READ), so two blocks that check something and then write can
+both pass the check, and both write. Make the write carry the check (a
+unique index; an `UPDATE ... WHERE` that names the old value, and a look
+at `c.changes`), or lock what the block reads with SQL of its own:
+`c.execute("SELECT id FROM accounts WHERE id = ? FOR UPDATE", [id])`
+holds the row until the `COMMIT`. On an empty result it locks the gap the
+row would go in, so a second block's insert there waits; when two blocks
+read the same empty gap at once, MySQL rolls one of them back
+(`Cybertrain::DB::Deadlock`). The `SetupController` that
+`generate authentication --invite-only` writes on MySQL checks for the
+first user this way.
+
 Where it differs from Rails' `transaction`, and what to avoid:
 
 - It returns nil rather than the block's value.
@@ -1161,6 +1176,12 @@ pin them. What a model's code meets:
   value for column 'price'`, error 1264) where SQLite stores the Float;
   this reaches `update_columns`, `update_all` and the bulk writes, which
   skip the validation `save` runs ([Decimals are Floats](#decimals-are-floats)).
+  A Float that is not finite (`Infinity`, `NaN`) is refused as a bound
+  value, in any column, with `Cybertrain::DB::Error` before the statement
+  is sent; SQLite stores the infinities and stores NaN as NULL.
+- **Decimal text.** A `DECIMAL(p,s)` column read as text (`execute`)
+  carries its scale on MySQL, `"9.50"` where SQLite answers `"9.5"`; a
+  model's decimal attribute is the same Float on both.
 - **Errors.** A constraint failure raises the same classes on both
   (`Cybertrain::DB::UniqueViolation`, `ForeignKeyViolation`; `Deadlock`,
   `LockTimeout` and `ConnectionLost` on MySQL); the message is the
@@ -1179,6 +1200,18 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
                       seen_at: "excluded.seen_at" })
 ```
 
+- **The conflict target.** `upsert`'s `conflict:` and `upsert_all`'s
+  `unique_by:` must be exactly the columns of the primary key or of one
+  unique index (in any order), as on SQLite, or `Cybertrain::DB::Error`
+  (`upsert: ... is not the primary key or a unique index of ...`) before
+  anything is written. A row that collides on another unique key raises
+  `Cybertrain::DB::UniqueViolation`, and the statement writes nothing. One
+  difference is kept: a row that collides on the target and on another
+  unique key at once raises, where SQLite may update the target's row.
+  `upsert` answers 1 for a row inserted or updated and 0 for one an empty
+  `update:` left, as on SQLite. The unique keys are read once per table
+  and connection, so after another process changes the schema, restart
+  this one.
 - **`returning:`.** MySQL has no `RETURNING`: `insert_all` and
   `upsert_all` read the rows back in the same transaction and answer the
   rows SQLite would. On a table with a unique index (besides the primary
@@ -1207,11 +1240,16 @@ Stat.upsert({ project_id: project.id, key: path, calls: 1, max_ms: ms, seen_at: 
   write the same file as on SQLite; others dump as MySQL holds them: a
   string's `limit: 255` is dropped, a decimal's `scale: 0` is dropped or
   added, a `t.bigint` named `*_id` dumps as `t.integer`, a decimal's
-  default carries its scale, a default on a text or json column and an
-  expression index are MySQL's text, and a foreign key without an index
-  gains one. A `db/schema.rb` written on SQLite can therefore change on the
+  default carries its scale, an expression default dumps in parentheses
+  (`(rand())`), an expression index is MySQL's text, and a foreign key
+  without an index gains one. A `db/schema.rb` written on SQLite can therefore change on the
   first `db migrate` on MySQL; `docs/compatibility.md` lists these.
   `db normalize`, `db backup` and `db vacuum` are SQLite's.
+- **`transaction(immediate: true)` is a plain `BEGIN`.** It does not make
+  two read-then-write blocks run one after the other as SQLite's write
+  lock does: lock the rows the block reads (`SELECT ... FOR UPDATE`), or
+  let a unique index or a guarded `UPDATE` refuse the second write
+  ([Transactions](#transactions)).
 - **One process.** Jobs, streams, leases and scheduled tasks are
   guaranteed within one process; across several processes or hosts on one
   database they are not until step 2 of the MySQL roadmap
