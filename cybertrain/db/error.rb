@@ -1,13 +1,17 @@
 module Cybertrain
   module DB
-    # Raised for every failed SQLite call (a failed statement's message is
-    # SQLite's own followed by `(sql: ...)`; a failed open names the path)
+    # Raised for every failed database call, on either adapter (a failed
+    # statement's message is the database's own followed by `(sql: ...)`:
+    # SQLite's text, or MySQL's with "(MySQL CODE, SQLSTATE)"; a failed
+    # open names the SQLite path or the MySQL server, never its password),
     # and for misuse of the layer: not connected, a closed connection or
     # pool, a missing database file, an applied version with no migration.
+    # The classes below narrow it; each is an Error.
     #
-    # An application meets it when SQLite refuses a statement a model or a
-    # query sent: a NOT NULL, unique or foreign key constraint, a missing
-    # column, a full disk, a lock that outlasted the busy timeout. Unhandled
+    # An application meets it when the database refuses a statement a model
+    # or a query sent: a NOT NULL, unique or foreign key constraint, a
+    # missing column, a full disk, a lock that outlasted the busy timeout
+    # (SQLite) or innodb_lock_wait_timeout (MySQL). Unhandled
     # in an action it is a 500. Rescue it around one statement (a unique
     # index as the last word on a duplicate), map it with
     # `rescue_from Cybertrain::DB::Error, with: :database_error`, or name it

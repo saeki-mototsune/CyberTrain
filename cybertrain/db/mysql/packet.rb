@@ -22,6 +22,10 @@ module Cybertrain
       # @api private
       class PacketIO
         MAX_PAYLOAD = 0xFFFFFF
+        # The longest payload #read_packet joins from split packets: 1 GB,
+        # the ceiling of MySQL's own max_allowed_packet, so no server can
+        # send more and a broken one cannot grow a payload without bound.
+        MAX_JOINED = 1 << 30
         # Up to this size header and payload go out in one write, so a small
         # packet is one TCP segment (a 4-byte write then a second one waits
         # for Nagle's timer).
@@ -41,6 +45,15 @@ module Cybertrain
           # before any of them (#lost_unanswered?).
           @frames_read = 0
           @lost_unanswered = false
+          @packet_limit = MAX_JOINED
+        end
+
+        # The longest payload #read_packet joins from here on (MAX_JOINED
+        # unless set): for a test, which cannot send 1 GB.
+        # @api private
+        def use_packet_limit(bytes)
+          @packet_limit = bytes
+          nil
         end
 
         # Starts counting the frames read from here on: the connection
@@ -109,7 +122,9 @@ module Cybertrain
           nil
         end
 
-        # The next payload, split packets joined.
+        # The next payload, split packets joined. One that grows past the
+        # packet limit (MAX_JOINED) is ConnectionLost: the rest of it is
+        # never read, so the stream is out of step.
         # @return [String] binary
         def read_packet
           first = read_frame
@@ -121,6 +136,10 @@ module Cybertrain
           while last_size == MAX_PAYLOAD
             more = read_frame
             out << more
+            if out.bytesize > @packet_limit
+              raise Cybertrain::DB::ConnectionLost, "#{@stream.stream_label}: the MySQL server sent a packet longer than #{@packet_limit} bytes"
+            end
+
             last_size = more.bytesize
           end
           out

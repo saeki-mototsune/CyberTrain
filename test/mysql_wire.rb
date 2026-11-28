@@ -297,6 +297,16 @@ test "split_packet_roundtrip: 2 * 0xFFFFFF + 5" do
   assert_equal [4, 3], header_of(stream.wire_bytes, stream.wire_bytes.bytesize - 8)
 end
 
+test "split packets joined past the packet limit are ConnectionLost" do
+  stream = WireStream.new
+  Cybertrain::DB::MySQL::PacketIO.new(stream).write_packet(pattern(2 * MAX_PACKET + 5))
+  io = Cybertrain::DB::MySQL::PacketIO.new(stream)
+  io.use_packet_limit(MAX_PACKET + 1)
+  message = assert_raises("Cybertrain::DB::ConnectionLost") { io.read_packet }
+  assert_equal "fake:3306: the MySQL server sent a packet longer than 16777216 bytes", message
+  assert_equal 1 << 30, Cybertrain::DB::MySQL::PacketIO::MAX_JOINED
+end
+
 test "a packet with the wrong sequence number is ConnectionLost" do
   stream = WireStream.new
   stream.wire_load("\x03\x00\x00\x01abc".b)

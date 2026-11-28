@@ -1,7 +1,13 @@
 # Cybertrain::DB::Connection for MySQL: one session with a MySQL 8.0 server,
 # over the pure-Ruby protocol beside this file (packet, auth, protocol,
-# result) on Cybertrain::Net, so every wait is a green-thread wait on a
-# socket and never an OS worker parked in a C call.
+# result) on Cybertrain::Net, so every wait on the server is a
+# green-thread wait on a socket and never an OS worker parked in a C call.
+# One exception: opening a session (#initialize, a reopen) resolves the
+# host name with getaddrinfo, which has no non-blocking form in the runtime
+# (Net.resolve), so a slow resolver parks its OS worker for as long as the
+# resolver takes. That time counts against connect_timeout, which ends the
+# open once the resolve returns, but it cannot cut the resolve short. A
+# host given as an IP address is not looked up.
 #
 # Its public methods are the SQLite Connection's (cybertrain/db/sqlite/
 # connection.rb), with the same names and return types, so that the pool,
@@ -201,7 +207,9 @@ module Cybertrain
       # TCP, the handshake and authentication (TLS for ssl_mode=verify):
       # the PacketIO the session runs on, its timeouts set from the URL.
       # Each wait of the connect and the handshake is bounded by
-      # connect_timeout; a Net failure is ConnectionLost.
+      # connect_timeout, and the resolve and the connect together by it as
+      # a deadline (the Timer starts before Net.resolve, which blocks its
+      # OS worker: see the header); a Net failure is ConnectionLost.
       def self.open_session(url)
         label = url.server_label
         seconds = url.connect_timeout
