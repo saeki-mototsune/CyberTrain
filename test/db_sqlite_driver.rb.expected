@@ -1,0 +1,16 @@
+/home/user/CyberTrain/.claude/worktrees/agent-ac9319d4328c8e730/cybertrain/db/sqlite_ffi.rb:25:in `<module:SQLite3>': undefined method `ffi_lib' for module Cybertrain::DB::SQLite3 (NoMethodError)
+
+      ffi_lib "sqlite3"
+      ^^^^^^^
+	from /home/user/CyberTrain/.claude/worktrees/agent-ac9319d4328c8e730/cybertrain/db/sqlite_ffi.rb:24:in `<module:DB>'
+	from /home/user/CyberTrain/.claude/worktrees/agent-ac9319d4328c8e730/cybertrain/db/sqlite_ffi.rb:23:in `<module:Cybertrain>'
+	from /home/user/CyberTrain/.claude/worktrees/agent-ac9319d4328c8e730/cybertrain/db/sqlite_ffi.rb:22:in `<top (required)>'
+	from <internal:/opt/rbenv/versions/3.3.6/lib/ruby/3.3.0/rubygems/core_ext/kernel_require.rb>:136:in `require'
+	from <internal:/opt/rbenv/versions/3.3.6/lib/ruby/3.3.0/rubygems/core_ext/kernel_require.rb>:136:in `require'
+	from /home/user/CyberTrain/.claude/worktrees/agent-ac9319d4328c8e730/cybertrain/db/sqlite.rb:3:in `<top (required)>'
+	from <internal:/opt/rbenv/versions/3.3.6/lib/ruby/3.3.0/rubygems/core_ext/kernel_require.rb>:136:in `require'
+	from <internal:/opt/rbenv/versions/3.3.6/lib/ruby/3.3.0/rubygems/core_ext/kernel_require.rb>:136:in `require'
+	from /home/user/CyberTrain/.claude/worktrees/agent-ac9319d4328c8e730/cybertrain/db.rb:6:in `<top (required)>'
+	from <internal:/opt/rbenv/versions/3.3.6/lib/ruby/3.3.0/rubygems/core_ext/kernel_require.rb>:136:in `require'
+	from <internal:/opt/rbenv/versions/3.3.6/lib/ruby/3.3.0/rubygems/core_ext/kernel_require.rb>:136:in `require'
+	from /home/user/CyberTrain/.claude/worktrees/agent-ac9319d4328c8e730/test/db_sqlite_driver.rb:3:in `<main>'

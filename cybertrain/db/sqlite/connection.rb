@@ -289,6 +289,16 @@ module Cybertrain
         SQLite3.sqlite3_last_insert_rowid(@db)
       end
 
+      # The MySQL Connection's method, here so that code above the adapter
+      # can call it on either: a no-op. SQLite keeps its own last rowid
+      # (sqlite3_last_insert_rowid), which every INSERT into a rowid table
+      # sets; nothing is kept here to forget.
+      # @return [nil]
+      def forget_last_insert_id
+        raise Error, "connection closed (forget_last_insert_id)" if @closed
+        nil
+      end
+
       # The most `?` binds one statement may carry
       # (SQLITE_LIMIT_VARIABLE_NUMBER: 32766 by default since SQLite 3.32,
       # 999 before, 250000 in the bundled build), asked of the library once
